@@ -1,0 +1,153 @@
+{
+  "source": {
+    "url": "https://web.vodafone.com.eg/en/services",
+    "capturedOn": "2026-04-21",
+    "captureMethod": [
+      "live HTML fetch",
+      "live stylesheet fetch",
+      "full-page Chrome headless screenshot"
+    ]
+  },
+  "layout": {
+    "containerWidthDesktop": "1140px",
+    "containerPadding": "15px",
+    "sectionSpacing": {
+      "mobile": "24px 0",
+      "tablet": "28px 0",
+      "desktop": "40px 0"
+    },
+    "breakpoints": {
+      "sm": "576px",
+      "md": "768px",
+      "lg": "992px",
+      "xl": "1200px"
+    }
+  },
+  "typography": {
+    "families": {
+      "body": "vodafone-regular-en",
+      "headingBold": "vodafone-bold-en",
+      "headingLight": "vodafone-light-en",
+      "legacyAliases": ["vf-regular", "vf-bold", "vf-light"]
+    },
+    "sizes": {
+      "sectionHeadingDesktop": "2.442rem",
+      "bodyBase": "1rem",
+      "bodyLarge": "1.16rem",
+      "lead": "1.25rem",
+      "cardTitle": "1.332rem"
+    }
+  },
+  "colorTheme": {
+    "core": {
+      "vodafoneRed": "#e60000",
+      "vodafoneDarkRed": "#900",
+      "white": "#ffffff",
+      "ink": "#14141e"
+    },
+    "neutrals": {
+      "darkGrey": "#333333",
+      "anthracite": "#666666",
+      "midGrey": "#999999",
+      "silver": "#cccccc",
+      "aluminium": "#ebebeb",
+      "lightGrey": "#f4f4f4"
+    },
+    "supportingBrandPalette": {
+      "turquoise": "#007c92",
+      "aquaBlue": "#00b0ca",
+      "aubergine": "#5e2750",
+      "redViolet": "#9c2aa0",
+      "springGreen": "#a8b400",
+      "green": "#428600",
+      "freshOrange": "#eb9700",
+      "lemonYellow": "#fecb00"
+    }
+  },
+  "surfaces": {
+    "buttonRadius": "6px",
+    "cardRadius": "8px",
+    "buttonShadow": "0 3px 6px rgba(0,0,0,0.1)",
+    "cardShadow": "0 2px 8px rgba(0,0,0,0.16)",
+    "cardBorder": "1px solid #ccc"
+  },
+  "components": [
+    {
+      "name": "Top Switcher",
+      "traits": [
+        "dark grey background",
+        "light text",
+        "white active tab",
+        "compact 0.8rem typography"
+      ]
+    },
+    {
+      "name": "Main Header",
+      "traits": [
+        "white surface",
+        "Vodafone red roundel on the left",
+        "light-weight navigation labels",
+        "search and account icons on the right"
+      ]
+    },
+    {
+      "name": "Hero Banner",
+      "traits": [
+        "full-width photographic image",
+        "heavy dark overlay",
+        "no text over the banner on this page"
+      ]
+    },
+    {
+      "name": "Action Cards",
+      "traits": [
+        "image-backed",
+        "rounded corners",
+        "text overlay",
+        "red-tinted or dark-tinted masks",
+        "CTA reveal on hover for entertainment cards"
+      ]
+    },
+    {
+      "name": "Subscription Cards",
+      "traits": [
+        "white cards",
+        "1px silver border",
+        "150px media slot",
+        "bold heading with paragraph copy"
+      ]
+    },
+    {
+      "name": "Download Band",
+      "traits": [
+        "solid Vodafone red background",
+        "white type",
+        "app store icons in white tiles",
+        "large QR module on the right"
+      ]
+    },
+    {
+      "name": "Footer",
+      "traits": [
+        "near-black background",
+        "light-grey text",
+        "white social icons",
+        "three text columns followed by legal links"
+      ]
+    }
+  ],
+  "pageStructure": [
+    "top switcher",
+    "primary navigation",
+    "hero banner",
+    "Vodafone Cash intro strip",
+    "Stay In Control cards",
+    "Call & Connect abroad cards",
+    "Great Entertainment rail",
+    "small Ana Vodafone QR prompt",
+    "Shokran services carousel frame",
+    "Enjoy other services carousel frame",
+    "Ana Vodafone download band",
+    "footer"
+  ]
+}
