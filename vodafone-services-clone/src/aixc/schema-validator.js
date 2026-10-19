@@ -17,11 +17,15 @@
 import { PROMOTION_KIND } from './content-index.js'
 
 export const SCHEMA_VERSION = 1
-export const EXPERIENCES = ['magazine']
+/**
+ * Experience plugins. `magazine` composes with layout primitives; every other
+ * experience takes ordered `group` sections and decides the visuals itself.
+ */
+export const EXPERIENCES = ['magazine', 'spotlight', 'journey', 'gallery', 'flipbook', 'cube']
 export const THEMES = ['vodafone-editorial']
 export const DENSITIES = ['compact', 'balanced', 'spacious']
 export const SCOPES = ['all', 'filtered']
-export const SECTION_TYPES = [
+export const MAGAZINE_SECTION_TYPES = [
   'hero',
   'feature',
   'editorial-grid',
@@ -32,6 +36,11 @@ export const SECTION_TYPES = [
   'service-list',
   'closing-promotion',
 ]
+export const GROUP_SECTION_TYPES = ['group', 'closing-promotion']
+export const SECTION_TYPES = [...MAGAZINE_SECTION_TYPES, 'group']
+
+const sectionTypesFor = (experience) => (experience === 'magazine' ? MAGAZINE_SECTION_TYPES : GROUP_SECTION_TYPES)
+const fallbackTypeFor = (experience) => (experience === 'magazine' ? 'service-list' : 'group')
 
 /** Primitives that render fine with no items. Every other type needs at least one. */
 const MAY_BE_EMPTY = new Set(['hero', 'section-heading'])
@@ -144,9 +153,13 @@ export const validateSchema = (raw, index, options = {}) => {
     }
 
     let type = rawSection.type
-    if (!SECTION_TYPES.includes(type)) {
-      warnings.push(`Section ${position + 1}: unknown type "${String(type).slice(0, 30)}" rendered as service-list.`)
-      type = 'service-list'
+    if (!sectionTypesFor(experience).includes(type)) {
+      const fallbackType = fallbackTypeFor(experience)
+      // Magazine primitives sent to a group-based experience are expected; anything else is worth a note.
+      if (!(experience !== 'magazine' && MAGAZINE_SECTION_TYPES.includes(type))) {
+        warnings.push(`Section ${position + 1}: unknown type "${String(type).slice(0, 30)}" rendered as ${fallbackType}.`)
+      }
+      type = fallbackType
     }
 
     let id = cleanSectionId(rawSection.id) ?? `section-${position + 1}`
@@ -186,18 +199,20 @@ export const validateSchema = (raw, index, options = {}) => {
     })
   })
 
-  // A magazine opens with exactly one cover.
-  const heroes = sections.filter((section) => section.type === 'hero')
-  heroes.slice(1).forEach((section) => {
-    section.type = 'feature'
-    warnings.push(`Extra hero "${section.id}" rendered as feature.`)
-  })
-  if (heroes.length === 0) {
-    sections.unshift({ id: 'cover', type: 'hero', title: null, description: null, itemIds: [] })
-    warnings.push('No hero section; added a cover.')
-  } else if (sections[0] !== heroes[0]) {
-    sections.splice(sections.indexOf(heroes[0]), 1)
-    sections.unshift(heroes[0])
+  // A magazine opens with exactly one cover. Other experiences draw their own opening.
+  if (experience === 'magazine') {
+    const heroes = sections.filter((section) => section.type === 'hero')
+    heroes.slice(1).forEach((section) => {
+      section.type = 'feature'
+      warnings.push(`Extra hero "${section.id}" rendered as feature.`)
+    })
+    if (heroes.length === 0) {
+      sections.unshift({ id: 'cover', type: 'hero', title: null, description: null, itemIds: [] })
+      warnings.push('No hero section; added a cover.')
+    } else if (sections[0] !== heroes[0]) {
+      sections.splice(sections.indexOf(heroes[0]), 1)
+      sections.unshift(heroes[0])
+    }
   }
 
   // Completeness: re-home anything the model left out.
@@ -238,7 +253,7 @@ export const validateSchema = (raw, index, options = {}) => {
       const sourceSection = index.sectionOf(itemId)
       let restored = sections.find((section) => section.id === `restored-${sourceSection.id}`)
       if (!restored) {
-        restored = { id: `restored-${sourceSection.id}`, type: 'service-list', title: null, description: null, itemIds: [] }
+        restored = { id: `restored-${sourceSection.id}`, type: fallbackTypeFor(experience), title: null, description: null, itemIds: [] }
         sectionIds.add(restored.id)
         const closingAt = sections.findIndex((section) => section.type === 'closing-promotion')
         sections.splice(closingAt === -1 ? sections.length : closingAt, 0, restored)

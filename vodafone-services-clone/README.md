@@ -1,8 +1,22 @@
 # AI Experience Composer (AIXC) — Phase 1
 
 A local recreation of the [Vodafone Egypt Services page](https://web.vodafone.com.eg/en/services)
-with an AI layer on top: describe how you want to experience the page, and the **same content**
-is recomposed as an editorial magazine. The Vodafone header, navigation and footer never change.
+with an AI layer on top: pick a ready-made experience or describe one, and the **same content**
+is recomposed. The Vodafone header, navigation and footer never change.
+
+**Ready-made experiences** (one click, no API key, no AI call), all in Vodafone's palette, fonts
+and components:
+
+| Template | What it does | Adapted from |
+|---|---|---|
+| Spotlight cards | One service fills the stage; the next ones queue as cards; auto-advances with pause | [Timed Cards Opening](https://codepen.io/dilums/full/NWodZMd) |
+| Scroll journey | Layered landscape (Vodafone mark as the sun) moves from day to night as chapters scroll by | [Parallax scroll animation](https://codepen.io/isladjan/pen/abdyPBw) |
+| Gallery wall | Every service framed on an angled 3D wall you walk along by scrolling | [Infinite Gallery Hall](https://codepen.io/nassimberrada/pen/EayPjpM) |
+| Flipbook | A book with a spread per category, pages turned in 3D, letter fly-in titles | [Pure CSS Magazine layout](https://codepen.io/jcoulterdesign/pen/oRRRPY) |
+| Service cube | A 3D cube turns to one face per category as you read, with HUD and scene dots | [Six Faces](https://codepen.io/luis-lessrain/pen/ZYpyoRV) |
+| Editorial magazine | Cover story, asymmetric spreads, service index | the Phase 1 brief |
+
+The references were re-implemented natively (no GSAP, no Three.js, none of their copy or images).
 
 ```
 local Vodafone page → prompt → Gemini composition JSON → validation → DOM rendering → magazine view
@@ -27,14 +41,14 @@ npm run dev          # http://localhost:5173
 npm run serve        # or: node scripts/serve.mjs --port 5173
 ```
 
-Then open the page, choose **Reimagine this page**, and type a prompt or pick a suggestion.
+Then open the page, choose **Reimagine this page**, and click a ready-made experience or type a prompt.
 
 **Tests**
 
 ```bash
-npm test             # validator + content-model unit tests (Node's built-in runner)
+npm test             # validator, content model and template unit tests (Node built-in runner)
 
-# Optional browser checks (64 checks; Gemini is mocked, no key needed):
+# Optional browser checks (163 checks across all experiences; Gemini is mocked, no key needed):
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
@@ -44,8 +58,11 @@ python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
 
 ## Gemini configuration
 
-Without a key the app still works: it uses a **built-in magazine layout** and says so in the view
-bar ("Built-in layout, not AI-generated"). To compose from your prompt, add a key in either way:
+Without a key the app still works: the ready-made experiences never need one, a typed prompt that
+names one ("make it a flip book") is matched to it locally, and any other prompt gets the
+**built-in magazine layout**. The view bar always says which happened ("Ready-made template, no AI
+call" / "Built-in layout, not AI-generated" / "Composed by Gemini"). With a key, typed prompts go to
+Gemini, which can pick any of the six experiences. To add a key:
 
 1. **In the app**: Reimagine this page → **Gemini settings** → paste the key → *Save settings*.
    By default it lives in memory for this tab only; tick *Remember the key in this browser* to keep
@@ -70,14 +87,13 @@ output (`responseMimeType` + `responseSchema`). The model can be changed in the 
 ## Using it (demo script)
 
 1. Open the page in its familiar original view. Header and footer are the protected shell.
-2. **Reimagine this page** → submit *"Turn this into a bold editorial magazine, with a dramatic
-   cover, asymmetric layouts, and distinct sections for each category. Keep every original
-   service, description, and link."*
-3. The magazine replaces only the main content. Scroll: every service, description and link is there.
-4. **Edit prompt** → *"Make the layout more compact, but do not remove content."*
-5. **Original** shows the source presentation; **Reimagined** returns without another Gemini call;
-   **Reset** clears the transformation.
-6. Without a key, the same flow shows the built-in layout, clearly labelled as not AI-generated.
+2. **Reimagine this page** → click **Spotlight cards**. Same services, links and copy, new experience.
+3. **Change experience** → try **Flipbook**, **Gallery wall**, **Service cube**, **Scroll journey**.
+4. **Original** shows the source presentation; **Reimagined** returns to the last experience;
+   **Reset** clears the transformation. None of this calls Gemini.
+5. With a key: **Change experience** → type *"Turn this into a bold editorial magazine, with a
+   dramatic cover and distinct sections for each category. Keep every service, description and
+   link."* → Gemini composes it; then *"Make the layout more compact, but do not remove content."*
 
 Add `?aixc-debug` to the URL to log schemas, validator warnings and stats to the console and
 expose `window.__aixc`.
@@ -100,9 +116,13 @@ src/
     schema-validator.js          allowlist validation + completeness repair
     fallback-schema.js           deterministic built-in magazine composition
     gemini-client.js             generateContent request/response, error classification
-    experience-renderer.js       experience registry (magazine is the only plugin)
+    templates.js                 ready-made experiences: prompt, icon, local schema builder, keyword match
+    experience-renderer.js       experience registry + mount/unmount lifecycle
     experiences/magazine.js      9 primitives → DOM (createElement/textContent only)
     experiences/magazine.css     magazine styles, all scoped under .aixc-magazine
+    experiences/shared.js        shared Vodafone building blocks for the template experiences
+    experiences/vodafone.css     Vodafone tokens + shared components, scoped under .aixc-vx
+    experiences/{spotlight,journey,gallery,flipbook,cube}.{js,css}   one plugin each
     controller.js                state, launcher, composer, view bar, cache, fallbacks
     aixc.css                     composer/launcher/view-bar styles (all .aixc- prefixed)
     dom.js                       tiny DOM builder with attribute + URL allowlists
@@ -130,8 +150,18 @@ content) and returns a *composition schema* that references item ids:
 }
 ```
 
-**Primitives:** `hero`, `feature`, `editorial-grid`, `split-spread`, `shelf`, `callout`,
-`section-heading`, `service-list`, `closing-promotion`. Each tolerates any item count.
+**Experiences:** `magazine`, `spotlight`, `journey`, `gallery`, `flipbook`, `cube`.
+
+**Section types:** the magazine uses `hero`, `feature`, `editorial-grid`, `split-spread`, `shelf`,
+`callout`, `section-heading`, `service-list`; every other experience takes ordered `group`
+sections and decides the visuals itself. All end with `closing-promotion`.
+
+**Templates** build their schema locally (one `group` per source category) and still pass through
+the validator, so they get the same completeness guarantee as AI output.
+
+**Lifecycle.** Experiences start timers and scroll listeners in `mount()` and stop them in
+`unmount()`; the controller calls these when the view is shown, hidden, replaced or reset, so
+nothing runs while the Original view is on screen.
 
 **What the validator enforces** (`schema-validator.js`, covered by `npm test`):
 
@@ -162,15 +192,18 @@ register it in `src/aixc/page-adapters.js`, and set `<body data-page="<pageId>">
 validator and Gemini client need no changes.
 
 **Add an experience.** Write `src/aixc/experiences/<name>.js` exporting
-`render(schema, index) → { element, afterMount }`, register it in `experience-renderer.js`, allow
-the name in `EXPERIENCES` (validator) and in the response schema (Gemini client).
+`render(schema, index) → { element, mount?, unmount? }` (use `shared.js` for Vodafone blocks), add
+its stylesheet scoped under `.aixc-vx--<name>` and link it in `index.html`, register it in
+`experience-renderer.js`, add the name to `EXPERIENCES` (validator) and a line to
+`EXPERIENCE_GUIDE` (Gemini client). To offer it as a one-click template, add an entry to
+`TEMPLATES` in `templates.js`.
 
 ---
 
 ## Known limitations and source notes
 
 - **Gemini has not been called live from this build.** The request format, headers and response
-  parsing were tested against a mocked endpoint (64 browser checks). Verify with a real key before
+  parsing were tested against a mocked endpoint (163 browser checks). Verify with a real key before
   a demo; if the chosen model rejects `responseSchema`, the client retries once in plain JSON mode.
 - **Content capture.** Text and images were captured on 2026-04-21; links and the hero heading
   were re-checked against the live page on 2026-10-19. The live site may have changed since.
@@ -185,10 +218,14 @@ the name in `EXPERIENCES` (validator) and in the response schema (Gemini client)
 - **Header/footer links** are `#` placeholders, as in the original clone.
 - **Images** are the small originals (200–510 px wide). The magazine caps upscaling at ~1.6× and
   uses matted frames instead of full-bleed crops; a designed fallback replaces any image that fails.
-- **Visual reference.** The CodePen link in the handoff (`codepen.io/dilums/full/NWodZMd`) resolves
-  to a "Timed Cards Opening" slider, not the magazine layout the handoff describes, and the
-  referenced `index.html/style.css/script.js` files were not available. The magazine follows the
-  handoff's written description (cover, asymmetric spreads, framed media, plum accents).
+- **Template adaptations.** Each reference was rebuilt around page context: the experiences sit
+  between the sticky Vodafone header and footer, use native page scroll (no wheel hijacking) and
+  honour reduced motion. The gallery walk has a start and an end instead of wrapping infinitely,
+  the cube maps Vodafone's six categories to its six faces, and the parallax scene is drawn in
+  Vodafone reds with the Vodafone mark as the sun. Small source images are matted, blurred or
+  mosaicked rather than stretched full-bleed.
+- **Spotlight auto-advance** pauses on hover, focus, a hidden tab, or the pause button, and is off
+  under reduced motion.
 - **Original view changes** (to make it complete and accessible): real links on cards, a visually
   hidden `h1`, working Shokran / other-services carousels (previously only the first 3 cards were
   reachable), and a fix for the header overflowing the viewport below ~420 px.

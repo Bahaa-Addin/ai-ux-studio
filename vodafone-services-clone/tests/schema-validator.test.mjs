@@ -171,3 +171,56 @@ test('poor content degrades instead of throwing', () => {
   assert.ok(broken.problems.length >= 3)
   assert.equal(normalizeContentModel(null).model, null)
 })
+
+/* ------------------------------------------------------------- templates */
+
+import { TEMPLATES, buildTemplateSchema, matchTemplate } from '../src/aixc/templates.js'
+
+test('every template builds a valid, complete schema with no warnings', () => {
+  assert.equal(TEMPLATES.length, 6)
+  for (const template of TEMPLATES) {
+    const result = validateSchema(buildTemplateSchema(template, index), index, { prompt: template.prompt })
+    assert.equal(result.ok, true, template.id)
+    assert.deepEqual(result.warnings, [], `${template.id}: ${result.warnings.join('; ')}`)
+    assert.equal(result.schema.experience, template.experience)
+    assertComplete(result.schema, index)
+    assert.equal(result.schema.sections.at(-1).type, 'closing-promotion', template.id)
+  }
+})
+
+test('group experiences get one group per source section, in source order', () => {
+  const schema = buildTemplateSchema(TEMPLATES.find((t) => t.id === 'cube'), index)
+  const groups = schema.sections.filter((section) => section.type === 'group')
+  assert.deepEqual(groups.map((group) => group.id), index.model.sections.map((section) => section.id))
+})
+
+test('group experiences coerce magazine primitives to groups and need no hero', () => {
+  const result = validateSchema(
+    {
+      version: 1,
+      experience: 'gallery',
+      sections: [
+        { type: 'hero', itemIds: ['vodafone-cash'] },
+        { type: 'editorial-grid', itemIds: ['roaming', 'roaming', 'nope'] },
+      ],
+    },
+    index,
+  )
+  assert.equal(result.ok, true)
+  assert.ok(result.schema.sections.every((section) => section.type === 'group' || section.type === 'closing-promotion'))
+  assert.ok(!result.schema.sections.some((section) => section.type === 'hero'))
+  assertComplete(result.schema, index)
+  // Restored sections use the experience's own section type.
+  assert.ok(result.schema.sections.some((section) => section.id.startsWith('restored-') && section.type === 'group'))
+})
+
+test('typed prompts are matched to templates by plain wording', () => {
+  assert.equal(matchTemplate('Make it a flip book please')?.id, 'flipbook')
+  assert.equal(matchTemplate('show everything on a 3D cube')?.id, 'cube')
+  assert.equal(matchTemplate('like an art gallery')?.id, 'gallery')
+  assert.equal(matchTemplate('a parallax scroll journey')?.id, 'journey')
+  assert.equal(matchTemplate('full-screen spotlight cards')?.id, 'spotlight')
+  assert.equal(matchTemplate('Turn this into a magazine.')?.id, 'magazine')
+  assert.equal(matchTemplate('make it nicer'), null)
+  assert.equal(matchTemplate('share on facebook'), null)
+})

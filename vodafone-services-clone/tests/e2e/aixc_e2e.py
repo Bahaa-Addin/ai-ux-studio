@@ -79,7 +79,7 @@ async def submit(page, prompt):
         if await page.is_visible(".aixc-launcher"):
             await page.click(".aixc-launcher")
         else:
-            await page.click("text=Edit prompt")
+            await page.click(".aixc-viewbar__actions button >> nth=0")
     await page.fill("#aixc-prompt", prompt)
     await page.press("#aixc-prompt", "Enter")
 
@@ -120,6 +120,207 @@ def good_schema(ids, density="balanced", title=None):
     }
 
 
+TEMPLATE_IDS = ["spotlight", "journey", "gallery", "flipbook", "cube", "magazine"]
+
+
+async def open_template(page, template_id):
+    if await page.is_visible(".aixc-launcher"):
+        await page.click(".aixc-launcher")
+    elif not await page.is_visible("#aixc-composer"):
+        await page.click(".aixc-viewbar__actions button >> nth=0")
+    await page.click(f".aixc-template[data-template={template_id}]")
+    await page.wait_for_selector(f"#experience-output [data-experience={template_id}], #experience-output .aixc-magazine")
+    await page.wait_for_timeout(500)
+
+
+async def template_checks(browser):
+    # All templates with a Gemini key configured: none of them may call Gemini.
+    mock = Mock()
+    page = await new_page(browser, key=True, mock=mock)
+    ids = await all_ids(page)
+    before = await shell_snapshot(page)
+    for template_id in TEMPLATE_IDS:
+        await open_template(page, template_id)
+        placed = await placed_ids(page)
+        check(f"{template_id}: every item exactly once", sorted(placed) == sorted(ids) and len(placed) == len(set(placed)), (len(placed), len(set(placed))))
+        meta = await page.text_content(".aixc-viewbar__meta")
+        check(f"{template_id}: labelled as a ready-made template", "Ready-made template, no AI call" in meta, meta)
+        check(f"{template_id}: focus moves to the page heading", await page.evaluate("document.activeElement?.id === 'aixc-cover-title'"))
+        check(f"{template_id}: exactly one h1 in the output", await page.evaluate("document.querySelectorAll('#experience-output h1').length") == 1)
+        pressed = await page.eval_on_selector_all(".aixc-template[aria-pressed=true]", "els => els.map(e => e.dataset.template)")
+        check(f"{template_id}: template shown as selected", pressed == [template_id], pressed)
+        sw = await page.evaluate("document.documentElement.scrollWidth")
+        check(f"{template_id}: no horizontal overflow at 1366px", sw <= 1366, sw)
+        links_ok = await page.evaluate("[...document.querySelectorAll('#experience-output a[target=_blank]')].every(a => a.rel === 'noopener noreferrer' && a.href.startsWith('https://'))")
+        check(f"{template_id}: external links are https with noopener", links_ok)
+        check(f"{template_id}: no placeholder copy", await page.evaluate("!/lorem|ipsum|arcade|gallerie|walking the cow/i.test(document.querySelector('#experience-output').textContent)"))
+    check("templates never call Gemini (key configured)", len(mock.requests) == 0, len(mock.requests))
+    check("templates leave header/footer untouched", await shell_snapshot(page) == before)
+    check("no page errors across all templates", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Spotlight: controls, autoplay, pause, unmount while hidden.
+    page = await new_page(browser)
+    await open_template(page, "spotlight")
+    await page.mouse.move(5, 5)
+    active = lambda: page.evaluate("[...document.querySelectorAll('.sp-slide')].findIndex(s => !s.hidden)")
+    await page.click(".sp-controls [aria-label='Next service']")
+    await page.mouse.move(5, 5)
+    check("spotlight: next shows the second service", await active() == 1)
+    await page.keyboard.press("ArrowRight")
+    check("spotlight: arrow key advances", await active() == 2)
+    await page.click(".sp-jump[data-group=shokran-services]")
+    await page.mouse.move(5, 5)
+    first_shokran = await page.evaluate("[...document.querySelectorAll('.sp-slide')].findIndex(s => s.dataset.aixcItem === 'sallefny-shokran')")
+    check("spotlight: category jump lands on its first service", await active() == first_shokran)
+    await page.evaluate("document.activeElement.blur()")
+    start = await active()
+    await page.wait_for_timeout(7200)
+    check("spotlight: auto-advances after the dwell time", await active() == start + 1, (start, await active()))
+    await page.click(".sp-play")
+    await page.mouse.move(5, 5)
+    await page.evaluate("document.activeElement.blur()")
+    paused_at = await active()
+    await page.wait_for_timeout(7200)
+    check("spotlight: pause stops rotation", await active() == paused_at)
+    check("spotlight: pause button reports state", await page.get_attribute(".sp-play", "aria-label") == "Start automatic rotation")
+    await page.click(".sp-play")
+    await page.click(".aixc-seg >> text=Original")
+    hidden_at = await active()
+    await page.wait_for_timeout(7200)
+    await page.click(".aixc-seg >> text=Reimagined")
+    check("spotlight: does not rotate while hidden", await active() == hidden_at)
+    queued_focusable = await page.evaluate("[...document.querySelectorAll('.sp-card')].filter(c => !c.inert).length")
+    check("spotlight: only queued cards are focusable", queued_focusable == 4, queued_focusable)
+    await page.click("text=Reset")
+    check("no page errors (spotlight)", page.errors == [], page.errors)
+    await page.context.close()
+
+    page = await new_page(browser, reduced_motion="reduce")
+    await open_template(page, "spotlight")
+    await page.mouse.move(5, 5)
+    await page.evaluate("document.activeElement.blur()")
+    await page.wait_for_timeout(7200)
+    check("spotlight: no autoplay under reduced motion", await page.evaluate("[...document.querySelectorAll('.sp-slide')].findIndex(s => !s.hidden)") == 0)
+    await page.context.close()
+
+    # Journey: scroll drives the scene.
+    page = await new_page(browser)
+    await open_template(page, "journey")
+    night0 = float(await page.evaluate("getComputedStyle(document.querySelector('.aixc-vx--journey')).getPropertyValue('--night') || 0"))
+    await page.evaluate("window.scrollTo(0, document.documentElement.scrollHeight * 0.7)")
+    await page.wait_for_timeout(500)
+    night1 = float(await page.evaluate("getComputedStyle(document.querySelector('.aixc-vx--journey')).getPropertyValue('--night') || 0"))
+    check("journey: scrolling turns day to night", night0 < 0.05 and night1 > 0.6, (night0, night1))
+    chapters = await page.evaluate("document.querySelectorAll('.jr-chapter').length")
+    check("journey: one chapter per category", chapters == 6, chapters)
+    await page.context.close()
+    page = await new_page(browser, reduced_motion="reduce")
+    await open_template(page, "journey")
+    await page.evaluate("window.scrollTo(0, 1500)")
+    await page.wait_for_timeout(400)
+    check("journey: no parallax motion under reduced motion", await page.evaluate("getComputedStyle(document.querySelector('.jr-range')).transform") == "none")
+    await page.context.close()
+
+    # Gallery: prev/next move along the wall and update the caption.
+    page = await new_page(browser)
+    await open_template(page, "gallery")
+    await page.click(".gl-controls [aria-label='Next piece']")
+    await page.wait_for_timeout(1400)
+    counter = await page.text_content(".gl-counter")
+    title = await page.text_content(".gl-caption__title")
+    check("gallery: next walks to the second piece", counter.startswith("02") and title == "Balance transfer", (counter, title))
+    await page.evaluate("window.scrollBy(0, 240 * 5)")
+    await page.wait_for_timeout(1400)
+    check("gallery: scrolling walks the wall", (await page.text_content(".gl-counter")).startswith("07"), await page.text_content(".gl-counter"))
+    camera = await page.evaluate("getComputedStyle(document.querySelector('.gl-wall')).getPropertyValue('--camera')")
+    check("gallery: camera moved along the wall", camera.strip() not in ("", "0px"), camera)
+    check("no page errors (gallery)", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Flipbook: turning, inert pages, contents jump, single-page mode.
+    page = await new_page(browser)
+    await open_template(page, "flipbook")
+    check("flipbook: opens on the cover", (await page.text_content(".fb-status")) == "Page 1 of 18", await page.text_content(".fb-status"))
+    await page.click(".fb-controls [aria-label='Next page']")
+    await page.wait_for_timeout(1300)
+    check("flipbook: next opens the first spread", (await page.text_content(".fb-status")) == "Pages 2–3 of 18", await page.text_content(".fb-status"))
+    open_pages = await page.evaluate("[...document.querySelectorAll('.fb-page')].filter(p => !p.inert).length")
+    check("flipbook: only the open spread is reachable", open_pages == 2, open_pages)
+    await page.click(".fb-contents__link[data-go='group:great-entertainment']")
+    await page.wait_for_timeout(1300)
+    open_keys = await page.eval_on_selector_all(".fb-page.is-open", "els => els.map(e => e.dataset.key)")
+    check("flipbook: contents jumps to a category", "group:great-entertainment" in open_keys, open_keys)
+    await page.keyboard.press("ArrowLeft")
+    await page.wait_for_timeout(1300)
+    check("flipbook: arrow keys turn pages", "group:great-entertainment" not in await page.eval_on_selector_all(".fb-page.is-open", "els => els.map(e => e.dataset.key)"))
+    check("no page errors (flipbook)", page.errors == [], page.errors)
+    await page.context.close()
+    page = await new_page(browser, width=390, height=800)
+    await open_template(page, "flipbook")
+    status = await page.text_content(".fb-status")
+    check("flipbook: single-page mode on phones", status.startswith("Page 1 of"), status)
+    await page.click(".fb-controls [aria-label='Next page']")
+    await page.wait_for_timeout(1300)
+    check("flipbook: phone turns one page at a time", (await page.text_content(".fb-status")).startswith("Page 2 of"))
+    await page.context.close()
+
+    # Cube: scroll turns faces; dots navigate.
+    page = await new_page(browser)
+    await open_template(page, "cube")
+    await page.click(".cb-dot[aria-label='Go to Call & Connect abroad']")
+    await page.wait_for_timeout(1600)
+    name = await page.text_content(".cb-caption__name")
+    check("cube: scene dot jumps to its category", name == "Call & Connect abroad", name)
+    transform = await page.evaluate("document.querySelector('.cb-cube').style.transform")
+    check("cube: turned to the matching face", "rotateY(-90" in transform or "rotateY(-89" in transform, transform)
+    pct = await page.text_content(".cb-hud__pct")
+    check("cube: HUD shows progress", pct.endswith("%") and pct != "000%", pct)
+    active_dots = await page.eval_on_selector_all(".cb-dot[aria-current=true]", "els => els.length")
+    check("cube: one current dot", active_dots == 1)
+    check("no page errors (cube)", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Phones: every template fits the viewport width.
+    for width in (320, 390):
+        page = await new_page(browser, width=width, height=760)
+        for template_id in TEMPLATE_IDS:
+            await open_template(page, template_id)
+            await page.wait_for_timeout(300)
+            sw = await page.evaluate("document.documentElement.scrollWidth")
+            check(f"{width}px {template_id}: no horizontal overflow", sw <= width, sw)
+        check(f"{width}px: no page errors across templates", page.errors == [], page.errors)
+        await page.context.close()
+
+    # No key: a typed prompt naming an experience uses the matching template.
+    page = await new_page(browser)
+    await submit(page, "Turn it into a flip book")
+    await page.wait_for_selector("[data-experience=flipbook]")
+    note = await page.text_content(".aixc-viewnote")
+    check("no key: typed prompt matched to a template", "matched to the ready-made flipbook" in (note or ""), note)
+    await page.context.close()
+
+    # With a key: Gemini can choose a template experience.
+    mock = Mock()
+    page = await new_page(browser, key=True, mock=mock)
+    ids = await all_ids(page)
+    services = [i for i in ids if i != "ana-vodafone-app"]
+    mock.push(body=gemini_reply({"version": 1, "experience": "cube", "density": "balanced", "scope": "all", "sections": [
+        {"id": "a", "type": "group", "title": "Everyday essentials", "itemIds": services[:10]},
+        {"id": "b", "type": "group", "itemIds": services[10:]},
+        {"id": "c", "type": "closing-promotion", "itemIds": ["ana-vodafone-app"]},
+    ]}))
+    await submit(page, "Put the services on a 3D cube, essentials first")
+    await page.wait_for_selector("[data-experience=cube]")
+    meta = await page.text_content(".aixc-viewbar__meta")
+    check("Gemini can pick a template experience", "Service cube" in meta and "Composed by Gemini" in meta, meta)
+    authored = await page.eval_on_selector("[data-aixc-authored]", "e => e.textContent")
+    check("Gemini group label marked as authored", authored == "Everyday essentials", authored)
+    body = json.loads(mock.requests[0]["body"])
+    check("request lists all experiences", "<experiences>" in body["contents"][0]["parts"][0]["text"] and len(body["generationConfig"]["responseSchema"]["properties"]["experience"]["enum"]) == 6)
+    await page.context.close()
+
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -154,11 +355,12 @@ async def main():
             await page.keyboard.press("Tab")
         check("launcher reachable by keyboard", await page.evaluate("document.activeElement.classList.contains('aixc-launcher')"))
         await page.keyboard.press("Enter")
-        check("Enter opens composer and focuses the prompt", await page.evaluate("document.activeElement.id === 'aixc-prompt'"))
+        check("Enter opens composer and focuses the first template", await page.evaluate("document.activeElement.dataset.template === 'spotlight'"))
         check("composer has no chat transcript elements", await page.evaluate("!document.querySelector('.aixc-composer [class*=chat], .aixc-composer [class*=bubble], .aixc-composer [class*=transcript]')"))
         await page.keyboard.press("Escape")
         check("Escape closes composer and returns focus to launcher", await page.evaluate("document.querySelector('#aixc-composer').hidden && document.activeElement.classList.contains('aixc-launcher')"))
         await page.click(".aixc-launcher")
+        await page.focus("#aixc-prompt")
         await page.press("#aixc-prompt", "Enter")
         msg = await page.text_content(".aixc-message")
         check("empty prompt shows guidance, no transform", "Describe the presentation" in (msg or "") and await page.is_hidden("#experience-output"), msg)
@@ -166,7 +368,8 @@ async def main():
 
         # ------------------------------------------------- built-in (no key) path
         before = await shell_snapshot(page)
-        await submit(page, "Turn this into a magazine.")
+        # A prompt that names no ready-made experience falls back to the built-in magazine.
+        await submit(page, "Make it feel premium and calm.")
         await page.wait_for_selector(".aixc-magazine")
         placed = await placed_ids(page)
         check("built-in layout places every item exactly once", sorted(placed) == sorted(ids) and len(placed) == len(set(placed)), len(placed))
@@ -265,7 +468,7 @@ async def main():
         await submit(page, "Make it look like Netflix")
         await page.wait_for_timeout(500)
         note = await page.text_content(".aixc-viewnote")
-        check("unsupported experience request disclosed", "Only the magazine experience is available" in (note or ""), note)
+        check("unsupported experience request disclosed", "isn't available yet" in (note or ""), note)
 
         # stale response: user switches to Original while generating
         mock.push(body=gemini_reply(good_schema(ids, density="spacious")), delay=1.2)
@@ -376,6 +579,9 @@ async def main():
         anim = await page.evaluate("getComputedStyle(document.querySelector('.mag-cover__title')).animationName")
         check("reduced motion disables the cover animation", anim == "none", anim)
         await page.context.close()
+
+        # ------------------------------------------------------ ready-made templates
+        await template_checks(browser)
 
         await browser.close()
 

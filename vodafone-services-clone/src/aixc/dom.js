@@ -10,7 +10,7 @@ const ALLOWED_ATTRIBUTES = new Set([
   'id', 'class', 'href', 'src', 'alt', 'width', 'height', 'loading', 'decoding', 'rel', 'target',
   'role', 'tabindex', 'hidden', 'type', 'title', 'lang', 'dir', 'for', 'name', 'value', 'placeholder',
   'rows', 'autocomplete', 'spellcheck', 'disabled', 'viewBox', 'focusable', 'fill', 'd', 'stroke',
-  'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'datetime',
+  'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'datetime', 'inert',
 ])
 
 const isAllowedAttribute = (name) =>
