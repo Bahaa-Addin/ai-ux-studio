@@ -6,11 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="A local recreation of the Vodafone Egypt services page with extracted design tokens and structured theme documentation."
+      content="A local recreation of the Vodafone Egypt services page with AI Experience Composer: describe a new presentation and the same content is recomposed as a magazine."
     />
     <title>Services | Vodafone Egypt Clone</title>
+    <!-- Original page styles (protected shell + original view) -->
+    <link rel="stylesheet" href="/src/style.css" />
+    <!-- AIXC: composer UI, and the magazine experience (scoped under .aixc-magazine) -->
+    <link rel="stylesheet" href="/src/aixc/aixc.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/magazine.css" />
   </head>
-  <body>
+  <body data-page="vodafone-services">
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
