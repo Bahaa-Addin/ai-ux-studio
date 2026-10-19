@@ -1,0 +1,441 @@
+/* Spotlight cards — scoped to .aixc-vx--spotlight. Tokens from vodafone.css. */
+
+.aixc-vx--spotlight {
+  --sp-card-w: 200px;
+  --sp-card-h: 280px;
+  --sp-card-gap: 24px;
+  --sp-queue-right: calc(-0.5 * var(--sp-card-w));
+  background: var(--vx-ink);
+}
+
+.aixc-vx--spotlight .sp-stage {
+  position: relative;
+  height: max(var(--vx-vh), 620px);
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--vx-ink);
+  color: var(--vx-white);
+}
+
+/* ------------------------------------------------------------- backdrops */
+
+.aixc-vx--spotlight .sp-backdrops,
+.aixc-vx--spotlight .sp-backdrop {
+  position: absolute;
+  inset: 0;
+}
+
+.aixc-vx--spotlight .sp-backdrops {
+  z-index: -1;
+}
+
+.aixc-vx--spotlight .sp-backdrop {
+  overflow: hidden;
+  background: var(--vx-grey-900);
+}
+
+.aixc-vx--spotlight .sp-backdrop img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* The source images are small; a slight blur turns upscaling into atmosphere. */
+  filter: blur(3px) saturate(1.05);
+  transform: scale(1.04);
+}
+
+.aixc-vx--spotlight .sp-backdrop.is-contain {
+  background: var(--vx-red);
+}
+
+.aixc-vx--spotlight .sp-backdrop.is-contain img {
+  object-fit: contain;
+  object-position: 78% 50%;
+  padding: 10% 6%;
+  filter: none;
+  transform: none;
+}
+
+/* Vodafone's dark action-card film: dense behind the text, lighter on the right. */
+.aixc-vx--spotlight .sp-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(20, 20, 30, 0.94) 0%, rgba(20, 20, 30, 0.82) 38%, rgba(20, 20, 30, 0.3) 100%),
+    linear-gradient(0deg, rgba(20, 20, 30, 0.8) 0%, rgba(20, 20, 30, 0) 45%);
+}
+
+/* ------------------------------------------------------------------ timer */
+
+.aixc-vx--spotlight .sp-timer {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 3;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.aixc-vx--spotlight .sp-timer__fill {
+  display: block;
+  height: 100%;
+  background: var(--vx-red);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.aixc-vx--spotlight .sp-timer.is-paused .sp-timer__fill {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* ------------------------------------------------------------------ jumps */
+
+.aixc-vx--spotlight .sp-jumps {
+  position: absolute;
+  top: 26px;
+  right: var(--vx-gutter);
+  left: var(--vx-gutter);
+  z-index: 3;
+}
+
+.aixc-vx--spotlight .sp-jumps ul {
+  display: flex;
+  gap: 4px 22px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.aixc-vx--spotlight .sp-jumps ul::-webkit-scrollbar {
+  display: none;
+}
+
+.aixc-vx--spotlight .sp-jump {
+  flex: none;
+  min-height: 40px;
+  padding: 0.5rem 0;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font-family: var(--vx-font);
+  font-size: 0.9375rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.aixc-vx--spotlight .sp-jump:hover {
+  color: var(--vx-white);
+}
+
+.aixc-vx--spotlight .sp-jump.is-current {
+  border-bottom-color: var(--vx-red);
+  color: var(--vx-white);
+  font-family: var(--vx-font-bold);
+}
+
+/* ---------------------------------------------------------------- details */
+
+.aixc-vx--spotlight .sp-details {
+  position: absolute;
+  top: clamp(108px, 20%, 200px);
+  left: var(--vx-gutter);
+  z-index: 2;
+  /* Stays clear of the queue: stage width minus the visible cards. */
+  width: min(560px, calc(100% - 3.5 * var(--sp-card-w) - 3 * var(--sp-card-gap) - 32px - var(--vx-gutter)));
+}
+
+.aixc-vx--spotlight .sp-slide {
+  display: grid;
+  gap: 1rem;
+}
+
+.aixc-vx--spotlight .sp-slide__place {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.125rem;
+}
+
+.aixc-vx--spotlight .sp-slide__place::before {
+  content: '';
+  flex: none;
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--vx-red);
+}
+
+.aixc-vx--spotlight .sp-slide__title {
+  color: var(--vx-white);
+  font-family: var(--vx-font-bold);
+  font-size: clamp(2.25rem, 4.4vw, 4.25rem);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.aixc-vx--spotlight .sp-slide__desc {
+  max-width: 44ch;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: var(--vx-font-light);
+  font-size: clamp(1.0625rem, 1.5vw, 1.25rem);
+  line-height: 1.5;
+}
+
+.aixc-vx--spotlight .sp-slide__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+/* Staggered entrance, as in the reference: place, title, text, action. */
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-vx--spotlight .sp-slide.is-entering > * {
+    animation: sp-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  .aixc-vx--spotlight .sp-slide.is-entering > :nth-child(1) {
+    animation-delay: 0.1s;
+  }
+
+  .aixc-vx--spotlight .sp-slide.is-entering > :nth-child(2) {
+    animation-delay: 0.16s;
+  }
+
+  .aixc-vx--spotlight .sp-slide.is-entering > :nth-child(3) {
+    animation-delay: 0.28s;
+  }
+
+  .aixc-vx--spotlight .sp-slide.is-entering > :nth-child(4) {
+    animation-delay: 0.36s;
+  }
+}
+
+@keyframes sp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ queue */
+
+.aixc-vx--spotlight .sp-queue {
+  position: absolute;
+  right: var(--sp-queue-right);
+  bottom: 128px;
+  z-index: 2;
+  width: calc(4 * var(--sp-card-w) + 3 * var(--sp-card-gap));
+  height: var(--sp-card-h);
+}
+
+.aixc-vx--spotlight .sp-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--sp-card-w);
+  height: var(--sp-card-h);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--vx-radius);
+  background: var(--vx-grey-900);
+  box-shadow: var(--vx-shadow-lift);
+  text-align: left;
+  cursor: pointer;
+  transform: translateX(calc(var(--slot, 0) * (var(--sp-card-w) + var(--sp-card-gap))));
+  transition: transform 0.6s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.4s ease;
+}
+
+.aixc-vx--spotlight .sp-card.is-parked {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aixc-vx--spotlight .sp-card__media {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+}
+
+.aixc-vx--spotlight .sp-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, rgba(20, 20, 30, 0.92) 0%, rgba(20, 20, 30, 0.1) 62%);
+  transition: background-color 0.2s ease;
+}
+
+.aixc-vx--spotlight .sp-card:hover::after {
+  background-color: rgba(230, 0, 0, 0.22);
+}
+
+.aixc-vx--spotlight .sp-card__text {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+  color: var(--vx-white);
+}
+
+.aixc-vx--spotlight .sp-card__place {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  opacity: 0.85;
+}
+
+.aixc-vx--spotlight .sp-card__title {
+  font-family: var(--vx-font-bold);
+  font-size: 1.125rem;
+  line-height: 1.15;
+}
+
+.aixc-vx--spotlight .sp-card:focus-visible {
+  outline: 3px solid var(--vx-white);
+  outline-offset: 3px;
+}
+
+/* --------------------------------------------------------------- controls */
+
+.aixc-vx--spotlight .sp-controls {
+  position: absolute;
+  right: var(--vx-gutter);
+  bottom: 40px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(calc(3 * var(--sp-card-w) + 2 * var(--sp-card-gap) + var(--sp-card-w) * 0.5), calc(100% - 2 * var(--vx-gutter)));
+  color: var(--vx-white);
+}
+
+.aixc-vx--spotlight .sp-progress {
+  flex: 1;
+  height: 3px;
+  min-width: 60px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.aixc-vx--spotlight .sp-progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--vx-red);
+  transform-origin: 0 50%;
+  transition: transform 0.5s ease;
+}
+
+.aixc-vx--spotlight .sp-counter {
+  min-width: 4.5ch;
+  font-family: var(--vx-font-bold);
+  font-size: 2rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.aixc-vx--spotlight .sp-counter__total {
+  font-family: var(--vx-font);
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+/* Below desktop the stage flows top to bottom instead of layering, so long
+   titles and descriptions can never run into the queue. */
+@media (max-width: 1179px) {
+  .aixc-vx--spotlight {
+    --sp-card-w: 168px;
+    --sp-card-h: 224px;
+    --sp-card-gap: 16px;
+  }
+
+  .aixc-vx--spotlight .sp-stage {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: max(var(--vx-vh), 560px);
+    padding: 22px var(--vx-gutter) 28px;
+  }
+
+  .aixc-vx--spotlight .sp-jumps,
+  .aixc-vx--spotlight .sp-details,
+  .aixc-vx--spotlight .sp-queue,
+  .aixc-vx--spotlight .sp-controls {
+    position: relative;
+    inset: auto;
+    width: auto;
+  }
+
+  .aixc-vx--spotlight .sp-details {
+    margin: clamp(24px, 6vh, 56px) 0 32px;
+    max-width: 640px;
+  }
+
+  .aixc-vx--spotlight .sp-queue {
+    margin-top: auto;
+    margin-right: calc(-1 * var(--vx-gutter));
+    overflow: hidden;
+  }
+
+  .aixc-vx--spotlight .sp-controls {
+    margin-top: 20px;
+  }
+
+  .aixc-vx--spotlight .sp-backdrop::after {
+    background:
+      linear-gradient(180deg, rgba(20, 20, 30, 0.9) 0%, rgba(20, 20, 30, 0.74) 55%, rgba(20, 20, 30, 0.92) 100%);
+  }
+}
+
+@media (max-width: 719px) {
+  .aixc-vx--spotlight {
+    --sp-card-w: 132px;
+    --sp-card-h: 172px;
+    --sp-card-gap: 12px;
+  }
+
+  .aixc-vx--spotlight .sp-stage {
+    padding-top: 14px;
+  }
+
+  .aixc-vx--spotlight .sp-details {
+    margin: 20px 0 24px;
+  }
+
+  .aixc-vx--spotlight .sp-slide__title {
+    font-size: clamp(2rem, 9vw, 2.75rem);
+  }
+
+  .aixc-vx--spotlight .sp-card__place {
+    display: none;
+  }
+
+  .aixc-vx--spotlight .sp-card__title {
+    font-size: 0.9375rem;
+  }
+
+  .aixc-vx--spotlight .sp-controls {
+    gap: 10px;
+  }
+
+  .aixc-vx--spotlight .sp-counter {
+    font-size: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-vx--spotlight .sp-card,
+  .aixc-vx--spotlight .sp-progress__fill {
+    transition: none;
+  }
+}

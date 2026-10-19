@@ -15,14 +15,7 @@ import { validateSchema, assertComplete } from './schema-validator.js'
 import { buildFallbackSchema } from './fallback-schema.js'
 import { DEFAULT_MODEL, GeminiError, requestComposition } from './gemini-client.js'
 import { experienceLabel, renderExperience } from './experience-renderer.js'
-
-const SUGGESTIONS = [
-  'Turn this into an editorial magazine.',
-  'Create a bold magazine cover and distinct sections for each service category.',
-  'Make the services easier to explore visually, while keeping all the original content.',
-  'Use a premium editorial look with asymmetric sections and strong typography.',
-  'Make it more compact but keep all service details.',
-]
+import { TEMPLATES, buildTemplateSchema, matchTemplate } from './templates.js'
 
 const ICON_SPARKLE = 'M11 2.5 13.1 9 19.5 11l-6.4 2.1L11 19.5 8.9 13.1 2.5 11 8.9 9zM19 2l.9 2.6 2.6.9-2.6.9L19 9l-.9-2.6-2.6-.9 2.6-.9z'
 const ICON_CLOSE = 'M18.3 7.1 16.9 5.7 12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z'
@@ -92,6 +85,7 @@ export const initComposer = ({ adapter, regions }) => {
     requestSeq: 0,
     abortController: null,
     userPickedOriginalWhileGenerating: false,
+    activeExperience: null,
   }
 
   /* ----------------------------------------------------------- live region */
@@ -130,7 +124,26 @@ export const initComposer = ({ adapter, regions }) => {
     h('span', { class: 'aixc-progress__label' }, 'Composing your page…'),
   )
   const message = h('p', { class: 'aixc-message', hidden: true })
-  const suggestionButtons = SUGGESTIONS.map((text) => h('button', { type: 'button', class: 'aixc-chip' }, text))
+
+  // Ready-made experiences: one click, rendered locally, no API key.
+  const templateButtons = TEMPLATES.map((template) => {
+    const icon = pathIcon(template.icon, 'aixc-template__icon')
+    const button = h(
+      'button',
+      { type: 'button', class: 'aixc-template', 'data-template': template.id, 'aria-pressed': 'false' },
+      icon,
+      h('span', { class: 'aixc-template__text' }, h('span', { class: 'aixc-template__name' }, template.name), h('span', { class: 'aixc-template__prompt' }, template.prompt)),
+    )
+    button.addEventListener('click', () => applyTemplate(template))
+    return button
+  })
+  const templatesPanel = h(
+    'section',
+    { class: 'aixc-templates', 'aria-labelledby': 'aixc-templates-title' },
+    h('h3', { class: 'aixc-templates__title', id: 'aixc-templates-title' }, 'Ready-made experiences'),
+    h('p', { class: 'aixc-templates__hint' }, 'One click, no API key. Each keeps every service, description and link.'),
+    h('ul', { class: 'aixc-templates__list' }, templateButtons.map((button) => h('li', null, button))),
+  )
 
   const keyInput = h('input', { id: 'aixc-key', class: 'aixc-input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: 'Paste a Gemini API key' })
   const modelInput = h('input', { id: 'aixc-model', class: 'aixc-input', type: 'text', autocomplete: 'off', spellcheck: 'false', value: settings.model })
@@ -164,9 +177,8 @@ export const initComposer = ({ adapter, regions }) => {
   const form = h(
     'form',
     { class: 'aixc-composer__form', novalidate: null },
-    h('label', { class: 'aixc-sr-only', for: 'aixc-prompt' }, 'Describe the presentation you want'),
+    h('label', { class: 'aixc-form-label', for: 'aixc-prompt' }, 'Or describe your own'),
     promptInput,
-    h('div', { class: 'aixc-suggestions', role: 'group', 'aria-label': 'Suggested prompts' }, suggestionButtons),
     h('div', { class: 'aixc-composer__actions' }, submitButton, cancelButton, progress),
     message,
   )
@@ -177,8 +189,9 @@ export const initComposer = ({ adapter, regions }) => {
     h(
       'p',
       { class: 'aixc-composer__hint', id: 'aixc-prompt-hint' },
-      'Describe a new way to present this page. The same Vodafone services, descriptions and links are recomposed; nothing is added.',
+      'Pick an experience or describe one. The same Vodafone services, descriptions and links are recomposed; nothing is added.',
     ),
+    templatesPanel,
     form,
     settingsPanel,
   )
@@ -188,7 +201,7 @@ export const initComposer = ({ adapter, regions }) => {
   const reimaginedButton = h('button', { type: 'button', class: 'aixc-seg', 'aria-pressed': 'false' }, 'Reimagined')
   const metaLabel = h('span', { class: 'aixc-viewbar__label' })
   const metaSource = h('span', { class: 'aixc-viewbar__source' })
-  const editButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--text' }, 'Edit prompt')
+  const editButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--text' }, 'Change', h('span', { class: 'aixc-wide-only' }, '\u00a0experience'))
   const resetButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--text' }, 'Reset')
   const viewNote = h('p', { class: 'aixc-viewnote', hidden: true })
   viewbar.append(
@@ -208,11 +221,18 @@ export const initComposer = ({ adapter, regions }) => {
   document.body.append(launcher, composer, liveRegion)
 
   /* --------------------------------------------------------- layout helpers */
+  // Experiences size their stages to the space under the sticky header and view bar.
   const syncHeaderOffset = () => {
-    document.documentElement.style.setProperty('--aixc-header-h', `${Math.round(header.getBoundingClientRect().height)}px`)
+    const rootStyle = document.documentElement.style
+    rootStyle.setProperty('--aixc-header-h', `${Math.round(header.getBoundingClientRect().height)}px`)
+    rootStyle.setProperty('--aixc-viewbar-h', `${viewbar.hidden ? 0 : Math.round(viewbar.getBoundingClientRect().height)}px`)
   }
   syncHeaderOffset()
-  if (typeof ResizeObserver === 'function') new ResizeObserver(syncHeaderOffset).observe(header)
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(syncHeaderOffset)
+    observer.observe(header)
+    observer.observe(viewbar)
+  }
 
   const updateKeyStatus = () => {
     keyStatus.textContent = settings.apiKey ? (settings.fromEnv ? 'Key from .env.local' : 'Key added') : 'Not configured'
@@ -232,7 +252,7 @@ export const initComposer = ({ adapter, regions }) => {
   const setGenerating = (isGenerating) => {
     state.isGenerating = isGenerating
     submitButton.disabled = isGenerating
-    suggestionButtons.forEach((button) => (button.disabled = isGenerating))
+    templateButtons.forEach((button) => (button.disabled = isGenerating))
     promptInput.readOnly = isGenerating
     cancelButton.hidden = !isGenerating
     progress.hidden = !isGenerating
@@ -242,7 +262,7 @@ export const initComposer = ({ adapter, regions }) => {
 
   /* -------------------------------------------------------------- composer */
   // The floating launcher is only needed until a transformation exists; after
-  // that the view bar's "Edit prompt" opens the composer without covering content.
+  // that the view bar's "Change experience" opens the composer without covering content.
   const syncLauncher = () => {
     launcher.hidden = state.isComposerOpen || Boolean(state.lastValidSchema)
   }
@@ -257,8 +277,9 @@ export const initComposer = ({ adapter, regions }) => {
     if (!hasContent) {
       showMessage('This page has no content that can be recomposed.', 'error')
       submitButton.disabled = true
+      templateButtons.forEach((button) => (button.disabled = true))
     }
-    promptInput.focus()
+    ;(templateButtons.find((button) => button.getAttribute('aria-pressed') === 'true') ?? templateButtons[0]).focus()
   }
 
   const closeComposer = ({ restoreFocus = true } = {}) => {
@@ -280,14 +301,19 @@ export const initComposer = ({ adapter, regions }) => {
     sourceRoot.hidden = view !== 'original'
     outputRoot.hidden = view !== 'reimagined'
     state.view = view
+    // Timers and scroll listeners only run while the experience is on screen.
+    if (view === 'reimagined') state.activeExperience?.mount()
+    else state.activeExperience?.unmount()
     originalButton.setAttribute('aria-pressed', String(view === 'original'))
     reimaginedButton.setAttribute('aria-pressed', String(view === 'reimagined'))
     document.body.dataset.aixcView = view
     viewNote.classList.toggle('is-muted', view !== 'reimagined')
 
     if (focusContent && view === 'reimagined') {
-      const title = outputRoot.querySelector('#aixc-cover-title')
-      main.scrollIntoView({ block: 'start' })
+      const title = outputRoot.querySelector('[data-aixc-focus], #aixc-cover-title')
+      // Land the content just under the sticky site header (scrollIntoView would hide it beneath).
+      const top = main.getBoundingClientRect().top + window.scrollY - header.getBoundingClientRect().height
+      window.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
       title?.focus({ preventScroll: true })
     } else if (focusWasInside) {
       ;(view === 'original' ? originalButton : reimaginedButton).focus()
@@ -295,22 +321,27 @@ export const initComposer = ({ adapter, regions }) => {
   }
 
   const describeSource = (meta) => {
+    if (meta.source === 'template') return 'Ready-made template, no AI call'
     if (meta.source === 'built-in') return 'Built-in layout, not AI-generated'
     return `Composed by Gemini (${meta.model})`
   }
 
   const renderSchema = (result, meta) => {
     if (DEBUG) assertComplete(result.schema, index)
-    const { element, afterMount } = renderExperience(result.schema, index, {
+    const experience = renderExperience(result.schema, index, {
       onPrimitiveError: (section, error) => console.error(`[AIXC] ${section.type} "${section.id}" failed; shown as a list.`, error),
     })
-    outputRoot.replaceChildren(element)
-    afterMount.forEach((callback) => callback())
+    state.activeExperience?.unmount()
+    outputRoot.replaceChildren(experience.element)
+    state.activeExperience = experience
+    if (state.view === 'reimagined') experience.mount()
 
     state.lastValidSchema = result.schema
     state.lastMeta = meta
     viewbar.hidden = false
+    syncHeaderOffset()
     syncLauncher()
+    templateButtons.forEach((button) => button.setAttribute('aria-pressed', String(meta.source === 'template' && button.dataset.template === meta.template?.id)))
     metaLabel.textContent = experienceLabel(result.schema.experience)
     metaSource.textContent = describeSource(meta)
 
@@ -345,7 +376,7 @@ export const initComposer = ({ adapter, regions }) => {
     if (state.isComposerOpen) closeComposer({ restoreFocus: false })
     showView('reimagined', { focusContent: true })
     const extra = result.schema.unsupportedRequest
-      ? ' Only the magazine experience is available so far, so your request was applied as a magazine layout.'
+      ? ` That exact experience isn't available yet, so your request was applied as ${experienceLabel(result.schema.experience).toLowerCase()}.`
       : ''
     announce(`${experienceLabel(result.schema.experience)} ready. ${describeSource(meta)}.${extra}`)
     if (extra) {
@@ -358,6 +389,24 @@ export const initComposer = ({ adapter, regions }) => {
     const result = validateSchema(buildFallbackSchema(index, { prompt }), index, { prompt })
     if (!result.ok) throw new Error(`AIXC: built-in schema is invalid: ${result.errors.join('; ')}`)
     return result
+  }
+
+  const templateResult = (template, prompt = template.prompt) => {
+    const result = validateSchema(buildTemplateSchema(template, index, { prompt }), index, { prompt })
+    if (!result.ok) throw new Error(`AIXC: template "${template.id}" schema is invalid: ${result.errors.join('; ')}`)
+    return result
+  }
+
+  /** Renders a ready-made experience locally. Never calls Gemini. */
+  const applyTemplate = (template, { prompt = template.prompt, note = '' } = {}) => {
+    if (!hasContent || state.isGenerating) return
+    state.activePrompt = prompt
+    showMessage('')
+    apply(templateResult(template, prompt), { source: 'template', template, prompt })
+    if (note) {
+      viewNote.textContent = note
+      viewNote.hidden = false
+    }
   }
 
   const cacheKey = (prompt) => `${fingerprint}|${settings.model}|${prompt.trim().toLowerCase().replace(/\s+/g, ' ')}`
@@ -383,6 +432,16 @@ export const initComposer = ({ adapter, regions }) => {
 
     state.activePrompt = prompt
     showMessage('')
+
+    // Without a key, a prompt that names a ready-made experience still works locally.
+    const matched = !settings.apiKey && !forceBuiltIn ? matchTemplate(prompt) : null
+    if (matched) {
+      applyTemplate(matched, {
+        prompt,
+        note: `Gemini is not configured, so your prompt was matched to the ready-made ${matched.name.toLowerCase()} experience.`,
+      })
+      return
+    }
 
     if (forceBuiltIn || !settings.apiKey) {
       apply(builtInResult(prompt), { source: 'built-in', prompt })
@@ -471,8 +530,12 @@ export const initComposer = ({ adapter, regions }) => {
     state.lastError = null
     state.userPickedOriginalWhileGenerating = false
     showView('original')
+    state.activeExperience?.unmount()
+    state.activeExperience = null
     outputRoot.replaceChildren()
+    templateButtons.forEach((button) => button.setAttribute('aria-pressed', 'false'))
     viewbar.hidden = true
+    syncHeaderOffset()
     viewNote.hidden = true
     showMessage('')
     syncLauncher()
@@ -499,12 +562,6 @@ export const initComposer = ({ adapter, regions }) => {
     event.preventDefault()
     submit(promptInput.value)
   })
-  suggestionButtons.forEach((button) =>
-    button.addEventListener('click', () => {
-      promptInput.value = button.textContent
-      submit(button.textContent)
-    }),
-  )
   cancelButton.addEventListener('click', cancel)
 
   saveKeyButton.addEventListener('click', () => {
@@ -541,13 +598,13 @@ export const initComposer = ({ adapter, regions }) => {
     showView('reimagined')
   })
   editButton.addEventListener('click', () => {
-    promptInput.value = state.activePrompt
+    promptInput.value = state.lastMeta?.source === 'template' ? '' : state.activePrompt
     openComposer(editButton)
   })
   resetButton.addEventListener('click', reset)
 
   if (DEBUG) {
-    window.__aixc = { state, cache, index, settings, submit, reset, showView, validateSchema: (raw, prompt) => validateSchema(raw, index, { prompt }) }
+    window.__aixc = { state, cache, index, settings, submit, reset, showView, applyTemplate: (id) => applyTemplate(TEMPLATES.find((t) => t.id === id)), validateSchema: (raw, prompt) => validateSchema(raw, index, { prompt }) }
     console.info('[AIXC] debug mode on. window.__aixc is available.', { problems: extraction.problems })
   }
 

@@ -1,0 +1,362 @@
+/* Gallery wall — scoped to .aixc-vx--gallery. Tokens from vodafone.css. */
+
+.aixc-vx--gallery {
+  --gl-frame-h: clamp(200px, 38vh, 330px);
+  --gl-anchor: 34%;
+  background: var(--vx-grey-100);
+}
+
+.aixc-vx--gallery .gl-track {
+  position: relative;
+  height: calc(var(--vx-vh) + (var(--pieces) - 1) * var(--step));
+}
+
+.aixc-vx--gallery .gl-stage {
+  position: sticky;
+  top: var(--vx-top);
+  height: var(--vx-vh);
+  min-height: 520px;
+  overflow: hidden;
+  /* Gallery light: bright centre, soft grey falloff, a floor line. */
+  background:
+    radial-gradient(90% 70% at 40% 45%, #fff 0%, var(--vx-grey-100) 60%, var(--vx-grey-200) 100%);
+}
+
+.aixc-vx--gallery .gl-stage::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 22%;
+  background: linear-gradient(180deg, rgba(235, 235, 235, 0) 0%, var(--vx-grey-200) 100%);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------- the wall */
+
+.aixc-vx--gallery .gl-viewport {
+  position: absolute;
+  inset: 0;
+  perspective: 1400px;
+  perspective-origin: var(--gl-anchor) 45%;
+}
+
+.aixc-vx--gallery .gl-wall {
+  --camera: 0px;
+  --tilt-x: 0;
+  --tilt-y: 0;
+  position: absolute;
+  top: 44%;
+  left: var(--gl-anchor);
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  transform:
+    rotateX(calc(var(--tilt-x) * 1.5deg))
+    rotateY(calc(-18deg + var(--tilt-y) * 2deg))
+    translateX(var(--camera));
+  transition: transform 0.12s linear;
+}
+
+.aixc-vx--gallery .gl-rail {
+  position: absolute;
+  left: -2000px;
+  width: 20000px;
+  height: 1px;
+  background: var(--vx-grey-300);
+}
+
+.aixc-vx--gallery .gl-rail--top {
+  top: calc(var(--gl-frame-h) * -0.62);
+}
+
+.aixc-vx--gallery .gl-rail--bottom {
+  top: calc(var(--gl-frame-h) * 0.78);
+  background: var(--vx-grey-200);
+}
+
+.aixc-vx--gallery .gl-piece {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  width: var(--w);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.aixc-vx--gallery .gl-frame {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--vx-grey-900);
+  background: var(--vx-white);
+  box-shadow: var(--vx-shadow), 10px 12px 0 rgba(20, 20, 30, 0.06);
+  transition: box-shadow 0.45s ease, border-color 0.45s ease;
+}
+
+.aixc-vx--gallery .gl-frame__media {
+  height: calc(var(--gl-frame-h) - 26px);
+  border-radius: 0;
+}
+
+.aixc-vx--gallery .gl-plate {
+  display: grid;
+  gap: 2px;
+  max-width: 100%;
+  padding: 8px 12px 9px;
+  border-top: 3px solid var(--vx-grey-300);
+  background: var(--vx-white);
+  box-shadow: var(--vx-shadow);
+  transition: border-color 0.3s ease;
+}
+
+.aixc-vx--gallery .gl-plate__title {
+  color: var(--vx-grey-900);
+  font-family: var(--vx-font-bold);
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.aixc-vx--gallery .gl-plate__group {
+  color: var(--vx-grey-700);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.aixc-vx--gallery .gl-piece.is-active {
+  transform: translateY(-50%) translateZ(40px);
+}
+
+.aixc-vx--gallery .gl-piece.is-active .gl-frame {
+  border-color: var(--vx-red);
+  box-shadow: var(--vx-shadow-lift), 12px 14px 0 rgba(230, 0, 0, 0.14);
+}
+
+.aixc-vx--gallery .gl-piece.is-active .gl-plate {
+  border-top-color: var(--vx-red);
+}
+
+.aixc-vx--gallery .gl-piece:hover .gl-frame {
+  border-color: var(--vx-red);
+}
+
+/* ------------------------------------------------------------------ intro */
+
+.aixc-vx--gallery .gl-intro {
+  position: absolute;
+  top: 28px;
+  left: var(--vx-gutter);
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.aixc-vx--gallery .gl-intro__brand {
+  color: var(--vx-grey-900);
+  font-family: var(--vx-font-light);
+  font-size: clamp(1.75rem, 2.6vw, 2.25rem);
+  line-height: 1;
+}
+
+.aixc-vx--gallery .gl-intro__hint {
+  color: var(--vx-grey-700);
+  font-size: 0.875rem;
+}
+
+/* ---------------------------------------------------------------- caption */
+
+.aixc-vx--gallery .gl-caption {
+  position: absolute;
+  top: 50%;
+  right: var(--vx-gutter);
+  z-index: 2;
+  display: grid;
+  gap: 0.6rem;
+  width: min(400px, 32vw);
+  padding: 28px 28px 24px;
+  border-top: 4px solid var(--vx-red);
+  border-radius: 0 0 var(--vx-radius) var(--vx-radius);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--vx-shadow-lift);
+  transform: translateY(-50%);
+}
+
+.aixc-vx--gallery .gl-caption__number {
+  color: var(--vx-red);
+  font-family: var(--vx-font-bold);
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+}
+
+.aixc-vx--gallery .gl-caption__group {
+  color: var(--vx-grey-700);
+  font-size: 0.9375rem;
+}
+
+.aixc-vx--gallery .gl-caption__title {
+  color: var(--vx-grey-900);
+  font-family: var(--vx-font-light);
+  font-size: clamp(2rem, 3.2vw, 2.9rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.aixc-vx--gallery .gl-caption__desc {
+  color: var(--vx-grey-900);
+  line-height: 1.55;
+}
+
+.aixc-vx--gallery .gl-caption__action {
+  margin-top: 0.25rem;
+}
+
+.aixc-vx--gallery .gl-caption__meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0.75rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--vx-grey-200);
+}
+
+.aixc-vx--gallery .gl-caption__meta dt {
+  color: var(--vx-grey-700);
+  font-size: 0.75rem;
+}
+
+.aixc-vx--gallery .gl-caption__meta dd {
+  margin: 2px 0 0;
+  color: var(--vx-grey-900);
+  font-family: var(--vx-font-bold);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-vx--gallery .gl-caption.is-changing > * {
+    animation: gl-fade 0.45s ease both;
+  }
+
+  .aixc-vx--gallery .gl-caption.is-changing > :nth-child(n + 3) {
+    animation-delay: 0.05s;
+  }
+}
+
+@keyframes gl-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --------------------------------------------------------------- controls */
+
+.aixc-vx--gallery .gl-controls {
+  position: absolute;
+  bottom: 28px;
+  left: var(--vx-gutter);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(440px, calc(100% - 2 * var(--vx-gutter)));
+  color: var(--vx-grey-900);
+}
+
+.aixc-vx--gallery .gl-progress {
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--vx-grey-300);
+}
+
+.aixc-vx--gallery .gl-progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--vx-red);
+  transform-origin: 0 50%;
+  transition: transform 0.3s ease;
+}
+
+.aixc-vx--gallery .gl-counter {
+  min-width: 7ch;
+  font-family: var(--vx-font-bold);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 899px) {
+  .aixc-vx--gallery {
+    --gl-frame-h: clamp(120px, 20vh, 172px);
+    /* Centre the active piece; the caption sits below it on narrow screens. */
+    --gl-anchor: 50%;
+  }
+
+  .aixc-vx--gallery .gl-wall {
+    top: 29%;
+    transform:
+      rotateX(calc(var(--tilt-x) * 1deg))
+      rotateY(calc(-12deg + var(--tilt-y) * 1deg))
+      translateX(var(--camera));
+  }
+
+  .aixc-vx--gallery .gl-intro {
+    top: 16px;
+  }
+
+  .aixc-vx--gallery .gl-intro__hint {
+    display: none;
+  }
+
+  .aixc-vx--gallery .gl-caption {
+    top: auto;
+    right: var(--vx-gutter);
+    bottom: 88px;
+    left: var(--vx-gutter);
+    width: auto;
+    max-height: 40%;
+    overflow-y: auto;
+    padding: 18px 18px 16px;
+    transform: none;
+  }
+
+  .aixc-vx--gallery .gl-caption__title {
+    font-size: clamp(1.6rem, 6vw, 2rem);
+  }
+
+  .aixc-vx--gallery .gl-caption__meta {
+    display: none;
+  }
+
+  .aixc-vx--gallery .gl-controls {
+    right: var(--vx-gutter);
+    bottom: 24px;
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-vx--gallery .gl-wall,
+  .aixc-vx--gallery .gl-piece {
+    transition: none;
+  }
+}
