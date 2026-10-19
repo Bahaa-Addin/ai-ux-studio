@@ -115,7 +115,7 @@ The implementation in this worktree recreates:
 - Call & Connect abroad cards
 - Great Entertainment widget rail
 - small QR prompt
-- first visible state of the Shokran and other-services carousel sections
+- Shokran and other-services carousels (all cards, working arrows)
 - full download band and footer
 
 The clone is local-first and self-contained:
