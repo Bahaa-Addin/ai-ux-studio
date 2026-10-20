@@ -42,6 +42,7 @@ npm run serve        # or: node scripts/serve.mjs --port 5173
 ```
 
 Then open the page, choose **Reimagine this page**, and click a ready-made experience or type a prompt.
+Or click **Pocket it** on any card (see [Pocket](#pocket-peel-it-off-keep-it-turn-the-page)).
 
 **Tests**
 
@@ -52,6 +53,7 @@ npm test             # validator, content model and template unit tests (Node bu
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
+python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket: 38 checks
 ```
 
 ---
@@ -197,6 +199,56 @@ its stylesheet scoped under `.aixc-vx--<name>` and link it in `index.html`, regi
 `experience-renderer.js`, add the name to `EXPERIENCES` (validator) and a line to
 `EXPERIENCE_GUIDE` (Gemini client). To offer it as a one-click template, add an entry to
 `TEMPLATES` in `templates.js`.
+
+---
+
+## Pocket: peel it off, keep it, turn the page
+
+Every service card has a **Pocket it** chip. Pocketing a service is one animation family,
+all driven by a single page-curl engine modelled on the Apple Books page turn:
+
+1. **Sticker peel.** Hovering the chip lifts the card's corner. Clicking peels the card off
+   from that corner like a sticker (the front curls over to show a glossy white back), it
+   lifts off the page and arcs into the pocket. A liner stays behind with **Put back**, which
+   flies the sticker out of the pocket and smooths it back down.
+2. **Peeking corner.** While anything is pocketed, the page's bottom-right corner sits
+   half-turned. The gap under it shows the pocket, with a floating pocket button and a count.
+   Hovering or focusing the button turns the corner a little further.
+3. **Page turn.** The button turns the whole page away from that corner, the same curl at page
+   scale with the content faintly showing through the back of the paper, to reveal **Your
+   pocket**: a sticker album of everything peeled off, with each service's real title, copy
+   and link. Stickers can be removed (they peel off the album). **Back to Services** (or Esc)
+   turns the page back to exactly where you were.
+
+The pocket is remembered in this browser (`localStorage`, key `aixc.pocket.v1`). It works in
+the Original view and over any reimagined experience. The AIXC launcher moves to the bottom-left
+while the pocket peeks.
+
+**Demo script.** Pocket *Calls services*, *Roaming Services* and *Play&Win* → hover the corner
+button → click it → remove one sticker → *Back to Services* → *Put back* on a liner.
+
+**How the curl works** (`src/pocket/curl.js`). The sheet wraps around a cylinder whose axis sits
+`x` px from the peeled corner. The flat part, the back half of the roll (sliced into strips and
+shaded by their angle), the flipped-over part (mirrored, lifted to 2R, see-through optional) and
+what the curl uncovers are each a clipped "window" holding a counter-transformed snapshot of the
+front. Each frame only rewrites `matrix3d` transforms, so nothing is re-rasterised. The front is
+a static DOM clone (a card, or the whole page at its scroll position), so the live page is never
+modified mid-animation. Honours `prefers-reduced-motion` (no curl; immediate state changes).
+
+```
+src/pocket/
+  curl.js     page-curl engine: createCurl({ width, height, front, under, back }) → update({ x, phi, R })
+  pocket.js   chips, liners, sticker flight, peeking corner, page turn, pocket album, persistence
+  pocket.css  all .pocket- / .curl- styles, Vodafone tokens only
+tests/
+  pocket-curl.test.mjs     curl geometry (npm test)
+  e2e/pocket_e2e.py        38 browser checks: every flow, keyboard, reduced motion, mobile, persistence
+```
+
+**Implementation notes for a production build.** Clones are made from the rendered DOM, so
+anything a clone cannot reproduce (a playing video, a canvas) would freeze in the turning page.
+Pocketing is local to the browser; a real version would link each sticker to a product ID and
+an account so the pocket follows the customer across devices.
 
 ---
 
