@@ -9,6 +9,10 @@
       content="A local recreation of the Vodafone Egypt services page with AI Experience Composer: pick a ready-made experience or describe one, and the same content is recomposed."
     />
     <title>Services | Vodafone Egypt Clone</title>
+    <!-- Roboto 900 for the streaming wordmark (as in the original pen); falls back to a system sans offline -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@900&display=swap" />
     <!-- Original page styles (protected shell + original view) -->
     <link rel="stylesheet" href="/src/style.css" />
     <!-- AIXC: composer UI, and the magazine experience (scoped under .aixc-magazine) -->
@@ -21,6 +25,7 @@
     <link rel="stylesheet" href="/src/aixc/experiences/gallery.css" />
     <link rel="stylesheet" href="/src/aixc/experiences/flipbook.css" />
     <link rel="stylesheet" href="/src/aixc/experiences/cube.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/streaming.css" />
   </head>
   <body data-page="vodafone-services">
     <div id="app"></div>

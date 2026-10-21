@@ -15,6 +15,7 @@ import { renderJourney } from './experiences/journey.js'
 import { renderGallery } from './experiences/gallery.js'
 import { renderFlipbook } from './experiences/flipbook.js'
 import { renderCube } from './experiences/cube.js'
+import { renderStreaming } from './experiences/streaming.js'
 
 const experiences = {
   magazine: { label: 'Magazine experience', render: renderMagazine },
@@ -23,6 +24,7 @@ const experiences = {
   gallery: { label: 'Gallery wall', render: renderGallery },
   flipbook: { label: 'Flipbook', render: renderFlipbook },
   cube: { label: 'Service cube', render: renderCube },
+  streaming: { label: 'Streaming showcase', render: renderStreaming },
 }
 
 export const experienceLabel = (name) => experiences[name]?.label ?? 'Reimagined view'

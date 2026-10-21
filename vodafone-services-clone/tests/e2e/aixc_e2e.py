@@ -120,7 +120,7 @@ def good_schema(ids, density="balanced", title=None):
     }
 
 
-TEMPLATE_IDS = ["spotlight", "journey", "gallery", "flipbook", "cube", "magazine"]
+TEMPLATE_IDS = ["streaming", "spotlight", "journey", "gallery", "flipbook", "cube", "magazine"]
 
 
 async def open_template(page, template_id):
@@ -158,6 +158,8 @@ async def template_checks(browser):
     check("templates leave header/footer untouched", await shell_snapshot(page) == before)
     check("no page errors across all templates", page.errors == [], page.errors)
     await page.context.close()
+
+    await streaming_checks(browser)
 
     # Spotlight: controls, autoplay, pause, unmount while hidden.
     page = await new_page(browser)
@@ -317,7 +319,70 @@ async def template_checks(browser):
     authored = await page.eval_on_selector("[data-aixc-authored]", "e => e.textContent")
     check("Gemini group label marked as authored", authored == "Everyday essentials", authored)
     body = json.loads(mock.requests[0]["body"])
-    check("request lists all experiences", "<experiences>" in body["contents"][0]["parts"][0]["text"] and len(body["generationConfig"]["responseSchema"]["properties"]["experience"]["enum"]) == 6)
+    check("request lists all experiences", "<experiences>" in body["contents"][0]["parts"][0]["text"] and len(body["generationConfig"]["responseSchema"]["properties"]["experience"]["enum"]) == 7)
+    await page.context.close()
+
+
+async def streaming_checks(browser):
+    ready = "document.querySelector('.aixc-vx--streaming')?.classList.contains('is-ready')"
+    page = await new_page(browser)
+    await open_template(page, "streaming")
+    check("streaming: intro overlay plays", await page.is_visible(".st-intro") and await page.is_visible(".st-skip"))
+    check("streaming: header logo waits for the intro", await page.evaluate("getComputedStyle(document.querySelector('.st-brand')).opacity") == "0")
+    await page.wait_for_function("document.getAnimations().some(a => a.effect && a.effect.getTiming().duration === 3200)")
+    await page.evaluate("document.getAnimations().forEach(a => { if (a.effect.getTiming().duration === 3200) { a.pause(); a.currentTime = 3199.5 } })")
+    land = await page.evaluate("""() => { const a = document.querySelector('.st-intro__red').getBoundingClientRect(), b = document.querySelector('.st-brand .st-word').getBoundingClientRect(); return Math.max(Math.abs(a.left - b.left), Math.abs(a.top - b.top), Math.abs(a.width - b.width)) }""")
+    check("streaming: logo lands exactly in its header slot", land < 1, land)
+    await page.evaluate("document.getAnimations().forEach(a => a.finish())")
+    await page.wait_for_function(ready, timeout=5000)
+    check("streaming: intro clears and the logo shows", await page.is_hidden(".st-intro") and await page.is_hidden(".st-skip") and await page.evaluate("getComputedStyle(document.querySelector('.st-brand')).opacity") == "1")
+    check("streaming: wordmark reads VODAFONE in Roboto", await page.evaluate("document.querySelector('.st-brand .st-word').textContent === 'VODAFONE' && getComputedStyle(document.querySelector('.st-brand .st-word')).fontFamily.startsWith('Roboto')"))
+    rows = await page.eval_on_selector_all(".st-row", "els => els.map(e => e.dataset.group)")
+    check("streaming: billboard leads, one row per remaining category", rows == ["stay-in-control", "call-and-connect-abroad", "great-entertainment", "shokran-services", "other-services"] and await page.evaluate("document.querySelector('.st-billboard').dataset.aixcItem") == "vodafone-cash", rows)
+
+    # Paging arrows.
+    row = "#st-row-great-entertainment"
+    shift0 = await page.evaluate(f"document.querySelector('{row} .st-row__track').style.getPropertyValue('--shift')")
+    await page.click(f"{row} .st-row__arrow--next", force=True)
+    shift1 = await page.evaluate(f"document.querySelector('{row} .st-row__track').style.getPropertyValue('--shift')")
+    check("streaming: next arrow pages the row", shift0 == "0" and shift1 not in ("", "0"), (shift0, shift1))
+    check("streaming: previous arrow appears after paging", await page.is_enabled(f"{row} .st-row__arrow--prev"))
+    await page.click(f"{row} .st-row__arrow--prev", force=True)
+
+    # Keyboard: tabbing onto an off-page card pages the row along.
+    await page.focus(f"{row} .st-card:last-child .st-card__open")
+    shift2 = await page.evaluate(f"document.querySelector('{row} .st-row__track').style.getPropertyValue('--shift')")
+    check("streaming: focusing an off-page card pages to it", shift2 not in ("", "0"), shift2)
+
+    # Preview modal.
+    await page.mouse.move(5, 5)
+    await page.click("#st-row-shokran-services .st-card__open >> nth=0")
+    check("streaming: card opens the preview modal", await page.evaluate("document.querySelector('.st-modal').open"))
+    title = await page.text_content(".st-modal__title")
+    check("streaming: modal shows the service", title == "Sallefny Shokran", title)
+    more = await page.eval_on_selector_all(".st-more__card", "els => els.length")
+    check("streaming: modal lists the rest of the category", more == 5, more)
+    await page.keyboard.press("Escape")
+    check("streaming: Escape closes the modal and restores focus", not await page.evaluate("document.querySelector('.st-modal').open") and await page.evaluate("document.activeElement.classList.contains('st-card__open')"))
+    await page.click("#st-row-other-services .st-row__explore", force=True)
+    all_cards = await page.eval_on_selector_all(".st-more__card", "els => els.length")
+    check("streaming: Explore all lists every service in the category", all_cards == 8, all_cards)
+    await page.keyboard.press("Escape")
+    check("no page errors (streaming)", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Skip intro.
+    page = await new_page(browser)
+    await open_template(page, "streaming")
+    await page.click(".st-skip")
+    await page.wait_for_function(ready, timeout=2000)
+    check("streaming: Skip intro ends the opening at once", await page.is_hidden(".st-intro") and await page.evaluate("document.activeElement.classList.contains('st-brand')"))
+    await page.context.close()
+
+    # Reduced motion: no intro at all.
+    page = await new_page(browser, reduced_motion="reduce")
+    await open_template(page, "streaming")
+    check("streaming: no intro under reduced motion", await page.evaluate(ready) and await page.is_hidden(".st-intro"))
     await page.context.close()
 
 
@@ -355,7 +420,7 @@ async def main():
             await page.keyboard.press("Tab")
         check("launcher reachable by keyboard", await page.evaluate("document.activeElement.classList.contains('aixc-launcher')"))
         await page.keyboard.press("Enter")
-        check("Enter opens composer and focuses the first template", await page.evaluate("document.activeElement.dataset.template === 'spotlight'"))
+        check("Enter opens composer and focuses the first template", await page.evaluate("document.activeElement === document.querySelector('.aixc-template')"))
         check("composer has no chat transcript elements", await page.evaluate("!document.querySelector('.aixc-composer [class*=chat], .aixc-composer [class*=bubble], .aixc-composer [class*=transcript]')"))
         await page.keyboard.press("Escape")
         check("Escape closes composer and returns focus to launcher", await page.evaluate("document.querySelector('#aixc-composer').hidden && document.activeElement.classList.contains('aixc-launcher')"))

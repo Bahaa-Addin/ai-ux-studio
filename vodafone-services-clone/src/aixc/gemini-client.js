@@ -40,6 +40,7 @@ const PRIMITIVE_GUIDE = {
 /** What each experience is, so the model can pick the one the reader describes. */
 const EXPERIENCE_GUIDE = {
   magazine: 'Editorial magazine: cover, asymmetric spreads, index. Uses the magazine primitives.',
+  streaming: 'Streaming-app home: cinematic logo intro, billboard for the first group\'s lead service, one row of thumbnails per group.',
   spotlight: 'Full-screen spotlight: one service at a time, next services queued as cards, auto-advancing.',
   journey: 'Parallax scroll journey: a layered landscape moving from day to night behind chapters.',
   gallery: 'Gallery wall: every service framed on an angled 3D wall the reader walks along.',
