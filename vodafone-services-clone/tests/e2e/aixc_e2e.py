@@ -333,6 +333,14 @@ async def streaming_checks(browser):
     await page.evaluate("document.getAnimations().forEach(a => { if (a.effect.getTiming().duration === 3200) { a.pause(); a.currentTime = 3199.5 } })")
     land = await page.evaluate("""() => { const a = document.querySelector('.st-intro__red').getBoundingClientRect(), b = document.querySelector('.st-brand .st-word').getBoundingClientRect(); return Math.max(Math.abs(a.left - b.left), Math.abs(a.top - b.top), Math.abs(a.width - b.width)) }""")
     check("streaming: logo lands exactly in its header slot", land < 1, land)
+    lockup = await page.evaluate("""() => {
+      const parts = (root) => { const m = root.querySelector('.st-mark').getBoundingClientRect(), l = root.querySelector('.st-word__letters').getBoundingClientRect(); return { m, l } }
+      const fly = parts(document.querySelector('.st-intro__red')), slot = parts(document.querySelector('.st-brand .st-word'))
+      const beside = ({ m, l }) => m.right <= l.left + 0.5 && Math.abs((m.top + m.bottom) / 2 - (l.top + l.bottom) / 2) < l.height * 0.15
+      const markLand = Math.max(Math.abs(fly.m.left - slot.m.left), Math.abs(fly.m.top - slot.m.top), Math.abs(fly.m.width - slot.m.width))
+      return { ok: beside(fly) && beside(slot) && markLand < 1, markLand }
+    }""")
+    check("streaming: Vodafone mark sits left of the word and flies with it as one lockup", lockup["ok"], lockup)
     await page.evaluate("document.getAnimations().forEach(a => a.finish())")
     await page.wait_for_function(ready, timeout=5000)
     check("streaming: intro clears and the logo shows", await page.is_hidden(".st-intro") and await page.is_hidden(".st-skip") and await page.evaluate("getComputedStyle(document.querySelector('.st-brand')).opacity") == "1")

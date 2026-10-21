@@ -35,16 +35,64 @@ const domainOf = (href) => {
   }
 }
 
-/** The wordmark: letters taller toward the edges, the streaming logo's bowed silhouette. */
-const wordmark = (className) => {
-  const mark = h('span', { class: `st-word ${className}`, 'aria-hidden': 'true' })
+/* The Vodafone mark, from the page's own icon sprite (src/shell.js, icon-vodafone-logo). */
+const MARK_DISC = 'M47.95 23.952a23.993 23.993 0 0 1-24 24 23.907 23.907 0 0 1-23.9-24 23.886 23.886 0 0 1 23.9-23.9 23.972 23.972 0 0 1 24 23.9'
+const MARK_GLYPH = 'M37.877 25.142a13.023 13.023 0 0 1-13.222 12.822c-8.051 0-13.536-7.04-13.395-14.929 0-11.532 9.626-20.867 21.519-20.867q.743 0 1.472.049c-4.245 2.056-7.143 5.907-7.288 10.353a12.92 12.92 0 0 1 10.914 12.572'
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const svgEl = (tag, attributes = {}) => {
+  const node = document.createElementNS(SVG_NS, tag)
+  for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value))
+  return node
+}
+let extrusionIds = 0
+
+/**
+ * The mark as recolourable SVG (disc and speech mark take CSS colours, so the
+ * intro can show it white, then red). `extruded` adds the long diagonal shadow,
+ * drawn once as a swept disc in the same greys as the letters' text-shadow.
+ */
+const markSvg = ({ extruded = false } = {}) => {
+  const svg = svgEl('svg', { class: 'st-mark', viewBox: '0 0 48 48', overflow: 'visible', 'aria-hidden': 'true', focusable: 'false' })
+  if (extruded) {
+    const id = `st-extrude-${(extrusionIds += 1)}`
+    // 0.96em of shadow at a 0.9em mark (48 units) ≈ 51 units along the diagonal.
+    const depth = 51
+    const gradient = svgEl('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1: 24, y1: 24, x2: 24 + depth, y2: 24 + depth })
+    gradient.append(svgEl('stop', { offset: '0', 'stop-color': '#b4b4b4' }), svgEl('stop', { offset: '1', 'stop-color': '#3a3a3a' }))
+    const r = 23.95
+    const n = r / Math.SQRT2
+    const band = [
+      [24 + n, 24 - n],
+      [24 + n + depth, 24 - n + depth],
+      [24 - n + depth, 24 + n + depth],
+      [24 - n, 24 + n],
+    ]
+      .map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`)
+      .join(' ')
+    const extrusion = svgEl('g', { fill: `url(#${id})` })
+    extrusion.append(svgEl('polygon', { points: band }), svgEl('circle', { cx: 24 + depth, cy: 24 + depth, r }))
+    svg.append(svgEl('defs'), extrusion)
+    svg.firstChild.append(gradient)
+  }
+  svg.append(svgEl('path', { class: 'st-mark__disc', d: MARK_DISC, 'fill-rule': 'evenodd' }), svgEl('path', { class: 'st-mark__glyph', d: MARK_GLYPH, 'fill-rule': 'evenodd' }))
+  return svg
+}
+
+/**
+ * The lockup: Vodafone mark + VODAFONE, always built and animated as one element.
+ * Letters grow toward the edges, the bowed streaming-logo silhouette.
+ */
+const wordmark = (className, { extruded = false } = {}) => {
+  const lockup = h('span', { class: `st-word ${className}`, 'aria-hidden': 'true' }, markSvg({ extruded }))
+  const letters = h('span', { class: 'st-word__letters' })
   const middle = (WORD.length - 1) / 2
   ;[...WORD].forEach((char, at) => {
     const letter = h('span', { class: 'st-word__l' }, char)
     letter.style.setProperty('--k', (((at - middle) / middle) ** 2).toFixed(3))
-    mark.append(letter)
+    letters.append(letter)
   })
-  return mark
+  lockup.append(letters)
+  return lockup
 }
 
 const circleButton = (icon, label, extraClass = '') =>
@@ -328,7 +376,7 @@ export const renderStreaming = (schema, index) => {
   const introLogo = h(
     'div',
     { class: 'st-intro__logo' },
-    wordmark('st-intro__depth'),
+    wordmark('st-intro__depth', { extruded: true }),
     wordmark('st-intro__white'),
     wordmark('st-intro__glow'),
     wordmark('st-intro__red'),
