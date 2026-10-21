@@ -12,6 +12,7 @@
  *   gallery    codepen.io/nassimberrada/pen/EayPjpM    "Infinite Gallery Hall"
  *   flipbook   codepen.io/jcoulterdesign/pen/oRRRPY    "Pure CSS Magazine style layout"
  *   cube       codepen.io/luis-lessrain/pen/ZYpyoRV    "Six Faces"
+ *   streaming  codepen.io/Bahaa-Addin/pen/YayLbo       "Flix" (the author's own pen, rebuilt)
  */
 
 import { buildFallbackSchema } from './fallback-schema.js'
@@ -42,9 +43,19 @@ const ICONS = {
   gallery: 'M2.5 6 9 7.6v8.8L2.5 18zM11 8.1l5 1.2v5.4l-5 1.2zM18 9.8l3.5.8v2.8l-3.5.8z',
   flipbook: 'M2 5.5c3-1.2 6-1 9 .8v13.2c-3-1.8-6-2-9-.8zM22 5.5c-3-1.2-6-1-9 .8v13.2c3-1.8 6-2 9-.8z',
   cube: 'M12 2.8l8 4.4-8 4.4-8-4.4zM3.4 8.6l7.8 4.3v8.5l-7.8-4.3zM20.6 8.6v8.5l-7.8 4.3v-8.5z',
+  streaming: 'M2 3h20v9H2zM2 14h6v4H2zM9 14h6v4H9zM16 14h6v4h-6zM2 19.5h20V21H2z',
 }
 
 export const TEMPLATES = [
+  {
+    id: 'streaming',
+    experience: 'streaming',
+    name: 'Streaming showcase',
+    description: 'A cinematic logo intro, a billboard and rows of services, like a streaming home.',
+    prompt: 'Make it a streaming-style home with a cinematic logo intro and rows of services.',
+    icon: ICONS.streaming,
+    keywords: /\b(netflix|streaming|stream|binge|movies?|tv app|billboard|thumbnails?)\b/,
+  },
   {
     id: 'spotlight',
     experience: 'spotlight',

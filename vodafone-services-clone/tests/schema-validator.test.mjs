@@ -177,7 +177,7 @@ test('poor content degrades instead of throwing', () => {
 import { TEMPLATES, buildTemplateSchema, matchTemplate } from '../src/aixc/templates.js'
 
 test('every template builds a valid, complete schema with no warnings', () => {
-  assert.equal(TEMPLATES.length, 6)
+  assert.equal(TEMPLATES.length, 7)
   for (const template of TEMPLATES) {
     const result = validateSchema(buildTemplateSchema(template, index), index, { prompt: template.prompt })
     assert.equal(result.ok, true, template.id)
@@ -221,6 +221,7 @@ test('typed prompts are matched to templates by plain wording', () => {
   assert.equal(matchTemplate('a parallax scroll journey')?.id, 'journey')
   assert.equal(matchTemplate('full-screen spotlight cards')?.id, 'spotlight')
   assert.equal(matchTemplate('Turn this into a magazine.')?.id, 'magazine')
+  assert.equal(matchTemplate('make it look like Netflix')?.id, 'streaming')
   assert.equal(matchTemplate('make it nicer'), null)
   assert.equal(matchTemplate('share on facebook'), null)
 })

@@ -9,6 +9,7 @@ and components:
 
 | Template | What it does | Adapted from |
 |---|---|---|
+| Streaming showcase | Cinematic VODAFONE logo intro that flies into the top bar, then a billboard and paged rows of services with hover-expanding cards and a preview modal | [Flix](https://codepen.io/Bahaa-Addin/pen/YayLbo) (the author's own pen, rebuilt) |
 | Spotlight cards | One service fills the stage; the next ones queue as cards; auto-advances with pause | [Timed Cards Opening](https://codepen.io/dilums/full/NWodZMd) |
 | Scroll journey | Layered landscape (Vodafone mark as the sun) moves from day to night as chapters scroll by | [Parallax scroll animation](https://codepen.io/isladjan/pen/abdyPBw) |
 | Gallery wall | Every service framed on an angled 3D wall you walk along by scrolling | [Infinite Gallery Hall](https://codepen.io/nassimberrada/pen/EayPjpM) |
@@ -16,7 +17,19 @@ and components:
 | Service cube | A 3D cube turns to one face per category as you read, with HUD and scene dots | [Six Faces](https://codepen.io/luis-lessrain/pen/ZYpyoRV) |
 | Editorial magazine | Cover story, asymmetric spreads, service index | the Phase 1 brief |
 
-The references were re-implemented natively (no GSAP, no Three.js, none of their copy or images).
+The references were re-implemented natively (no GSAP, no Three.js, no jQuery or Slick, none of
+their copy or images).
+
+**Streaming showcase notes.** The original pen animated `font-size` and a 100-layer `text-shadow`
+(full repaints every frame), had an invalid keyframe and never landed the logo in the header. The
+rebuild keeps its Roboto wordmark and intent (white extruded logo, flash to red, push toward the
+camera, settle into the header) but animates only `transform` and `opacity` with the Web
+Animations API; the extruded shadow and the red glow are pre-rendered layers whose opacity fades.
+The landing is measured after fonts load, so the logo ends exactly on its slot (tested to <1px).
+**Skip intro** ends it; reduced motion skips it. Roboto 900 loads from Google Fonts like the pen
+did, and falls back to a heavy system sans offline. Colours stay Vodafone: the canvas is
+Vodafone ink `#14141e` and the accent Vodafone red `#e60000`, which are within a shade of the
+streaming palette (`#141414`, `#e50914`).
 
 ```
 local Vodafone page → prompt → Gemini composition JSON → validation → DOM rendering → magazine view
@@ -48,7 +61,7 @@ Then open the page, choose **Reimagine this page**, and click a ready-made exper
 ```bash
 npm test             # validator, content model and template unit tests (Node built-in runner)
 
-# Optional browser checks (163 checks across all experiences; Gemini is mocked, no key needed):
+# Optional browser checks (190 checks across all experiences; Gemini is mocked, no key needed):
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
@@ -122,7 +135,7 @@ src/
     experiences/magazine.css     magazine styles, all scoped under .aixc-magazine
     experiences/shared.js        shared Vodafone building blocks for the template experiences
     experiences/vodafone.css     Vodafone tokens + shared components, scoped under .aixc-vx
-    experiences/{spotlight,journey,gallery,flipbook,cube}.{js,css}   one plugin each
+    experiences/{streaming,spotlight,journey,gallery,flipbook,cube}.{js,css}   one plugin each
     controller.js                state, launcher, composer, view bar, cache, fallbacks
     aixc.css                     composer/launcher/view-bar styles (all .aixc- prefixed)
     dom.js                       tiny DOM builder with attribute + URL allowlists
@@ -150,7 +163,7 @@ content) and returns a *composition schema* that references item ids:
 }
 ```
 
-**Experiences:** `magazine`, `spotlight`, `journey`, `gallery`, `flipbook`, `cube`.
+**Experiences:** `magazine`, `streaming`, `spotlight`, `journey`, `gallery`, `flipbook`, `cube`.
 
 **Section types:** the magazine uses `hero`, `feature`, `editorial-grid`, `split-spread`, `shelf`,
 `callout`, `section-heading`, `service-list`; every other experience takes ordered `group`
@@ -203,7 +216,7 @@ its stylesheet scoped under `.aixc-vx--<name>` and link it in `index.html`, regi
 ## Known limitations and source notes
 
 - **Gemini has not been called live from this build.** The request format, headers and response
-  parsing were tested against a mocked endpoint (163 browser checks). Verify with a real key before
+  parsing were tested against a mocked endpoint (190 browser checks). Verify with a real key before
   a demo; if the chosen model rejects `responseSchema`, the client retries once in plain JSON mode.
 - **Content capture.** Text and images were captured on 2026-04-21; links and the hero heading
   were re-checked against the live page on 2026-10-19. The live site may have changed since.
