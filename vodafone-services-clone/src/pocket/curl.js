@@ -9,9 +9,12 @@
  * along that direction (s), the sheet has four parts:
  *
  *   s < a            flat, untouched                (front content)
- *   a .. a + πR      wrapped around the cylinder    (rising half is hidden from above,
+ *   a .. a + Rθ      wrapped around the cylinder    (rising half is hidden from above,
  *                                                   so only the back half is drawn)
- *   s > a + πR       flipped over, lying on top     (back face, see-through optional)
+ *   s > a + Rθ       peeled part, leaving the roll  (back face, see-through optional)
+ *                    at angle θ: θ = π folds it flat back over the sheet (a page turn),
+ *                    smaller θ lifts it off the surface toward the viewer (a sticker
+ *                    pulled up by hand)
  *   uncovered        what is underneath             (`under` layer)
  *
  * Rendering is DOM-only and compositor-friendly: every part is a "window" (a band
@@ -200,17 +203,27 @@ export const createCurl = ({
   // --- lift: the roll and the flipped part --------------------------------------
   const roll = Array.from({ length: strips }, (_, index) => {
     const layer = makeWindow('curl-strip', lift)
-    const t0 = index / strips
-    const t1 = (index + 1) / strips
-    const shade = el('curl-strip-shade', {
-      position: 'absolute', left: '0', top: '0', width: '100px', transformOrigin: '0 0',
-      background: `linear-gradient(to right, ${rgb(material.base, rollBrightness(t0, material))}, ${rgb(material.base, rollBrightness(t1, material))})`,
-    })
+    const shade = el('curl-strip-shade', { position: 'absolute', left: '0', top: '0', width: '100px', transformOrigin: '0 0' })
     layer.box.append(shade)
     return { ...layer, shade, index }
   })
   const flap = makeWindow('curl-flap', lift)
-  const flapPaper = el('curl-flap-paper', { position: 'absolute', inset: '0', background: rgb(material.base, 1) })
+  const flapPaper = el('curl-flap-paper', { position: 'absolute', inset: '0' })
+
+  /** Shades the roll strips over [pi/2, angle] and the peeled part to match its end. */
+  let paintedAngle = -1
+  const paint = (angle) => {
+    if (Math.abs(angle - paintedAngle) < 0.004) return
+    paintedAngle = angle
+    const reach = (angle - HALF_PI) / HALF_PI // 0..1 of the way from rim to top
+    for (const strip of roll) {
+      const t0 = (strip.index / strips) * reach
+      const t1 = ((strip.index + 1) / strips) * reach
+      strip.shade.style.background = `linear-gradient(to right, ${rgb(material.base, rollBrightness(t0, material))}, ${rgb(material.base, rollBrightness(t1, material))})`
+    }
+    flapPaper.style.background = rgb(material.base, rollBrightness(reach, material))
+  }
+  paint(Math.PI)
 
   // --- content ------------------------------------------------------------------
   let hasFront = false
@@ -240,8 +253,18 @@ export const createCurl = ({
   let grounded = true // false while the sheet is lifted clear of the surface (a flying sticker)
   let stripWidth = -1
 
-  const update = ({ x, phi, R }) => {
-    state = { x, phi, R }
+  /**
+   * @param {number} x      distance of the fold from the peeled corner (0 = flat)
+   * @param {number} phi    curl direction, radians, pointing at the peeled corner
+   * @param {number} R      roll radius
+   * @param {number} angle  where the peeled part leaves the roll: pi lies flat on top,
+   *                        smaller lifts it off the surface (kept above pi/2)
+   * @param {number} ground 0..1 strength of the shadows cast on the surface below
+   */
+  const update = ({ x, phi, R, angle = Math.PI, ground = 1 }) => {
+    const theta = Math.min(Math.PI, Math.max(HALF_PI + 0.02, angle))
+    state = { x, phi, R, angle: theta, ground }
+    paint(theta)
     const reach = cornerReach(W, H, phi)
     const a = reach - x // axis position along the curl direction, from the centre
     const D = Math.hypot(W, H) + 4 * R + 64 // long enough to span the sheet at any angle
@@ -274,20 +297,21 @@ export const createCurl = ({
     const fall = R + 26
     set(underShadow, base.translate(a + R, -D / 2).scale(fall / 100, 1))
     underShadow.style.height = `${D}px`
-    underShadow.style.opacity = String(ramp)
-    show(underShadow, curled && grounded)
+    underShadow.style.opacity = String(ramp * ground)
+    show(underShadow, curled && grounded && ground > 0.01)
     set(rimShade, base.translate(a - R * 0.2, -D / 2).scale((R * 1.2) / 100, 1))
     rimShade.style.height = `${D}px`
     rimShade.style.opacity = String(ramp)
     show(rimShade, curled)
 
-    // Back half of the roll: theta from pi/2 (rim) to pi (top), sliced into strips.
-    const w = (R * HALF_PI) / strips
+    // Back half of the roll: from pi/2 (rim) to where the peeled part leaves it.
+    const arc = theta - HALF_PI
+    const w = (R * arc) / strips
     const sizeChanged = Math.abs(w - stripWidth) > 0.01
     stripWidth = w
     for (const strip of roll) {
-      const theta0 = HALF_PI + (strip.index / strips) * HALF_PI
-      const thetaMid = theta0 + HALF_PI / strips / 2
+      const theta0 = HALF_PI + (strip.index / strips) * arc
+      const thetaMid = theta0 + arc / strips / 2
       const sigma0 = R * theta0 // arc length from the axis to this strip
       const visible = curled && sigma0 < x
       show(strip.win, visible)
@@ -307,29 +331,32 @@ export const createCurl = ({
       set(strip.shade, flatBand.scale((w + 1) / 100, 1))
     }
 
-    // Flipped part: mirrored about the middle of the roll, lifted to 2R, seen from behind.
-    const flapVisible = curled && Math.PI * R < x
+    // Peeled part: leaves the roll tangentially at theta, seen from behind. At theta = pi
+    // this is the familiar flip (mirrored about the roll, lying flat at height 2R).
+    const start = R * theta // arc length from the axis to where it leaves the roll
+    const flapVisible = curled && start < x
     show(flap.win, flapVisible)
-    show(flapShadow.win, flapVisible)
+    show(flapShadow.win, flapVisible && grounded)
     if (flapVisible) {
-      const mid = a + (Math.PI * R) / 2
-      const flatPart = base.translate(a + Math.PI * R, -D / 2)
-      const mirror = (lifted) =>
-        base
-          .translate(mid, 0, lifted)
-          .rotateAxisAngleSelf(0, 1, 0, 180)
-          .translateSelf(-mid, 0, 0)
-          .translateSelf(a + Math.PI * R, -D / 2)
+      const flatPart = base.translate(a + start, -D / 2)
+      const exit = [a + R * Math.sin(theta), R * (1 - Math.cos(theta))]
       for (const part of [flap, flapShadow]) {
         part.win.style.width = `${D}px`
         part.win.style.height = `${D}px`
         set(part.box, flatPart.inverse())
       }
-      set(flap.win, mirror(2 * R))
-      set(flapShadow.win, new DOMMatrix().translateSelf(0, 4 + R * 0.08).multiplySelf(mirror(0)))
-      const lifted = Math.min(1, (x - Math.PI * R) / (2 * R))
-      flapShadowWrap.style.opacity = String(0.34 * lifted)
-      flapShadowWrap.style.filter = `blur(${Math.round(6 + R * 0.22)}px)`
+      set(flap.win, base.translate(exit[0], 0, exit[1]).rotateAxisAngleSelf(0, 1, 0, -theta * DEG).translateSelf(0, -D / 2))
+      // Its shadow: the same sheet projected straight down, softer the higher it rises.
+      const rise = (Math.PI - theta) / HALF_PI
+      set(
+        flapShadow.win,
+        new DOMMatrix()
+          .translateSelf(0, 4 + R * 0.08 + rise * 14)
+          .multiplySelf(base.translate(exit[0], 0).scaleSelf(Math.cos(theta), 1).translateSelf(0, -D / 2)),
+      )
+      const lifted = Math.min(1, (x - start) / (2 * R))
+      flapShadowWrap.style.opacity = String(0.34 * lifted * (1 - 0.55 * rise) * ground)
+      flapShadowWrap.style.filter = `blur(${Math.round(6 + R * 0.22 + rise * 16)}px)`
     } else {
       flapShadowWrap.style.opacity = '0'
     }

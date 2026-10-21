@@ -53,7 +53,7 @@ npm test             # validator, content model and template unit tests (Node bu
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
-python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket: 38 checks
+python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket: 40 checks
 ```
 
 ---
@@ -208,9 +208,12 @@ Every service card has a **Pocket it** chip. Pocketing a service is one animatio
 all driven by a single page-curl engine modelled on the Apple Books page turn:
 
 1. **Sticker peel.** Hovering the chip lifts the card's corner. Clicking peels the card off
-   from that corner like a sticker (the front curls over to show a glossy white back), it
-   lifts off the page and arcs into the pocket. A liner stays behind with **Put back**, which
-   flies the sticker out of the pocket and smooths it back down.
+   from that corner like a sticker, all the way: the peel folds back to halfway, then keeps
+   going while the peeled part is pulled up off the page until the far corner lets go. The
+   freed sticker rises over its slot and is thrown into the pocket, relaxing in the air so its
+   face shows. A liner stays behind with **Put back**, which plays the very same journey in
+   reverse: out of the pocket, over the slot, stuck down from the far corner back to the first.
+   Long cards peel along their length, like a label, and droop rather than standing up tall.
 2. **Peeking corner.** While anything is pocketed, the page's bottom-right corner sits
    half-turned. The gap under it shows the pocket, with a floating pocket button and a count.
    Hovering or focusing the button turns the corner a little further.
@@ -231,18 +234,20 @@ button → click it → remove one sticker → *Back to Services* → *Put back*
 `x` px from the peeled corner. The flat part, the back half of the roll (sliced into strips and
 shaded by their angle), the flipped-over part (mirrored, lifted to 2R, see-through optional) and
 what the curl uncovers are each a clipped "window" holding a counter-transformed snapshot of the
-front. Each frame only rewrites `matrix3d` transforms, so nothing is re-rasterised. The front is
+front. The peeled part leaves the roll at a lift angle: π folds it flat back over the sheet
+(the page turn), smaller angles lift it off the surface (a sticker pulled up by hand). Each
+frame only rewrites `matrix3d` transforms, so nothing is re-rasterised. The front is
 a static DOM clone (a card, or the whole page at its scroll position), so the live page is never
 modified mid-animation. Honours `prefers-reduced-motion` (no curl; immediate state changes).
 
 ```
 src/pocket/
-  curl.js     page-curl engine: createCurl({ width, height, front, under, back }) → update({ x, phi, R })
+  curl.js     page-curl engine: createCurl({ width, height, front, under, back }) → update({ x, phi, R, angle })
   pocket.js   chips, liners, sticker flight, peeking corner, page turn, pocket album, persistence
   pocket.css  all .pocket- / .curl- styles, Vodafone tokens only
 tests/
   pocket-curl.test.mjs     curl geometry (npm test)
-  e2e/pocket_e2e.py        38 browser checks: every flow, keyboard, reduced motion, mobile, persistence
+  e2e/pocket_e2e.py        40 browser checks: every flow, keyboard, reduced motion, mobile, persistence
 ```
 
 **Implementation notes for a production build.** Clones are made from the rendered DOM, so
