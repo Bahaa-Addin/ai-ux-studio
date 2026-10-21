@@ -47,10 +47,11 @@
 
 /* ------------------------------------------------------------------ launcher */
 
+/* Top-right, just under the sticky header: the bottom-right corner belongs to the pocket. */
 .aixc-launcher {
   position: fixed;
+  top: calc(var(--aixc-header-h) + 16px);
   right: max(16px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 40;
   display: inline-flex;
   align-items: center;
@@ -83,13 +84,14 @@
 
 /* ------------------------------------------------------------------ composer */
 
+/* Opens where the launcher sits, under the header (and under the view bar once it shows). */
 .aixc-composer {
   position: fixed;
+  top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h) + 12px);
   right: max(16px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 41;
   width: min(480px, calc(100vw - 32px));
-  max-height: calc(100vh - var(--aixc-header-h) - 32px);
+  max-height: calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - 28px);
   overflow-y: auto;
   padding: 20px 20px 16px;
   border-radius: var(--aixc-radius);
@@ -625,20 +627,21 @@
 
 @media (max-width: 767px) {
   .aixc-launcher {
+    top: calc(var(--aixc-header-h) + 12px);
+    right: max(12px, env(safe-area-inset-right));
     min-height: 48px;
     padding: 0 18px 0 14px;
     font-size: 0.9375rem;
   }
 
-  /* Bottom sheet that leaves the header and navigation visible. */
+  /* Sheet that drops from under the header, leaving the header and navigation visible. */
   .aixc-composer {
+    top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h));
     right: 0;
-    bottom: 0;
     left: 0;
     width: 100%;
-    max-height: min(78vh, calc(100vh - var(--aixc-header-h) - 8px));
-    border-radius: var(--aixc-radius) var(--aixc-radius) 0 0;
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    max-height: min(78vh, calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - 8px));
+    border-radius: 0 0 var(--aixc-radius) var(--aixc-radius);
   }
 
   .aixc-viewbar__inner {

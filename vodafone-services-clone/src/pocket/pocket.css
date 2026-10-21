@@ -306,12 +306,6 @@
   }
 }
 
-/* The AIXC launcher moves to the other corner while the pocket peeks. */
-body[data-pocket='on'] .aixc-launcher {
-  right: auto;
-  left: max(16px, env(safe-area-inset-left));
-}
-
 body[data-pocket-view='open'] .aixc-launcher,
 body[data-pocket-view='open'] .aixc-composer {
   display: none !important;

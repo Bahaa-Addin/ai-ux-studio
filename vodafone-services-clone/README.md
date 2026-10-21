@@ -41,7 +41,7 @@ npm run dev          # http://localhost:5173
 npm run serve        # or: node scripts/serve.mjs --port 5173
 ```
 
-Then open the page, choose **Reimagine this page**, and click a ready-made experience or type a prompt.
+Then open the page, choose **Reimagine this page** (top-right, under the header), and click a ready-made experience or type a prompt.
 Or click **Pocket it** on any card (see [Pocket](#pocket-peel-it-off-keep-it-turn-the-page)).
 
 **Tests**
@@ -224,8 +224,8 @@ all driven by a single page-curl engine modelled on the Apple Books page turn:
    turns the page back to exactly where you were.
 
 The pocket is remembered in this browser (`localStorage`, key `aixc.pocket.v1`). It works in
-the Original view and over any reimagined experience. The AIXC launcher moves to the bottom-left
-while the pocket peeks.
+the Original view and over any reimagined experience. The bottom-right corner belongs to the
+pocket; **Reimagine this page** sits top-right under the header and opens its panel from there.
 
 **Demo script.** Pocket *Calls services*, *Roaming Services* and *Play&Win* → hover the corner
 button → click it → remove one sticker → *Back to Services* → *Put back* on a liner.

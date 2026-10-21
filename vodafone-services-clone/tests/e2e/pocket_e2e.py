@@ -88,8 +88,12 @@ async def main():
             "document.querySelector('.pocket-peek').dataset.state === 'shown'") and await count_badge(page) == "1")
         check("peek corner is drawn (curl layers mounted)", await page.evaluate(
             "document.querySelector('.pocket-layer--lift .curl-lift') && document.querySelector('.pocket-layer--plane .curl-under').style.visibility === 'visible'"))
-        check("AIXC launcher moves out of the pocket's corner", await page.evaluate(
-            "getComputedStyle(document.querySelector('.aixc-launcher')).left !== 'auto' && document.body.dataset.pocket === 'on'"))
+        check("Reimagine launcher sits top-right, clear of the pocket button", await page.evaluate("""(() => {
+            const l = document.querySelector('.aixc-launcher').getBoundingClientRect();
+            const p = document.querySelector('.pocket-peek').getBoundingClientRect();
+            const h = document.querySelector('#site-header').getBoundingClientRect();
+            const apart = l.bottom < p.top || l.top > p.bottom || l.right < p.left || l.left > p.right;
+            return apart && l.top >= h.bottom && l.top < h.bottom + 40 && l.right > innerWidth - 40 })()"""))
         check("pocket is remembered in this browser", await page.evaluate(
             "localStorage.getItem('aixc.pocket.v1')") == '["calls-services"]')
 
@@ -152,7 +156,7 @@ async def main():
         await settle(page)
         await page.wait_for_timeout(500)
         check("empty pocket folds the corner away", await page.evaluate(
-            "document.querySelector('.pocket-peek').dataset.state === 'hidden' && document.querySelector('.pocket-layer--plane').childElementCount === 0 && document.body.dataset.pocket === 'off'"))
+            "document.querySelector('.pocket-peek').dataset.state === 'hidden' && document.querySelector('.pocket-layer--plane').childElementCount === 0"))
         check("no page errors (desktop)", not page.errors, page.errors)
         await ctx.close()
 
