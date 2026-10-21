@@ -309,8 +309,6 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   const setPeekButton = (visible) => {
     peekButton.dataset.state = visible ? 'shown' : 'hidden'
     peekButton.inert = !visible
-    // The AIXC launcher moves to the other corner while the pocket peeks.
-    if (state.view === 'page') document.body.dataset.pocket = visible ? 'on' : 'off'
   }
 
   const updateCount = (n = state.ids.length) => {
