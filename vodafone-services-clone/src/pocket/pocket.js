@@ -18,7 +18,11 @@ import { createCurl, cornerReach, fullTurn, tween, ease, lerp } from './curl.js'
 
 const STORE_KEY = 'aixc.pocket.v1'
 const RAD = Math.PI / 180
-const STICKER_PHI = -38 * RAD // peel from the top-right corner, where "Pocket it" sits
+const PEEL_MS = 560 // peel back to halfway (the adhesive holds, then gives)
+const LIFT_MS = 520 // keep peeling while lifting it off, until the last corner lets go
+const THROW_MS = 820 // thrown into the pocket
+const LIFTED_ANGLE = 0.72 * Math.PI // how steeply a small freed sticker is held up
+const LIFT_HEIGHT = 170 // px: a long sticker droops instead, so it never rises higher than this
 const PEEK_PHI = 38 * RAD // the page corner curls from the bottom-right
 const TURNED_PHI = 12 * RAD // a turning page straightens toward a vertical fold
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -32,6 +36,10 @@ const TONES = { cash: 'cash', 'stay-in-control': 'red', 'great-entertainment': '
 /* --------------------------------------------------------------- utilities */
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+const smoothstep = (from, to, value) => {
+  const t = clamp((value - from) / (to - from), 0, 1)
+  return t * t * (3 - 2 * t)
+}
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 const make = (tag, props = {}, ...children) => {
@@ -141,6 +149,13 @@ const snapshotCard = (card, width, height) => {
 }
 
 const stickerRadius = (width, height) => clamp(Math.min(width, height) * 0.11, 14, 32)
+
+/**
+ * Peel direction for a card: along its diagonal, from the top-right corner (where "Pocket it"
+ * sits) toward the bottom-left. A long strip peels from one end along its length, like a
+ * label, so the peeled part folds back within the card's own footprint.
+ */
+const stickerPhi = (width, height) => -clamp(Math.atan2(height, width) / RAD, 5, 82) * RAD
 
 /** Deterministic small tilt per sticker so the album looks hand-placed but stays stable. */
 const tiltFor = (id) => {
@@ -369,7 +384,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   /* ------------------------------------------------- stickers on the page */
   let hover = null // a corner lifted while the pointer is on "Pocket it"
 
-  const stickerRig = (card, width, height, rect) =>
+  const stickerRig = (card, width, height, rect, span = width + height) =>
     createCurl({
       width,
       height,
@@ -377,7 +392,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
       back: STICKER_BACK,
       radius: getComputedStyle(card).borderRadius,
       strips: 12,
-      perspective: 2200,
+      perspective: Math.max(2200, span * 3), // big cards lift without ballooning toward the camera
       origin: [window.innerWidth / 2 - rect.left, window.innerHeight / 2 - rect.top],
     })
 
@@ -396,10 +411,11 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     card.append(host)
     card.classList.add('is-peeling')
     const R = stickerRadius(width, height)
+    const phi = stickerPhi(width, height)
     // Enough lift to clear the chip sitting on the corner, so the curl is visible.
-    const lifted = clamp(2 * cornerReach(width, height, STICKER_PHI) * 0.24, 50, 96)
-    hover = { card, id, host, rig, R, tween: null }
-    hover.tween = tween(280, (e) => rig.update({ x: lerp(0, lifted, e), phi: STICKER_PHI, R }), ease.outCubic)
+    const lifted = clamp(2 * cornerReach(width, height, phi) * 0.24, 50, 96)
+    hover = { card, id, host, rig, R, phi, tween: null }
+    hover.tween = tween(280, (e) => rig.update({ x: lerp(0, lifted, e), phi, R }), ease.outCubic)
   }
 
   const dropCorner = ({ immediate = false } = {}) => {
@@ -414,16 +430,26 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     }
     if (immediate) return finish()
     const from = current.rig.state?.x ?? 0
-    tween(200, (e) => current.rig.update({ x: lerp(from, 0, e), phi: STICKER_PHI, R: current.R }), ease.outCubic).promise.then(finish)
+    tween(200, (e) => current.rig.update({ x: lerp(from, 0, e), phi: current.phi, R: current.R }), ease.outCubic).promise.then(finish)
   }
 
-  /** Peels the card off, lifts it and flies it into the pocket. Resolves on landing. */
-  const peelAndFly = async (card, startX) => {
+  /**
+   * A sticker's whole trip as a function of time, so pocketing plays it forward and Put back
+   * plays the very same frames in reverse:
+   *
+   *   peel   0 .. PEEL_MS          the corner folds back over the card to halfway
+   *   lift   .. + LIFT_MS          the peel runs on to the far corner while the peeled part is
+   *                                pulled up off the page; the last corner lets go
+   *   throw  .. + THROW_MS         the freed sticker arcs into the pocket, relaxing a little,
+   *                                shrinking and slipping under the turned page
+   */
+  const stickerJourney = (card, { startX = 0 } = {}) => {
     const rect = card.getBoundingClientRect()
     const { width, height } = rect
     const R = stickerRadius(width, height)
-    const span = 2 * cornerReach(width, height, STICKER_PHI)
-    const rig = stickerRig(card, width, height, rect)
+    const phi = stickerPhi(width, height)
+    const span = 2 * cornerReach(width, height, phi)
+    const rig = stickerRig(card, width, height, rect, span)
     const host = make('div', {
       class: 'curl-host curl-host--flying',
       style: { left: `${rect.left}px`, top: `${rect.top}px`, width: `${width}px`, height: `${height}px` },
@@ -431,95 +457,112 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     host.append(rig.plane, rig.lift)
     document.body.append(host)
 
-    // 1. Peel: slow at first (the adhesive holds), then the curl runs across the card.
-    const peeled = Math.max(startX, span * 0.46)
-    await tween(
-      600,
-      (e) => {
-        const now = card.getBoundingClientRect() // follow the card if the page scrolls
+    const halfway = Math.max(startX, span * 0.5)
+    const free = span + R * 1.2 // the roll has passed the far corner: nothing is stuck
+    const relaxed = span * 0.45
+    const liftedAngle = Math.PI - Math.asin(clamp(LIFT_HEIGHT / span, 0.14, Math.sin(Math.PI - LIFTED_ANGLE)))
+    const relaxedAngle = Math.max(liftedAngle, 0.82 * Math.PI)
+    const endScale = clamp(40 / Math.max(width, height), 0.05, 0.3)
+    const onPage = PEEL_MS + LIFT_MS
+    const duration = onPage + THROW_MS
+    const reach = span / 2
+
+    /**
+     * Where the card's middle has got to for a curl state, as a point in the card's own box.
+     * Once peeled past its far corner the sticker hangs beyond its slot, so the motion is
+     * steered by this point: it is pulled back over the slot and the throw spins around it.
+     */
+    const body = (x, angle) => {
+      const a = reach - x
+      const sigma = -a // arc length from the fold to the middle
+      const along = a >= 0 ? 0 : sigma <= R * angle ? a + R * Math.sin(sigma / R) : a + R * Math.sin(angle) + (sigma - R * angle) * Math.cos(angle)
+      return { x: width / 2 + Math.cos(phi) * along, y: height / 2 + Math.sin(phi) * along }
+    }
+    const place = (point, dx, dy, scale, rotate = 0) => {
+      host.style.transformOrigin = `${point.x}px ${point.y}px`
+      host.style.transform = `translate(${dx}px, ${dy}px) rotate(${rotate}deg) scale(${scale})`
+    }
+
+    let path = null
+    const shadow = (k) => (k > 0.01 ? `drop-shadow(0 ${Math.round(14 * k)}px ${Math.round(16 * k)}px rgba(20, 20, 30, ${(0.28 * k).toFixed(3)}))` : 'none')
+
+    const at = (time) => {
+      if (time <= onPage) {
+        path = null
+        const now = card.getBoundingClientRect() // stay on the card if the page scrolls
         host.style.left = `${now.left}px`
         host.style.top = `${now.top}px`
-        rig.update({ x: lerp(startX, peeled, e), phi: STICKER_PHI, R })
-      },
-      ease.inQuad,
-    ).promise
+        host.style.opacity = '1'
+        if (time <= PEEL_MS) {
+          const x = lerp(startX, halfway, ease.inQuad(time / PEEL_MS))
+          rig.update({ x, phi, R })
+          host.dataset.peel = (x / span).toFixed(2) // how much is peeled, 1 = all of it
+          host.style.transform = 'none'
+          host.style.filter = 'none'
+        } else {
+          const u = ease.inOutSine((time - PEEL_MS) / LIFT_MS)
+          const x = lerp(halfway, free, u)
+          const angle = lerp(Math.PI, liftedAngle, u)
+          rig.update({ x, phi, R, angle, ground: 1 - u })
+          host.dataset.peel = Math.min(1, x / span).toFixed(2)
+          // As the last corner lets go, the hand draws the sticker up over its own slot.
+          // Barely anything is still stuck by the time this pull is noticeable.
+          const pull = smoothstep(0.15, 1, u)
+          const point = body(x, angle)
+          place(point, (width / 2 - point.x) * pull, (height / 2 - point.y) * pull, 1 + 0.04 * pull)
+          host.style.filter = shadow(u ** 3)
+        }
+        return
+      }
+      if (!path) {
+        const now = card.getBoundingClientRect()
+        const from = { x: now.left + width / 2, y: now.top + height / 2 }
+        const to = peekTarget()
+        path = { left: now.left, top: now.top, from, to, via: { x: lerp(from.x, to.x, 0.32), y: Math.min(from.y, to.y) - Math.min(240, window.innerHeight * 0.26) } }
+        host.style.left = `${now.left}px`
+        host.style.top = `${now.top}px`
+      }
+      const t = (time - onPage) / THROW_MS
+      const e = ease.inOutSine(t)
+      const { left, top, from, to, via } = path
+      const x = lerp(free, relaxed, ease.outCubic(t))
+      const angle = lerp(liftedAngle, relaxedAngle, t)
+      rig.update({ x, phi, R, angle, ground: 0 })
+      // The sticker itself (not its empty box) follows the arc into the pocket.
+      const point = body(x, angle)
+      const bx = (1 - e) ** 2 * from.x + 2 * (1 - e) * e * via.x + e * e * to.x
+      const by = (1 - e) ** 2 * from.y + 2 * (1 - e) * e * via.y + e * e * to.y
+      const scale = lerp(1.04, endScale, ease.inOutCubic(clamp((t - 0.08) / 0.92, 0, 1))) * (1 + 0.05 * Math.sin(Math.min(1, t / 0.3) * Math.PI))
+      place(point, bx - (left + point.x), by - (top + point.y), scale, 16 * t - 9 * Math.sin(t * Math.PI))
+      host.style.opacity = t > 0.84 ? String(1 - (t - 0.84) / 0.16) : '1'
+      host.style.filter = shadow(1)
+    }
 
-    // 2. Detach and fly: a short pop upward, then an arc into the pocket corner,
-    //    still rolling up, shrinking and slipping under the turned page.
-    const start = card.getBoundingClientRect()
-    const from = { x: start.left + start.width / 2, y: start.top + start.height / 2 }
-    const to = peekTarget()
-    const via = { x: lerp(from.x, to.x, 0.32), y: Math.min(from.y, to.y) - Math.min(240, window.innerHeight * 0.26) }
-    const endScale = clamp(40 / Math.max(width, height), 0.05, 0.3)
-    host.classList.add('is-airborne')
-    rig.setGrounded(false) // its shadow on the page stays behind
-    await tween(
-      860,
-      (e, t) => {
-        rig.update({ x: lerp(peeled, span * 0.7, ease.outCubic(t)), phi: STICKER_PHI, R })
-        const bx = (1 - e) ** 2 * from.x + 2 * (1 - e) * e * via.x + e * e * to.x
-        const by = (1 - e) ** 2 * from.y + 2 * (1 - e) * e * via.y + e * e * to.y
-        const pop = 1 + 0.06 * Math.sin(Math.min(1, t / 0.3) * Math.PI)
-        const scale = lerp(1, endScale, ease.inOutCubic(clamp((t - 0.1) / 0.9, 0, 1))) * pop
-        const rotate = 16 * t - 9 * Math.sin(t * Math.PI)
-        host.style.transform = `translate(${bx - from.x}px, ${by - from.y}px) rotate(${rotate}deg) scale(${scale})`
-        host.style.opacity = t > 0.84 ? String(1 - (t - 0.84) / 0.16) : '1'
+    return {
+      duration,
+      at,
+      destroy: () => {
+        host.remove()
+        rig.destroy()
       },
-      ease.inOutSine,
-    ).promise
-    host.remove()
-    rig.destroy()
+    }
   }
 
-  /** The reverse: out of the pocket, back onto the card, smoothed flat. */
+  /** Plays a journey forward (pocketing) or backward (Put back); resolves when it ends. */
+  const play = (journey, direction) =>
+    tween(journey.duration, (_, t) => journey.at((direction === 'forward' ? t : 1 - t) * journey.duration)).promise
+
+  const peelAndFly = async (card, startX) => {
+    const journey = stickerJourney(card, { startX })
+    await play(journey, 'forward')
+    journey.destroy()
+  }
+
+  /** The same journey backwards. Returns the cleanup so the caller can swap in the card first. */
   const flyBack = async (card) => {
-    const rect = card.getBoundingClientRect()
-    const { width, height } = rect
-    const R = stickerRadius(width, height)
-    const span = 2 * cornerReach(width, height, STICKER_PHI)
-    const rig = stickerRig(card, width, height, rect)
-    const host = make('div', {
-      class: 'curl-host curl-host--flying is-airborne',
-      style: { left: `${rect.left}px`, top: `${rect.top}px`, width: `${width}px`, height: `${height}px`, opacity: '0' },
-    })
-    host.append(rig.plane, rig.lift)
-    document.body.append(host)
-    rig.setGrounded(false)
-    const peeled = span * 0.46
-    const to = { x: rect.left + width / 2, y: rect.top + height / 2 }
-    const from = peekTarget()
-    const via = { x: lerp(from.x, to.x, 0.68), y: Math.min(from.y, to.y) - Math.min(240, window.innerHeight * 0.26) }
-    const startScale = clamp(40 / Math.max(width, height), 0.05, 0.3)
-    await tween(
-      760,
-      (e, t) => {
-        rig.update({ x: lerp(span * 0.7, peeled, ease.outCubic(t)), phi: STICKER_PHI, R })
-        const bx = (1 - e) ** 2 * from.x + 2 * (1 - e) * e * via.x + e * e * to.x
-        const by = (1 - e) ** 2 * from.y + 2 * (1 - e) * e * via.y + e * e * to.y
-        const scale = lerp(startScale, 1, ease.inOutCubic(clamp(t / 0.9, 0, 1)))
-        const rotate = 16 * (1 - t) - 9 * Math.sin(t * Math.PI)
-        host.style.transform = `translate(${bx - to.x}px, ${by - to.y}px) rotate(${rotate}deg) scale(${scale})`
-        host.style.opacity = t < 0.14 ? String(t / 0.14) : '1'
-      },
-      ease.inOutSine,
-    ).promise
-    host.classList.remove('is-airborne')
-    host.style.transform = 'none'
-    rig.setGrounded(true)
-    await tween(
-      520,
-      (e) => {
-        const now = card.getBoundingClientRect()
-        host.style.left = `${now.left}px`
-        host.style.top = `${now.top}px`
-        rig.update({ x: lerp(peeled, 0, e), phi: STICKER_PHI, R })
-      },
-      ease.outCubic,
-    ).promise
-    return () => {
-      host.remove()
-      rig.destroy()
-    }
+    const journey = stickerJourney(card)
+    await play(journey, 'backward')
+    return journey.destroy
   }
 
   const fly = async (job) => {
@@ -681,11 +724,12 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     host.append(rig.plane, rig.lift)
     document.body.append(host)
     sticker.style.visibility = 'hidden'
-    const end = fullTurn(width, height, STICKER_PHI, R)
+    const phi = stickerPhi(width, height)
+    const end = fullTurn(width, height, phi, R)
     await tween(
       620,
       (e, t) => {
-        rig.update({ x: lerp(0, end, e), phi: STICKER_PHI, R })
+        rig.update({ x: lerp(0, end, e), phi, R })
         host.style.transform = `rotate(${tilt}deg) translateY(${-24 * t}px)`
         host.style.opacity = t > 0.6 ? String(1 - (t - 0.6) / 0.4) : '1'
       },

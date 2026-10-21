@@ -69,12 +69,18 @@ async def main():
         await page.wait_for_timeout(350)
         check("hovering the chip lifts the card's corner", await page.evaluate(
             "!!document.querySelector('[data-aixc-item=\"calls-services\"] .curl-host--inside')"))
+        # Track how far the peel gets before the sticker leaves the page.
+        await page.evaluate("""() => { window.__peel = 0; const watch = () => {
+            const h = document.querySelector('.curl-host--flying');
+            if (h && h.dataset.peel) window.__peel = Math.max(window.__peel, parseFloat(h.dataset.peel));
+            requestAnimationFrame(watch) }; watch() }""")
         await page.click('[data-aixc-item="calls-services"] .pocket-cta')
         await page.wait_for_timeout(250)
         check("clicking peels a sticker off the card", await page.evaluate("!!document.querySelector('.curl-host--flying')"))
         check("card turns into a liner while the sticker peels", await page.evaluate(
             "document.querySelector('[data-aixc-item=\"calls-services\"]').classList.contains('is-pocketed')"))
         await settle(page)
+        check("the peel completes (the whole sticker comes off) before it is thrown", await page.evaluate("window.__peel") >= 0.99, await page.evaluate("window.__peel"))
         check("sticker lands and is cleaned up", await page.evaluate("document.querySelectorAll('.curl-host').length") == 0)
         check("liner says it is in your pocket, with Put back", await page.evaluate(
             "(() => { const l = document.querySelector('[data-aixc-item=\"calls-services\"] .pocket-liner'); return getComputedStyle(l).display !== 'none' && /In your pocket/.test(l.textContent) && /Put back/.test(l.textContent) })()"))
@@ -133,6 +139,11 @@ async def main():
 
         await scroll_to(page, "call-and-connect-abroad")
         await page.click('[data-aixc-item="roaming"] .pocket-liner__undo')
+        await page.wait_for_timeout(80)
+        check("Put back plays the journey in reverse, starting from the pocket", await page.evaluate("""(() => {
+            const h = document.querySelector('.curl-host--flying'); if (!h) return false;
+            const r = h.getBoundingClientRect(), p = document.querySelector('.pocket-peek').getBoundingClientRect();
+            return Math.hypot(r.left + r.width / 2 - (p.left + p.width / 2), r.top + r.height / 2 - (p.top + p.height / 2)) < 200 })()"""))
         await settle(page)
         check("Put back returns the sticker to its card", await page.evaluate(
             "!document.querySelector('[data-aixc-item=\"roaming\"]').className.match(/is-(pocketed|returning)/)") and await count_badge(page) == "1")
