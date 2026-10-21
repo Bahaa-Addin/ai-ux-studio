@@ -25,6 +25,10 @@ their copy or images).
 rebuild keeps its Roboto wordmark and intent (white extruded logo, flash to red, push toward the
 camera, settle into the header) but animates only `transform` and `opacity` with the Web
 Animations API; the extruded shadow and the red glow are pre-rendered layers whose opacity fades.
+The logo is a single lockup: the Vodafone speech mark (the same paths as the header sprite) sits
+left of the word, and every intro layer carries both, so they push, turn red and fly into the header
+as one element. During the white phase the mark is inverted and extruded with the letters (a swept
+disc with the same shadow gradient); once the word turns red it is the true red mark.
 The landing is measured after fonts load, so the logo ends exactly on its slot (tested to <1px).
 **Skip intro** ends it; reduced motion skips it. Roboto 900 loads from Google Fonts like the pen
 did, and falls back to a heavy system sans offline. Colours stay Vodafone: the canvas is
@@ -61,7 +65,7 @@ Then open the page, choose **Reimagine this page**, and click a ready-made exper
 ```bash
 npm test             # validator, content model and template unit tests (Node built-in runner)
 
-# Optional browser checks (190 checks across all experiences; Gemini is mocked, no key needed):
+# Optional browser checks (191 checks across all experiences; Gemini is mocked, no key needed):
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
@@ -216,7 +220,7 @@ its stylesheet scoped under `.aixc-vx--<name>` and link it in `index.html`, regi
 ## Known limitations and source notes
 
 - **Gemini has not been called live from this build.** The request format, headers and response
-  parsing were tested against a mocked endpoint (190 browser checks). Verify with a real key before
+  parsing were tested against a mocked endpoint (191 browser checks). Verify with a real key before
   a demo; if the chosen model rejects `responseSchema`, the client retries once in plain JSON mode.
 - **Content capture.** Text and images were captured on 2026-04-21; links and the hero heading
   were re-checked against the live page on 2026-10-19. The live site may have changed since.
