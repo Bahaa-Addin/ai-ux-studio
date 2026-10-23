@@ -112,4 +112,7 @@ test('theme: fixed tokens match SPEC-01 and the live accessibility button', () =
 	assert.match(LAUNCHER_CSS, /rgba\(230,\s*0,\s*0,\s*\.35\)/)
 	// The transcript bar is the black bar of SPEC-02.
 	assert.match(LAUNCHER_CSS, /rgba\(0,\s*0,\s*0,\s*\.9\)/)
+	// The commit-point spotlight (the button the person presses themselves) is restyled too: the
+	// base theme's amber ring is not a Vodafone colour.
+	assert.match(VODAFONE_CSS, /\.spot\.commit \{[^}]*var\(--vf-red-dark\)/)
 })

@@ -1,6 +1,6 @@
 # ADR-0027: Voice-first launcher: the floating button is a microphone, one microphone stream feeds recognition and the waveform, and the transcript lives in a small black bar
 
-- Status: Proposed (Vodafone live phase). Accept when SPEC-02 acceptance criteria 1–10 pass.
+- Status: Proposed, mostly verified 2026-10-23: SPEC-02 acceptance 1 (computed style), 2 (placement at 1280px, same place on `/spa/`), 3, 4 (unit), 5 (fake microphone), 8 (release) and 9 (no speech service, ADR-0033) pass. Open: screenshots, other widths, reduced motion (6), latency budgets in CI (7), barge-in test (10).
 - Date: 2026-10-23
 - Area: Speech and UI; amends ADR-0019 (speech in the browser) and ADR-0020 (UI in shadow DOM)
 - Spec: [SPEC-02](../specs/SPEC-02-voice-first-ui.md)

@@ -41,6 +41,12 @@ export interface DemoBrowserOptions {
 	accessibilityStandIn?: boolean
 	/** Chromium's fake microphone playing this WAV file (tests). */
 	fakeMic?: string
+	/**
+	 * Which browser: the installed Google Chrome (default for people) or Playwright's Chromium
+	 * (tests). Speech recognition needs Google Chrome: Chromium builds have no speech service, so
+	 * the microphone would only show the wave and an error (ADR-0033).
+	 */
+	channel?: 'chrome' | 'chromium'
 	/** Extra scripts run before the page's own (tests: speech stand-ins). */
 	initScripts?: string[]
 	viewport?: { width: number; height: number }
@@ -116,13 +122,26 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 		...(o.fakeMic ? ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${o.fakeMic}`] : []),
 		'--autoplay-policy=no-user-gesture-required',
 	]
-	const context = await chromium.launchPersistentContext(profile, {
-		headless: !!o.headless,
-		viewport: o.viewport || (o.headless ? { width: 1280, height: 800 } : null),
-		args,
-		locale: 'ar-EG',
-		...(o.recordVideoDir ? { recordVideo: { dir: o.recordVideoDir, size: o.viewport || { width: 1280, height: 800 } } } : {}),
-	})
+	const launch = (channel: 'chrome' | 'chromium') =>
+		chromium.launchPersistentContext(profile, {
+			...(channel === 'chrome' ? { channel: 'chrome', ignoreDefaultArgs: ['--disable-component-update'] } : {}),
+			headless: !!o.headless,
+			viewport: o.viewport || (o.headless ? { width: 1280, height: 800 } : null),
+			args,
+			locale: 'ar-EG',
+			...(o.recordVideoDir ? { recordVideo: { dir: o.recordVideoDir, size: o.viewport || { width: 1280, height: 800 } } } : {}),
+		})
+	let context: BrowserContext
+	let used = o.channel || (o.fakeMic || o.headless ? 'chromium' : 'chrome')
+	try {
+		context = await launch(used)
+	} catch (e) {
+		if (used !== 'chrome') throw e
+		log(`Google Chrome did not start (${(e as Error).message.split('\n')[0]}). Falling back to Chromium: typing works, but speech recognition needs Google Chrome.`)
+		used = 'chromium'
+		context = await launch(used)
+	}
+	log(`Browser: ${used === 'chrome' ? 'Google Chrome' : 'Chromium (no speech recognition service)'}`)
 	for (const origin of origins) await context.grantPermissions(['microphone', 'notifications'], { origin })
 
 	// Routes are matched newest first: the replay catch-all goes in first, the gateway bridge last.

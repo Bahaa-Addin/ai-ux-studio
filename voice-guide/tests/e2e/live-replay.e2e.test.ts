@@ -190,6 +190,8 @@ test('Arabic, by voice: the words appear one by one, the wave follows the microp
 			const n = words.querySelectorAll('.w').length
 			const arr = (window as any).__wordCounts as number[]
 			if (n && arr.at(-1) !== n) arr.push(n)
+			// Kept across the navigation the request starts (same-origin session storage).
+			sessionStorage.setItem('__vgWordCounts', JSON.stringify(arr))
 		}).observe(words, { childList: true, subtree: true })
 	})
 	await page.locator('vg-guide .vg-mic').click()
@@ -215,13 +217,14 @@ test('Arabic, by voice: the words appear one by one, the wave follows the microp
 	assert.ok(Math.max(...scales) - Math.min(...scales) > 0.1, `the halo grows and shrinks with the voice (${Math.min(...scales)}–${Math.max(...scales)})`)
 
 	// Word by word.
-	await page.evaluate(() => (window as any).__vgSayWords(['إيه', 'أرخص', 'باقة', 'نت؟']))
-	const counts = (await page.evaluate(() => (window as any).__wordCounts)) as number[]
-	assert.deepEqual(counts.slice(0, 4), [1, 2, 3, 4], `one new word at a time (saw ${counts.join(',')})`)
+	// The request may navigate before this call returns: the page that ran it can be gone.
+	await page.evaluate(() => (window as any).__vgSayWords(['إيه', 'أرخص', 'باقة', 'نت؟'])).catch(() => {})
 
 	// Plan: another page, the bundles tab, the cheapest card, its price read from the page.
 	await page.waitForURL(`${WEB}/ar/mobile-internet-bundles`, { timeout: 15_000 })
 	await ready()
+	const counts = JSON.parse((await page.evaluate(() => sessionStorage.getItem('__vgWordCounts'))) || '[]') as number[]
+	assert.deepEqual(counts.slice(0, 4), [1, 2, 3, 4], `one new word at a time (saw ${counts.join(',')})`)
 	const said = await heard(page, /37/, 15_000)
 	assert.match(said, /أرخص/)
 	await page.waitForTimeout(600) // the spotlight glides to its target (0.35 s)
@@ -237,6 +240,7 @@ test('Arabic, by voice: the words appear one by one, the wave follows the microp
 	})
 	assert.ok(spot.on, 'the spotlight is on')
 	assert.match(spot.card || '', /37/, 'and it frames the 37 EGP card')
+	assert.equal(await shadow((root) => getComputedStyle(root.querySelector('.panel')!).display), 'none', 'a spoken request does not open the panel over the answer (SPEC-02 §1)')
 	assert.ok(await page.evaluate(() => ((window as any).__vgStreams as MediaStream[]).every((s) => s.getTracks().every((t) => t.readyState === 'ended'))), 'the microphone was released')
 })
 
@@ -301,4 +305,28 @@ test('X-ray fills from long-polled events through the page origin', async () => 
 	const listen = view.turns.flatMap((t: any) => t.events).find((e: any) => e.layer === 'listen' && /shared-track/.test(e.detail))
 	assert.ok(listen, 'the listen row shows the audio mode')
 	assert.match(listen.detail, /first word \d+ ms/, 'and the time to the first word')
+})
+
+test('no speech service (Chromium, offline): the bar says so, the mic is released and typing is offered', async () => {
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec, null, { timeout: 10_000 })
+	await page.evaluate(() => {
+		const rec = (window as any).__activeRec
+		;(window as any).__activeRec = null
+		rec.onerror && rec.onerror({ error: 'network' })
+		rec.onend && rec.onend()
+	})
+	const ui = await page.waitForFunction(
+		() => {
+			const root = document.querySelector('vg-guide')!.shadowRoot!
+			const bar = root.querySelector('.vg-bar')?.textContent || ''
+			return /مش متاح|not available/.test(bar) ? { bar, focused: root.activeElement?.tagName || '' } : null
+		},
+		null,
+		{ timeout: 5000 },
+	)
+	const v = (await ui.jsonValue()) as { bar: string; focused: string }
+	assert.match(v.bar, /تكتب|type/i, 'it offers typing instead of "try again"')
+	assert.equal(v.focused, 'INPUT', 'the text box has focus')
+	assert.ok(await page.evaluate(() => ((window as any).__vgStreams as MediaStream[]).every((s) => s.getTracks().every((t) => t.readyState === 'ended'))), 'the microphone was released')
 })

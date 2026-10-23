@@ -1,6 +1,6 @@
 # ADR-0030: The SDK follows single-page-app route changes as page changes
 
-- Status: Proposed (Vodafone live phase). Accept when SPEC-03 acceptance 3 and SPEC-05 acceptance 4 pass.
+- Status: Accepted on a fixture app (2026-10-23): SPEC-05 acceptance 4 and 6 pass in `tests/e2e/spa-routes.e2e.test.ts` (a Back-signal ordering bug was found and fixed there). The live `/spa/` check is part of T-503.
 - Date: 2026-10-23
 - Area: Session continuity; extends ADR-0016
 - Specs: [SPEC-03 §2](../specs/SPEC-03-live-site-integration.md), [SPEC-05](../specs/SPEC-05-continuity-and-memory.md)

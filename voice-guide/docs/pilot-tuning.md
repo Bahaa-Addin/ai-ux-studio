@@ -84,6 +84,32 @@ All on one machine, fixture site, Postgres, Chromium; no network between the bro
 | `watch.intervalSec` | site config | 900 (fixture 15) | Faster notice vs checker load. |
 | `VG_WATCH_SCHEDULER` | env | on | Off on gateway replicas when the watch service runs separately. |
 
+### Vodafone live phase (ADR-0027 to ADR-0033)
+
+| Knob | Where | Default | Change when |
+|---|---|---|---|
+| `crawl.publicOnly` | site config | `true` for Vodafone (forced by `npm run sync`) | Never during this phase (owner's instruction, 2026-10-23). A signed-in crawl would need a new ADR and D5. |
+| `crawl.delayMs`, `crawl.concurrency` | site config | 1,000 ms, 2 | Lower only with Vodafone's written agreement; raise if the site answers 429. |
+| `crawl.maxDepth` | site config | 2 | Raise if real destinations sit three links from the navigation (the report lists missing seeds and pages). |
+| `sync.schedule.enabled` | site config | `false` (paused; `--scheduled` refused) | After D3 (written approval), with an ADR. |
+| `sync.gate.maxDestinationChurn` | site config | 0.15 | Raise for a planned redesign week; read the held report first. |
+| `sync.gate.evalCases`, `maxEvalDrop` | site config | Vodafone tuning set, 0.02 | Point at a larger set once T-206 reaches 50 + 20 per language. |
+| Language factor | `services/router/understand.ts` | 0.7 for destinations labelled only in the other language | Lower if English requests land on Arabic-only pages (or the reverse). |
+| Destination `priority` | `config/curated/vodafone-eg.yaml` | 1.2–1.4 on demo destinations | Lower when a demo destination wins requests it should not (check the held-out set). |
+| `ui.theme` | site config | `vodafone` | `page` for sites without a fixed token set (ADR-0029). |
+| `ui.voiceFirst` | site config | `true` | `false` brings back the round launcher and the panel first. |
+| `speech.onDevice` | site config | `prefer` | `require` once D2 says audio must not leave the device (no recognition where the model is missing). |
+| `data-events` on the script tag | page or demo browser | `poll` in the demo browser | `sse` where the page origin can hold a stream open (ADR-0031). |
+| Demo browser | `npm run demo:live -- --browser` | `chrome` | `chromium` only for tests: it has no speech service (ADR-0033). |
+
+Speech in the field, per mode and on-device (from the X-ray listen row's event):
+
+```sql
+select attrs->>'mode' as mode, attrs->>'onDevice' as on_device, count(*),
+       round(percentile_cont(0.5) within group (order by (attrs->>'firstWordMs')::numeric)::numeric) as first_word_p50
+from trace_events where name = 'sdk.listen' and attrs->>'source' = 'voice' and at > now() - interval '1 day' group by 1, 2 order by 3 desc;
+```
+
 ## Queries for the pilot
 
 Run against the Postgres database (`psql $DATABASE_URL`).

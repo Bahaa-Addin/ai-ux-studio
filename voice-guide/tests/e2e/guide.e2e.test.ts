@@ -200,7 +200,13 @@ test('fallback agent across pages: a click that navigates, then the agent contin
 	const steps = (await p.store.listTrace(sid)).filter((e) => e.name === 'agent.step')
 	assert.ok(steps.some((e) => /click_element_by_index/.test(String(e.attrs.action))), 'the first page clicked')
 	assert.ok(steps.some((e) => e.attrs.action === 'done' && Number(e.attrs.step) >= 2), 'the second page continued the step count')
-	assert.equal((await p.store.getSession(sid))?.agent, null, 'agent state is cleared when the task ends')
+	// The agent's end is saved right after its last line is spoken: wait for it, briefly.
+	let agent = (await p.store.getSession(sid))?.agent
+	for (let i = 0; agent && i < 30; i++) {
+		await page.waitForTimeout(100)
+		agent = (await p.store.getSession(sid))?.agent
+	}
+	assert.equal(agent, null, 'agent state is cleared when the task ends')
 })
 
 test('a plan step that keeps resuming is stopped on the third page load (loop guard)', async () => {
@@ -220,6 +226,10 @@ test('a plan step that keeps resuming is stopped on the third page load (loop gu
 test('X-ray shows every layer of each request from real traces', async () => {
 	await page.locator('vg-guide').locator('.xraybtn').click()
 	await page.waitForFunction(() => document.querySelector('vg-guide')!.shadowRoot!.querySelectorAll('.xray .turn').length >= 1)
+	// Events arrive by stream after the page load; give the backlog a moment to land.
+	await page
+		.waitForFunction(() => /understand[\s\S]*mock-agent-1|mock-agent-1[\s\S]*understand/.test(document.querySelector('vg-guide')!.shadowRoot!.querySelector('.xray')!.textContent || ''), null, { timeout: 5000 })
+		.catch(() => {})
 	const text = await page.evaluate(() => document.querySelector('vg-guide')!.shadowRoot!.querySelector('.xray')!.textContent || '')
 	assert.match(text, /understand/)
 	assert.match(text, /mock-agent-1/, 'the agent turn shows its model calls')

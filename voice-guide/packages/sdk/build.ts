@@ -34,6 +34,31 @@ const stubs: esbuild.Plugin = {
 	},
 }
 
+/**
+ * CSS lives in template literals (one shadow root, ADR-0020), which the minifier leaves alone.
+ * Collapses their whitespace at build time: about 1 KB gzipped off guide.js (PRD §9 size budget).
+ */
+const cssMinify: esbuild.Plugin = {
+	name: 'css-minify',
+	setup(b) {
+		b.onLoad({ filter: /packages[\\/]sdk[\\/]src[\\/].*\.ts$/ }, (a) => {
+			const src = fs.readFileSync(a.path, 'utf8')
+			if (!/CSS = (\(th: Theme\) => )?`/.test(src)) return undefined
+			const contents = src.replace(/(CSS = (?:\(th: Theme\) => )?`)([^`]*)`/g, (_m, head: string, css: string) => {
+				const min = css
+					.replace(/\/\*[\s\S]*?\*\//g, '')
+					.replace(/\s+/g, ' ')
+					.replace(/\s*([{};,])\s*/g, '$1')
+					.replace(/;}/g, '}')
+					.replace(/: /g, ':')
+					.trim()
+				return `${head}${min}\``
+			})
+			return { contents, loader: 'ts' }
+		})
+	},
+}
+
 /** Resolves the repo's `#kb` alias for browser builds (types only are imported by the SDK). */
 const alias: esbuild.Plugin = {
 	name: 'alias',
@@ -58,7 +83,7 @@ export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<
 		define: { 'process.env.NODE_ENV': '"production"' },
 	}
 	await Promise.all([
-		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'index.ts')], outfile: path.join(OUT, 'guide.js') }),
+		esbuild.build({ ...common, plugins: [...(opts.minify ?? true ? [cssMinify] : []), raw, stubs, alias], entryPoints: [path.join(SRC, 'index.ts')], outfile: path.join(OUT, 'guide.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'agent.ts')], outfile: path.join(OUT, 'agent.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'sw.ts')], outfile: path.join(OUT, 'sw.js') }),
 	])

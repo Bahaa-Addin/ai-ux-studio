@@ -12,7 +12,7 @@ Start with [`../AGENTS.md`](../AGENTS.md) and the [handoff](handoff/HANDOFF.md).
 | [`diagrams/`](diagrams/README.md) | Context, containers, voice request, continuity, sync, UI states, data model, deployment, demo journey | Understanding the system quickly |
 | [`tasks/`](tasks/TASKS.md) | Epics E0–E7, tasks with acceptance criteria and dependencies | Picking the next piece of work |
 | [`qa/`](qa/) | [Test plan](qa/test-plan.md) · [Acceptance checklist](qa/acceptance-checklist.md) · [Risk register](qa/risk-register.md) | Testing, go/no-go, weekly review |
-| [`ops/`](ops/) | [Demo-day runbook](ops/runbook-demo-day.md) | Preparing and running the demo |
+| [`ops/`](ops/) | [Runbook](ops/runbook.md) (setup, running the demo, public-only knowledge refresh, troubleshooting), [demo-day runbook](ops/runbook-demo-day.md) | Running the demo and keeping it current |
 | [`reference/`](reference/) | [Vodafone live site audit](reference/vodafone-live-site-audit.md) · [Glossary](reference/glossary.md) | Facts about the live site; terms |
 | (root of `docs/`) | [Site knowledge standard 0.1](kb-standard.md) with its JSON Schema · plan contract schema · [Pilot tuning guide](pilot-tuning.md) | Changing the knowledge base or tuning the pilot |
 

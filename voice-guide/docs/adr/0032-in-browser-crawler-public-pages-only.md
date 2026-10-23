@@ -56,4 +56,5 @@ The build sandbox cannot reach `web.vodafone.com.eg`. The owner asked to crawl t
 
 - `tests/unit/crawler-url.test.ts`: URL normalisation, scope, login-URL and challenge patterns.
 - `tests/unit/robots.test.ts`: the live robots files of both origins.
-- `tests/integration/ingest.test.ts`: build from an imported crawl folder.
+- `tests/integration/sync.test.ts`: build, gate and activate from a saved crawl folder of real pages; schedule refusal; public-only forced.
+- `tests/unit/vodafone-kb.test.ts`: the builder on the saved real pages.

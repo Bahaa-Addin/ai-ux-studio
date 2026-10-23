@@ -6,6 +6,16 @@ A guide that works on top of any existing website. A person asks it something ou
 
 This repository is the demo build. The parts are real: the SDK, the gateway, five services, Postgres, the ingestion jobs and page-agent. Stand-ins are used only where the system meets the outside world (ADR-0024). Every architecture decision is recorded in [`docs/adr`](docs/adr/README.md), with the settings to tune for the pilot and the measurement that should reopen it.
 
+## Run it on the Vodafone website
+
+```sh
+npm install && npx playwright install chromium
+npm run demo:live                 # live site, in your Google Chrome, starting on /ar/home
+npm run demo:live -- --replay     # offline, on Vodafone pages saved on 2026-10-23
+```
+
+No Postgres needed. The full procedure (microphone check, knowledge-base refresh from public pages, the paused schedule, troubleshooting) is in the [runbook](docs/ops/runbook.md).
+
 ## How it fits together
 
 ```
@@ -61,6 +71,10 @@ Without a model key, requests that need the fallback agent get a short "I can't 
 | `npm run gateway` | The gateway alone, with services in process (`VG_SERVICES=local`) or remote (`http`). |
 | `npm run service -- <router\|knowledge\|sessions\|agent\|watch>` | One service on its own port, for scaling it separately. |
 | `npm run ingest -- --site <id> [--activate] [--dry-run]` | Crawl, describe, build and validate the knowledge base. |
+| `npm run demo:live [-- --replay] [--start <url>] [--kiosk] [--xray open]` | The guide on the Vodafone website (or saved pages) in Google Chrome, with the gateway and knowledge base, from one command. |
+| `npm run sync -- --site vodafone-eg [--origin web] [--dry-run] [--from-crawl <dir>]` | On-demand refresh from public pages: crawl, build, gate, activate or hold. Scheduled runs are refused while paused. |
+| `npm run kb -- --site <id> --status\|--activate <id>\|--rollback <id>\|--import <file>\|--export <file>` | Knowledge-base versions in the store. |
+| `npm run live-crawl:bundle`, `npm run live-crawl:import` | Crawl from a browser tab when the machine running npm cannot reach the site (ADR-0032). |
 | `npm run eval:router -- [--site] [--cases] [--decider local\|jev\|laya]` | Router accuracy and latency on a set of requests. |
 | `npm test` | Unit and integration tests (real Postgres, real Chromium for ingestion). |
 | `npm run test:e2e` | The demo flow in Chromium, end to end. |

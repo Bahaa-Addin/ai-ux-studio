@@ -33,6 +33,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #00b0ca; outline-
 .mic { background: var(--vf-red); color: #fff; }
 .send { background: var(--vf-bg); color: var(--vf-ink); }
 .spot { border-radius: 6px; box-shadow: 0 0 0 3px var(--vf-red), 0 0 0 9px rgba(230,0,0,.35), 0 0 0 9999px rgba(20,20,30,.38); }
+.spot.commit { box-shadow: 0 0 0 3px #ffffff, 0 0 0 7px var(--vf-red-dark), 0 0 0 9999px rgba(20,20,30,.38); }
 .bubble { background: #fff; color: var(--vf-ink); border-radius: 6px; border-top: 3px solid var(--vf-red); box-shadow: var(--vf-shadow-float); font-size: 16px; }
 .pointer { background: var(--vf-red); }
 .toast { border-radius: 6px; border-inline-start-color: var(--vf-red); box-shadow: var(--vf-shadow-float); }

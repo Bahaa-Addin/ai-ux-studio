@@ -1,6 +1,6 @@
 # ADR-0028: Keep the knowledge base in step with the live site: seeds plus sitemap lastmod, polite crawling, path-based language pairing, and gated automatic activation
 
-- Status: Proposed (Vodafone live phase). Accept when SPEC-04 acceptance criteria 1–7 pass.
+- Status: Proposed; on-demand part implemented and tested (ADR-0033, `tests/integration/sync.test.ts`: SPEC-04 acceptance 4 and 5). Schedule paused by the owner (2026-10-23) and refused in code. Open: incremental `lastmod` runs, acceptance 1–3 and 6–7 against the live site.
 - Date: 2026-10-23
 - Area: Ingestion; extends ADR-0012 (which kept activation manual)
 - Spec: [SPEC-04](../specs/SPEC-04-live-knowledge-sync.md)
