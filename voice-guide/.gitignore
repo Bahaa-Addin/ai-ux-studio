@@ -5,6 +5,3 @@ data/
 *.log
 test-results/
 recordings/
-
-# symlinked node_modules in agent sandboxes
-node_modules

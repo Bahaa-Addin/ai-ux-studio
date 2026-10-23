@@ -61,6 +61,14 @@ const slug = (s: string) =>
 const asciiSlug = (s: string) => slug(s).replace(/[^a-z0-9-]/g, '')
 const shortHash = (s: string) => createHash('sha1').update(s).digest('hex').slice(0, 6)
 const uniq = <T>(xs: T[]) => [...new Set(xs.filter(Boolean))]
+/** Page furniture that is never a label: skip links and their targets. */
+const BOILERPLATE = /^(skip to (main )?content|main content start|تخطي إلى المحتوى( الرئيسي)?|انتقل إلى المحتوى)$/i
+/** Call-to-action texts that say nothing about where they lead ("Know more", "أعرف أكتر"). */
+const GENERIC_ANCHOR = /^(know more|learn more|read more|view more|see more|more|here|click here|check now|details|h1|go|start|اعرف أكتر|أعرف أكتر|اعرف اكتر|أعرف اكتر|اعرف أكثر|اعرف اكثر|أعرف أكثر|المزيد|اضغط هنا|هنا|التفاصيل)$/i
+/** Accessible names some sites put on links: "Press Enter to redirect to X" -> "X". */
+const cleanAnchor = (t: string) => t.replace(/^press enter to redirect to\s+/i, '').trim()
+/** Soft 404s: the server answered 200 with a "page not found" page. */
+const SOFT_404 = /^(notfound|not found|page not found!?|404|الصفحة غير موجودة!?)$/i
 
 const GENERIC_VISUAL_WORDS: Record<string, Record<string, string[]>> = {
 	image: { en: ['banner', 'image', 'picture'], ar: ['البانر', 'الصورة'] },
@@ -87,7 +95,8 @@ function fragmentFor(css: string, labels: I18nList): string {
 }
 
 export function buildManifest(input: BuildInput): BuildOutput {
-	const { site, crawl, descriptions, overlay } = input
+	const { site, descriptions, overlay } = input
+	let crawl = input.crawl
 	const now = input.now || new Date()
 	const languages = site.languages
 	const originKey = (url: string) => {
@@ -112,6 +121,9 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			return u
 		}
 	}
+	// Soft 404s (a 200 with a "page not found" page) are not pages.
+	const soft404 = (p: PageSnap) => SOFT_404.test(cleanTitle(p.title).trim()) || SOFT_404.test((p.h1 || '').trim())
+	crawl = { ...crawl, pages: crawl.pages.filter((p) => !soft404(p)) }
 	const byUrl = new Map(crawl.pages.map((p) => [p.url, p]))
 	// URLs that redirected to a crawled page (the live site sends /ar/<english-slug> to an Arabic slug).
 	const aliasOf = new Map<string, string>()
@@ -191,6 +203,15 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			vmap.set(lang, m)
 			pageIdByUrl.set(m.url, id)
 		}
+		// A language-neutral path (/spa/<route>) is one page in every language: the app switches
+		// language itself without changing the URL (ADR-0028).
+		if (site.crawl.pairLanguagesBy === 'path' && members.length === 1 && !langOfPath(ref.url)) {
+			for (const l of languages) {
+				if (variants[l]) continue
+				variants[l] = { ...Object.values(variants)[0] }
+				vmap.set(l, ref)
+			}
+		}
 		variantsOf.set(id, vmap)
 		pages.push({ id, kind: 'content', variants, provenance: 'auto' })
 	}
@@ -205,9 +226,12 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		for (const l of p.links) {
 			const u = resolve(l.href)
 			const target = u ? pageIdByUrl.get(u) : undefined
-			if (!target || languageNames.test(l.text) || l.hreflang) continue
+			// Links to the page they sit on (skip links, "Go to …" menu headers with href="#") say
+			// nothing about that page.
+			const text = cleanAnchor(l.text)
+			if (!target || u === p.url || BOILERPLATE.test(text) || GENERIC_ANCHOR.test(text) || languageNames.test(text) || l.hreflang) continue
 			const list = anchorLabels.get(target) || {}
-			addTo(list, p.lang, l.text)
+			addTo(list, p.lang, text)
 			anchorLabels.set(target, list)
 		}
 	}
@@ -228,6 +252,16 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		})
 	}
 
+	// ---- unique ids (real pages repeat headings and section names; ids stay stable for the same markup) ----
+	const usedDest = new Set<string>()
+	const usedVisual = new Set<string>()
+	const uniqueId = (used: Set<string>, base: string) => {
+		let id = base
+		for (let n = 2; used.has(id); n++) id = `${base}-${n}`
+		used.add(id)
+		return id
+	}
+
 	// ---- collections (paired across languages by container locator and item key) ----
 	const collectionByContainer = new Map<string, { col: Collection; destId: string }>()
 	for (const page of pages) {
@@ -239,7 +273,7 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			const labels: I18nList = {}
 			for (const v of vs) addTo(labels, v.lang, v.c.heading)
 			const containerId = /^#([A-Za-z][\w-]*)/.exec(css)?.[1]
-			const id = `${page.id}.${containerId ? containerId.toLowerCase() : fragmentFor(css, labels)}`
+			const id = uniqueId(usedDest, `${page.id}.${containerId ? containerId.toLowerCase() : fragmentFor(css, labels)}`)
 			const col: Collection = {
 				id,
 				pageId: page.id,
@@ -269,7 +303,7 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			for (const [k, l] of items) {
 				const itemCss = ref.c.keyAttr && !k.startsWith('#') ? `${ref.c.itemCss}[${ref.c.keyAttr}="${k}"]` : `${ref.c.itemCss}:nth-of-type(${Number(k.slice(1)) + 1})`
 				destinations.push({
-					id: `${id}.${asciiSlug(k) || shortHash(k)}`,
+					id: uniqueId(usedDest, `${id}.${asciiSlug(k) || shortHash(k)}`),
 					pageId: page.id,
 					kind: 'item',
 					target: { css: [itemCss], text: Object.fromEntries(Object.entries(l).map(([lang, xs]) => [lang, xs[0]])) },
@@ -289,6 +323,8 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		for (const [lang, snap] of vmap) for (const s of snap.sections) byCss.set(s.css[0], [...(byCss.get(s.css[0]) || []), { lang, s }])
 		for (const [css, vs] of byCss) {
 			const ref = vs.find((v) => v.lang === site.defaultLanguage) || vs[0]
+			// Skip-link targets and similar page furniture are not places people ask for.
+			if (vs.every((v) => BOILERPLATE.test((v.s.heading || '').trim())) || /^#main-content/.test(css)) continue
 			// A section that wraps a collection becomes that collection's destination.
 			const wrapped = [...collectionByContainer.entries()].find(([k]) => k.startsWith(`${page.id} ${css} `) || k === `${page.id} ${css}`)
 			if (wrapped) {
@@ -305,7 +341,7 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			}
 			const kind = ref.s.kind === 'faq' ? 'faq' : 'section'
 			const d: Destination = {
-				id: `${page.id}.${fragmentFor(css, labels)}`,
+				id: uniqueId(usedDest, `${page.id}.${fragmentFor(css, labels)}`),
 				pageId: page.id,
 				kind,
 				target: { css: ref.s.css, text: Object.fromEntries(vs.map((v) => [v.lang, v.s.heading])) },
@@ -342,14 +378,14 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			if (!Object.keys(description).length) continue
 			const labels: I18nList = {}
 			for (const x of vs) addTo(labels, x.lang, x.v.meta.svgTitle, x.v.meta.alt, x.v.meta.ariaLabel, x.v.meta.heading)
-			const id = `${page.id}.${fragmentFor(css, labels)}`
+			const id = uniqueId(usedVisual, `${page.id}.${fragmentFor(css, labels)}`)
 			// Generic words people use for this kind of visual ("this banner", "the chart").
 			const isMap = /map|خريط/i.test(JSON.stringify(labels))
 			const generic = isMap ? GENERIC_VISUAL_WORDS.map : GENERIC_VISUAL_WORDS[ref.v.kind] || GENERIC_VISUAL_WORDS.image
 			for (const l of languages) addTo(labels, l, ...(generic[l] || []))
 			visuals.push({ id, pageId: page.id, kind: ref.v.kind, target: { css: ref.v.css }, description, source, confidence })
 			visualStats[source] = (visualStats[source] || 0) + 1
-			destinations.push({ id: `${id}.visual`, pageId: page.id, kind: 'visual', target: { css: ref.v.css }, labels, description, visualId: id, provenance: 'auto' })
+			destinations.push({ id: uniqueId(usedDest, `${id}.visual`), pageId: page.id, kind: 'visual', target: { css: ref.v.css }, labels, description, visualId: id, provenance: 'auto' })
 		}
 	}
 
@@ -362,7 +398,7 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			const labels: I18nList = {}
 			for (const v of vs) addTo(labels, v.lang, v.text)
 			destinations.push({
-				id: `${page.id}.${fragmentFor(css, labels)}`,
+				id: uniqueId(usedDest, `${page.id}.${fragmentFor(css, labels)}`),
 				pageId: page.id,
 				kind: 'action',
 				target: { css: vs[0].css, text: Object.fromEntries(vs.map((v) => [v.lang, v.text])) },

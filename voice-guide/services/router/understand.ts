@@ -148,6 +148,11 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 		let b = d.pageId === currentPage ? (intent === 'describe' ? 2 : 1.25) : 1
 		if (intent === 'watch' && d.watchable) b *= 1.5
 		if (pageHits.length && d.kind === 'page') b *= 1.6
+		// Prefer what is labelled in the language being spoken: on sites whose pages differ by
+		// language (Vodafone's Arabic and English bundle markup), the other language's copy of a
+		// destination may not exist on the page the person is on.
+		const labelled = Object.entries(d.labels).filter(([, xs]) => xs.length).map(([l]) => l)
+		if (labelled.length && !labelled.includes(lang) && !d.examples?.[lang]?.length) b *= 0.7
 		return b * (d.priority ?? 1)
 	}
 	const hits: Hit[] = query.trim() ? kb.index.search(query, { limit: settings.topK, filter, boost }) : []
