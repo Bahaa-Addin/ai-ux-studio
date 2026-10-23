@@ -20,16 +20,24 @@ export interface KbIndex {
 	itemsByCollection: Map<string, Destination[]>
 	/** Normalised variant URL -> page and language. */
 	pageByUrl: Map<string, { pageId: string; lang: string }>
+	/** The page and language a URL belongs to: exact variant, then redirect alias (T-303). */
+	pageFor(url: string): { pageId: string; lang: string } | undefined
 	index: RetrievalIndex
 	synonyms: SynonymMap
 }
 
-export function variantKey(url: string): string {
+export function variantKey(url: string, keepQuery: string[] = []): string {
 	try {
 		const u = new URL(url)
 		let p = u.pathname
 		if (p.endsWith('/')) p += 'index.html'
-		return `${u.origin}${p}`
+		const q = new URLSearchParams()
+		for (const k of keepQuery) {
+			const v = u.searchParams.get(k)
+			if (v !== null) q.set(k, v)
+		}
+		const qs = q.toString()
+		return `${u.origin}${p}${qs ? `?${qs}` : ''}`
 	} catch {
 		return url
 	}
@@ -57,7 +65,13 @@ export function buildKbIndex(m: Manifest): KbIndex {
 		}
 	})
 	const pageByUrl = new Map<string, { pageId: string; lang: string }>()
-	for (const p of m.pages) for (const [lang, v] of Object.entries(p.variants)) pageByUrl.set(variantKey(v.url), { pageId: p.id, lang })
+	const keep = m.site.keepQuery || []
+	for (const p of m.pages)
+		for (const [lang, v] of Object.entries(p.variants)) {
+			pageByUrl.set(variantKey(v.url, keep), { pageId: p.id, lang })
+			for (const a of v.aliases || []) if (!pageByUrl.has(variantKey(a, keep))) pageByUrl.set(variantKey(a, keep), { pageId: p.id, lang })
+		}
+	const pageFor = (url: string) => pageByUrl.get(variantKey(url, keep))
 	const itemsByCollection = new Map<string, Destination[]>()
 	for (const d of m.destinations) if (d.kind === 'item' && d.collectionId) itemsByCollection.set(d.collectionId, [...(itemsByCollection.get(d.collectionId) || []), d])
 	// Flow intent words are the verbs ("subscribe", "اشترك"), not the objects they act on
@@ -85,6 +99,7 @@ export function buildKbIndex(m: Manifest): KbIndex {
 		flowTerms,
 		itemsByCollection,
 		pageByUrl,
+		pageFor,
 		index: new RetrievalIndex(docs, { synonyms }),
 		synonyms,
 	}

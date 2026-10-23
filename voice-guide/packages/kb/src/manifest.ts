@@ -34,6 +34,8 @@ export const Target = z.object({
 export const PageVariant = z.object({
 	url: z.url(),
 	title: z.string(),
+	/** URLs that redirect here (the live site redirects /ar/<english-slug> to an Arabic slug). */
+	aliases: z.array(z.url()).optional(),
 })
 
 export const Page = z.object({
@@ -146,6 +148,8 @@ export const Site = z.object({
 	origins: z.array(z.url()).min(1),
 	languages: z.array(LangCode).min(1),
 	defaultLanguage: LangCode,
+	/** Query parameters that make a different page (the shop's category lists); others are ignored when matching URLs. */
+	keepQuery: z.array(z.string()).optional(),
 })
 
 export const Version = z.object({

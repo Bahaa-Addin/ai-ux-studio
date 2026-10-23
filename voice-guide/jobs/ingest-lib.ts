@@ -12,7 +12,8 @@ import type { Issue, Manifest } from '#kb'
 import { type PlatformConfig, resolveFromRoot, type SiteConfig } from '#shared/config.ts'
 import type { Store } from '#shared/store/index.ts'
 
-import { crawlSite } from './crawler/crawl.ts'
+import { crawlSite, loadCrawl } from './crawler/crawl.ts'
+import { makeInScope } from './crawler/url.ts'
 import { describeCrawl } from './describer/describe.ts'
 import { buildManifest, type BuildStats } from './kb-builder/build.ts'
 import { loadOverlay } from './kb-builder/overlay.ts'
@@ -26,6 +27,8 @@ export interface IngestOptions {
 	browser?: Browser
 	log?: (m: string) => void
 	fetchImpl?: typeof fetch
+	/** Build from a crawl taken earlier (for example by the in-browser crawler, ADR-0032) instead of crawling. */
+	crawlDir?: string
 }
 
 export interface IngestReport {
@@ -47,7 +50,14 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
 	const log = opts.log || (() => {})
 	const { site, platform, store } = opts
 	const t0 = Date.now()
-	const crawl = await crawlSite(site, { outDir: path.join(platform.dataDir, 'crawls'), browser: opts.browser, log })
+	const crawl = opts.crawlDir ? loadCrawl(opts.crawlDir) : await crawlSite(site, { outDir: path.join(platform.dataDir, 'crawls'), browser: opts.browser, log, fetchImpl: opts.fetchImpl })
+	if (opts.crawlDir) {
+		// A saved crawl is re-scoped with today's config, so tightening include/exclude never needs a new crawl.
+		const inScope = makeInScope({ origins: site.origins.map((o) => o.url), include: site.crawl.include, exclude: site.crawl.exclude })
+		const before = crawl.pages.length
+		crawl.pages = crawl.pages.filter((p) => inScope(p.url))
+		if (crawl.pages.length !== before) log(`scope: ${before - crawl.pages.length} saved pages are outside today's scope and were left out`)
+	}
 	const crawlMs = Date.now() - t0
 	log(`crawl ${crawl.id}: ${crawl.pages.length} pages, ${crawl.errors.length} errors in ${crawlMs} ms`)
 

@@ -7,7 +7,7 @@ import { Plan } from '#kb'
 import type { PlatformConfig, SiteConfig } from '#shared/config.ts'
 import { HttpError } from '#shared/http.ts'
 import { newId } from '#shared/ids.ts'
-import { type KbCache, type KbIndex, variantKey } from '#shared/kb-index.ts'
+import { type KbCache, type KbIndex } from '#shared/kb-index.ts'
 import type { RpcContext } from '#shared/rpc.ts'
 import type { Entity, SessionState, Turn } from '#shared/store/index.ts'
 import type { Tracer } from '#shared/trace.ts'
@@ -69,7 +69,7 @@ export function createRouter(deps: RouterDeps) {
 
 			const turnId = ctx.trace.turnId || newId('turn', 9)
 			const tctx = { ...ctx.trace, turnId }
-			const pageId = kb.pageByUrl.get(variantKey(input.page.url))?.pageId
+			const pageId = kb.pageFor(input.page.url)?.pageId
 			await deps.tracer.event(tctx, 'turn.received', { utterance, uiLang: input.uiLang, page: input.page.url, pageId, kbVersion: kb.versionId })
 
 			const u = direct(utterance, kb, input) ?? (await understand({

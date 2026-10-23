@@ -23,6 +23,7 @@ import {
 import type { SiteConfig } from '#shared/config.ts'
 
 import type { CollectionSnap, CrawlResult, PageSnap, RevealSnap } from '../crawler/types.ts'
+import { normalizeUrl } from '../crawler/url.ts'
 import { type VisualDescription, visualKey } from '../describer/describe.ts'
 import type { Overlay } from './overlay.ts'
 
@@ -103,8 +104,22 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		return parts[0] || t
 	}
 
-	// ---- group pages by hreflang alternates ----
+	// ---- group pages into one page per language set (ADR-0011; ADR-0028 for path pairing) ----
+	const norm = (u: string) => {
+		try {
+			return normalizeUrl(u, { keepQuery: site.crawl.keepQuery, directoryIndex: site.crawl.directoryIndex })
+		} catch {
+			return u
+		}
+	}
 	const byUrl = new Map(crawl.pages.map((p) => [p.url, p]))
+	// URLs that redirected to a crawled page (the live site sends /ar/<english-slug> to an Arabic slug).
+	const aliasOf = new Map<string, string>()
+	for (const p of crawl.pages) for (const a of p.aliases || []) aliasOf.set(norm(a), p.url)
+	const resolve = (u: string) => {
+		const n = norm(u)
+		return byUrl.has(n) ? n : aliasOf.get(n)
+	}
 	const parent = new Map<string, string>()
 	const find = (u: string): string => {
 		const p = parent.get(u) ?? u
@@ -118,10 +133,32 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		const rb = find(b)
 		if (ra !== rb) parent.set(rb, ra)
 	}
+	const languageNames = /^(english|العربية|عربي|français|deutsch)$/i
+	const langOfPath = (u: string) => {
+		const seg = new URL(u).pathname.split('/').filter(Boolean)[0]
+		return seg && languages.includes(seg) ? seg : undefined
+	}
 	for (const p of crawl.pages) {
 		for (const alt of Object.values(p.alternates)) {
-			const u = alt.split('#')[0].split('?')[0]
-			if (byUrl.has(u)) union(p.url, u)
+			const u = resolve(alt)
+			if (u) union(p.url, u)
+		}
+		if (site.crawl.pairLanguagesBy !== 'path') continue
+		const own = langOfPath(p.url)
+		if (!own) continue
+		// 1. the page's own language switch ("العربية" / "English"), resolved through redirects
+		for (const l of p.links) {
+			if (!languageNames.test(l.text.trim())) continue
+			const u = resolve(l.href)
+			if (u && u !== p.url && langOfPath(u) && langOfPath(u) !== own) union(p.url, u)
+		}
+		// 2. the same path under the other language prefix, resolved through redirects
+		const url = new URL(p.url)
+		for (const other of languages) {
+			if (other === own) continue
+			url.pathname = url.pathname.replace(new RegExp(`^/${own}/`), `/${other}/`)
+			const u = resolve(url.toString())
+			if (u) union(p.url, u)
 		}
 	}
 	const groups = new Map<string, PageSnap[]>()
@@ -135,7 +172,8 @@ export function buildManifest(input: BuildInput): BuildOutput {
 	const variantsOf = new Map<string, Map<string, PageSnap>>()
 	const usedIds = new Set<string>()
 	for (const members of groups.values()) {
-		const ref = members.find((m) => m.lang === site.defaultLanguage) || members[0]
+		const ascii = (m: PageSnap) => /^[\x20-\x7e]*$/.test(decodeURIComponent(new URL(m.url).pathname))
+		const ref = members.find((m) => ascii(m) && m.lang === 'en') || members.find(ascii) || members.find((m) => m.lang === site.defaultLanguage) || members[0]
 		const segs = new URL(ref.url).pathname.split('/').filter(Boolean)
 		if (segs.length && languages.includes(segs[0])) segs.shift()
 		let s = segs.join('-').replace(/\.html?$/, '')
@@ -146,9 +184,10 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		const variants: Record<string, { url: string; title: string }> = {}
 		const vmap = new Map<string, PageSnap>()
 		for (const m of members) {
-			const lang = languages.includes(m.lang) ? m.lang : site.defaultLanguage
+			const fromPath = site.crawl.pairLanguagesBy === 'path' ? langOfPath(m.url) : undefined
+			const lang = fromPath || (languages.includes(m.lang) ? m.lang : site.defaultLanguage)
 			if (variants[lang]) continue
-			variants[lang] = { url: m.url, title: cleanTitle(m.title) || m.h1 }
+			variants[lang] = { url: m.url, title: cleanTitle(m.title) || m.h1, ...(m.aliases?.length ? { aliases: m.aliases } : {}) }
 			vmap.set(lang, m)
 			pageIdByUrl.set(m.url, id)
 		}
@@ -162,11 +201,10 @@ export function buildManifest(input: BuildInput): BuildOutput {
 
 	// ---- page destinations, labelled by titles, h1 and the anchor texts that point at them ----
 	const anchorLabels = new Map<string, I18nList>()
-	const languageNames = /^(english|العربية|عربي|français|deutsch)$/i
 	for (const p of crawl.pages) {
 		for (const l of p.links) {
-			const u = l.href.split('#')[0].split('?')[0]
-			const target = pageIdByUrl.get(u)
+			const u = resolve(l.href)
+			const target = u ? pageIdByUrl.get(u) : undefined
 			if (!target || languageNames.test(l.text) || l.hreflang) continue
 			const list = anchorLabels.get(target) || {}
 			addTo(list, p.lang, l.text)
@@ -414,6 +452,7 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			origins: site.origins.map((o) => new URL(o.url).origin),
 			languages,
 			defaultLanguage: site.defaultLanguage,
+			...(site.crawl.keepQuery.length ? { keepQuery: site.crawl.keepQuery } : {}),
 		},
 		pages,
 		destinations,

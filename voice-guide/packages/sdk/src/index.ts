@@ -1,7 +1,7 @@
 /**
  * Loader: the one script tag a site adds (ADR-0006, ADR-0022).
  *   <script src="https://guide.example.com/sdk/guide.js" data-site-key="pk_..." async></script>
- * Optional: data-xray="open|button|off", data-open="true".
+ * Optional: data-xray="open|button|off", data-open="true", data-gateway="<url>", data-events="poll".
  */
 import { Guide } from './guide.ts'
 
@@ -13,8 +13,13 @@ function boot(): void {
 	if (!script) return console.warn('[voice-guide] script tag not found')
 	const siteKey = script.dataset.siteKey
 	if (!siteKey) return console.warn('[voice-guide] data-site-key is missing')
-	const gateway = new URL(script.src).origin
-	const guide = new Guide({ gateway, siteKey, xray: script.dataset.xray as any, autoOpen: script.dataset.open === 'true' })
+	// The gateway is wherever guide.js came from, keeping any path prefix: a demo browser can serve it
+	// from the page's own origin (https://web.vodafone.com.eg/__vg/sdk/guide.js -> .../__vg) and
+	// forward to a local gateway (ADR-0031). data-gateway overrides.
+	const src = new URL(script.src)
+	const gateway = script.dataset.gateway || `${src.origin}${src.pathname.replace(/\/sdk\/guide\.js$/, '')}`
+	const events = script.dataset.events === 'poll' ? 'poll' : 'auto'
+	const guide = new Guide({ gateway, siteKey, xray: script.dataset.xray as any, autoOpen: script.dataset.open === 'true', events })
 	const start = () => guide.start().catch((e) => console.warn('[voice-guide] failed to start', e))
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true })
 	else void start()

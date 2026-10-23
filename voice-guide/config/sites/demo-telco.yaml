@@ -31,6 +31,8 @@ crawl:
   cookies:
     - { url: http://localhost:4402, name: demo_session, value: demo }
   collections: { minItems: 3 }
+  # Fixture servers resolve /dir/ to /dir/index.html (real sites do not need this).
+  directoryIndex: index.html
 
 curated: config/curated/demo-telco.yaml
 
