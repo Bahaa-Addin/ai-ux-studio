@@ -138,13 +138,20 @@ export const SiteConfig = z.object({
 				})
 				.default({ enabled: false, everyMinutes: 120, window: '07:00-23:00', timezone: 'Africa/Cairo' }),
 			gate: z
-				.object({ maxDestinationChurn: z.number().min(0).max(1).default(0.15), requireSeeds: z.boolean().default(true) })
-				.default({ maxDestinationChurn: 0.15, requireSeeds: true }),
+				.object({
+					maxDestinationChurn: z.number().min(0).max(1).default(0.15),
+					requireSeeds: z.boolean().default(true),
+					/** Router evaluation set scored against the new and the active version (SPEC-04 §5 step 6). */
+					evalCases: z.string().optional(),
+					/** Largest allowed drop in that score, as a fraction (0.02 = 2 points). */
+					maxEvalDrop: z.number().min(0).max(1).default(0.02),
+				})
+				.default({ maxDestinationChurn: 0.15, requireSeeds: true, maxEvalDrop: 0.02 }),
 			keepVersions: z.number().int().min(1).default(10),
 		})
 		.default({
 			schedule: { enabled: false, everyMinutes: 120, window: '07:00-23:00', timezone: 'Africa/Cairo' },
-			gate: { maxDestinationChurn: 0.15, requireSeeds: true },
+			gate: { maxDestinationChurn: 0.15, requireSeeds: true, maxEvalDrop: 0.02 },
 			keepVersions: 10,
 		}),
 	curated: z.string().optional(),

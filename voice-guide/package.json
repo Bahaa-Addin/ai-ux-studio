@@ -19,6 +19,8 @@
     "fixtures": "node tools/serve-site.ts --site demo-telco",
     "build:sdk": "node packages/sdk/build.ts",
     "ingest": "node jobs/ingest.ts",
+    "sync": "node jobs/sync.ts",
+    "kb": "node tools/kb/cli.ts",
     "db:migrate": "node services/shared/migrate.ts",
     "eval:router": "node tools/eval-router.ts",
     "test": "node --test --test-concurrency=1 --test-timeout=120000 \"tests/unit/**/*.test.ts\" \"tests/integration/**/*.test.ts\"",
