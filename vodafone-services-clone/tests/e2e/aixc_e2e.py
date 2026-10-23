@@ -120,7 +120,7 @@ def good_schema(ids, density="balanced", title=None):
     }
 
 
-TEMPLATE_IDS = ["streaming", "spotlight", "journey", "gallery", "flipbook", "cube", "magazine"]
+TEMPLATE_IDS = ["streaming", "split", "fan", "ring", "tunnel", "canvas", "coverflow", "spotlight", "journey", "gallery", "flipbook", "cube", "magazine"]
 
 
 async def open_template(page, template_id):
@@ -160,6 +160,7 @@ async def template_checks(browser):
     await page.context.close()
 
     await streaming_checks(browser)
+    await pen_template_checks(browser)
 
     # Spotlight: controls, autoplay, pause, unmount while hidden.
     page = await new_page(browser)
@@ -319,7 +320,172 @@ async def template_checks(browser):
     authored = await page.eval_on_selector("[data-aixc-authored]", "e => e.textContent")
     check("Gemini group label marked as authored", authored == "Everyday essentials", authored)
     body = json.loads(mock.requests[0]["body"])
-    check("request lists all experiences", "<experiences>" in body["contents"][0]["parts"][0]["text"] and len(body["generationConfig"]["responseSchema"]["properties"]["experience"]["enum"]) == 7)
+    check("request lists all experiences", "<experiences>" in body["contents"][0]["parts"][0]["text"] and len(body["generationConfig"]["responseSchema"]["properties"]["experience"]["enum"]) == 13)
+    await page.context.close()
+
+
+async def pen_template_checks(browser):
+    """The six templates adapted from the second set of reference pens."""
+
+    # Split slideshow: halves move in opposite directions, one live slide, rail jumps.
+    page = await new_page(browser)
+    await open_template(page, "split")
+    live = lambda: page.evaluate("[...document.querySelectorAll('.ss-text')].find(t => t.dataset.pos === '0')?.dataset.aixcItem")
+    check("split: opens on the first service", await live() == "vodafone-cash", await live())
+    await page.click(".ss-controls [aria-label='Next service']")
+    await page.wait_for_timeout(1500)
+    check("split: next shows the second service", await live() == "balance-transfer", await live())
+    halves = await page.evaluate("""() => ['left', 'right'].map(side => [...document.querySelectorAll(`.ss-half--${side} .ss-pane`)].slice(0, 3).map(p => p.dataset.pos))""")
+    check("split: both halves show the same service and the old one leaves", halves == [["-1", "0", "1"], ["-1", "0", "1"]], halves)
+    moves = await page.evaluate("""() => { const l = getComputedStyle(document.querySelector('.ss-half--left .ss-pane')).transform, r = getComputedStyle(document.querySelector('.ss-half--right .ss-pane')).transform; return [l, r] }""")
+    check("split: the halves leave in opposite directions", moves[0] != moves[1] and "matrix" in moves[0], moves)
+    await page.keyboard.press("ArrowDown")
+    await page.wait_for_timeout(1500)
+    check("split: arrow key advances", await live() == "end-of-call-notifications", await live())
+    await page.click(".ss-rail__group[data-group=shokran-services]")
+    await page.wait_for_timeout(2200)
+    check("split: rail jumps to a category's first service", await live() == "sallefny-shokran", await live())
+    reachable = await page.evaluate("[...document.querySelectorAll('.ss-text')].filter(t => !t.inert).length")
+    check("split: only the shown service is reachable", reachable == 1, reachable)
+    check("no page errors (split)", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Card fan: click, drag, keys; cards far from the current one are hidden.
+    page = await new_page(browser)
+    await open_template(page, "fan")
+    counter = lambda: page.text_content(".fn-counter__now")
+    await page.click(".fn-card[data-aixc-item=end-of-call-notifications]", force=True)
+    await page.wait_for_timeout(1400)
+    check("fan: clicking a card brings it to the front", await counter() == "03" and await page.text_content(".fn-detail__title") == "End of Call notifications", await counter())
+    box = await page.evaluate("(() => { const r = document.querySelector('.fn-stage').getBoundingClientRect(); return [r.left + r.width * 0.6, r.top + r.height * 0.3] })()")
+    await page.mouse.move(box[0], box[1])
+    await page.mouse.down()
+    for i in range(1, 11):
+        await page.mouse.move(box[0] - 23 * i, box[1])
+        await page.wait_for_timeout(16)
+    await page.mouse.up()
+    await page.wait_for_timeout(1400)
+    check("fan: dragging left moves through the cards", await counter() == "05", await counter())
+    await page.focus(".fn-controls [aria-label='Next card']")
+    await page.keyboard.press("ArrowRight")
+    await page.wait_for_timeout(1300)
+    check("fan: arrow key advances", await counter() == "06", await counter())
+    away = await page.evaluate("document.querySelectorAll('.fn-card.is-away').length")
+    check("fan: only nearby cards are drawn", 0 < away < 29, away)
+    check("no page errors (fan)", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Service ring: closes on itself, turns with prev/next, fast scrolling stretches it.
+    page = await new_page(browser)
+    await open_template(page, "ring")
+    await page.wait_for_timeout(300)
+    wrap = await page.evaluate("!document.querySelector('.rg-item[data-aixc-item=join-without-changing-number]').classList.contains('is-off')")
+    check("ring: the last service waits beside the first", wrap)
+    await page.click(".rg-nav [aria-label='Next service']")
+    await page.wait_for_timeout(1500)
+    front = await page.evaluate("document.querySelector('.rg-item.is-front')?.dataset.aixcItem")
+    check("ring: next turns the ring to the second service", front == "balance-transfer", front)
+    await page.keyboard.press("ArrowRight")
+    await page.wait_for_timeout(1500)
+    check("ring: arrow key turns the ring", await page.text_content(".rg-counter__now") == "03")
+    check("ring: the category heading follows", await page.text_content(".rg-head__group") == "Stay In Control")
+    await page.evaluate("window.scrollBy(0, 1800)")
+    stretched = False
+    for _ in range(12):
+        await page.wait_for_timeout(30)
+        if "scaleX" in (await page.evaluate("document.querySelector('.rg-ring').style.transform")):
+            stretched = True
+            break
+    check("ring: fast scrolling stretches the ring", stretched)
+    check("no page errors (ring)", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Hyper tunnel: opens on a chapter word, steps card to card, Tab flies to a card.
+    page = await new_page(browser)
+    await open_template(page, "tunnel")
+    check("tunnel: opens on the first category word", (await page.text_content(".tn-hud__place")).strip() == "Vodafone Cash")
+    await page.click(".tn-hud__nav [aria-label='Next service']")
+    await page.wait_for_timeout(1800)
+    current = await page.evaluate("document.querySelector('.tn-item.is-current .tn-card')?.dataset.aixcItem")
+    check("tunnel: next flies to the first service card", current == "vodafone-cash", current)
+    await page.focus(".tn-card[data-aixc-item=roaming] a")
+    await page.wait_for_timeout(2200)
+    current = await page.evaluate("document.querySelector('.tn-item.is-current .tn-card')?.dataset.aixcItem")
+    check("tunnel: tabbing to a card's link flies to it", current == "roaming", current)
+    visible = await page.evaluate("(() => { const r = document.querySelector('.tn-card[data-aixc-item=roaming]').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.width > 150 })()")
+    check("tunnel: the focused card is fully in view", visible)
+    check("no page errors (tunnel)", page.errors == [], page.errors)
+    await page.context.close()
+    page = await new_page(browser, reduced_motion="reduce")
+    await open_template(page, "tunnel")
+    flat = await page.evaluate("document.querySelector('.aixc-vx--tunnel').classList.contains('is-static') && getComputedStyle(document.querySelector('.tn-stage')).position === 'relative'")
+    check("tunnel: laid flat under reduced motion", flat)
+    await page.context.close()
+
+    # Infinite canvas: drag pans, wraps without gaps, Tab glides, Enter opens, Escape closes.
+    page = await new_page(browser)
+    await open_template(page, "canvas")
+    coords0 = await page.text_content(".cv-coords")
+    box = await page.evaluate("(() => { const r = document.querySelector('.cv-surface').getBoundingClientRect(); return [r.left, r.top, r.width, r.height] })()")
+    cx, cy = box[0] + box[2] / 2, box[1] + box[3] / 2
+    await page.mouse.move(cx, cy)
+    await page.mouse.down()
+    for i in range(1, 16):
+        await page.mouse.move(cx - 60 * i, cy - 30 * i)
+        await page.wait_for_timeout(16)
+    await page.mouse.up()
+    await page.wait_for_timeout(1800)
+    check("canvas: dragging pans the canvas", await page.text_content(".cv-coords") != coords0)
+    covered = await page.evaluate("""(() => { const r = document.querySelector('.cv-surface').getBoundingClientRect(); const tiles = [...document.querySelectorAll('.cv-tile')].map(t => t.getBoundingClientRect());
+      // The widest strip of the view that no tile touches, across and down: only the 48px gutters may be empty.
+      const widestHole = (from, to, spans) => { let reach = from, hole = 0; spans.filter(([a, b]) => b > from && a < to).sort((p, q) => p[0] - q[0]).forEach(([a, b]) => { hole = Math.max(hole, a - reach); reach = Math.max(reach, b) }); return Math.max(hole, to - reach) };
+      return [widestHole(r.left, r.right, tiles.map(t => [t.left, t.right])), widestHole(r.top, r.bottom, tiles.map(t => [t.top, t.bottom]))] })()""")
+    check("canvas: the grid wraps with no empty bands", max(covered) <= 50, covered)
+    await page.focus(".cv-card[data-aixc-item=roaming]")
+    await page.wait_for_timeout(1800)
+    centred = await page.evaluate("(() => { const s = document.querySelector('.cv-surface').getBoundingClientRect(), c = document.querySelector('.cv-card[data-aixc-item=roaming]').getBoundingClientRect(); return Math.abs((c.left + c.width / 2) - (s.left + s.width / 2)) < 30 && Math.abs((c.top + c.height / 2) - (s.top + s.height / 2)) < 30 })()")
+    check("canvas: focusing a card glides it to the centre", centred)
+    check("canvas: focus never scrolls the stage", await page.evaluate("document.querySelector('.cv-stage').scrollLeft === 0 && document.querySelector('.cv-stage').scrollTop === 0"))
+    await page.keyboard.press("Enter")
+    await page.wait_for_timeout(1700)
+    opened = await page.evaluate("document.querySelector('.cv-dialog').open && document.querySelector('.cv-dialog__title').textContent.replace(/\\s+/g, ' ').trim()")
+    check("canvas: Enter opens the card", opened == "Roaming Services", opened)
+    check("canvas: the open card has its link", await page.evaluate("!!document.querySelector('.cv-dialog__actions a[href^=\"https://\"]')"))
+    await page.keyboard.press("Escape")
+    await page.wait_for_timeout(1200)
+    check("canvas: Escape closes and returns focus to the card", not await page.evaluate("document.querySelector('.cv-dialog').open") and await page.evaluate("document.activeElement.dataset.aixcItem") == "roaming")
+    await page.click(".cv-link[data-group=shokran-services]")
+    await page.wait_for_timeout(1800)
+    centred = await page.evaluate("(() => { const s = document.querySelector('.cv-surface').getBoundingClientRect(), c = document.querySelector('.cv-card[data-aixc-item=sallefny-shokran]').getBoundingClientRect(); return Math.abs((c.left + c.width / 2) - (s.left + s.width / 2)) < 30 })()")
+    check("canvas: a category link brings its first service to the centre", centred)
+    check("no page errors (canvas)", page.errors == [], page.errors)
+    await page.context.close()
+
+    # Cover flow: loops round, drags, clicks; reflections on.
+    page = await new_page(browser)
+    await open_template(page, "coverflow")
+    counter = lambda: page.text_content(".cf-counter__now")
+    await page.click(".cf-controls [aria-label='Previous service']")
+    await page.wait_for_timeout(1400)
+    check("coverflow: previous from the first loops to the last", await counter() == "29" and await page.text_content(".cf-detail__title") == "Join us without changing your number", await counter())
+    await page.click(".cf-controls [aria-label='Next service']")
+    await page.wait_for_timeout(1400)
+    check("coverflow: next from the last loops to the first", await counter() == "01", await counter())
+    box = await page.evaluate("(() => { const r = document.querySelector('.cf-stage').getBoundingClientRect(); return [r.left + r.width * 0.7, r.top + r.height * 0.3] })()")
+    await page.mouse.move(box[0], box[1])
+    await page.mouse.down()
+    for i in range(1, 11):
+        await page.mouse.move(box[0] - 20 * i, box[1])
+        await page.wait_for_timeout(16)
+    await page.mouse.up()
+    await page.wait_for_timeout(1400)
+    check("coverflow: dragging left flips forward", await counter() == "03", await counter())
+    await page.click(".cf-cover[data-aixc-item=calls-services]", force=True)
+    await page.wait_for_timeout(1400)
+    check("coverflow: clicking a cover brings it to the front", await counter() == "04", await counter())
+    reflect = await page.evaluate("getComputedStyle(document.querySelector('.cf-cover')).webkitBoxReflect || ''")
+    check("coverflow: covers are reflected on the floor", reflect not in ("", "none"), reflect)
+    check("no page errors (coverflow)", page.errors == [], page.errors)
     await page.context.close()
 
 

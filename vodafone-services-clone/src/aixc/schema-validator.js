@@ -21,7 +21,7 @@ export const SCHEMA_VERSION = 1
  * Experience plugins. `magazine` composes with layout primitives; every other
  * experience takes ordered `group` sections and decides the visuals itself.
  */
-export const EXPERIENCES = ['magazine', 'streaming', 'spotlight', 'journey', 'gallery', 'flipbook', 'cube']
+export const EXPERIENCES = ['magazine', 'streaming', 'split', 'fan', 'ring', 'tunnel', 'canvas', 'coverflow', 'spotlight', 'journey', 'gallery', 'flipbook', 'cube']
 export const THEMES = ['vodafone-editorial']
 export const DENSITIES = ['compact', 'balanced', 'spacious']
 export const SCOPES = ['all', 'filtered']

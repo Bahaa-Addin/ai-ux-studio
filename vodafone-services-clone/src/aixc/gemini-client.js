@@ -41,6 +41,12 @@ const PRIMITIVE_GUIDE = {
 const EXPERIENCE_GUIDE = {
   magazine: 'Editorial magazine: cover, asymmetric spreads, index. Uses the magazine primitives.',
   streaming: 'Streaming-app home: cinematic logo intro, billboard for the first group\'s lead service, one row of thumbnails per group.',
+  split: 'Split slideshow: one full-screen service at a time, the screen split in halves that slide past each other as you scroll.',
+  fan: 'Card fan: numbered service cards fanned along a diagonal, dragged or scrolled through one at a time.',
+  ring: 'Service ring: services stand on a 3D ring that turns as you scroll, each stopping in front of the reader.',
+  tunnel: 'Hyper tunnel: fly down a 3D tunnel; each group opens with its name as giant outlined words, then its service cards.',
+  canvas: 'Infinite canvas: every service on an endless grid the reader drags around; any card opens and zooms in.',
+  coverflow: 'Cover flow: services flip past like album covers with reflections, the front one described below.',
   spotlight: 'Full-screen spotlight: one service at a time, next services queued as cards, auto-advancing.',
   journey: 'Parallax scroll journey: a layered landscape moving from day to night behind chapters.',
   gallery: 'Gallery wall: every service framed on an angled 3D wall the reader walks along.',
