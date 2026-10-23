@@ -33,21 +33,21 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  perspective: 1000px;
 }
 
+/* The camera sits at the world's origin, the centre of the stage. Every item
+   and star applies its own perspective about that point (see tunnel.js). */
 .aixc-vx--tunnel .tn-world {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform-style: preserve-3d;
 }
 
 .aixc-vx--tunnel .tn-item {
   position: absolute;
   top: 0;
   left: 0;
-  transform-origin: center center;
+  transform-origin: 0 0;
 }
 
 .aixc-vx--tunnel .tn-item.is-gone {
@@ -56,6 +56,7 @@
 
 .aixc-vx--tunnel .tn-star {
   position: absolute;
+  transform-origin: 0 0;
   width: 2px;
   height: 2px;
   margin: -1px 0 0 -1px;
