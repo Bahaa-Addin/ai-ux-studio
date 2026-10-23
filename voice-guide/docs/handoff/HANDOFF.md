@@ -7,6 +7,7 @@
 - Directory: `voice-guide/`
 - Owner: Bahaà Addin Balashoni
 - Operating it: [`docs/ops/runbook.md`](../ops/runbook.md)
+- Bugs and open issues: [`docs/qa/bugs-and-open-issues.md`](../qa/bugs-and-open-issues.md)
 
 ## 1. In one paragraph
 
