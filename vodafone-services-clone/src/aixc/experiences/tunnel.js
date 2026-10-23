@@ -264,7 +264,8 @@ export const renderTunnel = (schema, index) => {
 
   const loop = (now) => {
     if (!mounted) return
-    const dt = last ? Math.min((now - last) / 1000, 0.05) : 0.016
+    // Two frames can share a timestamp; never divide by a zero step.
+    const dt = last ? clamp((now - last) / 1000, 0.001, 0.05) : 0.016
     last = now
     const rect = track.getBoundingClientRect()
     const onScreen = rect.bottom > chromeOffset() && rect.top < window.innerHeight
@@ -275,7 +276,7 @@ export const renderTunnel = (schema, index) => {
       if (Math.abs(target - position) < 0.0004) position = target
       const perFrame = ((position - previous) * STEP_PX * 0.016) / dt
       velocity += (perFrame - velocity) * (1 - Math.exp(-dt * 6))
-      if (Math.abs(velocity) < 0.005) velocity = 0
+      if (!Number.isFinite(velocity) || Math.abs(velocity) < 0.005) velocity = 0
       draw(now)
     }
     frame = window.requestAnimationFrame(loop)

@@ -191,7 +191,8 @@ export const renderRing = (schema, index) => {
 
   const loop = (now) => {
     if (!mounted) return
-    const dt = last ? Math.min((now - last) / 1000, 0.05) : 0.016
+    // Two frames can share a timestamp; never divide by a zero step.
+    const dt = last ? clamp((now - last) / 1000, 0.001, 0.05) : 0.016
     last = now
     const target = stepper.position()
     const previous = position
@@ -203,7 +204,7 @@ export const renderRing = (schema, index) => {
       if (Math.abs(target - position) < 0.0005) position = target
       const speed = (Math.abs(position - previous) / dt) * STEP_PX
       velocity += (speed / 3500 - velocity) * (1 - Math.exp(-dt * 7))
-      if (velocity < 0.001) velocity = 0
+      if (!Number.isFinite(velocity) || velocity < 0.001) velocity = 0
     }
     draw()
     frame = window.requestAnimationFrame(loop)
