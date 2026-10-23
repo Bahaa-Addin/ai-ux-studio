@@ -198,16 +198,18 @@ export class Guide {
 	}
 
 	async #onRoute(back: boolean): Promise<void> {
+		// Back during a plan stops it (SPEC-05 §3): the person took the wheel. Checked before the
+		// URL de-duplication: in Chromium the Navigation API's `navigatesuccess` (not a Back signal)
+		// can arrive before `popstate` for the same traversal and would otherwise swallow it.
+		if (back && (this.executor.running || this.#busy)) {
+			this.stopAll()
+			void this.#say(t('planStopped', this.lang))
+		}
 		const from = this.#routeUrl
 		if (location.href === from) return
 		const strip = (u: string) => u.replace(/#.*$/, '')
 		this.#routeUrl = location.href
 		if (strip(location.href) === strip(from)) return
-		// Back during a plan stops it (SPEC-05 §3): the person took the wheel.
-		if (back && (this.executor.running || this.#busy)) {
-			this.stopAll()
-			void this.#say(t('planStopped', this.lang))
-		}
 		const t0 = performance.now()
 		await this.#settle()
 		try {

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App · Demo Telco</title>
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<!-- A single-page app in miniature (ADR-0030): views change with history.pushState, and each view
+     renders a little after the URL changes, as Angular does on Vodafone's /spa/ pages. -->
+<app-root>
+  <nav><a href="?view=plans" data-route="plans" id="to-plans">Plans</a> · <a href="?view=stores" data-route="stores" id="to-stores">Stores</a></nav>
+  <main id="view"></main>
+</app-root>
+<script>
+  const views = {
+    plans: '<h1>Plans</h1><p id="plans-intro">Choose a plan.</p>',
+    stores: '<h1>Store finder</h1><input id="keyword" placeholder="Search for a store">',
+  }
+  const render = () => {
+    const v = new URLSearchParams(location.search).get('view') || 'plans'
+    document.getElementById('view').innerHTML = ''
+    setTimeout(() => (document.getElementById('view').innerHTML = views[v] || ''), 400)
+  }
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-route]')
+    if (!a) return
+    e.preventDefault()
+    history.pushState({}, '', '?view=' + a.dataset.route)
+    render()
+  })
+  addEventListener('popstate', render)
+  render()
+</script>
+</body>
+</html>

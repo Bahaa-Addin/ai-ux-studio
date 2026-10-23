@@ -56,7 +56,11 @@ export class XrayModel {
 			const push = (layer: string, detail: string, ms?: number, kind: '' | 'agent' | 'err' = '') => t!.events.push({ layer, detail, ms: r(ms), kind })
 			switch (ev.name) {
 				case 'sdk.listen':
-					push('listen', `${a.source === 'voice' ? 'voice' : 'typed'} · "${a.text}"${a.confidence !== undefined ? ` · conf ${Number(a.confidence).toFixed(2)}` : ''}`, ev.durationMs)
+					push(
+						'listen',
+						`${a.source === 'voice' ? 'voice' : 'typed'} · "${a.text}"${a.confidence !== undefined ? ` · conf ${Number(a.confidence).toFixed(2)}` : ''}${a.mode ? ` · ${a.mode}${a.onDevice ? ' on-device' : ''}` : ''}${a.firstWordMs !== undefined ? ` · first word ${a.firstWordMs} ms` : ''}${a.renderP95 !== undefined ? ` · render p95 ${Number(a.renderP95).toFixed(1)} ms` : ''}`,
+						ev.durationMs,
+					)
 					break
 				case 'turn.received':
 					t.utterance = a.utterance

@@ -78,7 +78,7 @@ export function buildPlan(input: PlanInput): PlanOutput {
 			pushNavigate(d.pageId)
 			return out('none', say('closest', lang, { page: pageTitle(d.pageId) }), d.id)
 		}
-		return out('none', say('notFound', lang))
+		return out('none', say(u.intent === 'describe' && u.decision.provider === 'context' ? 'unknownPage' : 'notFound', lang))
 	}
 
 	const d = kb.dest.get(u.decision.destinationId)!
@@ -141,8 +141,25 @@ export function buildPlan(input: PlanInput): PlanOutput {
 		return out('replay', say('watchOffer', lang, { label }), d.id, { kind: 'destination', destinationId: d.id, pageId: d.pageId, target })
 	}
 
+	// ---- "what's on this page?": no navigation, the page's summary (T-303) ----
+	if (d.kind === 'page' && u.intent === 'describe') {
+		const p = kb.pages.get(d.pageId)
+		const title = pageTitle(d.pageId)
+		const curated = pick(p?.summary, lang, m.site.defaultLanguage)
+		const sections = m.destinations
+			.filter((x) => x.pageId === d.pageId && (x.kind === 'section' || x.kind === 'collection') && x.labels[lang]?.length)
+			.map((x) => x.labels[lang]![0])
+			.filter((l, i, a) => l.length <= 60 && a.indexOf(l) === i)
+			.slice(0, 3)
+		const text = curated || (sections.length ? say('pageSummary', lang, { title, sections: sections.join(lang === 'ar' ? '، ' : ', ') }) : say('pageTitleOnly', lang, { title }))
+		return out('replay', text, d.id, { kind: 'destination', destinationId: d.id, pageId: d.pageId })
+	}
+
 	// ---- navigate / describe ----
-	pushNavigate(d.pageId)
+	// Describing something on the page the person is looking at never moves them, whatever
+	// language they asked in ("what does this banner say?" on the Arabic page, in English).
+	const describingHere = u.intent === 'describe' && kb.pageFor(page.url)?.pageId === d.pageId
+	if (!describingHere) pushNavigate(d.pageId)
 	pushReveal(d)
 	const label = pick(d.labels, lang, m.site.defaultLanguage)?.[0] || ''
 	switch (d.kind) {
@@ -225,7 +242,11 @@ function collectionRef(c: Collection) {
 function itemKey(d: Destination, c: Collection): string {
 	const css = d.target?.css[0] || ''
 	const m = c.keyAttr ? new RegExp(`\\[${c.keyAttr}="([^"]+)"\\]`).exec(css) : null
-	return m?.[1] || d.id.split('.').at(-1) || ''
+	if (m?.[1]) return m[1]
+	// Positional items (no key attribute): ":nth-of-type(N)" in the target is item #N-1.
+	const nth = !c.keyAttr ? /:nth-of-type\((\d+)\)$/.exec(css) : null
+	if (nth) return `#${Number(nth[1]) - 1}`
+	return d.id.split('.').at(-1) || ''
 }
 
 function itemRead(c: Collection, lang: string, key: PhraseKey): ReadSpec {

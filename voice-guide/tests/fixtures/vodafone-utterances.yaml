@@ -33,3 +33,5 @@
 - { say: prepaid plans, dest: web.kart-el-korout }
 - { say: الإنترنت الأرضي, dest: web.homedslcatalog }
 - { say: الصفحة الرئيسية, dest: web.home }
+- { say: إيه اللي في الصفحة دي؟, page: web.mobile-internet-bundles, intent: describe, dest: web.mobile-internet-bundles }
+- { say: "What's on this page?", page: web.spa-storelocator, intent: describe, dest: web.spa-storelocator }

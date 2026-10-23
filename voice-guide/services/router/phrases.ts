@@ -8,6 +8,9 @@ type Lang = 'ar' | 'en'
 const P = {
 	taking: { en: 'Taking you to {page}.', ar: 'هوديك على صفحة {page}.' },
 	here: { en: 'Here it is.', ar: 'أهي.' },
+	pageSummary: { en: 'This is {title}. It has {sections}.', ar: 'دي صفحة {title}، وفيها {sections}.' },
+	pageTitleOnly: { en: 'This is {title}.', ar: 'دي صفحة {title}.' },
+	unknownPage: { en: "I don't know this page yet. Ask me for something on the site and I'll take you there.", ar: 'لسه معرفش الصفحة دي. اسألني عن أي حاجة في الموقع وأنا هوديك.' },
 	itemRead: { en: '{name}: {data} for {price}.', ar: '{name}: {data} بـ {price}.' },
 	itemReadNoData: { en: '{name} for {price}.', ar: '{name} بـ {price}.' },
 	minPrice: { en: 'The cheapest is {name}: {data} for {price}.', ar: 'أرخص واحدة {name}: {data} بـ {price}.' },
