@@ -4,13 +4,8 @@
 // upgrade cannot slip a new one past us.
 import { spawnSync } from 'node:child_process'
 
-const KNOWN_UPSTREAM: { file: string; code: string; why: string }[] = [
-	{
-		file: 'node_modules/@page-agent/llms/src/utils.ts',
-		code: 'TS2769',
-		why: "asks zod for target 'openapi-3.0' (zod >= 4.1); zod 3.25 logs a warning and emits plain JSON Schema",
-	},
-]
+// None at the moment: zod 4.6 gives page-agent the 'openapi-3.0' target it asks for (ADR-0034).
+const KNOWN_UPSTREAM: { file: string; code: string; why: string }[] = []
 
 const projects = ['tsconfig.json', 'packages/sdk/tsconfig.json']
 // Match on the path's tail so symlinked or hoisted node_modules (reported as ../../x/node_modules/...) still match.

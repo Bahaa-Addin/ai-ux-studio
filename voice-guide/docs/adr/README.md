@@ -10,7 +10,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 |---|---|---|---|
 | [0006](0006-platform-shape.md) | One SDK script tag plus stateless services behind one gateway | Architecture | Accepted |
 | [0007](0007-runtime-and-language.md) | TypeScript on Node 22 with type stripping; esbuild for the SDK | Tooling | Accepted |
-| [0008](0008-dependency-policy.md) | A small, pinned set of dependencies; Node built-ins for the rest | Dependencies | Accepted |
+| [0008](0008-dependency-policy.md) | A small, pinned set of dependencies; Node built-ins for the rest | Dependencies | Accepted; zod pin amended by 0034 |
 | [0009](0009-repo-and-service-seams.md) | One repository; each service runs in-process or over HTTP with the same handlers | Code organisation | Accepted |
 | [0010](0010-postgres-single-store.md) | Postgres is the only shared store; Redis deferred | Data | Accepted; changes the demo plan |
 | [0011](0011-site-knowledge-standard.md) | A site knowledge standard (v0.1) | Knowledge base | Accepted |
@@ -19,7 +19,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0014](0014-router-retrieve-then-decide.md) | Retrieve candidates, then decide with Jev, Laya or a local scorer | Understanding | Accepted |
 | [0015](0015-plan-contract.md) | The server plans, the SDK executes; commit buttons are never pressed | Contract | Accepted |
 | [0016](0016-sessions-across-pages-and-origins.md) | One conversation across page loads and origins | Sessions | Accepted |
-| [0017](0017-page-agent-as-pinned-fallback.md) | page-agent 1.12.4 as a pinned, wrapped fallback, not a fork | Fallback agent | Accepted |
+| [0017](0017-page-agent-as-pinned-fallback.md) | page-agent 1.12.4 as a pinned, wrapped fallback, not a fork | Fallback agent | Accepted; amended by 0034 |
 | [0018](0018-agent-proxy.md) | One agent proxy holds keys, masks data, enforces budgets, falls back | Model access | Accepted |
 | [0019](0019-speech-in-the-browser.md) | Web Speech API with Egyptian Arabic and English; typing always available | Speech | Accepted; changes the demo plan |
 | [0020](0020-brand-and-ui-in-shadow-dom.md) | UI in one shadow root, themed from the host page | UI and brand | Accepted |
@@ -36,6 +36,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0031](0031-gateway-behind-the-page-origin-and-long-poll-events.md) | Demo browser reaches the gateway through the page's own origin (`/__vg`); events fall back to long polling | Live site integration | Accepted; amends 0026 |
 | [0032](0032-in-browser-crawler-public-pages-only.md) | Crawl the live site from a real browser tab when needed; public pages only; scheduled crawling paused | Ingestion | Accepted |
 | [0033](0033-google-chrome-for-speech-and-on-demand-sync-gate.md) | Demo browser is the installed Google Chrome (speech); on-demand sync gate; scheduled runs refused while paused; aliases | Live site integration, sync | Accepted; amends 0026 |
+| [0034](0034-agent-only-with-a-model-zod-4-and-clarify-between-full-matches.md) | The agent is offered only when a model is configured; zod 4; "A or B?" only between full matches; page wrappers dropped; typed answers to "A or B?" | Fallback agent, understanding | Accepted; amends 0008, 0014, 0017, 0018 |
 
 ## Changes to the demo plan these decisions made
 
@@ -63,3 +64,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | Demo browser review | Chromium has no speech service; the guide said "I didn't catch that" | Google Chrome for the demo; a plain "not available, type instead" message (ADR-0033) |
 | End-to-end test (flaky, then steady) | The agent's per-step saves were sent without waiting; one could land after the final "done" and bring a finished agent task back on the next page load | Saves are chained in order (ADR-0017, `packages/sdk/src/guide.ts`) |
 | End-to-end test (flaky) | The X-ray backlog was the last 60 events, so after an agent turn earlier turns lost their first rows | Backlog of whole recent turns (ADR-0033) |
+| Demo run on the live site | With no model configured, low-confidence and "act" turns went to the agent: "let me look", three 503s, "I can't search right now" | Agent routing needs a configured model (ADR-0034) |
+| Demo run on the live site | "Did you mean 400 mega or promotions-lite?": every page's `#content` wrapper was a section labelled with its template name | Page wrappers are not destinations (ADR-0034) |
+| Demo run on the live site | A typed "400 mega" after "A or B?" switched to English, moved to `/en/promotions` and read the alt text back | Typed answers pick an option and keep the language; alt-only pictures read their card (ADR-0034) |
+| Demo run on the live site | "Open a business" offered a router guide or international calls, two half-matches | "A or B?" needs both options to cover the request (ADR-0034) |

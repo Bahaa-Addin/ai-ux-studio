@@ -9,7 +9,7 @@ import path from 'node:path'
 
 import type { Services } from '../index.ts'
 import type { SiteConfig } from '../shared/config.ts'
-import { ROOT } from '../shared/config.ts'
+import { agentModelConfigured, ROOT } from '../shared/config.ts'
 import { clientIp, HttpError, readJson, Router, sendJson } from '../shared/http.ts'
 import { newId, signToken, verifyToken } from '../shared/ids.ts'
 import { log } from '../shared/log.ts'
@@ -87,6 +87,7 @@ export function createGateway(opts: GatewayOptions) {
 		const page = await s.knowledge.pageContext({ siteId: site.id, url: String(body.page?.url || '') }, ctx)
 		const plan = session.plan && Date.now() - new Date(session.plan.startedAt).getTime() < 120_000 ? session.plan : null
 		metrics.inc(`session.${via}`)
+		const agentOn = site.agent.enabled && agentModelConfigured(platform)
 		sendJson(res, 200, {
 			sessionId: session.id,
 			via,
@@ -94,9 +95,9 @@ export function createGateway(opts: GatewayOptions) {
 			plan,
 			last: session.last ?? null,
 			agent: session.agent ?? null,
-			agentToken: site.agent.enabled ? agentToken(site.id, session.id) : null,
+			agentToken: agentOn ? agentToken(site.id, session.id) : null,
 			page,
-			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: site.agent.enabled, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled } },
+			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled } },
 			push: site.watch.enabled ? s.local.watch.publicKey() : null,
 		})
 	})

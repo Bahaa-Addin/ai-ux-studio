@@ -110,7 +110,8 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 			}),
 		},
 		onBeforeTask: (a) => {
-			if (lines.length) a.pushObservation(`This task started on an earlier page. Steps already done:\n${lines.slice(-12).join('\n')}\nYou are now on ${location.href}. Continue from here.`)
+			// pushObservation is left out of page-agent's published types but is part of 1.12.4's runtime.
+			if (lines.length) (a as unknown as { pushObservation(text: string): void }).pushObservation(`This task started on an earlier page. Steps already done:\n${lines.slice(-12).join('\n')}\nYou are now on ${location.href}. Continue from here.`)
 		},
 		onBeforeStep: () => {
 			stepStart = performance.now()
