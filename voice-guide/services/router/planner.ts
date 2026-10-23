@@ -4,7 +4,7 @@
  * session and request always give the same steps.
  */
 import { type Collection, type Destination, pick, type Plan, type PlanStep, type ReadSpec, type Target } from '#kb'
-import { type KbIndex, variantKey } from '#shared/kb-index.ts'
+import type { KbIndex } from '#shared/kb-index.ts'
 import type { Entity, SessionState } from '#shared/store/index.ts'
 
 import { type PhraseKey, say, template } from './phrases.ts'
@@ -185,7 +185,7 @@ export function buildPlan(input: PlanInput): PlanOutput {
 
 	// ---- helpers (closures over steps, kb, lang) ----
 	function onPage(pageId: string): boolean {
-		const here = kb.pageByUrl.get(variantKey(page.url))
+		const here = kb.pageFor(page.url)
 		return !!here && here.pageId === pageId && here.lang === lang
 	}
 	function pushNavigate(pageId: string, force = false) {

@@ -4,7 +4,7 @@
  */
 import type { SiteConfig } from '#shared/config.ts'
 import { HttpError } from '#shared/http.ts'
-import { type KbCache, variantKey } from '#shared/kb-index.ts'
+import type { KbCache } from '#shared/kb-index.ts'
 import type { Store } from '#shared/store/index.ts'
 
 export interface KnowledgeDeps {
@@ -21,8 +21,8 @@ export function createKnowledge(deps: KnowledgeDeps) {
 		 */
 		async pageContext(input: { siteId: string; url: string }) {
 			const kb = await deps.kb.get(input.siteId)
-			if (!kb) return { kbVersion: null, pageId: null, variants: {}, commitTargets: [], visuals: 0 }
-			const hit = kb.pageByUrl.get(variantKey(input.url))
+			if (!kb) return { kbVersion: null, pageId: null, variants: {}, commitTargets: [], visuals: 0, phrases: [] }
+			const hit = kb.pageFor(input.url)
 			const page = hit ? kb.pages.get(hit.pageId) : undefined
 			const commitTargets = kb.manifest.destinations.filter((d) => d.commit && d.target).map((d) => d.target!.css)
 			return {
@@ -32,6 +32,8 @@ export function createKnowledge(deps: KnowledgeDeps) {
 				variants: page ? Object.fromEntries(Object.entries(page.variants).map(([l, v]) => [l, v.url])) : {},
 				commitTargets,
 				visuals: hit ? [...kb.visuals.values()].filter((v) => v.pageId === hit.pageId).length : 0,
+				// Product names for the recogniser's contextual biasing (SPEC-02 §6): short synonym entries.
+				phrases: [...new Set((kb.manifest.lexicon?.synonyms || []).flat().filter((w) => w.split(/\s+/).length <= 3 && w.length >= 3))].slice(0, 50),
 			}
 		},
 

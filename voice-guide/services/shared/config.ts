@@ -106,18 +106,67 @@ export const SiteConfig = z.object({
 		concurrency: z.number().int().positive().default(4),
 		cookies: z.array(z.object({ url: z.url(), name: z.string(), value: z.string() })).default([]),
 		collections: z.object({ minItems: z.number().int().min(2).default(3) }).default({ minItems: 3 }),
+		/** Links followed from the start pages; unset = no limit (SPEC-04 §2: 2 for live sites). */
+		maxDepth: z.number().int().min(0).optional(),
+		/** Query parameters that make a different page (the shop's category lists). */
+		keepQuery: z.array(z.string()).default([]),
+		/** Appended to URLs ending in "/" (fixture servers only). */
+		directoryIndex: z.string().optional(),
+		/** Public pages only: no cookies are sent, pages behind a login are skipped (ADR-0032). */
+		publicOnly: z.boolean().default(false),
+		/** Pause between page loads per worker, in ms (SPEC-04 §4: 1,000 for live sites). */
+		delayMs: z.number().int().min(0).default(0),
+		/** Elements removed before extraction: cookie banners, accessibility widgets. */
+		ignoreSelectors: z.array(z.string()).default([]),
+		/** Paths that need the page's own scripts to render (single-page apps); others may be crawled without. */
+		scriptsFor: z.string().optional(),
+		/** Sitemaps used for lastmod, never for discovery (ADR-0028). */
+		sitemaps: z.array(z.url()).default([]),
+		userAgent: z.string().optional(),
+		/** Which pages count as the same page in another language (ADR-0028): hreflang links, or /en/x <-> /ar/x. */
+		pairLanguagesBy: z.enum(['hreflang', 'path']).default('hreflang'),
 	}),
+	/** Knowledge sync (SPEC-04). The schedule is paused unless enabled; on-demand runs always work. */
+	sync: z
+		.object({
+			schedule: z
+				.object({
+					enabled: z.boolean().default(false),
+					everyMinutes: z.number().int().min(15).default(120),
+					window: z.string().regex(/^\d\d:\d\d-\d\d:\d\d$/).default('07:00-23:00'),
+					timezone: z.string().default('Africa/Cairo'),
+				})
+				.default({ enabled: false, everyMinutes: 120, window: '07:00-23:00', timezone: 'Africa/Cairo' }),
+			gate: z
+				.object({ maxDestinationChurn: z.number().min(0).max(1).default(0.15), requireSeeds: z.boolean().default(true) })
+				.default({ maxDestinationChurn: 0.15, requireSeeds: true }),
+			keepVersions: z.number().int().min(1).default(10),
+		})
+		.default({
+			schedule: { enabled: false, everyMinutes: 120, window: '07:00-23:00', timezone: 'Africa/Cairo' },
+			gate: { maxDestinationChurn: 0.15, requireSeeds: true },
+			keepVersions: 10,
+		}),
 	curated: z.string().optional(),
 	speech: z
-		.object({ stt: I18n.default({}), tts: I18n.default({}) })
-		.default({ stt: {}, tts: {} }),
+		.object({
+			stt: I18n.default({}),
+			tts: I18n.default({}),
+			/** On-device recognition (SPEC-02 §6): prefer it when the browser has the language pack. */
+			onDevice: z.enum(['prefer', 'require', 'off']).default('prefer'),
+		})
+		.default({ stt: {}, tts: {}, onDevice: 'prefer' }),
 	ui: z
 		.object({
 			accent: z.string().optional(),
 			position: z.enum(['start', 'end']).default('end'),
 			xray: z.enum(['off', 'button', 'open']).default('button'),
+			/** `vodafone`: the fixed Vodafone tokens (ADR-0029); `page`: derived from the host page (ADR-0020). */
+			theme: z.enum(['page', 'vodafone']).default('page'),
+			/** Voice-first launcher (ADR-0027): the floating button is the microphone. */
+			voiceFirst: z.boolean().default(false),
 		})
-		.default({ position: 'end', xray: 'button' }),
+		.default({ position: 'end', xray: 'button', theme: 'page', voiceFirst: false }),
 	router: z
 		.object({
 			decider: z.enum(['local', 'jev', 'laya']).default('local'),

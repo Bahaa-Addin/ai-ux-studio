@@ -5,6 +5,8 @@
  */
 import { t } from './i18n.ts'
 import type { Theme } from './theme.ts'
+import { VODAFONE_CSS } from './theme/vodafone.ts'
+import { LAUNCHER_CSS, VoiceLauncher } from './voice/launcher.ts'
 
 export interface UiHandlers {
 	onMic(): void
@@ -14,6 +16,16 @@ export interface UiHandlers {
 	onMute(muted: boolean): void
 	onXray(open: boolean): void
 	onClose(): void
+	/** Voice-first launcher (ADR-0027): the language chip and Esc while listening. */
+	onLangSwitch?(): void
+	onCancelListen?(): void
+}
+
+export interface UiOptions {
+	/** The floating button is the microphone, with the transcript bar (ADR-0027). */
+	voiceFirst?: boolean
+	/** Fixed Vodafone tokens and component styles (ADR-0029). */
+	brand?: 'vodafone' | 'page'
 }
 
 const ICONS = {
@@ -111,7 +123,10 @@ export class GuideUi {
 	#spotRaf = 0
 	#toastTimer = 0
 
-	constructor(h: UiHandlers, theme: Theme, lang: string) {
+	/** The microphone launcher and transcript bar, when voice first. */
+	voice: VoiceLauncher | null = null
+
+	constructor(h: UiHandlers, theme: Theme, lang: string, opts: UiOptions = {}) {
 		this.h = h
 		this.lang = lang
 		this.host = document.createElement('vg-guide')
@@ -120,7 +135,7 @@ export class GuideUi {
 		this.host.setAttribute('data-page-agent-ignore', 'true')
 		this.root = this.host.attachShadow({ mode: 'open' })
 		const style = document.createElement('style')
-		style.textContent = CSS(theme)
+		style.textContent = CSS(theme) + (opts.brand === 'vodafone' ? VODAFONE_CSS : '') + (opts.voiceFirst ? `${LAUNCHER_CSS}\n.launcher { display: none !important; }` : '')
 		const wrap = document.createElement('div')
 		wrap.className = 'root'
 		wrap.innerHTML = `
@@ -152,6 +167,21 @@ export class GuideUi {
 		this.#els.totals = q('.xray .totals')
 		this.#els.kb = q('.xray .kb')
 
+		if (opts.voiceFirst) {
+			this.voice = new VoiceLauncher(
+				wrap,
+				{
+					onPress: () => h.onMic(),
+					onKeyboard: () => {
+						this.open()
+						this.focusInput()
+					},
+					onLang: () => h.onLangSwitch?.(),
+					onCancel: () => h.onCancelListen?.(),
+				},
+				lang,
+			)
+		}
 		this.#els.launcher.addEventListener('click', () => {
 			this.open()
 			h.onMic()
@@ -198,6 +228,7 @@ export class GuideUi {
 		this.#els.root.setAttribute('dir', dir)
 		this.host.setAttribute('dir', dir)
 		this.#els.root.setAttribute('lang', lang)
+		this.voice?.setLang(lang)
 		this.#labels()
 	}
 
@@ -220,6 +251,8 @@ export class GuideUi {
 	open(): void {
 		this.#els.panel.classList.add('open')
 		this.#els.launcher.classList.add('hidden')
+		// The panel sits where the transcript bar would; it shows the live words itself.
+		this.voice?.showBar(false)
 		if (!this.#els.log.childElementCount) this.note(t('hint', this.lang), 'hint')
 	}
 

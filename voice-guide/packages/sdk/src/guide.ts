@@ -11,7 +11,9 @@ import { Executor, type ExecutorHost, type StepEvent } from './executor.ts'
 import { t } from './i18n.ts'
 import { Speech } from './speech.ts'
 import { themeFromPage } from './theme.ts'
+import { VODAFONE_THEME } from './theme/vodafone.ts'
 import { GuideUi } from './ui.ts'
+import { MicStream } from './voice/audio.ts'
 import { type TraceEv, XrayModel } from './xray.ts'
 
 export interface GuideOptions {
@@ -19,6 +21,8 @@ export interface GuideOptions {
 	siteKey: string
 	xray?: 'off' | 'button' | 'open'
 	autoOpen?: boolean
+	/** 'poll' when the page reaches the gateway through a router that cannot stream (ADR-0031). */
+	events?: 'auto' | 'poll'
 }
 
 interface SessionResponse {
@@ -29,7 +33,15 @@ interface SessionResponse {
 	agent: { task: string; history: unknown[]; steps: number; startedAt: string; turnId: string } | null
 	agentToken: string | null
 	page: { kbVersion: string | null; pageId: string | null; pageLang: string | null; variants: Record<string, string>; commitTargets: string[][]; visuals: number }
-	site: { id: string; languages: string[]; defaultLanguage: string; speech: { stt: Record<string, string>; tts: Record<string, string> }; ui: { accent?: string; xray: string }; agent: { enabled: boolean; maxSteps: number; timeoutSec: number }; watch: { enabled: boolean } }
+	site: {
+		id: string
+		languages: string[]
+		defaultLanguage: string
+		speech: { stt: Record<string, string>; tts: Record<string, string>; onDevice?: 'prefer' | 'require' | 'off'; phrases?: string[] }
+		ui: { accent?: string; xray: string; theme?: 'page' | 'vodafone'; voiceFirst?: boolean }
+		agent: { enabled: boolean; maxSteps: number; timeoutSec: number }
+		watch: { enabled: boolean }
+	}
 	push: { publicKey: string } | null
 }
 
@@ -62,7 +74,7 @@ export class Guide {
 	guard = new CommitGuard([])
 	session!: SessionResponse
 	lang: string
-	#events: EventSource | null = null
+	#events: { close(): void } | null = null
 	#turnStartedAt = 0
 	#motionReported = false
 	#lastSpoken = ''
@@ -92,10 +104,11 @@ export class Guide {
 		this.guard = new CommitGuard(this.session.page.commitTargets || [])
 		this.xray.kbVersion = this.session.page.kbVersion || undefined
 
-		const theme = themeFromPage(this.session.site.ui.accent)
+		const brand = this.session.site.ui.theme === 'vodafone' ? 'vodafone' : 'page'
+		const theme = brand === 'vodafone' ? VODAFONE_THEME : themeFromPage(this.session.site.ui.accent)
 		this.ui = new GuideUi(
 			{
-				onMic: () => this.#toggleMic(),
+				onMic: () => void this.#toggleMic(),
 				onSubmit: (text) => {
 					if (this.answerAgent(text)) this.ui.message('user', text)
 					else void this.request(text, 'typed')
@@ -121,9 +134,21 @@ export class Guide {
 						sessionStorage.removeItem(OPEN_KEY(this.o.siteKey))
 					} catch {}
 				},
+				onLangSwitch: () => {
+					const langs = this.session.site.languages
+					const next = langs[(langs.indexOf(this.lang) + 1) % langs.length] || this.lang
+					this.#setLang(next)
+					// A language switch while listening restarts recognition in the new language.
+					if (this.speech.listening) {
+						this.#cancelListening()
+						void this.#toggleMic()
+					}
+				},
+				onCancelListen: () => this.#cancelListening(),
 			},
 			theme,
 			this.lang,
+			{ voiceFirst: !!this.session.site.ui.voiceFirst, brand },
 		)
 		this.ui.mount()
 		// Same session, same conversation: show what was said on the previous page.
@@ -131,6 +156,7 @@ export class Guide {
 		this.ui.onTranscript = (items) => writeStore(LOG_KEY(this.o.siteKey), items)
 		this.executor = new Executor(this.#host())
 		;(window as any).voiceGuide = this
+		this.#followRoutes()
 
 		let wasOpen = false
 		try {
@@ -144,6 +170,75 @@ export class Guide {
 
 		if (this.session.plan) await this.#resumePlan()
 		else if (this.session.agent && this.session.site.agent.enabled) await this.#resumeAgent()
+	}
+
+	// ---- single-page-app routes (ADR-0030) ----
+
+	#routeUrl = location.href
+
+	/** Treats in-app route changes as page changes: the /spa/ app moves without loading pages. */
+	#followRoutes(): void {
+		const w = window as any
+		if (w.__vgRoutes) return
+		w.__vgRoutes = true
+		const changed = (back: boolean) => queueMicrotask(() => void this.#onRoute(back))
+		// Both signals, deduplicated by URL in #onRoute: the Navigation API where it exists, and
+		// transparent wrappers on pushState/replaceState (same arguments, same return value).
+		const nav = w.navigation
+		if (nav && typeof nav.addEventListener === 'function') nav.addEventListener('navigatesuccess', () => changed(false))
+		for (const m of ['pushState', 'replaceState'] as const) {
+			const orig = history[m]
+			history[m] = function (this: History, ...args: Parameters<History['pushState']>) {
+				const r = orig.apply(this, args)
+				changed(false)
+				return r
+			} as History['pushState']
+		}
+		addEventListener('popstate', () => changed(true))
+	}
+
+	async #onRoute(back: boolean): Promise<void> {
+		const from = this.#routeUrl
+		if (location.href === from) return
+		const strip = (u: string) => u.replace(/#.*$/, '')
+		this.#routeUrl = location.href
+		if (strip(location.href) === strip(from)) return
+		// Back during a plan stops it (SPEC-05 §3): the person took the wheel.
+		if (back && (this.executor.running || this.#busy)) {
+			this.stopAll()
+			void this.#say(t('planStopped', this.lang))
+		}
+		const t0 = performance.now()
+		await this.#settle()
+		try {
+			const r = await this.api.post<SessionResponse>('/v1/session', { sessionId: this.session.sessionId, lang: this.lang, page: { url: location.href } })
+			this.session.page = r.page
+			this.guard = new CommitGuard(r.page.commitTargets || [])
+		} catch (e) {
+			console.warn('[voice-guide] route update failed', e)
+		}
+		if (!this.executor.running) this.ui.clearSpotlight()
+		const turnId = this.#lastTurnId
+		if (turnId) void this.#report(turnId, [{ name: 'sdk.route', attrs: { from: new URL(from).pathname, to: location.pathname, pageId: this.session.page.pageId }, ms: performance.now() - t0 }])
+	}
+
+	/** Waits until the app's view stops changing: 300 ms without mutations, at most 6 s. */
+	#settle(): Promise<void> {
+		return new Promise((resolve) => {
+			const root = document.querySelector('app-root, vf-root') || document.body
+			let last = performance.now()
+			const mo = new MutationObserver(() => (last = performance.now()))
+			mo.observe(root, { subtree: true, childList: true, characterData: true })
+			const t0 = performance.now()
+			const tick = () => {
+				const now = performance.now()
+				if (now - last >= 300 || now - t0 > 6000) {
+					mo.disconnect()
+					resolve()
+				} else setTimeout(tick, 100)
+			}
+			setTimeout(tick, 100)
+		})
 	}
 
 	// ---- requests ----
@@ -162,8 +257,9 @@ export class Guide {
 			const res = await this.api.post<{ turnId: string; plan: Plan }>('/v1/turn', { sessionId: this.session.sessionId, utterance, uiLang: this.lang, page: { url: location.href } })
 			const plan = res.plan
 			this.#lastTurnId = plan.turnId
-			void this.#report(plan.turnId, [{ name: 'sdk.listen', attrs: { source, text: shown || utterance, confidence }, ms: listenMs }])
+			void this.#report(plan.turnId, [{ name: 'sdk.listen', attrs: { source, text: shown || utterance, confidence, ...(source === 'voice' ? this.#listenMeta : {}) }, ms: listenMs }])
 			this.ui.thinking(false)
+			if (this.ui.voice?.state === 'thinking') this.ui.voice.setState('idle')
 			if (plan.lang !== this.lang) this.#setLang(plan.lang)
 			if (plan.meta.intent === 'repeat') {
 				if (this.#lastSpoken) await this.#say(this.#lastSpoken)
@@ -175,6 +271,7 @@ export class Guide {
 			await this.executor.run(plan)
 		} catch (e) {
 			this.ui.thinking(false)
+			if (this.ui.voice?.state === 'thinking') this.ui.voice.setState('idle')
 			const err = e as ApiError
 			this.ui.note(err.status === 429 ? '…' : t('error', this.lang))
 			console.warn('[voice-guide]', e)
@@ -189,6 +286,7 @@ export class Guide {
 		this.#agentAbort = null
 		this.speech.cancelSpeech()
 		this.speech.stopListening()
+		if (this.ui?.voice?.state === 'speaking') this.ui.voice.setState('idle')
 		this.#askResolver = null
 		if (!opts.keepUi) this.ui?.clearSpotlight()
 	}
@@ -209,43 +307,136 @@ export class Guide {
 		this.#lastSpoken = text
 		this.ui.message('guide', text)
 		const tag = this.session.site.speech.tts[this.lang] || this.lang
-		const p = this.speech.speak(text, tag)
+		const v = this.ui.voice
+		if (v && !this.speech.muted && this.speech.canSpeak) v.setState('speaking')
+		const p = this.speech.speak(text, tag).then(() => {
+			if (v?.state === 'speaking' && !this.speech.speaking) v.setState('idle')
+		})
 		if (opts.wait) await Promise.race([p, new Promise((r) => setTimeout(r, 2500))])
 	}
 
 	// ---- listening ----
 
-	#toggleMic(): void {
+	#mic: MicStream | null = null
+	#maxTimer = 0
+	#listenMeta: Record<string, unknown> = {}
+
+	#releaseMic(): void {
+		clearTimeout(this.#maxTimer)
+		this.#mic?.close()
+		this.#mic = null
+	}
+
+	#cancelListening(): void {
+		this.speech.abortListening()
+		this.#releaseMic()
+		this.ui.setListening(false)
+		this.ui.voice?.setState('idle')
+	}
+
+	async #toggleMic(): Promise<void> {
+		const v = this.ui.voice
 		if (this.speech.listening) {
+			// Second press: finish now and send what was heard.
 			this.speech.stopListening()
 			return
 		}
 		if (!this.speech.canListen) {
+			v?.setState('unsupported')
+			this.ui.open()
 			this.ui.note(t('noMic', this.lang))
 			this.ui.focusInput()
 			return
 		}
+		// Barge-in: pressing while the guide speaks stops it and listens (SPEC-02 §3).
 		this.stopAll({ keepUi: true })
 		const tag = this.session.site.speech.stt[this.lang] || this.lang
 		const t0 = performance.now()
+		let speechStartAt = 0
 		this.ui.setListening(true)
-		this.speech.listen(tag, {
-			onInterim: (text) => this.ui.interim(text),
-			onFinal: (text, confidence) => {
+		let mode: string = 'own-capture'
+		if (v) {
+			try {
+				const perm = await (navigator.permissions?.query({ name: 'microphone' as PermissionName }) ?? Promise.resolve(null)).catch(() => null)
+				if (perm?.state === 'prompt') v.setState('permission')
+				this.#mic = new MicStream()
+				await this.#mic.open()
+			} catch (e) {
+				this.#releaseMic()
 				this.ui.setListening(false)
-				if (!text) return
-				if (this.answerAgent(text)) this.ui.message('user', text)
-				else void this.request(text, 'voice', undefined, performance.now() - t0, confidence)
-			},
-			onError: (code) => {
-				this.ui.setListening(false)
-				if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
+				const denied = (e as DOMException)?.name === 'NotAllowedError'
+				v.setState('error', t(denied ? 'micDenied' : 'noMic', this.lang))
+				return
+			}
+			v.setState('listening')
+			const mic = this.#mic
+			v.startWave(() => mic.sample())
+		}
+		const failed = (code: string) => {
+			this.#releaseMic()
+			this.ui.setListening(false)
+			if (code === 'aborted') return v?.setState('idle')
+			if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
+				if (v) v.setState('error', t('micDenied', this.lang))
+				else {
 					this.ui.note(t('noMic', this.lang))
 					this.ui.focusInput()
 				}
-			},
-			onEnd: () => this.ui.setListening(false),
-		})
+				return
+			}
+			if (v) {
+				v.setState('error', t('noSpeech', this.lang))
+				setTimeout(() => v.state === 'error' && v.setState('idle'), 4000)
+			}
+		}
+		try {
+			const info = await this.speech.listen(
+				tag,
+				{
+					onUpdate: (finalText, interim) => {
+						v?.update(finalText, interim)
+						this.ui.interim([finalText, interim].filter(Boolean).join(' '))
+					},
+					onSpeechStart: () => (speechStartAt = performance.now()),
+					onSound: (on) => {
+						if (this.#mic && !this.#mic.live) this.#mic.synthetic = on ? 0.6 : 0
+					},
+					onFinal: (text, confidence) => {
+						const m = v?.metrics
+						const p95 = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * 0.95))] : undefined)
+						this.#listenMeta = {
+							mode,
+							firstWordMs: m?.firstWordAt && speechStartAt ? Math.round(m.firstWordAt - speechStartAt) : undefined,
+							renderP95: m ? p95(m.renderMs) : undefined,
+							frameP95: m ? p95(m.frameMs) : undefined,
+						}
+						this.#releaseMic()
+						this.ui.setListening(false)
+						v?.finalize(text)
+						if (!text) return v?.setState('idle')
+						v?.setState('thinking')
+						if (this.answerAgent(text)) {
+							this.ui.message('user', text)
+							v?.setState('idle')
+						} else void this.request(text, 'voice', undefined, performance.now() - t0, confidence)
+					},
+					onError: failed,
+					onEnd: () => {
+						this.#releaseMic()
+						this.ui.setListening(false)
+						if (v?.state === 'listening' || v?.state === 'permission') v.setState('idle')
+					},
+				},
+				{ track: this.#mic?.track, phrases: this.session.site.speech.phrases, onDevice: this.session.site.speech.onDevice },
+			)
+			mode = this.#mic ? (info.mode === 'shared-track' ? 'shared-track' : 'two-captures') : 'own-capture'
+			this.#listenMeta = { mode, onDevice: info.onDevice }
+			clearTimeout(this.#maxTimer)
+			this.#maxTimer = window.setTimeout(() => this.speech.stopListening(), 15_000)
+		} catch (e) {
+			console.warn('[voice-guide] listen failed', e)
+			failed('error')
+		}
 	}
 
 	// ---- plan execution host ----
@@ -468,30 +659,32 @@ export class Guide {
 
 	#openEvents(): void {
 		if (this.#events) return
-		const es = this.api.events(this.session.sessionId)
-		es.addEventListener('trace', (e) => {
-			this.xray.add(JSON.parse((e as MessageEvent).data) as TraceEv)
-			if (this.ui.xrayOpen) this.ui.renderXray(this.xray.view())
-		})
-		es.addEventListener('notify', (e) => {
-			const ev = JSON.parse((e as MessageEvent).data) as TraceEv
-			this.xray.add(ev)
-			// The stream replays its backlog on every page load; announce each change once.
-			const seen = readStore<number>(NOTIFIED_KEY(this.o.siteKey), 0)
-			const stale = Date.now() - Date.parse(ev.at) > 5 * 60_000
-			if ((ev.seq ?? 0) <= seen || stale) return
-			writeStore(NOTIFIED_KEY(this.o.siteKey), ev.seq ?? 0)
-			const a = ev.attrs
-			this.ui.toast(a.title, a.body)
-			void this.#say(`${a.title}. ${a.body}`)
-			// Push watches are shown by the service worker; live ones by the page.
-			if ('Notification' in window && Notification.permission === 'granted' && a.channel !== 'push') {
-				try {
-					new Notification(a.title, { body: a.body, lang: a.lang, dir: a.lang === 'ar' ? 'rtl' : 'ltr', tag: a.watchId })
-				} catch {}
-			}
-		})
-		this.#events = es
+		this.#events = this.api.events(
+			this.session.sessionId,
+			(kind, ev: TraceEv) => {
+				if (kind === 'trace') {
+					this.xray.add(ev)
+					if (this.ui.xrayOpen) this.ui.renderXray(this.xray.view())
+					return
+				}
+				this.xray.add(ev)
+				// The stream replays its backlog on every page load; announce each change once.
+				const seen = readStore<number>(NOTIFIED_KEY(this.o.siteKey), 0)
+				const stale = Date.now() - Date.parse(ev.at) > 5 * 60_000
+				if ((ev.seq ?? 0) <= seen || stale) return
+				writeStore(NOTIFIED_KEY(this.o.siteKey), ev.seq ?? 0)
+				const a = ev.attrs
+				this.ui.toast(a.title, a.body)
+				void this.#say(`${a.title}. ${a.body}`)
+				// Push watches are shown by the service worker; live ones by the page.
+				if ('Notification' in window && Notification.permission === 'granted' && a.channel !== 'push') {
+					try {
+						new Notification(a.title, { body: a.body, lang: a.lang, dir: a.lang === 'ar' ? 'rtl' : 'ltr', tag: a.watchId })
+					} catch {}
+				}
+			},
+			this.o.events || 'auto',
+		)
 	}
 
 	/** Answers an agent's question (typed or spoken) instead of starting a new request. */

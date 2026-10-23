@@ -1,11 +1,8 @@
 # Vodafone Egypt live site (Vodafone live phase). Facts behind every value:
 # docs/reference/vodafone-live-site-audit.md. Specs: SPEC-03 (integration), SPEC-04 (sync).
 #
-# STARTER CONFIG: written from the 2026-10-23 audit, validated against the schema, not
-# yet crawled (the build sandbox could not reach the site). First task on a networked
-# machine: `npm run ingest -- --site vodafone-eg --dry-run` and read the report (T-201).
-#
-# Scheduled crawling of production needs Vodafone's written approval first (SPEC-04 §4).
+# Crawled for real on 2026-10-23, public pages only, through the in-browser crawler (ADR-0032).
+# Scheduled crawling is paused (see `sync:`); runs are on demand.
 id: vodafone-eg
 name: { ar: ڤودافون مصر, en: Vodafone Egypt }
 languages: [ar, en]
@@ -66,29 +63,53 @@ crawl:
     - '/(en|ar)/\d+(\?|#|$)'
     # Terms pages: not guidance destinations (add back per page in the overlay if needed).
     - '(terms|t-c|tandc|termsandconditions|tcs)'
+    # Business, foundation, corporate and investor pages: outside the personal-products demo scope.
+    - '/(en|ar)/(business|foundation|vodafone-egypt1|enterprise|public-sector|about-us|corporate|investor|our-purpose|social-|community|v-hub|newsroom|events|management)'
+    - '/(en|ar)/[^/]*(business|machine-to-machine|smart-meter|iot|m2m|sd-wan|cloud|fleet|dedicated-internet|co-location|ready-)'
     # News archive, people pages and careers: outside the personal-products demo scope.
-    - '/(en|ar)/(latest-news|latest-vodafone-egypt-news|vodafone-egypt-press-releases|\d{4}-news|careers|executive-team|our-history|working-at-vodafone)'
+    - '/(en|ar)/(latest-news|latest-vodafone-egypt-news|vodafone-egypt-press-releases|\d{4}-news|press-|careers|executive-team|our-history|history|working-at-vodafone|risk-awareness|tv%20commercials|TV%20Commercials|join-vodafone|privacy|exposure-)'
     # Logged-in and transactional journeys (shop robots.txt; SPEC-04 §2) and logged-in SPA views.
     - '^https://eshop\.vodafone\.com\.eg/(en/|ar/)?(cart|checkout|wishlist|register|account)'
     - '[?&](Color|Storage|Size|variantID)='
     - '^https://web\.vodafone\.com\.eg/spa/(myHome|miManagement)'
-  maxPages: 800
-  # SPEC-04 §4: at most 2 pages at a time per origin.
+  maxPages: 220
+  # The navigation pages and the pages they link to, twice removed (ADR-0028).
+  maxDepth: 2
+  # The shop's category lists differ only by query string.
+  keepQuery: [categoryUrls]
+  # SPEC-04 §4: at most 2 pages at a time per origin, about 1 page per second.
   concurrency: 2
-  # Signed out. The demo account's cookies are added only on the demo machine, never committed.
+  delayMs: 1000
+  # PUBLIC PAGES ONLY (owner's instruction, 2026-10-23): no cookies, no signed-in account;
+  # any page that shows a password field or a login URL is skipped and listed in the report.
+  publicOnly: true
   cookies: []
   collections: { minItems: 3 }
-  # Proposed fields, added to the schema by T-201 (SPEC-04 §6). Kept as comments until then
-  # because the current schema would drop them silently.
-  # sitemaps:
-  #   - https://web.vodafone.com.eg/site-a/sitemap-en.xml
-  #   - https://web.vodafone.com.eg/site-a/sitemap-ar.xml
-  # respectRobots: true
-  # userAgent: VodafoneEG-VoiceGuide-Crawler/0.1 (+mailto:<team contact>)
-  # rate: { perOriginConcurrency: 2, perOriginPerSecond: 1 }
-  # languageFrom: path
-  # pairLanguagesBy: path
-  # ignoreSelectors: ['#onetrust-banner-sdk', '#onetrust-consent-sdk', '.onetrust-pc-dark-filter', 'accessibility-widget', '#vodafone-aw-icon']
+  # Removed before extraction: cookie banner and Vodafone's accessibility widget (audit §3, §5).
+  ignoreSelectors: ['#onetrust-banner-sdk', '#onetrust-consent-sdk', '#onetrust-pc-sdk', '.onetrust-pc-dark-filter', 'accessibility-widget', '#vodafone-aw-icon']
+  # The /spa/ Angular app needs its scripts to render; content pages are crawled without them.
+  scriptsFor: '^/spa/'
+  # Change detection only, never discovery (ADR-0028).
+  sitemaps:
+    - https://web.vodafone.com.eg/site-a/sitemap-en.xml
+    - https://web.vodafone.com.eg/site-a/sitemap-ar.xml
+  userAgent: VodafoneEG-VoiceGuide-Crawler/0.1
+  # No hreflang on the live site; /en/<slug> and /ar/<slug> are the same page (audit §6).
+  pairLanguagesBy: path
+
+# SCHEDULED CRAWLING IS PAUSED (owner's instruction, 2026-10-23, and PRD D3: no scheduled
+# crawl of production before Vodafone's written approval). On-demand runs only:
+#   npm run sync -- --site vodafone-eg
+sync:
+  schedule:
+    enabled: false
+    everyMinutes: 120
+    window: '07:00-23:00'
+    timezone: Africa/Cairo
+  gate:
+    maxDestinationChurn: 0.15
+    requireSeeds: true
+  keepVersions: 10
 
 curated: config/curated/vodafone-eg.yaml
 
@@ -96,10 +117,12 @@ speech:
   # Egyptian Arabic, whatever the page's lang attribute says (it says ar-SA; audit §6).
   stt: { ar: ar-EG, en: en-US }
   tts: { ar: ar-EG, en: en-US }
-  # Proposed (SPEC-02 §6): onDevice: prefer
+  onDevice: prefer
 
 ui:
-  # Vodafone red. SPEC-01 replaces derivation with the fixed theme (ui.theme: vodafone, T-101).
+  # Fixed Vodafone tokens (ADR-0029) and the microphone launcher (ADR-0027).
+  theme: vodafone
+  voiceFirst: true
   accent: '#e60000'
   position: end
   xray: button

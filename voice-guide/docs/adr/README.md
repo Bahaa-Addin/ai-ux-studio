@@ -33,6 +33,8 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0028](0028-live-knowledge-sync.md) | Live knowledge sync: seeds plus sitemap lastmod, polite crawling, path language pairing, gated activation | Ingestion | Proposed; extends 0012 |
 | [0029](0029-vodafone-theme-as-fixed-tokens.md) | Fixed Vodafone token set on Vodafone sites | UI and brand | Proposed; amends 0020 |
 | [0030](0030-sdk-follows-spa-route-changes.md) | The SDK follows single-page-app route changes | Session continuity | Proposed; extends 0016 |
+| [0031](0031-gateway-behind-the-page-origin-and-long-poll-events.md) | Demo browser reaches the gateway through the page's own origin (`/__vg`); events fall back to long polling | Live site integration | Accepted; amends 0026 |
+| [0032](0032-in-browser-crawler-public-pages-only.md) | Crawl the live site from a real browser tab when needed; public pages only; scheduled crawling paused | Ingestion | Accepted |
 
 ## Changes to the demo plan these decisions made
 

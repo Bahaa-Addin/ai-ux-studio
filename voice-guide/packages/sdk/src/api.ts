@@ -40,7 +40,48 @@ export class Api {
 		return json as T
 	}
 
-	events(sessionId: string): EventSource {
-		return new EventSource(`${this.base}/v1/events?session=${encodeURIComponent(sessionId)}&k=${encodeURIComponent(this.siteKey)}`)
+	/**
+	 * Live events (trace and notify). Server-sent events by default; long polling when asked, or
+	 * when the stream cannot open (a proxy that buffers, a request router that cannot stream).
+	 */
+	events(sessionId: string, on: (kind: 'trace' | 'notify', data: any) => void, mode: 'auto' | 'poll' = 'auto'): { close(): void } {
+		let closed = false
+		let since = 0
+		const deliver = (ev: any) => {
+			if ((ev.seq || 0) <= since) return
+			since = ev.seq || since
+			on(String(ev.name).startsWith('watch.changed') ? 'notify' : 'trace', ev)
+		}
+		const poll = async () => {
+			while (!closed) {
+				try {
+					const r = await this.get<{ events: any[] }>(`/v1/events/poll?session=${encodeURIComponent(sessionId)}&since=${since}&wait=20`)
+					for (const ev of r.events) deliver(ev)
+				} catch {
+					await new Promise((res) => setTimeout(res, 3000))
+				}
+			}
+		}
+		if (mode === 'poll' || typeof EventSource === 'undefined') {
+			void poll()
+			return { close: () => (closed = true) }
+		}
+		const es = new EventSource(`${this.base}/v1/events?session=${encodeURIComponent(sessionId)}&k=${encodeURIComponent(this.siteKey)}`)
+		let opened = false
+		es.addEventListener('open', () => (opened = true))
+		for (const kind of ['trace', 'notify'] as const) es.addEventListener(kind, (e) => deliver(JSON.parse((e as MessageEvent).data)))
+		const fallback = setTimeout(() => {
+			if (!opened && !closed) {
+				es.close()
+				void poll()
+			}
+		}, 4000)
+		return {
+			close: () => {
+				closed = true
+				clearTimeout(fallback)
+				es.close()
+			},
+		}
 	}
 }

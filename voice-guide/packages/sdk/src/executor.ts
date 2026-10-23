@@ -97,7 +97,14 @@ export class Executor {
 			case 'waitForPage': {
 				if (h.pageMatches(step.pageId, step.urlPrefix)) return step.pageId
 				await h.progress({ turnId, cursor: i, awaitingNavigation: true })
-				await new Promise((r) => setTimeout(r, step.timeoutMs ?? 10_000))
+				// A full page load resumes the plan on the next page; an in-app route change (the /spa/
+				// app, ADR-0030) arrives here instead, so keep checking until the page matches.
+				const until = Date.now() + (step.timeoutMs ?? 10_000)
+				while (Date.now() < until) {
+					if (signal.aborted) throw new StepFailed('stopped')
+					await new Promise((r) => setTimeout(r, 200))
+					if (h.pageMatches(step.pageId, step.urlPrefix)) return step.pageId
+				}
 				throw new StepFailed(`page ${step.pageId} did not load`)
 			}
 			case 'reveal': {

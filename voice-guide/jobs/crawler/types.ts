@@ -103,6 +103,8 @@ export interface PageSnap {
 	/** Relative path of the saved HTML snapshot inside the crawl folder. */
 	snapshot?: string
 	status: number
+	/** URLs that redirected to this page (the live site redirects /ar/<english-slug> to an Arabic slug). */
+	aliases?: string[]
 }
 
 export interface CrawlResult {
@@ -113,4 +115,8 @@ export interface CrawlResult {
 	dir: string
 	pages: PageSnap[]
 	errors: { url: string; error: string }[]
+	/** Set when the crawl stopped early (bot challenge, block). */
+	stopped?: string
+	/** How the crawl was taken: Playwright (default) or the in-browser crawler (ADR-0032). */
+	method?: 'playwright' | 'browser'
 }

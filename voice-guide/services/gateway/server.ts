@@ -96,7 +96,7 @@ export function createGateway(opts: GatewayOptions) {
 			agent: session.agent ?? null,
 			agentToken: site.agent.enabled ? agentToken(site.id, session.id) : null,
 			page,
-			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: site.speech, ui: site.ui, agent: { enabled: site.agent.enabled, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled } },
+			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: site.agent.enabled, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled } },
 			push: site.watch.enabled ? s.local.watch.publicKey() : null,
 		})
 	})
@@ -179,6 +179,44 @@ export function createGateway(opts: GatewayOptions) {
 			set.delete(write)
 			if (!set.size) listeners.delete(sessionId)
 		})
+	})
+
+	// ---- live events by long polling, for clients that cannot hold a stream open (ADR-0031) ----
+	router.on('GET', '/v1/events/poll', async (req, res, _p, url) => {
+		const site = siteFor(req, url)
+		const sessionId = url.searchParams.get('session') || ''
+		const ctx = ctxFor(req, site, sessionId)
+		await s.sessions.get({ siteId: site.id, sessionId }, ctx)
+		await ensureSubscribed()
+		const since = Number(url.searchParams.get('since') || 0)
+		const wait = Math.max(0, Math.min(25, Number(url.searchParams.get('wait') || 20)))
+		let events = await s.store.listTrace(sessionId, since)
+		if (!since) events = events.slice(-60)
+		if (!events.length && wait) {
+			events = await new Promise<TraceEvent[]>((resolve) => {
+				const got: TraceEvent[] = []
+				let settle: ReturnType<typeof setTimeout> | undefined
+				const set = listeners.get(sessionId) || new Set()
+				const finish = () => {
+					clearTimeout(timer)
+					clearTimeout(settle)
+					set.delete(write)
+					if (!set.size) listeners.delete(sessionId)
+					resolve(got)
+				}
+				// Collect for a moment after the first event so a burst comes back in one response.
+				const write = (ev: TraceEvent) => {
+					if ((ev.seq || 0) <= since) return
+					got.push(ev)
+					if (!settle) settle = setTimeout(finish, 120)
+				}
+				set.add(write)
+				listeners.set(sessionId, set)
+				const timer = setTimeout(finish, wait * 1000)
+				req.on('close', finish)
+			})
+		}
+		sendJson(res, 200, { events })
 	})
 
 	// ---- the fallback agent's model calls (OpenAI-compatible) ----

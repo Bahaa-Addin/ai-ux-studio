@@ -19,6 +19,7 @@ const { values } = parseArgs({
 		activate: { type: 'boolean', default: false },
 		'dry-run': { type: 'boolean', default: false },
 		serve: { type: 'boolean', default: false },
+		'from-crawl': { type: 'string' },
 	},
 })
 
@@ -27,7 +28,7 @@ const site = loadSiteConfig(path.join(platform.sitesDir, `${values.site}.yaml`))
 const store = await openStore(platform)
 const servers = values.serve ? await startSiteServers(site, { gatewayUrl: platform.publicUrl, inject: false }) : null
 try {
-	const report = await runIngest({ site, platform, store, activate: values.activate, dryRun: values['dry-run'], log: (m) => console.log(m) })
+	const report = await runIngest({ site, platform, store, activate: values.activate, dryRun: values['dry-run'], crawlDir: values['from-crawl'], log: (m) => console.log(m) })
 	const errors = report.issues.filter((i) => i.level === 'error')
 	console.log(`\nVersion ${report.versionId || '-'}: ${errors.length} errors, ${report.issues.length - errors.length} warnings. Report: ${report.reportFile}`)
 	process.exitCode = errors.length ? 1 : 0
