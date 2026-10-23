@@ -10,6 +10,8 @@ import type { RpcContext } from '#shared/rpc.ts'
 import type { Store } from '#shared/store/index.ts'
 import type { Tracer } from '#shared/trace.ts'
 
+import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
+
 export interface AgentDeps {
 	platform: PlatformConfig
 	store: Store
@@ -31,13 +33,7 @@ interface Provider {
  */
 export function maskPageContent(text: string): { text: string; masked: number } {
 	let masked = 0
-	const mask = (s: string) =>
-		s
-			.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, () => (masked++, '[email]'))
-			.replace(/(?<![\w\d])(?:\d[ -]?){13,19}(?![\w\d])/g, () => (masked++, '[card]'))
-			.replace(/(?<![\w\d])(?:\+?20|0)1[0125]\d{8}(?![\w\d])/g, () => (masked++, '[phone]'))
-			.replace(/(?<![\w\d])[٠-٩]{8,}(?![\w\d])/g, () => (masked++, '[number]'))
-	const out = text.replace(/<browser_state>[\s\S]*?<\/browser_state>/g, (block) => mask(block))
+	const out = text.replace(/<browser_state>[\s\S]*?<\/browser_state>/g, (block) => maskContent(block, () => masked++))
 	return { text: out, masked }
 }
 

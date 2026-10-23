@@ -10,7 +10,7 @@ import { PageAgentCore, tool } from '@page-agent/core'
 import { PageController } from '@page-agent/page-controller'
 import * as z from 'zod/v4'
 
-import { maskContent } from './agent-mask.ts'
+import { fieldInfo, inputRefusal, maskContent } from './agent-mask.ts'
 
 export interface AgentRunOptions {
 	gateway: string
@@ -97,8 +97,13 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 				description: 'Type text into an input element. Only type values the user stated in their request.',
 				inputSchema: z.object({ index: z.int().min(0), text: z.string() }),
 				execute: async function (this: PageAgentCore, input) {
-					const said = o.task.replace(/\s+/g, '')
-					if (!said.includes(input.text.replace(/\s+/g, ''))) return `❌ Refused: "${input.text}" was not said by the user. Ask the user for it instead.`
+					// Credentials, one-time codes, card numbers and national IDs are never typed (T-308).
+					let field: Element | null = null
+					try {
+						field = (this.pageController as any).selectorMap?.get(input.index)?.ref ?? null
+					} catch {}
+					const refused = inputRefusal(o.task, input.text, fieldInfo(field))
+					if (refused) return refused
 					const r = await this.pageController.inputText(input.index, input.text)
 					return r.message
 				},

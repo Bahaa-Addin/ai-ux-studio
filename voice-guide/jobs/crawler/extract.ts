@@ -12,7 +12,8 @@ export interface ExtractOptions {
 export function extractPage(opts: ExtractOptions): Omit<PageSnap, 'status' | 'snapshot'> {
 	const MONEY = /([\d٠-٩][\d٠-٩.,٬٫]*\s*(egp|le\b|l\.e|جنيه|ج\.م|\$|usd|eur|€|£|sar|aed|ريال|درهم))|((egp|\$|€|£)\s*[\d٠-٩])/i
 	const DATA = /[\d٠-٩][\d٠-٩.,٫]*\s*(gb|mb|tb|جيجابايت|ميجابايت|جيجا|ميجا|giga)/i
-	const COMMIT_WORDS = /(pay|purchase|buy now|place order|confirm order|confirm and pay|checkout|ادفع|الدفع|دفع|شراء|اشتري|تأكيد|اطلب)/i
+	// Commit points (AGENTS.md §4.1): payment, subscription confirmation, recharge, transfer, line changes.
+	const COMMIT_WORDS = /(pay|purchase|buy now|place order|confirm|checkout|subscribe|recharge|top up|transfer|send money|activate|ادفع|الدفع|دفع|شراء|اشتري|تأكيد|أكد|اكد|اطلب|اشترك|اشحن|حوّل|حول|تحويل|فعّل|فعل|تفعيل)/i
 	const STABLE_ATTRS = ['data-testid', 'data-test', 'data-qa', 'data-cy', 'data-kb-destination', 'data-bundle', 'data-id', 'data-key', 'data-sku', 'name', 'aria-controls', 'for']
 	const SECTION_SEL = 'section, article, [role="region"], [role="tabpanel"], details, figure, form, main > div[id]'
 	const HEADING_SEL = 'h1, h2, h3, h4, h5, h6, [role="heading"]'

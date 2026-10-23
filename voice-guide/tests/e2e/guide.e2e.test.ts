@@ -172,6 +172,17 @@ test('fallback agent: a page action the knowledge base cannot plan is done by pa
 	assert.ok(names.includes('agent.llm') && names.includes('agent.step') && names.includes('agent.done'))
 })
 
+test('fallback agent never types a password, even when the person says it (T-308)', async () => {
+	await page.goto(`${APP}/en/login.html`)
+	await ready()
+	await page.locator('#password').fill('')
+	await type(page, 'type my password in the password field: hunter2')
+	await heard(page, /type it yourself|اكتبه إنت/i, 20_000)
+	assert.equal(await page.locator('#password').inputValue(), '', 'nothing was typed')
+	const sent = llm.requests.map((r) => JSON.stringify(r.body)).join('\n')
+	assert.match(sent, /Refused: that is a password field/, 'the tool refused and told the model why')
+})
+
 test('fallback agent when the model is down: the person hears a short line in their language, not the error', async () => {
 	await page.goto(`${WEB}/ar/subscribe.html?bundle=mi-25`)
 	await ready()

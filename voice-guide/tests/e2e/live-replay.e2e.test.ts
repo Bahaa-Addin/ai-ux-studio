@@ -65,8 +65,9 @@ const VOICE_STUB = `(() => {
 		return true;
 	};
 	const synth = {
-		speak(u) { window.__spoken.push({ text: u.text, lang: u.lang }); setTimeout(() => u.onend && u.onend(), 30); },
-		cancel() {}, pause() {}, resume() {}, getVoices() { return []; }, addEventListener() {}, speaking: false, pending: false,
+		speak(u) { window.__spoken.push({ text: u.text, lang: u.lang }); if (window.__holdSpeech) { synth.speaking = true; window.__held = u; return; } setTimeout(() => u.onend && u.onend(), 30); },
+		cancel() { window.__cancelledAt = performance.now(); synth.speaking = false; const u = window.__held; window.__held = null; if (u) { u.onerror ? u.onerror({ error: 'interrupted' }) : u.onend && u.onend(); } },
+		pause() {}, resume() {}, getVoices() { return []; }, addEventListener() {}, speaking: false, pending: false,
 	};
 	Object.defineProperty(window, 'speechSynthesis', { value: synth, configurable: true });
 	window.SpeechSynthesisUtterance = window.SpeechSynthesisUtterance || function (t) { this.text = t; };
@@ -358,4 +359,64 @@ test('a typed request with the panel open: the panel moves so it never covers th
 	await page.evaluate(() => (window as any).voiceGuide.ui.clearSpotlight())
 	const after = (await rect('.panel', true))!
 	assert.equal(Math.round(after.x), Math.round(before.x))
+})
+
+test('fonts: every guide text uses Vodafone faces or the Arial/Tahoma fallbacks, never Times (CMS and /spa/)', async () => {
+	for (const url of [`${WEB}/ar/mobile-internet-bundles`, `${WEB}/spa/storeLocator`]) {
+		await page.goto(url)
+		await ready()
+		await page.evaluate(() => (window as any).voiceGuide.ui.open())
+		const fonts = await shadow((root) => [...root.querySelectorAll('.vg-bar .words, .vg-bar .lang, .panel, .panel input, .msg, .bubble, .head .title')].map((el) => getComputedStyle(el).fontFamily))
+		assert.ok(fonts.length >= 4)
+		for (const f of fonts) {
+			assert.doesNotMatch(f, /^"?(times|serif)/i, `${url}: ${f}`)
+			assert.match(f, /vodafone|vf-|Arial|Tahoma/i, `${url}: ${f}`)
+		}
+		await page.evaluate(() => (window as any).voiceGuide.ui.close())
+	}
+})
+
+test('screen readers hear the final words and the reply through the hidden status region', async () => {
+	await page.goto(`${WEB}/ar/mobile-internet-bundles`)
+	await ready()
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec)
+	await page.evaluate(() => (window as any).__vgSayWords(['إيه', 'اللي', 'في', 'الصفحة', 'دي']))
+	const said = await heard(page, /باقات/, 10_000)
+	await page.waitForFunction((t) => document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-sr')!.textContent === t, said, { timeout: 3000 })
+	assert.equal(await shadow((r) => r.querySelector('.vg-sr')!.getAttribute('role')), 'status')
+})
+
+test('barge-in: pressing the microphone while the guide speaks stops it within 100 ms and listens', async () => {
+	await page.evaluate(() => ((window as any).__holdSpeech = true))
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec)
+	await page.evaluate(() => (window as any).__vgSayWords(['إيه', 'اللي', 'في', 'الصفحة', 'دي']))
+	await page.waitForFunction(() => document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-mic')!.getAttribute('data-state') === 'speaking', null, { timeout: 10_000 })
+	const t = await page.evaluate(async () => {
+		const t0 = performance.now()
+		;(document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-mic') as HTMLElement).click()
+		for (let i = 0; i < 50 && !(window as any).__activeRec; i++) await new Promise((r) => setTimeout(r, 10))
+		return { cancelMs: (window as any).__cancelledAt - t0, listening: !!(window as any).__activeRec }
+	})
+	await page.evaluate(() => ((window as any).__holdSpeech = false))
+	assert.ok(t.cancelMs >= 0 && t.cancelMs < 100, `speech cancelled after ${t.cancelMs} ms`)
+	assert.ok(t.listening, 'and it is listening')
+	await page.evaluate(() => (window as any).voiceGuide.stopAll())
+})
+
+test('reduced motion: no moving curves or scaling halo, a static level meter instead', async () => {
+	await page.emulateMedia({ reducedMotion: 'reduce' })
+	await page.reload()
+	await ready()
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec)
+	const halos = new Set<string>()
+	for (let i = 0; i < 6; i++) {
+		halos.add(await shadow((r) => (r.querySelector('.vg-mic .halo') as HTMLElement).style.transform))
+		await page.waitForTimeout(100)
+	}
+	assert.deepEqual([...halos], [''], 'the halo never scales')
+	await page.evaluate(() => (window as any).voiceGuide.stopAll())
+	await page.emulateMedia({ reducedMotion: 'no-preference' })
 })
