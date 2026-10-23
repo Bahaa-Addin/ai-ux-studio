@@ -1,0 +1,21 @@
+# Vodafone held-out set (ADR-0014, T-206). Written on 2026-10-23 BEFORE tuning the vodafone-eg
+# overlay against the tuning set, and never tuned on. Score it, never edit it to pass.
+#   npm run eval:router -- --manifest config/kb/vodafone-eg.manifest.json --cases tests/fixtures/vodafone-utterances-heldout.yaml
+- { say: عايز أشوف باقات بلس, dest: web.mobile-internet-bundles.vodafone-plus }
+- { say: أكبر باقة إنترنت عندكم إيه؟, dest: web.mobile-internet-bundles.vodafone-plus, select: max-data }
+- { say: فين فرع فودافون قريب مني, dest: web.spa-storelocator.search }
+- { say: عايز أعرف عن نظام ريد, dest: web.vodafone-red1 }
+- { say: خريطة تغطية فودافون, dest: web.spa-networkcoveragechecker }
+- { say: إزاي أشحن رصيدي؟, dest: web.recharge }
+- { say: فودافون كاش, dest: web.vodafone-cash }
+- { say: تطبيق أنا فودافون, dest: web.anavodafone }
+- { say: إيه عروض فودافون؟, dest: web.promotions }
+- { say: مكالمات الواي فاي, dest: web.wifi-calling }
+- { say: show me the vodafone plus bundles, dest: web.mobile-internet-bundles.plus--37---600egp }
+- { say: where can I find a vodafone branch, dest: web.spa-storelocator.search }
+- { say: tell me about RED, dest: web.vodafone-red1 }
+- { say: how do I recharge my line, dest: web.recharge }
+- { say: what is vodafone cash, dest: web.vodafone-cash }
+- { say: what offers do you have, dest: web.promotions }
+- { say: the cheapest data bundle, dest: web.mobile-internet-bundles.plus--37---600egp, select: min-price }
+- { say: home internet with a wireless router, dest: web.wireless-net }
