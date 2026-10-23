@@ -185,6 +185,13 @@ export function buildPlan(input: PlanInput): PlanOutput {
 		}
 		case 'visual': {
 			const v = d.visualId ? kb.visuals.get(d.visualId) : undefined
+			// A picture known only by its alt text ("400 mega."): read the card it sits in instead
+			// of echoing the alt, which usually just repeats what the person said.
+			const card = v?.source === 'metadata' ? cardAround(d.target!) : undefined
+			if (card) {
+				steps.push({ op: 'spotlight', target: card, read: { maxChars: 220 } })
+				return out('replay', undefined, d.id, { kind: 'visual', destinationId: d.id, pageId: d.pageId, target: d.target })
+			}
 			steps.push({ op: 'spotlight', target: d.target! })
 			const text = pick(v?.description, lang, m.site.defaultLanguage) || pick(d.description, lang, m.site.defaultLanguage) || label
 			steps.push({ op: 'say', text })
@@ -227,6 +234,16 @@ export function variantUrl(kb: KbIndex, pageId: string, lang: string): string {
 	const p = kb.pages.get(pageId)
 	if (!p) return ''
 	return (p.variants[lang] || p.variants[kb.manifest.site.defaultLanguage] || Object.values(p.variants)[0]).url
+}
+
+/** The link or card that holds a picture, from the picture's own locator ("... > a.tiles-link > div > img"). */
+export function cardAround(t: Target): Target | undefined {
+	const parts = (t.css[0] || '').split(' > ')
+	const upTo = (test: (p: string) => boolean) => {
+		for (let i = parts.length - 2; i >= 0; i--) if (test(parts[i])) return { css: [parts.slice(0, i + 1).join(' > ')] }
+		return undefined
+	}
+	return upTo((p) => /^a([.#:[]|$)/.test(p)) ?? upTo((p) => /\.(tiles?|card|banner)(-(?!img|image)[\w-]*)?($|[.:[])/.test(p))
 }
 
 function collectionRef(c: Collection) {

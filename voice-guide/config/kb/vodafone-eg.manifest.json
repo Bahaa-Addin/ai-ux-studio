@@ -65,13 +65,18 @@
      "الاشتراك",
      "اشتراك",
      "فعّل الباقة",
-     "أشترك"
+     "أشترك",
+     "اشتري",
+     "أشتري",
+     "اشتريلي",
+     "شراء"
     ],
     "en": [
      "subscribe",
      "sign up",
      "buy this bundle",
-     "activate"
+     "activate",
+     "buy"
     ]
    },
    "examples": {
@@ -9492,29 +9497,6 @@
    "collectionId": "web.spa-vodafone-flex.bodycontainer"
   },
   {
-   "id": "web.d8-a7-d9-84-d8-a7-d9-86-d8-aa-d8-b1-d9-8.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Office 4G Connectivity and Business Plans"
-    ]
-   },
-   "pageId": "web.d8-a7-d9-84-d8-a7-d9-86-d8-aa-d8-b1-d9-8",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Office 4G Connectivity and Business Plans"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "at-home مكتبك الجديد جاهز للإنطلاق مع النت الهوائى فائق السرعة مكان ثابت من اختيارك سرعة عالية للنت مع راوتر Home Wireless فائق السرعات استمتع بسرعة تصل إلى 3.6 جيجا باقة نت أكبر يعمل عن طريق جهاز النت الهوائى الخاص بفودافون فقط لا يحتاج لخ"
-   }
-  },
-  {
    "id": "web.d8-a7-d9-84-d8-a7-d9-86-d8-aa-d8-b1-d9-8.xa4e02a",
    "kind": "section",
    "labels": {
@@ -9623,34 +9605,6 @@
    }
   },
   {
-   "id": "web.promotions.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "promotions-lite"
-    ],
-    "en": [
-     "promotions-lite"
-    ]
-   },
-   "pageId": "web.promotions",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "promotions-lite",
-     "en": "promotions-lite"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "اعرف اكتر عن عروض ڤودافون واختار العرض اللي يناسبك ! 400 ميجا استمتع ب 400 ميجا عند تحميل او تحديث \"ڤودافون\" عروض ليك استمتع بعروض متفصلة عشانك انت و بس مخفي",
-    "en": "Check out our Latest offers and choose yours ! 400 Megabyte Enjoy 400 Megabyte when you download or update \"Ana Vodafone App\" Offers Tab Check out the best personalized offers for you Hidden"
-   }
-  },
-  {
    "id": "web.promotions.check-out-our-latest-offers-and-choose-y",
    "kind": "section",
    "labels": {
@@ -9684,34 +9638,6 @@
    }
   },
   {
-   "id": "web.renew-your-bundle.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Renew Your Bundle"
-    ],
-    "en": [
-     "Renew Your Bundle"
-    ]
-   },
-   "pageId": "web.renew-your-bundle",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Renew Your Bundle",
-     "en": "Renew Your Bundle"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "0 جدد باقتك في أي وقت وفي أي مكان على فودافون كاش ، يمكنك تجديد باقة فليكس أو الإنترنت الخاصة بك من علي محفظة فودافون كاش. فقط اطلب # 28 * 9 * واختر الباقة التي تريد تجديدها. 1. اطلب # 28 * 9 * 2. اختر من بين تجديد باقة فليكس أو الإنترنت 3.",
-    "en": "0 Renew your bundle anytime anywhere On Vodafone cash you can renew your Flex or Mobile internet bundle with a simple click through your wallet. Just Dial *9*28# and choose what bundle you want to renew. This is how you renew your bundle : "
-   }
-  },
-  {
    "id": "web.renew-your-bundle.renew-your-bundle-anytime-anywhere",
    "kind": "section",
    "labels": {
@@ -9736,34 +9662,6 @@
    "description": {
     "ar": "على فودافون كاش ، يمكنك تجديد باقة فليكس أو الإنترنت الخاصة بك من علي محفظة فودافون كاش. فقط اطلب # 28 * 9 * واختر الباقة التي تريد تجديدها. 1. اطلب # 28 * 9 * 2. اختر من بين تجديد باقة فليكس أو الإنترنت 3. قم بالتأكيد على الباقة التي تقوم ",
     "en": "On Vodafone cash you can renew your Flex or Mobile internet bundle with a simple click through your wallet. Just Dial *9*28# and choose what bundle you want to renew. This is how you renew your bundle : Dial *9*28# Choose between renewing y"
-   }
-  },
-  {
-   "id": "web.vodafone-rate-plans.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "vodafone-rate-plans"
-    ],
-    "en": [
-     "vodafone-rate-plans"
-    ]
-   },
-   "pageId": "web.vodafone-rate-plans",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "vodafone-rate-plans",
-     "en": "vodafone-rate-plans"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "خطط اسعار ڤودافون خطط اسعار ڤودافون خطط الأسعار ڤودافون بتقدم لك مجموعة من خطط الأسعار لتلبية احتياجاتك. اعرف خطط الأسعار واختار اللي يناسبك ڤودافون Red ڤودافون Red هو النظام اللي بيوفر لك كل اللي بتحتاجه من مكالمات ورسائل وإنترنت، بالإضافة",
-    "en": "All Vodafone Rate plans Vodafone Rate plans Rate plans Vodafone offers you a variety of rate plans to fulfill your needs. Explore all the plans and pick your best match Vodafone Red Enjoy the convenience of having one plan covering all what"
    }
   },
   {
@@ -9818,29 +9716,6 @@
    "description": {
     "ar": "ڤودافون بتقدم لك مجموعة من خطط الأسعار لتلبية احتياجاتك. اعرف خطط الأسعار واختار اللي يناسبك ڤودافون Red ڤودافون Red هو النظام اللي بيوفر لك كل اللي بتحتاجه من مكالمات ورسائل وإنترنت، بالإضافة لخدمات مميزة وحصرية للناس المميزين. أنظمة ڤوداف",
     "en": "Vodafone offers you a variety of rate plans to fulfill your needs. Explore all the plans and pick your best match Vodafone Red Enjoy the convenience of having one plan covering all what you need, from minutes, SMS and mobile internet in add"
-   }
-  },
-  {
-   "id": "web.d8-ae-d9-84-d9-91-d9-8a-d8-a7-d9-84-d8-b.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "unifiedinternationalrate"
-    ]
-   },
-   "pageId": "web.d8-ae-d9-84-d9-91-d9-8a-d8-a7-d9-84-d8-b",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "unifiedinternationalrate"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "العالم بين ايديك خلّي العالم بين ايديك لكل عملاء ڤودافون، كلم أي بلد في العالم في أي وقت بـ 12 جنيه للدقيقة، مع ڤودافون أقوي شبكة محمول في مصر والعالم. كلم كل أصحابك وحبايبك في أي مكان في العالم برسوم ثابتة وبدون حدود. للاشتراك.... اطلب *50"
    }
   },
   {
@@ -9994,34 +9869,6 @@
    }
   },
   {
-   "id": "web.vodafone-cash-government-payments.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Vodafone Cash Government Payments"
-    ],
-    "en": [
-     "Vodafone Cash Government Payments"
-    ]
-   },
-   "pageId": "web.vodafone-cash-government-payments",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Vodafone Cash Government Payments",
-     "en": "Vodafone Cash Government Payments"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "فودافون كاش ATM من غير ما تحتاج حساب في البنك أو كارت مع فودافون كاش تقدرتدفع اونلاين مدفوعاتك الحكومية – ضرايب, جمارك, فواتير و مخالفات و خدمات تانية. دلوقتي المعاملات المالية الحكومية بتتحول اونلاين, عشان كده فودافون كاش بتقدملك وسيلة دفع",
-    "en": "Vodafone Cash ATM Pay Online all of your government payments – Taxes, customs duties, bills/fines and many other services without needing a bank account or a debit card. Now that the Egyptian Government is digitalizing government payments, "
-   }
-  },
-  {
    "id": "web.vodafone-cash-government-payments.vodafone-cash-atm",
    "kind": "section",
    "labels": {
@@ -10044,34 +9891,6 @@
    },
    "provenance": "auto",
    "description": {}
-  },
-  {
-   "id": "web.anavodafone.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Ana Vodafone"
-    ],
-    "en": [
-     "Ana Vodafone"
-    ]
-   },
-   "pageId": "web.anavodafone",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Ana Vodafone",
-     "en": "Ana Vodafone"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "صفحه تطبيق انا فودافون دلوقتي مع تطبيق أنا ڤودافون كل اللي ممكن تحتاجه من خدمات ڤودافون بقى حرفياً بين ايديك! To get Ramadan gifts download the APP Now انضم الى... + 1,000,000 مستخدم لـ أنا ڤودافون iPhone Android Huawei عندك سؤال عن التطبيق",
-    "en": "Ana Vodafone app Now with Ana Vodafone App All Vodafone services are at your fingertips To get Ramadan gifts download the APP Now Join our + 1,000,000 Active users iPhone Android Huawei Got a question? What can I do on the App? You can full"
-   }
   },
   {
    "id": "web.anavodafone.ana-vodafone-app",
@@ -10206,34 +10025,6 @@
    }
   },
   {
-   "id": "web.call-us.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Call us | Vodafone Egypt"
-    ],
-    "en": [
-     "Call us | Vodafone Egypt"
-    ]
-   },
-   "pageId": "web.call-us",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Call us | Vodafone Egypt",
-     "en": "Call us | Vodafone Egypt"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "كلمنا كلمنا يمكنك الاتصال بنا على الأرقام التالية، يسعدنا دائماً ان نكون فى خدمتك نوع الخدمة الرقم السعر خدمة العملاء 888 من اى رقم ڤودافون للكارت،ايزى وفليكس ب 50 قرش للمكالمة لنظام الخط ببلاش 16888 من اى رقم موبايل نفس اسعار مكالمات الخطو",
-    "en": "Call us Call us You can call us on the below numbers, we are always happy to be at your service Service Number Price per minute Consumer Customer Service 888 (From any Vodafone number) Prepaid, Easy & Flex (with 50 PT per call) 16888 (From "
-   }
-  },
-  {
    "id": "web.call-us.call-us",
    "kind": "section",
    "labels": {
@@ -10288,34 +10079,6 @@
    }
   },
   {
-   "id": "web.card-to-wallet.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Card to Wallet"
-    ],
-    "en": [
-     "Card to Wallet"
-    ]
-   },
-   "pageId": "web.card-to-wallet",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Card to Wallet",
-     "en": "Card to Wallet"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "ايداع بالكارت تفاصيل العرض : دلوقتي مصاريف خدمة الإيداع بالكارت بقت ب5 جنيه على كل معاملة لفترة محدودة. يتم خصم 10 جنيه في حالة إيداع 1,000 جنيه أو أقل و يتم خصم 20 جنيه في حالة إيداع أكثر من 1,000 جنيه. في حالة الإيداع من بطاقة ائتمان يرجى",
-    "en": "Card To Wallet Services Offer Details : Card to wallet service fee is now 5LE only per transaction for a limited time. Service fee is 10LE per transaction up to 1,000LE deposits and 20LE per transaction for deposits over 1,000LE. In case of"
-   }
-  },
-  {
    "id": "web.card-to-wallet.card-to-wallet-services",
    "kind": "section",
    "labels": {
@@ -10340,34 +10103,6 @@
    "description": {
     "ar": "تفاصيل العرض : دلوقتي مصاريف خدمة الإيداع بالكارت بقت ب5 جنيه على كل معاملة لفترة محدودة. يتم خصم 10 جنيه في حالة إيداع 1,000 جنيه أو أقل و يتم خصم 20 جنيه في حالة إيداع أكثر من 1,000 جنيه. في حالة الإيداع من بطاقة ائتمان يرجى الرجوع إلى ال",
     "en": "Offer Details : Card to wallet service fee is now 5LE only per transaction for a limited time. Service fee is 10LE per transaction up to 1,000LE deposits and 20LE per transaction for deposits over 1,000LE. In case of credit card deposits pl"
-   }
-  },
-  {
-   "id": "web.end-of-call.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "End Of Call Notification"
-    ],
-    "en": [
-     "End Of Call Notification"
-    ]
-   },
-   "pageId": "web.end-of-call",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "End Of Call Notification",
-     "en": "End Of Call Notification"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "خدمة معرفة الرصيد بعد انتهاء المكالمة هي عباره عن خدمة هتبلغك بتكلفة المكالمة والرصيد المتبقي ليك بعد انتهاء كل مكالمة تقدر تشترك في هذه الخدمة عن طريق الكود المختصر#9001* ب 1 قرش , وكمان تقدر تلغيها عن طريق الكود : #9000* بدون مقابل . 400 ",
-    "en": "End Of call notification End Of Call Notification This service notifies you at the end of each call about the price of the call and the remaining amount your main balance, you can subscribe in this service through dialing : *9001# for 1Pt a"
    }
   },
   {
@@ -10416,34 +10151,6 @@
    },
    "provenance": "auto",
    "description": {}
-  },
-  {
-   "id": "web.home.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Home"
-    ],
-    "en": [
-     "Home"
-    ]
-   },
-   "pageId": "web.home",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Home",
-     "en": "Home"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "الصفحه الرئيسية لڤودافون مصر عالم RED الجديد ! RED بتقدملك مزايا ترفيهية ومزايا يومية مخصوصه ليك، زي YouTube Premium وDisney+ وWATCH IT وOSN+ وAnghami Plus وAmazon Prime وYango Play وTOD. وكمان مزايا يومية من talabat pro وBEFIT وخصومات حصري",
-    "en": "Vodafone Egypt home page New World of RED ! RED is built for the way you live, offering curated entertainment and lifestyle benefits like YouTube Premium, Disney+, WATCH IT, OSN+, Anghami Plus, Amazon Prime, Yango Play, and TOD, plus everyd"
-   }
   },
   {
    "id": "web.home.vodafone-egypt-home-page",
@@ -10524,34 +10231,6 @@
    "description": {
     "ar": "تطبيق أنا ڤودافون كل اللي ممكن تحتاجه من ڤودافون بقى حرفياً بين ايديك! حمل التطبيق Home Wireless استمتع بخصم أكثر من 50٪ على الراوتر الهوائي! أعرف أكتر باقات الانترنت اختار بين باقات اكستريم المختلفة أعرف أكتر 4G هل أنت مستعد لشبكة 4G الجدي",
     "en": "Ana Vodafone App All Vodafone services are at your fingertips. Download App Home Wireless Enjoy more than 50% OFF on Home Wireless routers! Know More Internet Bundles Select from a variety of extreme bundles. Know More 4G Readiness Are you "
-   }
-  },
-  {
-   "id": "web.homedslcatalog.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Home DSL Catalog"
-    ],
-    "en": [
-     "Home DSL Catalog"
-    ]
-   },
-   "pageId": "web.homedslcatalog",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Home DSL Catalog",
-     "en": "Home DSL Catalog"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "باقات Home DSL الاشتراك في Vodafone Home DSL سهل، وإدارته أسهل كمان! دعم فني سريع، سرعات إنترنت عالية، وتحكم كامل من البيت بكل سهولة. إشتراك ٣٠ ميجابت/ثانية ٧٠ ميجابت/ثانية ١٠٠ ميجابت/ثانية ٢٠٠ ميجابت/ثانية ... ٣٠ ميجابت/ثانية ٧٠ ميجابت/ثان",
-    "en": "Home DSL Bundles Becoming a Vodafone Home DSL customer is easy, and managing your internet is even easier, with fast customer support, top internet speeds, and simple control from home. Subscribe Up to 30Mbs Speed Up to 70Mbs Speed Up to 10"
    }
   },
   {
@@ -10636,34 +10315,6 @@
    }
   },
   {
-   "id": "web.international-balance-transfer.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "International Balance Transfer"
-    ],
-    "en": [
-     "International Balance Transfer"
-    ]
-   },
-   "pageId": "web.international-balance-transfer",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "International Balance Transfer",
-     "en": "International Balance Transfer"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "خدمة تحويل الرصيد الدولي مش بس تقدر تستقبل رصيد من اهلك و حبايبك في مصر كمان تقدر تستقبل رصيد بدون مقابل من عملاء الشبكات التالية : الجوال – السعودية الكويت - ooredoo فرنسا - SFR كندا - Freedom Mobile و قريب دول و شبكات اخرى الحد الأقصى لتح",
-    "en": "International balance transfer International balance transfer Now you can receive airtime balance from your friends and family customers of the following operators: STC – Saudi Arabia Ooredoo – Kuwait SFR – France Freedom Mobile – Canada So"
-   }
-  },
-  {
    "id": "web.international-balance-transfer.xced49c",
    "kind": "section",
    "labels": {},
@@ -10724,34 +10375,6 @@
    "description": {}
   },
   {
-   "id": "web.international-calls.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "International Calls"
-    ],
-    "en": [
-     "International Calls"
-    ]
-   },
-   "pageId": "web.international-calls",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "International Calls",
-     "en": "International Calls"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "international rates خدمات الدولي الاتصال الدولي 12 جنيه فقط - السعر الدولى الموحد مخفي",
-    "en": "international rates International rates International Standard Rates 12 L.E Unified International Rate Hidden"
-   }
-  },
-  {
    "id": "web.international-calls.international-rates",
    "kind": "section",
    "labels": {
@@ -10803,34 +10426,6 @@
    "description": {
     "ar": "12 جنيه فقط - السعر الدولى الموحد",
     "en": "12 L.E Unified International Rate"
-   }
-  },
-  {
-   "id": "web.kart-el-korout.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Kart ElKorout"
-    ],
-    "en": [
-     "Kart ElKorout"
-    ]
-   },
-   "pageId": "web.kart-el-korout",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Kart ElKorout",
-     "en": "Kart ElKorout"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "أنظمة الكارت المختلفة اللي تناسبك بأرخص سعر للدقيقة كارت الكروت أنظمة كارت الكروت اختار ما بين أنظمة الكارت المختلفة اللي تناسبك بأرخص سعر للدقيقة ! كروت فكة كارت الفكة 30 جنيه كروت الفكة على حسب احتياجاتك لشحن الكروت وحدات (دقائق لكل أرقام",
-    "en": "Different prepaid rate plans with the lowest minute rate that suits you Kart El-Korout Kart El-Korout Rateplans Pick from different prepaid rate plans with the lowest minute rate that suits you ! Fakka cards Fakka Card 30 EGP “Fakka” Cards "
    }
   },
   {
@@ -10907,34 +10502,6 @@
    "provenance": "auto",
    "description": {
     "en": "Pick from different prepaid rate plans with the lowest minute rate that suits you ! Fakka cards Fakka Card 30 EGP “Fakka” Cards According To Your Needs To recharge Fakka card units (minutes to all networks and megabytes) press *858*Recharge"
-   }
-  },
-  {
-   "id": "web.mobile-internet-bundles.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Internet Bundles"
-    ],
-    "en": [
-     "Internet Bundles"
-    ]
-   },
-   "pageId": "web.mobile-internet-bundles",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Internet Bundles",
-     "en": "Internet Bundles"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "باقات الإنترنت Vodafone Plus Max out on the number 1 Internet Destination! With Vodafone Plus you will enjoy much more Internet with the best price in Egypt! Choose the bundle that best suits you from Plus Bundles ! Vodafone Plus Plus Apps ",
-    "en": "Vodafone Internet Bundles Vodafone Plus Max out on the number 1 Internet Destination! With Vodafone Plus you will enjoy much more Internet with the best price in Egypt! Choose the bundle that best suits you from Plus Bundles ! Vodafone Plus"
    }
   },
   {
@@ -11070,34 +10637,6 @@
    }
   },
   {
-   "id": "web.money-transfer.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Money Transfer"
-    ],
-    "en": [
-     "Money Transfer"
-    ]
-   },
-   "pageId": "web.money-transfer",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Money Transfer",
-     "en": "Money Transfer"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "تحويل الأموال تحويل الأموال حول فلوس لاي حد وفي أي وقت من مكانك بدوسة مع ڤودافون كاش ! واللي بعتله هيقدر يستلم الفلوس من اكتر من 450,000 نقطة سحب او ايداع ازاي تحول فلوس بڤودافون كاش لأي حد في مصر حتى لو مش مشترك في الخدمة: كلم #7*9*،إختار ",
-    "en": "Vodafone Money Transfer Money Transfer Save time and effort and Transfer money, to any Vodafone number anywhere in Egypt ! with a click of a button and the receiver will simply cash out the money from 450,000 points of deposit & withdrawal."
-   }
-  },
-  {
    "id": "web.money-transfer.vodafone-money-transfer",
    "kind": "section",
    "labels": {
@@ -11227,34 +10766,6 @@
    }
   },
   {
-   "id": "web.multi-sim.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Multi Sim"
-    ],
-    "en": [
-     "Multi Sim"
-    ]
-   },
-   "pageId": "web.multi-sim",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Multi Sim",
-     "en": "Multi Sim"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "غير حياتك من غير ما تغير رقمك تتيح خدمة البطاقات المتعددة من فودافون تشغيل بطاقتي SIM إضافيتين SIM1 وSIM2 من هاتفك المحمول الحالي (SIM 0) يمكن استخدام بطاقة SIM1 في هاتف السيارة أو في هاتف محمول آخر، في حين تستخدم بطاقة SIM2 في المساعد الشخ",
-    "en": "Multi Sim Change your life without changing your number NOW YOU CAN! Enjoy the best network with your same number! SIM service lets you activate two additional SIM cards - SIM1 and SIM2 - from your current mobile phone (SIM0). SIM1 could be"
-   }
-  },
-  {
    "id": "web.multi-sim.change-your-life-without-changing-your-n",
    "kind": "section",
    "labels": {
@@ -11327,34 +10838,6 @@
    },
    "provenance": "auto",
    "description": {}
-  },
-  {
-   "id": "web.park-your-line.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Park Your Line"
-    ],
-    "en": [
-     "Park Your Line"
-    ]
-   },
-   "pageId": "web.park-your-line",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Park Your Line",
-     "en": "Park Your Line"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "خدمة اركن خطك من ڤودافون ما هي الخدمة ؟ مدة الاشتراك وقيمته مدة الاشتراك قيمة الاشتراك *شهر 10 جنيه *شهرين 20 جنيه 3 شهور 30 جنيه 4 شهور 40 جنيه 6 شهور 60 جنيه 8 شهور 80 جنيه 10 شهور 100 جنيه 12 شهر 120 جنيه معلومات اكتر *العملاء اقل من 3 ش",
-    "en": "Park Your Line Park Your Line from Vodafone What is the service ? Duration and Service fees duration Service fees 1 Month* 10 LE 2 Months* 20 LE 3 Months 30 LE 4 Months* 40 LE 6 Months 60 LE 8 Months 80 LE 10 Months 100 LE 12 Months 120 LE "
-   }
   },
   {
    "id": "web.park-your-line.park-your-line-from-vodafone",
@@ -11450,34 +10933,6 @@
    },
    "provenance": "auto",
    "description": {}
-  },
-  {
-   "id": "web.ramadan.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Watch it & Yango Free with Vodafone | Ramadan 2026"
-    ],
-    "en": [
-     "Watch it & Yango Free with Vodafone | Ramadan 2026"
-    ]
-   },
-   "pageId": "web.ramadan",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Watch it & Yango Free with Vodafone | Ramadan 2026",
-     "en": "Watch it & Yango Free with Vodafone | Ramadan 2026"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "شاهد مسلسلات رمضان 2026 مجانًا مع ڤودافون .اكتشف أحدث عروض رمضان 2026 من فودافون مصر، واستمتع بتجارب رمضانية تجمع بين العروض، الترفيه، ومسلسلات رمضان. اختار العرض المناسب لك وعيش أجواء رمضان بكل لحظة. اشحن واكسب اعرف اكتر فليكس اعرف اكتر RE",
-    "en": "Watch it & Yango Play for Free | Vodafone Ramadan 2026 Discover Ramadan 2026 offers from Vodafone Egypt and enjoy entertainment, exclusive deals, and top Ramadan series throughout the holy month. Recharge & Win View more Flex View more RED "
-   }
   },
   {
    "id": "web.ramadan.watch-it-yango-play-for-free-vodafone-ra",
@@ -12055,34 +11510,6 @@
    }
   },
   {
-   "id": "web.red-videos.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Red Videos"
-    ],
-    "en": [
-     "Red Videos"
-    ]
-   },
-   "pageId": "web.red-videos",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Red Videos",
-     "en": "Red Videos"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "OSN Streaming Anghami Plus WATCHiT ما هو تطبيق OSN Streaming؟ تطبيق OSN Streaming للمشاهدة حسب الطلب عبر الإنترنت، وهو وجهتك لأعمال Disney+ الأصلية وإنتاجات هوليوود وHBO وParamount+، حيث يمكنك من خلاله مشاهدة مسلسلاتك المفضّلة وأضخم الأفلام",
-    "en": "OSN Streaming Anghami Plus WATCHiT What is OSN Streaming? The OSN Streaming app is home for Hollywood hits, OSN Originals, Disney+ Originals, HBO, Paramount+ & so much more. All the entertainment you and your family need, in one place, on o"
-   }
-  },
-  {
    "id": "web.red-videos.osn-streaming",
    "kind": "section",
    "labels": {},
@@ -12164,34 +11591,6 @@
    },
    "provenance": "auto",
    "description": {}
-  },
-  {
-   "id": "web.services.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Services | Vodafone Egypt"
-    ],
-    "en": [
-     "Services | Vodafone Egypt"
-    ]
-   },
-   "pageId": "web.services",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Services | Vodafone Egypt",
-     "en": "Services | Vodafone Egypt"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "خدمات فودافون، إدارة خطك ورصيدك وكل الخدمات اللي تحتاجها خدمات ڤودافون ڤودافون كاش ڤودافون كاش هي محفظة الكترونية على موبايلك تقدر تسيب فيها فلوسك وتسحبها أو تستخدمها في آي وقت ومن آي مكان بدوسة. اعرف اكتر اتحكم في حسابك اتحكم فى كل ما يخص ",
-    "en": "Vodafone Services Manage your line , your payment, balance, and all the services you need Vodafone Services Vodafone Cash Vodafone Cash is an E-Wallet provided by Vodafone to make your life easier and run all your errands with a click. View"
-   }
   },
   {
    "id": "web.services.xa4e02a",
@@ -12435,34 +11834,6 @@
    }
   },
   {
-   "id": "web.shokran-loyalty-program.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Shokran Loyalty Program"
-    ],
-    "en": [
-     "Shokran Loyalty Program"
-    ]
-   },
-   "pageId": "web.shokran-loyalty-program",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Shokran Loyalty Program",
-     "en": "Shokran Loyalty Program"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "كل جنيه هتصرفه مع ڤودافون هيرجعلك نقطة على برنامج شكراً تحولها فلوس تجيب بيها اللي انت عايزه! برنامج شكراً للمكافأت! فودافون... مع بعض أقوى كل جنيه هتصرفه مع ڤودافون هيرجعلك نقطة على برنامج شكراً تحولها فلوس تجيب بيها اللي انت عايزه! علشان ",
-    "en": "With every pound spend on our products, you will get points on Shokran program to be converted to money on your Vodafone cash wallet! Shokran Loyalty Program Vodafone Together We Can With every pound spend on our products, you will get poin"
-   }
-  },
-  {
    "id": "web.shokran-loyalty-program.xa4e02a",
    "kind": "section",
    "labels": {},
@@ -12534,34 +11905,6 @@
    "description": {
     "ar": "الشروط و الأحكام: • يتم اضافة النقاط عند تجديد او الاشتراك في جميع باقات فليكس • يتم اضافة النقاط عند تجديد او الاشتراك في جميع باقات Plus • يتم اضافة النقاط عند تجديد او الاشتراك في جميع باقات Home Wireless • يتم اضافة النقاط عند تجديد او ",
     "en": "Terms & Conditions: • Products eligible for the program upon subscription and renewals o Flex o Plus and Extreme o DSL o Home Wireless o Fakka cards 13 -16.5 -19.5- 26 • Vodafone Business Flex and Plus bundles will be granted points upon bi"
-   }
-  },
-  {
-   "id": "web.shokran-services.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Shokran Services"
-    ],
-    "en": [
-     "Shokran Services"
-    ]
-   },
-   "pageId": "web.shokran-services",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Shokran Services",
-     "en": "Shokran Services"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "خدمات شكراً خدمات شكراً سلفنى شكراً دلوقتى ممكن تستلف من اول 4 جنيه لحد 32 جنية على حسب استخدامك. لو رصيدك أقل من 5 جنيه ڤودافون حتحولك 3 جنيه رصيد. ممكن تستخدم الخدمة اكتر من مرة في اليوم في كل مرة حتشحن و رصيدك يخلص. تقدر تستخدم خدمة \"سلف",
-    "en": "Shokran services Shokran services Sallefny Shokran Now you can borrow from 4 LE up to 32LE depending on your usage. If your credit is less than 5 LE, Vodafone will send you 3LE credit. You can use the service more than once per day each tim"
    }
   },
   {
@@ -12798,34 +12141,6 @@
    }
   },
   {
-   "id": "web.sitemap.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "sitemap"
-    ],
-    "en": [
-     "sitemap"
-    ]
-   },
-   "pageId": "web.sitemap",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "sitemap",
-     "en": "sitemap"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "Site map Site map أفراد الصفحه الرئيسيه تسوق انظمه فودافون Red فليكس انظمة الكارت تليفونات و اكسسوارات هواتف ذكيه تلفزيونات TVs1 العاب سمارت هوم خدمات فودافون كاش انترنت باقات الانترنت انترنت منزلي Home Wireless العروض My Account Store Loca",
-    "en": "Site map Site map Personal Home Shop Buy plans Red Flex Pre-paid ( El-Kart) Phones & Accessories Smart Phones TVs TVs1 Gaming Smart Homes Services Vodafone Cash Internet Internet Bundles DSL Home Wireless Promotions My Account Store Locator"
-   }
-  },
-  {
    "id": "web.sitemap.site-map",
    "kind": "section",
    "labels": {
@@ -12850,34 +12165,6 @@
    "description": {
     "ar": "Site map",
     "en": "Site map"
-   }
-  },
-  {
-   "id": "web.visa-appointment.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Visa Appointment"
-    ],
-    "en": [
-     "Visa Appointment"
-    ]
-   },
-   "pageId": "web.visa-appointment",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Visa Appointment",
-     "en": "Visa Appointment"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "مواعيد الفيزا في السفارات مواعيد الفيزا في السفارات مع ڤودافون إذا كنت تفكر في السفر للخارج، وتريد التقدم للحصول على تأشيرة لأوروبا، يمكنك مع فودافون تسهيل الإجراءات المطلوبة لمواعيد التأشيرة. ايرلندا كينيا جورجيا بولندا سلوفاكيا (دلوقتي مع",
-    "en": "Visa appointment Visa Appointment Visa appointment with Vodafone If you're thinking about traveling abroad and want to apply for a visa to North America or Europe, you can simplify the procedures required for the visa appointment with Vodaf"
    }
   },
   {
@@ -12928,34 +12215,6 @@
    "description": {}
   },
   {
-   "id": "web.vodafone-advertising.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Vodafone Advertising"
-    ],
-    "en": [
-     "Vodafone Advertising"
-    ]
-   },
-   "pageId": "web.vodafone-advertising",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Vodafone Advertising",
-     "en": "Vodafone Advertising"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "ما هي خدمة إعلاناتي من ڤودافون؟ اعرف آخر العروض والتخفيضات في المحلات المفضلة لديك في مصر بالاشتراك في خدمة إعلاناتي من ڤودافون. مع خدمة إعلاناتي من ڤودافون هتستقبل آخر و أفضل العروض من المحلات والمطاعم والفنادق المفضلة لديك في مصر في رسالة",
-    "en": "Vodafone Mobile Advertising Service What is the Vodafone Mobile Advertising Service? Find out about the latest offers and discounts available at your favorite stores in Egypt with Vodafone's personalized Mobile Advertising service! Find out"
-   }
-  },
-  {
    "id": "web.vodafone-advertising.what-is-the-vodafone-mobile-advertising-",
    "kind": "section",
    "labels": {
@@ -13001,34 +12260,6 @@
    },
    "provenance": "auto",
    "description": {}
-  },
-  {
-   "id": "web.vodafone-cash.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Cash"
-    ],
-    "en": [
-     "Cash"
-    ]
-   },
-   "pageId": "web.vodafone-cash",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Cash",
-     "en": "Cash"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "ڤودافون كاش هي محفظة الكترونية على موبايلك تقدر تسيب فيها فلوسك وتسحبها أو تستخدمها في آي وقت ومن آي مكان بدوسة. ڤودافون كاش بتوفرلك خدمات كتير حمّل الدليل عشان تعرف الخدمات، الرسوم، و أكواد التعاملات. حمّل الدليل العملاء اللي ممكن يستخدموا",
-    "en": "Vodafone Cash is an E-Wallet provided by Vodafone to make your life easier and run all your errands with a click. Get to know all Vodafone Cash services Download our service guide to learn about the available services, fees, and service cod"
-   }
   },
   {
    "id": "web.vodafone-cash.get-to-know-all-vodafone-cash-services",
@@ -13244,34 +12475,6 @@
    "description": {}
   },
   {
-   "id": "web.vodafone-red1.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Vodafone RED Lines - Special Numbers, Free Entertainment & More!"
-    ],
-    "en": [
-     "Vodafone RED Lines - Special Numbers, Free Entertainment & More!"
-    ]
-   },
-   "pageId": "web.vodafone-red1",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Vodafone RED Lines - Special Numbers, Free Entertainment & More!",
-     "en": "Vodafone RED Lines - Special Numbers, Free Entertainment & More!"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "إستمتع بأجدد الخدمات الترفيهية المقدمة من RED أهلاً بيك في عالم RED حمّل تطبيق أنا فودافون من هنا وحول لنظام RED الجديد حمّل التطبيق إستمتع بأجدد الخدمات الترفيهية المقدمة من RED RED EXCLUSIVE 200 جيجا بايت انترنت 11,000 دقيقة لكل الشبكات 3",
-    "en": "Enjoy the Latest Entertainment Apps in the Market that Fit your Needs Welcome to the World of RED Download the app from here & migrate to the new RED plans Download the app Enjoy the Latest Entertainment and Lifestyle Apps that are Curated "
-   }
-  },
-  {
    "id": "web.vodafone-red1.enjoy-the-latest-entertainment-apps-in-t",
    "kind": "section",
    "labels": {
@@ -13373,34 +12576,6 @@
    }
   },
   {
-   "id": "web.wifi-calling.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Wi-Fi Calling | Make Calls Over Wi-Fi"
-    ],
-    "en": [
-     "Wi-Fi Calling | Make Calls Over Wi-Fi"
-    ]
-   },
-   "pageId": "web.wifi-calling",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Wi-Fi Calling | Make Calls Over Wi-Fi",
-     "en": "Wi-Fi Calling | Make Calls Over Wi-Fi"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "H1 اتكلم علي الواي فاي من اي مكان في البيت فودافون بتقدملك مكالمات Wi-Fi! مكالمات الواي فاي بتسمحلك تعمل وتستقبل مكالمات علي DSL البيت وتخليك دايما علي التليفون من غير ما تحتاج شبكة. اتصل علي واي فاي واعمل مكالمات علطول من غير اي ابلكيشن! م",
-    "en": "H1 Talk over Wi-Fi in your Home Vodafone Wi-Fi Calling is here! Wi-Fi Calling helps make and receive calls using your home Wi-Fi to keep you connected without needing signal so you'll never miss a call. Now you don't need mobile signal anym"
-   }
-  },
-  {
    "id": "web.wifi-calling.h1",
    "kind": "section",
    "labels": {
@@ -13449,34 +12624,6 @@
    "description": {
     "ar": "تحتاج مكالمات Wi-Fi إلى هاتف محمول تدعم خاصية وشريحة 4G والVoLTE يكون شغال. بتحاسب ازاي علي مكالمة الواي فاي؟ مكالمات Wi-Fi بتتحاسب طبقا لنظام خطك كأي مكالمة عادية بدون اي رسوم اضافية، ويتم خصم الميجابايتس المستهلكة من باقة DSL ( 10 ميجا لك",
     "en": "Wi-Fi calling needs a compatible mobile with the latest software version, a 4G sim and VoLTE has to be activated. How will I be charged for Wi-Fi Call? Wi-Fi calls are charged according to your voice rate plan as any normal call without any"
-   }
-  },
-  {
-   "id": "web.wireless-net.content",
-   "kind": "section",
-   "labels": {
-    "ar": [
-     "Home Wireless Net"
-    ],
-    "en": [
-     "Home Wireless Net"
-    ]
-   },
-   "pageId": "web.wireless-net",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "ar": "Home Wireless Net",
-     "en": "Home Wireless Net"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "ar": "ليه Home Wireless؟ تشغيل فوري مش محتاج خط أرضي أو زيارة تركيب. وصل بس الراوتر وعيش علي النت سرعات فائقة مع راوتر Home Wireless فائق السرعات استمتع بسرعة تصل إلى 3.6 جيجا حرية تنقل استخدم الراوتر الهوائي في مكانين بكل سهولة عن طريق اضافة مكا",
-    "en": "Why Home Wireless Internet? Plug and Play Forget about installation visits and setup fees. Just plug in your router and surf the internet. Super Speed Enjoy speeds up to 3.6Gbps with our latest wireless technology Seamless Portability Enjoy"
    }
   },
   {
@@ -13561,29 +12708,6 @@
    }
   },
   {
-   "id": "web.mini-call.content",
-   "kind": "section",
-   "labels": {
-    "en": [
-     "Mini Call"
-    ]
-   },
-   "pageId": "web.mini-call",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "en": "Mini Call"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "en": "Mini Call Breadcrumbs for the current page Breadcrumbs for the current page Personal Services Other Services Mini Call Other Services Minicall is a service that allows you to record a voice message and send it to any mobile number in Egypt."
-   }
-  },
-  {
    "id": "web.mini-call.x8480c5",
    "kind": "section",
    "labels": {},
@@ -13599,29 +12723,6 @@
    "provenance": "auto",
    "description": {
     "en": "To send a MiniCall, simply dial *(the mobile number) , record your message, hang-up and it will be instantly sent. When you receive a MiniCall, you will get a text message from the sender indicating how to retrieve it. To hear your new Mini"
-   }
-  },
-  {
-   "id": "web.sdwan-new.content",
-   "kind": "section",
-   "labels": {
-    "en": [
-     "SDwan-new"
-    ]
-   },
-   "pageId": "web.sdwan-new",
-   "target": {
-    "css": [
-     "#content",
-     "#wrapper > section"
-    ],
-    "text": {
-     "en": "SDwan-new"
-    }
-   },
-   "provenance": "auto",
-   "description": {
-    "en": "Fixed Connectivity Fixed Connectivity Dedicated Internet Access (DIA) Upgrade your business with our dedicated internet access. We grant our customers a business-class internet using our DIA service. DIA offers symmetrical dedicated speeds "
    }
   },
   {

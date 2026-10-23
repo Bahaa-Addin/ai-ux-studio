@@ -1,6 +1,6 @@
 # ADR-0008: A small, pinned set of dependencies; everything else on Node built-ins
 
-- Status: Accepted (demo slice)
+- Status: Accepted (demo slice); zod pin amended by ADR-0034 (zod 4.6.5)
 - Date: 2026-10-22
 - Area: Dependencies
 - Related: ADR-0003 (zero runtime dependencies for the page watch prototype)

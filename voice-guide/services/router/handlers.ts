@@ -4,13 +4,14 @@
  * out; the gateway writes it through the sessions service.
  */
 import { Plan } from '#kb'
-import type { PlatformConfig, SiteConfig } from '#shared/config.ts'
+import { agentModelConfigured, type PlatformConfig, type SiteConfig } from '#shared/config.ts'
 import { HttpError } from '#shared/http.ts'
 import { newId } from '#shared/ids.ts'
 import { type KbCache, type KbIndex } from '#shared/kb-index.ts'
 import type { RpcContext } from '#shared/rpc.ts'
 import type { Entity, SessionState, Turn } from '#shared/store/index.ts'
 import type { Tracer } from '#shared/trace.ts'
+import { termGroups, terms } from '#text'
 
 import { CircuitBreaker, type Decider, SystemOneDecider } from './deciders.ts'
 import { buildPlan } from './planner.ts'
@@ -72,13 +73,16 @@ export function createRouter(deps: RouterDeps) {
 			const pageId = kb.pageFor(input.page.url)?.pageId
 			await deps.tracer.event(tctx, 'turn.received', { utterance, uiLang: input.uiLang, page: input.page.url, pageId, kbVersion: kb.versionId })
 
+			// With no model behind the agent proxy, a turn sent to the agent can only fail (a 503 and
+			// "I can't search right now"); the closest page or "not found" is the better answer.
+			const agent = { ...site.agent, enabled: site.agent.enabled && agentModelConfigured(deps.platform) }
 			const u = direct(utterance, kb, input) ?? (await understand({
 				utterance,
 				uiLang: input.uiLang,
 				pageId,
 				session: input.session,
 				kb,
-				settings: { ...site.router, agentEnabled: site.agent.enabled },
+				settings: { ...site.router, agentEnabled: agent.enabled },
 				decider,
 				breaker: decider ? breakers.get(decider.name) : undefined,
 			}))
@@ -105,7 +109,7 @@ export function createRouter(deps: RouterDeps) {
 			)
 
 			const t0 = performance.now()
-			const { plan, last } = buildPlan({ u, utterance, session: input.session, kb, page: { url: input.page.url, pageId }, turnId, agent: site.agent })
+			const { plan, last } = buildPlan({ u, utterance, session: input.session, kb, page: { url: input.page.url, pageId }, turnId, agent })
 			const valid = Plan.safeParse(plan)
 			if (!valid.success) {
 				await deps.tracer.event(tctx, 'planner.invalid', { issues: valid.error.issues.slice(0, 5) })
@@ -114,16 +118,22 @@ export function createRouter(deps: RouterDeps) {
 			await deps.tracer.event(tctx, 'planner.plan', { route: plan.meta.route, steps: plan.steps.map((s) => s.op), say: plan.say }, performance.now() - t0)
 
 			const turn: Turn = { id: turnId, utterance, lang: u.lang, intent: plan.meta.intent, route: plan.meta.route, destinationId: plan.meta.destinationId, at: new Date().toISOString() }
+			if (plan.meta.route === 'clarify') turn.options = u.alternatives.map((a) => a.id)
 			return { turnId, plan, understanding: u, turn, last, kbVersion: kb.versionId }
 		},
 	}
 }
 
-/** Choices from a clarification ("#dest:<id>") skip retrieval. */
+/**
+ * Choices from a clarification skip retrieval: a tapped option ("#dest:<id>"), or an answer typed
+ * or spoken that names one of the options ("400 mega" after "400 mega or ...?"). The answer keeps
+ * the question's language and intent: a short Latin-script label must not switch an Arabic
+ * conversation to the English pages.
+ */
 function direct(utterance: string, kb: KbIndex, input: TurnInput): Understanding | null {
-	const m = /^#dest:(\S+)$/.exec(utterance)
-	if (!m || !kb.dest.has(m[1])) return null
 	const prev = input.session.turns.at(-1)
+	const id = /^#dest:(\S+)$/.exec(utterance)?.[1] ?? (prev?.route === 'clarify' ? answerTo(utterance, prev.options || [], kb) : undefined)
+	if (!id || !kb.dest.has(id)) return null
 	const lang = prev?.lang || input.uiLang || kb.manifest.site.defaultLanguage
 	const [intent, flowId] = prev?.intent?.startsWith('flow:') ? (['flow', prev.intent.slice(5)] as const) : ([(prev?.intent as Understanding['intent']) || 'navigate', undefined] as const)
 	return {
@@ -136,10 +146,23 @@ function direct(utterance: string, kb: KbIndex, input: TurnInput): Understanding
 		query: '',
 		candidates: [],
 		alternatives: [],
-		decision: { destinationId: m[1], confidence: 1, provider: 'user-choice', latencyMs: 0 },
+		decision: { destinationId: id, confidence: 1, provider: 'user-choice', latencyMs: 0 },
 		route: 'replay',
 		ms: 0,
 	}
+}
+
+/** The option an answer names: all of its words appear in one option's labels and in no other's. */
+function answerTo(utterance: string, options: string[], kb: KbIndex): string | undefined {
+	const said = termGroups(utterance, kb.synonyms)
+	if (!said.length) return undefined
+	const named = options.filter((id) => {
+		const d = kb.dest.get(id)
+		if (!d) return false
+		const words = new Set(Object.values(d.labels).flat().flatMap((l) => terms(l, kb.synonyms)))
+		return said.every((group) => group.some((t) => words.has(t)))
+	})
+	return named.length === 1 ? named[0] : undefined
 }
 
 const round = (n: number | undefined) => (n === undefined ? undefined : Math.round(n * 1000) / 1000)

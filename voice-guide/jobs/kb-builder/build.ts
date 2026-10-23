@@ -63,6 +63,12 @@ const shortHash = (s: string) => createHash('sha1').update(s).digest('hex').slic
 const uniq = <T>(xs: T[]) => [...new Set(xs.filter(Boolean))]
 /** Page furniture that is never a label: skip links and their targets. */
 const BOILERPLATE = /^(skip to (main )?content|main content start|تخطي إلى المحتوى( الرئيسي)?|انتقل إلى المحتوى)$/i
+/**
+ * The element that wraps a whole page's content (Vodafone's `<section id="content">`, labelled with
+ * the CMS template name, e.g. "promotions-lite"). It duplicates the page destination, and its text
+ * matches anything on the page, so it competes with the page's own sections and pictures.
+ */
+export const isPageWrapper = (css: string[]) => /^(#content|#main|#wrapper|main|body)$/i.test(css[0] || '') || /^#main-content/.test(css[0] || '')
 /** Call-to-action texts that say nothing about where they lead ("Know more", "أعرف أكتر"). */
 const GENERIC_ANCHOR = /^(know more|learn more|read more|view more|see more|more|here|click here|check now|details|h1|go|start|اعرف أكتر|أعرف أكتر|اعرف اكتر|أعرف اكتر|اعرف أكثر|اعرف اكثر|أعرف أكثر|المزيد|اضغط هنا|هنا|التفاصيل)$/i
 /** Accessible names some sites put on links: "Press Enter to redirect to X" -> "X". */
@@ -351,7 +357,7 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		for (const [css, vs] of byCss) {
 			const ref = vs.find((v) => v.lang === site.defaultLanguage) || vs[0]
 			// Skip-link targets and similar page furniture are not places people ask for.
-			if (vs.every((v) => BOILERPLATE.test((v.s.heading || '').trim())) || /^#main-content/.test(css)) continue
+			if (vs.every((v) => BOILERPLATE.test((v.s.heading || '').trim())) || isPageWrapper(ref.s.css)) continue
 			// A section that wraps a collection becomes that collection's destination.
 			const wrapped = [...collectionByContainer.entries()].find(([k]) => k.startsWith(`${page.id} ${css} `) || k === `${page.id} ${css}`)
 			if (wrapped) {

@@ -190,8 +190,8 @@ flows:
   # in Vodafone's signed-in app, which the guide neither signs in to nor confirms.
   - id: subscribe
     labels:
-      ar: [اشترك, الاشتراك, اشتراك, فعّل الباقة, أشترك]
-      en: [subscribe, sign up, buy this bundle, activate]
+      ar: [اشترك, الاشتراك, اشتراك, فعّل الباقة, أشترك, اشتري, أشتري, اشتريلي, شراء]
+      en: [subscribe, sign up, buy this bundle, activate, buy]
     examples:
       ar: [أشترك فيها إزاي, عايز أشترك في الباقة دي, اشتركلي فيها, اشترك فيها]
       en: [how do I subscribe to it, subscribe me to this bundle, I want to buy it, subscribe to it]

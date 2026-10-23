@@ -87,3 +87,35 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** the guide navigates as soon as the final words arrive; the test read the word counts from the old page afterwards.
 - **Fix:** the counts are kept in session storage and read on the new page.
 - **Test:** `tests/e2e/live-replay.e2e.test.ts`, test 2.
+
+## B-10 "Let me look", then 503 three times, with no model configured
+
+- **Seen:** on the live site, "اختر لي افضل عرض" and "خطوط شركات" said "ثواني، هدور عليها في الصفحة." then "مش قادر أدور دلوقتي."; the console showed three `POST /__vg/v1/agent/chat/completions 503`.
+- **Cause:** the agent proxy returns 503 `agent_unavailable` when no `VG_LLM_*` provider is set; the router routed to the agent on `site.agent.enabled` alone, and page-agent retried each call.
+- **Fix:** agent routing, the agent token and the SDK's `agent.enabled` need a configured model (`agentModelConfigured`).
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "with no language model configured, nothing is routed to the agent".
+- **Decision:** ADR-0034.
+
+## B-11 "Did you mean 400 mega or promotions-lite?"
+
+- **Seen:** "اشتري عرض ال ٤٠٠ ميجا" on the offers page.
+- **Cause:** each Vodafone page's `<section id="content">` became a section destination labelled with the CMS template name, matching anything on its page. `ال` counted as an unmatched word and "buy" was not a subscribe verb.
+- **Fix:** page wrappers are skipped by the builder and were removed from the committed knowledge base; buy verbs and `ال`, `لي`, `ليا` added.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "the wrapper around a whole page is not a section" (fails with the old rule) and "buy the 400 mega offer".
+- **Decision:** ADR-0034.
+
+## B-12 A typed answer to "A or B?" switched language and echoed the alt text
+
+- **Seen:** typing "400 mega" after the question moved to `/en/promotions` and said "400 mega.".
+- **Cause:** the answer was routed as a new request (Latin script, so English), and the picture's only description was its alt text.
+- **Fix:** clarify turns record their options; an answer naming one option is that choice, in the question's language. Alt-only pictures spotlight and read their card.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "a typed answer to "A or B?" picks the option".
+- **Decision:** ADR-0034.
+
+## B-13 "A or B?" between two half-matches
+
+- **Seen:** "عايز افتح بيزنس" asked "دليل الإستخدام ولا خدمات الاتصال الدولي؟".
+- **Cause:** the clarify rule compared scores only; each option matched a different half of the request.
+- **Fix:** the second option must cover at least half the request too.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "two half-matches on different words are not offered".
+- **Decision:** ADR-0034.

@@ -93,7 +93,8 @@ The voice guide runs on **Vodafone Egypt's real pages**, voice first, in Vodafon
 | The Playwright crawler has not been run against the live site | The build machine cannot reach it | Runbook §5.1: dry run first |
 | "وريني الموبايلات" goes to the internet bundles page | The shop is not in the knowledge base | Demo script, moment 5 |
 | No `package-lock.json` | npm was unreachable when the demo build was made | ADR-0008, T-502 |
-| One allowlisted upstream type error | page-agent asks zod for `openapi-3.0` | ADR-0017 |
+| No model means no agent | Without `VG_LLM_*`, "choose the best offer" style requests get the closest page, never the agent | ADR-0034 |
+| Vodafone Business is not in the knowledge base | "خطوط شركات", "عايز افتح بيزنس" get the closest page | ADR-0034 |
 | `/spa/` pages compute `body` font to Times | The theme never reads `body` | ADR-0029 |
 | No `hreflang`; Arabic `lang="ar-SA"` | Pair by path; recognition in `ar-EG` | Audit §6 |
 | OneTrust at `z-index` 2147483645 | The guide stays below; never answers consent | SPEC-03 §3 |
@@ -101,7 +102,7 @@ The voice guide runs on **Vodafone Egypt's real pages**, voice first, in Vodafon
 
 ## 7. Where decisions live
 
-- `docs/adr/README.md`: all ADRs (0006–0033), what each changed, and the bugs that changed them.
+- `docs/adr/README.md`: all ADRs (0006–0034), what each changed, and the bugs that changed them.
 - Each spec names its ADR; each ADR names its spec and the tests that verify it.
 - A new decision is a new ADR (AGENTS.md §5.5).
 
@@ -110,3 +111,4 @@ The voice guide runs on **Vodafone Egypt's real pages**, voice first, in Vodafon
 - 2026-10-23: Live site audited in a desktop browser (findings in the audit). Branch created; docs, configs and the build prompt written. The demo build's 68 tests pass. Diagrams render.
 - 2026-10-23: Live phase built. Public-only crawl of the live site from a browser tab (ADR-0032); knowledge base built and curated; voice-first UI; Vodafone theme; demo browser with the gateway behind the page origin and long polling (ADR-0031); replay of 14 real pages; SPA route follower; Back stops a plan (bug found and fixed).
 - 2026-10-23: On-demand sync and `kb` commands with the gate; schedule refused in code while paused; aliases for redirects and second spellings (the gate's first run found them); Google Chrome for speech and a plain message without it; agent saves sent in order (a finished agent task could come back); X-ray backlog by whole turns; spoken requests no longer open the panel over the answer; commit spotlight in Vodafone colours. Runbook written. 92 + 24 tests green.
+- 2026-10-23: Demo-run fixes (ADR-0034, bug log B-10 to B-13): no agent routing without a configured model (the 503s), zod 4.6.5 (the `openapi-3.0` warning), page-wrapper sections dropped from the builder and the committed knowledge base, buy verbs, typed answers to "A or B?", "A or B?" only between full matches, alt-only pictures read their card. 105 + 30 tests green; router evaluation unchanged.

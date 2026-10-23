@@ -191,6 +191,11 @@ export const SiteConfig = z.object({
 })
 export type SiteConfig = z.infer<typeof SiteConfig>
 
+/** Whether the agent proxy has a model to call (ADR-0018). Without one, nothing is routed to the agent. */
+export function agentModelConfigured(p: PlatformConfig): boolean {
+	return !!((p.llm.baseUrl && p.llm.model) || (p.llm.fallbackBaseUrl && p.llm.fallbackModel))
+}
+
 export function loadSiteConfig(file: string): SiteConfig {
 	const raw = YAML.parse(fs.readFileSync(file, 'utf8'))
 	const parsed = SiteConfig.safeParse(raw)
