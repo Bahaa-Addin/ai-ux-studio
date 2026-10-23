@@ -119,3 +119,10 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** the second option must cover at least half the request too.
 - **Test:** `tests/unit/vodafone-kb.test.ts`, "two half-matches on different words are not offered".
 - **Decision:** ADR-0034.
+
+## B-14 X-ray showed "requests 0" after a reload (first CI run)
+
+- **Seen:** `tests/e2e/guide.e2e.test.ts`, "X-ray shows every layer", failed on the first GitHub Actions run with only the loop-guard row in the X-ray.
+- **Cause:** the X-ray stream registered its live listener before reading the backlog. A live event arriving during that read was written first, and its higher `seq` made the stream drop every backlog event.
+- **Fix:** live events wait until the backlog is written, then follow in `seq` order (`services/gateway/server.ts`, `/v1/events`).
+- **Test:** `tests/integration/gateway.test.ts`, "a live event that arrives while the X-ray backlog loads does not drop the backlog" (fails without the fix).
