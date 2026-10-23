@@ -44,6 +44,8 @@ export function decide(userPrompt: string) {
 	if (steps >= 1) {
 		const result = /Action Results: ([^\n]*)/.exec(userPrompt.split('</agent_history>')[0].split('<step_').at(-1) || '')?.[1] || ''
 		const ok = /✅|Clicked|clicked/.test(result)
+		if (/Refused/.test(result))
+			return { evaluation_previous_goal: 'Refused', memory: 'Typing was refused.', next_goal: 'Finish', action: { done: { text: arabic ? 'مقدرش أكتب ده، اكتبه إنت.' : "I can't type that for you. Please type it yourself.", success: false } } }
 		return {
 			evaluation_previous_goal: ok ? 'Success' : 'Failed',
 			memory: 'Selected the option the user asked for.',
@@ -61,6 +63,11 @@ export function decide(userPrompt: string) {
 		const score = want.filter((w) => hay.includes(w)).length
 		// Ties go to the later (more specific) element: a label inside its fieldset.
 		if (score > 0 && (!best || score >= best.score)) best = { index: Number(m[1]), score }
+	}
+	// "type <value> ..." requests: type into the best-matching input (the SDK's tool may refuse).
+	const typed = /\b(?:type|enter)\b.*?\b(?:is|as)?\s*(\S+)$/i.exec(request)
+	if (best && typed && /<input/.test(state.split('\n').find((l) => l.includes(`[${best!.index}]`)) || '')) {
+		return { evaluation_previous_goal: 'Start', memory: `Request: ${request}`, next_goal: `Type into element ${best.index}`, action: { input_text: { index: best.index, text: typed[1] } } }
 	}
 	if (!best) return { evaluation_previous_goal: 'Start', memory: '', next_goal: 'Give up', action: { done: { text: arabic ? 'مش لاقي ده في الصفحة.' : "I couldn't find that on this page.", success: false } } }
 	return { evaluation_previous_goal: 'Start', memory: `Request: ${request}`, next_goal: `Click element ${best.index}`, action: { click_element_by_index: { index: best.index } } }

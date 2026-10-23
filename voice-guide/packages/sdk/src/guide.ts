@@ -317,6 +317,8 @@ export class Guide {
 		this.ui.message('guide', text)
 		const tag = this.session.site.speech.tts[this.lang] || this.lang
 		const v = this.ui.voice
+		// The panel's log is hidden in voice-first mode: screen readers hear replies here (T-407).
+		v?.announce(text)
 		if (v && !this.speech.muted && this.speech.canSpeak) v.setState('speaking')
 		const p = this.speech.speak(text, tag).then(() => {
 			if (v?.state === 'speaking' && !this.speech.speaking) v.setState('idle')
