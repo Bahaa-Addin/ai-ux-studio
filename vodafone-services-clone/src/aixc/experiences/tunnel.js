@@ -205,8 +205,11 @@ export const renderTunnel = (schema, index) => {
     const speed = Math.abs(velocity)
     const t = now / 1000
 
-    world.style.transform = `rotateX(${(mouseY * 5 - velocity * 0.4).toFixed(2)}deg) rotateY(${(mouseX * 5).toFixed(2)}deg)`
-    viewport.style.perspective = `${(1000 - Math.min(speed * 10, 600)).toFixed(0)}px`
+    // Each item carries its own camera: perspective (narrowed by speed, the
+    // reference's warp) and the pointer tilt. No shared 3D scene means the
+    // browser never has to depth-sort or split planes, which dropped parts of
+    // cards in Chrome; the depth order comes from z-index instead.
+    const lens = `perspective(${(1000 - Math.min(speed * 10, 600)).toFixed(0)}px) rotateX(${(mouseY * 5 - velocity * 0.4).toFixed(2)}deg) rotateY(${(mouseX * 5).toFixed(2)}deg)`
 
     slots.forEach((slot) => {
       const z = -slot.at * Z_GAP + cameraZ
@@ -222,17 +225,17 @@ export const renderTunnel = (schema, index) => {
       slot.el.style.opacity = alpha.toFixed(3)
       slot.el.classList.toggle('is-gone', alpha < 0.25)
       if (alpha <= 0) {
-        // Even transparent, a plane near the camera would still be depth-sorted
-        // and cut into the planes behind it, so park hidden items far away. They
-        // stay focusable; focusing one flies the camera to it.
-        if (!slot.parked) slot.el.style.transform = 'translate3d(0px, 0px, -40000px)'
+        // Out of sight: shrink to nothing (still focusable; focusing one flies the
+        // camera to it).
+        if (!slot.parked) slot.el.style.transform = 'scale(0.001)'
         slot.parked = true
         return
       }
       slot.parked = false
-      let transform = `translate3d(${(slot.x - camX).toFixed(1)}px, ${(slot.y - camY).toFixed(1)}px, ${z.toFixed(1)}px)`
+      let transform = `${lens} translate3d(${(slot.x - camX).toFixed(1)}px, ${(slot.y - camY).toFixed(1)}px, ${z.toFixed(1)}px)`
       if (slot.type === 'card') transform += ` rotateZ(${slot.rot.toFixed(2)}deg) rotateY(${(Math.sin(t + slot.phase) * 6).toFixed(2)}deg)`
       slot.el.style.transform = transform
+      slot.el.style.zIndex = String(4000 + Math.round(z))
       if (slot.type === 'word') {
         // The reference's RGB split, in Vodafone red and white.
         const split = speed > 1 ? Math.round(clamp(velocity * 1.5, -14, 14)) : 0
@@ -249,7 +252,10 @@ export const renderTunnel = (schema, index) => {
       if (z > 500) z -= STAR_LOOP
       const alpha = z < -3000 ? 0 : z < -2000 ? (z + 3000) / 1000 : 1
       star.el.style.opacity = alpha.toFixed(2)
-      if (alpha > 0) star.el.style.transform = `translate3d(${(star.x - camX * 0.5).toFixed(0)}px, ${(star.y - camY * 0.5).toFixed(0)}px, ${z.toFixed(0)}px) rotate(${star.angle.toFixed(1)}deg) scaleX(${stretch.toFixed(2)})`
+      if (alpha > 0) {
+        star.el.style.transform = `${lens} translate3d(${(star.x - camX * 0.5).toFixed(0)}px, ${(star.y - camY * 0.5).toFixed(0)}px, ${z.toFixed(0)}px) rotate(${star.angle.toFixed(1)}deg) scaleX(${stretch.toFixed(2)})`
+        star.el.style.zIndex = String(4000 + Math.round(z))
+      }
     })
 
     speedOut.textContent = speed.toFixed(2)
@@ -307,6 +313,7 @@ export const renderTunnel = (schema, index) => {
     if (value) {
       slots.forEach((slot) => {
         slot.el.style.transform = ''
+        slot.el.style.zIndex = ''
         slot.el.style.opacity = ''
         slot.el.classList.remove('is-gone')
       })
