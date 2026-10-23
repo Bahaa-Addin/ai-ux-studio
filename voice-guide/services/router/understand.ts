@@ -15,7 +15,7 @@ import type { SessionState } from '#shared/store/index.ts'
 import { detectLanguage, type Hit, terms } from '#text'
 
 import { type CircuitBreaker, type Decider, type DecisionRequest, localChoice } from './deciders.ts'
-import { ACT_PHRASES, BACK_REFERENCES, containsPhrase, INTENT_PHRASES, type IntentId, matchPhrases, PAGE_WORDS, padded, SELECTORS, stripPhrases, WATCH_FILLER } from './lexicon.ts'
+import { ACT_PHRASES, BACK_REFERENCES, containsPhrase, INTENT_PHRASES, type IntentId, matchPhrases, PAGE_WORDS, padded, SELECTORS, stripPhrases, THIS_PAGE, WATCH_FILLER } from './lexicon.ts'
 
 export interface RouterSettings {
 	acceptAt: number
@@ -86,6 +86,21 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 		}
 	}
 	void wordCount
+
+	// ---- "what's on this page?": answered from the page the person is on (T-303) ----
+	const thisPage = matchPhrases(text, THIS_PAGE)
+	if (thisPage.length && terms(stripPhrases(text, thisPage)).length === 0) {
+		const pid = input.pageId && kb.dest.has(input.pageId) ? input.pageId : undefined
+		const d = pid ? kb.dest.get(pid)! : undefined
+		return done({
+			...base,
+			intent: 'describe',
+			intentSource: 'lexicon',
+			route: d ? 'replay' : 'none',
+			candidates: d ? [{ id: d.id, kind: d.kind, score: 1, absolute: 1, label: labelOf(d, lang) }] : [],
+			decision: { destinationId: d?.id, confidence: d ? 1 : 0, provider: 'context', latencyMs: 0 },
+		})
+	}
 
 	// ---- intent and modifiers from the lexicon ----
 	const siteIntents = m.lexicon.intents

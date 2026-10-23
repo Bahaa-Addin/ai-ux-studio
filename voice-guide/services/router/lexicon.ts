@@ -53,6 +53,12 @@ export const ACT_PHRASES: Phrases = {
 	ar: ['اختار', 'اختر', 'اكتب', 'اكتبلي', 'دوس علي', 'اضغط علي', 'علم علي', 'حط', 'املا', 'غيرلي'],
 }
 
+/** "What's on this page?": a request about the page the person is on (SPEC-05 §1, T-303). */
+export const THIS_PAGE: Phrases = {
+	en: ["what's on this page", 'what is on this page', 'what is this page', "what's this page", 'what page is this', 'where am i', 'tell me about this page', 'what can i do here', 'what can i do on this page'],
+	ar: ['ايه اللي في الصفحه دي', 'ايه اللي ف الصفحه دي', 'الصفحه دي فيها ايه', 'ايه الصفحه دي', 'الصفحه دي ايه', 'انا فين', 'انا في انهي صفحه', 'اقدر اعمل ايه هنا', 'قولي الصفحه دي فيها ايه'],
+}
+
 /** "the home page", "صفحة العروض": the person wants a page, not a section of it. */
 export const PAGE_WORDS: Phrases = {
 	en: ['page', 'the page', 'screen'],

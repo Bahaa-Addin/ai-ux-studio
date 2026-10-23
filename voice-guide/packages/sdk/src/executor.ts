@@ -137,7 +137,8 @@ export class Executor {
 				}
 				if (!item) throw new StepFailed('no matching item')
 				this.#item = item
-				const key = step.collection.keyAttr ? item.getAttribute(step.collection.keyAttr) || undefined : undefined
+				// Without a key attribute the item is named by its position, so a follow-up ("subscribe to it") finds it again.
+				const key = step.collection.keyAttr ? item.getAttribute(step.collection.keyAttr) || undefined : `#${[...document.querySelectorAll(step.collection.itemCss)].indexOf(item)}`
 				const nameField = step.collection.fields[step.collection.nameField]
 				const nameEl = nameField ? item.querySelector(nameField.css) : null
 				const name = nameEl ? readText(nameEl, 80) : undefined
@@ -211,7 +212,13 @@ export function findItem(c: CollectionRef, select: Extract<PlanStep, { op: 'pick
 	const shown = items.filter(visible)
 	if (shown.length) items = shown
 	if (!items.length) return null
-	if (select.by === 'key') return items.find((el) => c.keyAttr && el.getAttribute(c.keyAttr) === select.key) || null
+	if (select.by === 'key') {
+		// Positional keys ("#2") for collections without a key attribute (real sites rarely have
+		// one): the Nth item in document order, as the KB builder numbered them.
+		const pos = /^#(\d+)$/.exec(select.key)
+		if (pos && !c.keyAttr) return document.querySelectorAll(c.itemCss)[Number(pos[1])] || null
+		return items.find((el) => c.keyAttr && el.getAttribute(c.keyAttr) === select.key) || null
+	}
 	if (select.by === 'name') {
 		const want = normText(select.name)
 		const nf = c.fields[c.nameField]
