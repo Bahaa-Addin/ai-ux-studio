@@ -251,3 +251,17 @@ export function exportJson(part: number, size = 400_000): { part: number; parts:
 	const parts = Math.ceil(json.length / size)
 	return { part, parts, data: json.slice(part * size, (part + 1) * size) }
 }
+
+/** For a person running the crawler from the DevTools console: saves the whole result as one JSON file. */
+export function download(): string {
+	const { parts } = exportJson(0)
+	let data = ''
+	for (let i = 0; i < parts; i++) data += exportJson(i).data
+	const name = `vg-crawl-${location.host.replace(/[^a-z0-9]+/gi, '-')}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}.json`
+	const a = document.createElement('a')
+	a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }))
+	a.download = name
+	a.click()
+	setTimeout(() => URL.revokeObjectURL(a.href), 10_000)
+	return name
+}

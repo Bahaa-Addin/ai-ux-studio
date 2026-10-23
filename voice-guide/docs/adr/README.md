@@ -28,13 +28,14 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0023](0023-page-watch-on-the-platform.md) | Page watch on the platform: rendered checks, push or live delivery | Page watch | Accepted; supersedes part of ADR-0004 |
 | [0024](0024-testing-with-fakes-only-at-the-edges.md) | Test the real system with stand-ins only at the edges | Testing | Accepted |
 | [0025](0025-configuration-per-site.md) | Two YAML files per site; environment variables per environment | Configuration | Accepted |
-| [0026](0026-real-pages-via-tag-manager-and-demo-browser.md) | Real Vodafone pages: Tealium tag in production, loader-injecting demo browser for the demo | Live site integration | Proposed |
-| [0027](0027-voice-first-launcher-one-microphone-stream.md) | Voice-first launcher: microphone button, one microphone stream for recognition and waveform, transcript bar | Speech and UI | Proposed; amends 0019, 0020 |
-| [0028](0028-live-knowledge-sync.md) | Live knowledge sync: seeds plus sitemap lastmod, polite crawling, path language pairing, gated activation | Ingestion | Proposed; extends 0012 |
-| [0029](0029-vodafone-theme-as-fixed-tokens.md) | Fixed Vodafone token set on Vodafone sites | UI and brand | Proposed; amends 0020 |
-| [0030](0030-sdk-follows-spa-route-changes.md) | The SDK follows single-page-app route changes | Session continuity | Proposed; extends 0016 |
+| [0026](0026-real-pages-via-tag-manager-and-demo-browser.md) | Real Vodafone pages: Tealium tag in production, loader-injecting demo browser for the demo | Live site integration | Proposed; amended by 0031, 0033 |
+| [0027](0027-voice-first-launcher-one-microphone-stream.md) | Voice-first launcher: microphone button, one microphone stream for recognition and waveform, transcript bar | Speech and UI | Proposed; mostly verified |
+| [0028](0028-live-knowledge-sync.md) | Live knowledge sync: seeds plus sitemap lastmod, polite crawling, path language pairing, gated activation | Ingestion | Proposed; on demand done (0033) |
+| [0029](0029-vodafone-theme-as-fixed-tokens.md) | Fixed Vodafone token set on Vodafone sites | UI and brand | Proposed; partly verified |
+| [0030](0030-sdk-follows-spa-route-changes.md) | The SDK follows single-page-app route changes | Session continuity | Accepted (fixture) |
 | [0031](0031-gateway-behind-the-page-origin-and-long-poll-events.md) | Demo browser reaches the gateway through the page's own origin (`/__vg`); events fall back to long polling | Live site integration | Accepted; amends 0026 |
 | [0032](0032-in-browser-crawler-public-pages-only.md) | Crawl the live site from a real browser tab when needed; public pages only; scheduled crawling paused | Ingestion | Accepted |
+| [0033](0033-google-chrome-for-speech-and-on-demand-sync-gate.md) | Demo browser is the installed Google Chrome (speech); on-demand sync gate; scheduled runs refused while paused; aliases | Live site integration, sync | Accepted; amends 0026 |
 
 ## Changes to the demo plan these decisions made
 
@@ -56,3 +57,9 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | Router evaluation | Synonym expansion let "home page" match home internet | Each query word scores once through its best synonym (ADR-0014) |
 | Documentation review | With the model down, the guide would have read page-agent's raw English error aloud to an Arabic speaker | Speak only the model's own `done` text; errors go to the trace (ADR-0017) |
 | Typecheck | page-agent's sources ask zod for a schema target our zod version lacks | Known upstream mismatch, allowlisted by file and code; runtime output checked (ADR-0017) |
+| End-to-end test (SPA routes) | Back during a plan did not stop it in Chromium: the Navigation API's `navigatesuccess` arrived before `popstate` and the URL de-duplication swallowed the Back signal | Back is checked before de-duplication (ADR-0030, `packages/sdk/src/guide.ts`) |
+| Palette test | The chip hover used `#fff5f5`, a colour outside SPEC-01 | Palette grey `--vf-bg` (ADR-0029) |
+| Sync gate, first real run | Five seeds looked missing: redirects into `/spa/` and a second spelling of a page were dropped | Aliases (ADR-0033) |
+| Demo browser review | Chromium has no speech service; the guide said "I didn't catch that" | Google Chrome for the demo; a plain "not available, type instead" message (ADR-0033) |
+| End-to-end test (flaky, then steady) | The agent's per-step saves were sent without waiting; one could land after the final "done" and bring a finished agent task back on the next page load | Saves are chained in order (ADR-0017, `packages/sdk/src/guide.ts`) |
+| End-to-end test (flaky) | The X-ray backlog was the last 60 events, so after an agent turn earlier turns lost their first rows | Backlog of whole recent turns (ADR-0033) |

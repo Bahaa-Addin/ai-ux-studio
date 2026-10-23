@@ -1,14 +1,15 @@
 # Demo script: the voice guide on the live Vodafone site
 
 - Length: about 7 minutes, 8 moments.
-- Setup: [`docs/ops/runbook-demo-day.md`](../ops/runbook-demo-day.md). Machine: demo browser (mode B), public HTTPS gateway, X-ray open on a second screen or toggled once.
+- Setup: [`docs/ops/runbook-demo-day.md`](../ops/runbook-demo-day.md) and the main [runbook](../ops/runbook.md). Machine: `npm run demo:live` in Google Chrome (mode B, gateway on the same machine), X-ray open on a second screen or toggled once.
+- **This build (2026-10-23): public pages only, no Vodafone account.** Moments 0–4 and 8 work and are covered by the replay tests; moments 5–6 need the shop, which was not crawled; moment 7's on-stage notification needs the clone site config (T-306). Each moment says what to do.
 - **Never quote prices or amounts in this script or on slides.** The guide reads them live from Vodafone's page; whatever it says on the day is the right answer.
 - Each moment lists the request in both languages. The presenter uses the bold one.
 
 ## Before the audience arrives
 
-- The demo browser is open on `https://web.vodafone.com.eg/ar/home`, cookie banner answered (reject non-essential), demo account signed in on `/spa/myHome` (then navigate back to home).
-- The knowledge base was synced within the last 2 hours and activated (check `npm run kb -- --site vodafone-eg --status`).
+- The demo browser is open on `https://web.vodafone.com.eg/ar/home`, cookie banner answered (reject non-essential). No account is signed in.
+- The knowledge base was synced the day before and the gate passed (runbook §5), or the committed one is in use.
 - Microphone test: press, say "تجربة", see words and the wave, press again.
 
 ## Moment 0: "Any page is a starting point" (20s)
@@ -25,15 +26,15 @@ Show: the red microphone above Vodafone's accessibility button.
 | Capability | Voice-first UI (SPEC-02), routing without an LLM, plan across pages, hidden tab, live values |
 | If it fails | Mis-heard: press again and repeat more slowly. Wrong page: say "باقات النت" and point at the answer. Network: switch to the clone (fallback F1). |
 
-## Moment 2: "Subscribe to it", and it stops before paying (45s)
+## Moment 2: "Subscribe to it", and it stops before signing in (40s)
 
 | | |
 |---|---|
 | Request | **"اشترك فيها"** / "Subscribe to it" |
-| The audience sees | The guide remembers which bundle, follows its "اشترك الآن" link into `/spa/miManagement` (Vodafone's logged-in app), shows where to choose it, and stops: "دوس تأكيد بنفسك" ("Press confirm yourself"). |
-| Capability | Memory of the last item, CMS → SPA, commit guard |
-| Say | "It will never press a button that spends money. That's a rule in the code, not a prompt." |
-| If it fails | Not signed in: the guide says it needs the person to sign in. That is also correct behaviour; say so and move on. |
+| The audience sees | The guide remembers which bundle, puts the spotlight on that card's own "اشترك الآن" link, and stops: "دوس «اشترك الآن» بنفسك…" ("Press Subscribe now yourself; you'll sign in to your Vodafone account and confirm there"). |
+| Capability | Memory of the last item, commit guard, public-only rule |
+| Say | "It never signs in for you and never presses a button that spends money. That's a rule in the code, not a prompt." |
+| If it fails | It asks which bundle: say "الأرخص". |
 
 ## Moment 3: switch to English, inside the app (40s)
 
@@ -53,7 +54,9 @@ Show: the red microphone above Vodafone's accessibility button.
 | Capability | Pictures understood at crawl time (ADR-0013), no image model call on stage |
 | If it fails | Vision key missing at sync: the description falls back to the image's alt text. Say "this one comes from the image's description". |
 
-## Moment 5: into the shop, same conversation (40s)
+## Moment 5: into the shop, same conversation (40s) — not in this build
+
+The shop was not crawled in this phase (public pages of `web.vodafone.com.eg` only). Skip moments 5 and 6, or show them on the fixture site with `npm run dev` and say so. Today "وريني الموبايلات" goes to the internet bundles page.
 
 | | |
 |---|---|
@@ -62,7 +65,7 @@ Show: the red microphone above Vodafone's accessibility button.
 | Capability | Cross-origin handoff (ADR-0016) |
 | If it fails | The shop is slow: wait; it resumes when the page is ready (the bar says "ثواني…"). |
 
-## Moment 6: something the knowledge base doesn't know (45s)
+## Moment 6: something the knowledge base doesn't know (45s) — not in this build (needs the shop and an agent model key, D6)
 
 | | |
 |---|---|
@@ -77,7 +80,7 @@ Show: the red microphone above Vodafone's accessibility button.
 | | |
 |---|---|
 | Request | On `/ar/promotions`: **"عرفني لما العروض تتغير"** / "Tell me when the offers change" |
-| The audience sees | The guide confirms the watch. To **show** a notification on stage, switch to the clone tab, where a teammate edits the offer (we can't change Vodafone's site on cue). The notification arrives. |
+| The audience sees | The guide confirms the watch. To **show** a notification on stage you need a page you can change on cue: the clone site config (T-306) is not built yet, so in this build say the watch is set and skip the notification, or show it on the fixture site (`npm run dev`). |
 | Capability | Page watch (ADR-0023) |
 | Be honest | Say that the live watch is real, and that the notification shown is triggered on the clone. |
 

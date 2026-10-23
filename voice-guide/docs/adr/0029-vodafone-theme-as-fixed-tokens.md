@@ -1,6 +1,6 @@
 # ADR-0029: On Vodafone sites the guide uses a fixed Vodafone token set, not a theme read from the page
 
-- Status: Proposed (Vodafone live phase). Accept when SPEC-01 acceptance criteria 1–4 pass.
+- Status: Proposed; SPEC-01 acceptance 2 passes (computed microphone styles, `tests/e2e/live-replay.e2e.test.ts`) and the palette is checked in `tests/unit/voice.test.ts`. Open: visual snapshots (1), font check on every node (3), contrast check (4).
 - Date: 2026-10-23
 - Area: UI and brand; amends ADR-0020 (themed from the host page)
 - Spec: [SPEC-01](../specs/SPEC-01-vodafone-design-language.md)

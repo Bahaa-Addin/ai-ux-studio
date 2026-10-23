@@ -146,6 +146,14 @@ export function createGateway(opts: GatewayOptions) {
 		sendJson(res, 200, await s.sessions.handoff({ siteId: site.id, sessionId: body.sessionId }, ctx))
 	})
 
+	// A fresh X-ray (a page load) gets whole turns, not the last N events: an agent turn alone can
+	// write dozens of events and would push earlier turns' first rows out of a fixed-size window.
+	const recentTurns = (events: TraceEvent[], turns = 8, max = 600): TraceEvent[] => {
+		const ids = [...new Set(events.map((e) => e.turnId).filter(Boolean))].slice(-turns)
+		const keep = new Set(ids)
+		return events.filter((e) => !e.turnId || keep.has(e.turnId)).slice(-max)
+	}
+
 	// ---- X-ray and notifications: server-sent events for one session ----
 	router.on('GET', '/v1/events', async (req, res, _p, url) => {
 		const site = siteFor(req, url)
@@ -172,7 +180,7 @@ export function createGateway(opts: GatewayOptions) {
 		listeners.set(sessionId, set)
 		// Backlog: everything since `since` (only the latest turns when starting fresh).
 		const backlog = await s.store.listTrace(sessionId, since)
-		for (const ev of since ? backlog : backlog.slice(-60)) write(ev)
+		for (const ev of since ? backlog : recentTurns(backlog)) write(ev)
 		const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
 		req.on('close', () => {
 			clearInterval(ping)
@@ -191,7 +199,7 @@ export function createGateway(opts: GatewayOptions) {
 		const since = Number(url.searchParams.get('since') || 0)
 		const wait = Math.max(0, Math.min(25, Number(url.searchParams.get('wait') || 20)))
 		let events = await s.store.listTrace(sessionId, since)
-		if (!since) events = events.slice(-60)
+		if (!since) events = recentTurns(events)
 		if (!events.length && wait) {
 			events = await new Promise<TraceEvent[]>((resolve) => {
 				const got: TraceEvent[] = []

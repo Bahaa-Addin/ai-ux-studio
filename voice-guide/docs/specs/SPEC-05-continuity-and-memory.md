@@ -52,7 +52,7 @@ New in this phase:
 
 1. Starting on each page in audit §8 (both languages), the request "what's on this page?" gets a correct one-sentence answer.
 2. The request "cheapest internet bundle" from `/en/home`, `/spa/storeLocator` and `eshop.vodafone.com.eg/en/` reaches the same card on `/ar|en/mobile-internet-bundles` in the right language.
-3. "Subscribe to it" after (2) carries the same item into `/spa/miManagement` and stops before any confirmation.
+3. "Subscribe to it" after (2) keeps the same item and stops before any confirmation. *Amended 2026-10-23 (public pages only, ADR-0032):* it spotlights that card's own subscribe link on the public page and tells the person to press it themselves; it does not follow into `/spa/miManagement`, which needs a signed-in account. Verified in `tests/e2e/live-replay.e2e.test.ts`.
 4. An SPA route change mid-plan continues the plan without re-creating the guide's DOM (same shadow host node before and after).
 5. The panel history after visiting five pages across CMS, SPA and the shop shows every turn in order.
 6. Pressing Back during a plan stops it with one spoken line, and the next request works normally.

@@ -4,7 +4,7 @@ Read this file first, then [`docs/handoff/HANDOFF.md`](docs/handoff/HANDOFF.md).
 
 ## 1. What this is
 
-A voice guide for websites: one script tag on a page, stateless services behind one gateway, Postgres, and jobs that build a versioned site knowledge base. The current phase runs it on the **live Vodafone Egypt website** with a **voice-first** microphone UI. Architecture: `README.md` and `docs/adr/` (ADR-0006 to ADR-0030).
+A voice guide for websites: one script tag on a page, stateless services behind one gateway, Postgres, and jobs that build a versioned site knowledge base. The current phase runs it on the **live Vodafone Egypt website** with a **voice-first** microphone UI. Architecture: `README.md` and `docs/adr/` (ADR-0006 to ADR-0033). Operating it: [`docs/ops/runbook.md`](docs/ops/runbook.md).
 
 ## 2. Commands
 
@@ -21,7 +21,9 @@ A voice guide for websites: one script tag on a page, stateless services behind 
 | `npm run build:sdk` | Build `guide.js`, `agent.js`, `sw.js` |
 | `npm run record:demo -- --out <dir>` | Record the demo flow to MP4 |
 | `npm run docs:diagrams` | Render and syntax-check the Mermaid diagrams |
-| Planned in this phase | `npm run demo:browser` (T-301), `npm run sync` and `npm run kb` (T-205) |
+| `npm run demo:live [-- --replay]` | The guide on the Vodafone site (or saved pages) in Google Chrome ([runbook](docs/ops/runbook.md)) |
+| `npm run sync -- --site vodafone-eg [--origin web] [--dry-run]` | On-demand knowledge refresh from public pages; gated; `--scheduled` refused while paused |
+| `npm run kb -- --site <id> --status` | Knowledge-base versions; `--activate`, `--rollback`, `--import`, `--export` |
 
 Before you say a task is done: `npm run typecheck && npm test && npm run test:e2e` all pass, and you ran the commands yourself.
 

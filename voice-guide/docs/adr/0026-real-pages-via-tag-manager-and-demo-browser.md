@@ -1,6 +1,6 @@
 # ADR-0026: Run on real Vodafone pages through the tag manager in production and a loader-injecting demo browser for the demo
 
-- Status: Proposed (Vodafone live phase). Accept when SPEC-03 acceptance criteria 1–7 pass.
+- Status: Proposed; amended by ADR-0031 (gateway behind the page origin, long polling) and ADR-0033 (Google Chrome). Mode B verified on Vodafone pages saved for replay (`tests/e2e/live-replay.e2e.test.ts`, 2026-10-23). Accept when SPEC-03 acceptance 1, 2, 5–7 pass on the live site (T-503).
 - Date: 2026-10-23
 - Area: Live site integration
 - Spec: [SPEC-03](../specs/SPEC-03-live-site-integration.md); facts: [live site audit](../reference/vodafone-live-site-audit.md) §1–§3

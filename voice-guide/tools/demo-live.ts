@@ -5,6 +5,7 @@
  *   npm run demo:live -- --start https://web.vodafone.com.eg/en/mobile-internet-bundles
  *   npm run demo:live -- --replay                       # offline: captured pages, no internet needed
  *   npm run demo:live -- --kiosk --xray open            # on stage
+ *   npm run demo:live -- --browser chromium             # Playwright's Chromium (no speech service; typing only)
  *
  * 1. builds the SDK;
  * 2. starts the gateway with every service in process (memory store by default, so no Postgres;
@@ -40,6 +41,7 @@ const { values } = parseArgs({
 		kiosk: { type: 'boolean', default: false },
 		headless: { type: 'boolean', default: false },
 		profile: { type: 'string' },
+		browser: { type: 'string', default: 'chrome' },
 	},
 	allowNegative: false,
 	strict: true,
@@ -83,6 +85,7 @@ const browser = await launchDemoBrowser({
 	kiosk: values.kiosk,
 	xray: values.xray as 'off' | 'button' | 'open',
 	replayDir,
+	channel: values.browser === 'chromium' ? 'chromium' : 'chrome',
 	log: (m) => console.log(m),
 })
 console.log(`Demo browser open on ${start}. Press the red microphone and ask. Close the window to stop.`)

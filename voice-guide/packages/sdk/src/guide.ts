@@ -163,7 +163,10 @@ export class Guide {
 			wasOpen = sessionStorage.getItem(OPEN_KEY(this.o.siteKey)) === '1'
 		} catch {}
 		const resuming = !!this.session.plan || !!this.session.agent
-		if (wasOpen || resuming || this.o.autoOpen || this.session.via === 'handoff') this.ui.open()
+		// Voice first: a plan that resumes on this page shows itself through the bar, the spotlight
+		// and the voice; the panel opens only if the person had it open (SPEC-02 §1).
+		const voiceFirst = !!this.session.site.ui.voiceFirst
+		if (wasOpen || (resuming && !voiceFirst) || this.o.autoOpen || (this.session.via === 'handoff' && !voiceFirst)) this.ui.open()
 		const xray = this.o.xray || this.session.site.ui.xray
 		if (xray === 'open') this.ui.toggleXray(true)
 		if (this.session.via !== 'new') this.#openEvents()
@@ -247,7 +250,9 @@ export class Guide {
 
 	async request(utterance: string, source: 'voice' | 'typed' | 'chip', shown?: string, listenMs?: number, confidence?: number): Promise<void> {
 		this.stopAll({ keepUi: true })
-		this.#markOpen()
+		// Voice first (SPEC-02 §1): a spoken request does not open the panel on the next page, where
+		// it would cover what the guide points at. Typed requests, and an open panel, stay open.
+		if (source !== 'voice' || !this.session.site.ui.voiceFirst || this.ui.isOpen) this.#markOpen()
 		if (source !== 'chip') this.ui.message('user', shown || utterance)
 		this.ui.chips([])
 		this.ui.thinking(true)
@@ -384,6 +389,16 @@ export class Guide {
 					this.ui.note(t('noMic', this.lang))
 					this.ui.focusInput()
 				}
+				return
+			}
+			// No speech service (Chromium builds, offline, a language the service lacks): say so
+			// plainly instead of "I didn't catch that", which would make people repeat themselves.
+			if (code === 'network' || code === 'language-not-supported') {
+				console.warn(`[voice-guide] speech recognition unavailable: ${code}`)
+				if (v) v.setState('error', t('speechUnavailable', this.lang))
+				else this.ui.note(t('speechUnavailable', this.lang))
+				this.ui.open()
+				this.ui.focusInput()
 				return
 			}
 			if (v) {
@@ -566,10 +581,15 @@ export class Guide {
 		const t0 = performance.now()
 		// The time limit covers the whole task, across page loads.
 		const startedAt = previous?.startedAt || new Date().toISOString()
+		// Saves go out one after another: a step's save that is still in flight must never land
+		// after the final "done" (null) and bring a finished task back to life on the next page.
+		let saving: Promise<unknown> = Promise.resolve()
 		const save = (state: { lines: string[]; steps: number } | null) =>
-			this.api
-				.post('/v1/agent/state', { sessionId: this.session.sessionId, agent: state ? { task: step.task, history: state.lines, steps: state.steps, startedAt, turnId, hints: step.hints, maxSteps: step.maxSteps } : null }, { keepalive: true })
-				.catch(() => {})
+			(saving = saving.then(() =>
+				this.api
+					.post('/v1/agent/state', { sessionId: this.session.sessionId, agent: state ? { task: step.task, history: state.lines, steps: state.steps, startedAt, turnId, hints: step.hints, maxSteps: step.maxSteps } : null }, { keepalive: true })
+					.catch(() => {}),
+			))
 		try {
 			this.#host().firstMotion()
 			await save(previous ? { lines: previous.lines, steps: previous.steps } : { lines: [], steps: 0 })

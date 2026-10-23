@@ -88,9 +88,9 @@ These rules are enforced in code and tested, not just written down:
 
 ## 5. Acceptance criteria
 
-1. `npm run demo:browser -- --start https://web.vodafone.com.eg/ar/home` opens the real page with the microphone visible within 1.5s of `DOMContentLoaded` (guide.js is 15 KB gzipped).
+1. `npm run demo:live -- --start https://web.vodafone.com.eg/ar/home` (formerly `demo:browser`; ADR-0031, ADR-0033) opens the real page with the microphone visible within 1.5s of `DOMContentLoaded` (guide.js is 15 KB gzipped).
 2. Starting on each of `/en/home`, `/ar/mobile-internet-bundles`, `/spa/storeLocator` and `eshop.vodafone.com.eg/en/` works: the guide answers "what is this page?" correctly in both languages.
-3. A plan that crosses CMS → SPA (`/ar/mobile-internet-bundles` → "اشترك" → `/spa/miManagement`) continues without a reload of the guide; `sdk.route` is recorded; the transcript and panel keep their content.
+3. A plan that crosses CMS → SPA continues and the conversation is kept; inside `/spa/`, route changes do not rebuild the guide and `sdk.route` is recorded. *Amended 2026-10-23 (public pages only, ADR-0032):* the CMS → SPA example is now `/ar/mobile-internet-bundles` → "Where's the nearest store?" → `/spa/storeLocator`; "اشترك" no longer follows into `/spa/miManagement`, which needs a signed-in account; it shows the card's subscribe link and stops. Original: A plan that crosses CMS → SPA (`/ar/mobile-internet-bundles` → "اشترك" → `/spa/miManagement`) continues without a reload of the guide; `sdk.route` is recorded; the transcript and panel keep their content.
 4. A plan that crosses to the shop continues on `eshop.vodafone.com.eg` with the same session id.
 5. No request from the SDK goes to any host except the gateway (network log assertion).
 6. Running the full demo script leaves the page's console free of errors caused by the SDK.

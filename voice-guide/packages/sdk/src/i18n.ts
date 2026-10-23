@@ -26,6 +26,7 @@ const S = {
 	allowMic: { ar: 'اسمح للميكروفون علشان نتكلم', en: 'Allow the microphone to talk to me' },
 	micDenied: { ar: 'الميكروفون مقفول. تقدر تكتب سؤالك.', en: 'The microphone is blocked. You can type instead.' },
 	noSpeech: { ar: 'مسمعتكش كويس، جرّب تاني', en: "I didn't catch that. Try again" },
+	speechUnavailable: { ar: 'التعرّف على الصوت مش متاح هنا دلوقتي. تقدر تكتب سؤالك.', en: 'Speech recognition is not available here right now. You can type instead.' },
 	switchLang: { ar: 'English', en: 'عربي' },
 	planStopped: { ar: 'وقفت. قولي عايز إيه.', en: 'Stopped. Tell me what you need.' },
 	you: { ar: 'إنت', en: 'You' },

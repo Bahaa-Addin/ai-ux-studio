@@ -38,6 +38,8 @@ export interface SyncOptions {
 	/** Activate even when the gate holds (a person read the report and decided). */
 	force?: boolean
 	log?: (m: string) => void
+	/** Crawl only these origins (keys from the site config, for example `web`); others are left out of this run. */
+	onlyOrigins?: string[]
 	/** For tests: crawl without a real browser. */
 	ingest?: typeof runIngest
 }
@@ -63,6 +65,16 @@ export interface SyncReport {
 /** The same site with public-only crawling forced on (owner's instruction, ADR-0032). */
 export function publicOnlySite(site: SiteConfig): SiteConfig {
 	return { ...site, crawl: { ...site.crawl, publicOnly: true, cookies: [] } }
+}
+
+/** The same site limited to some origins, for a run that should not touch the others (the 2026-10-23 crawl left the shop out). */
+export function limitOrigins(site: SiteConfig, keys: string[] | undefined): SiteConfig {
+	if (!keys?.length) return site
+	const origins = site.origins.filter((o) => keys.includes(o.key || ''))
+	const unknown = keys.filter((k) => !site.origins.some((o) => o.key === k))
+	if (unknown.length || !origins.length) throw new Error(`unknown origin key(s) ${unknown.join(', ')}; this site has ${site.origins.map((o) => o.key).join(', ')}`)
+	const allowed = new Set(origins.map((o) => new URL(o.url).origin))
+	return { ...site, origins, crawl: { ...site.crawl, start: site.crawl.start.filter((u) => allowed.has(new URL(u).origin)), sitemaps: site.crawl.sitemaps.filter((u) => allowed.has(new URL(u).origin)) } }
 }
 
 /** Null when a scheduled run may start, else the reason it may not. */
@@ -112,7 +124,7 @@ export async function runSync(opts: SyncOptions): Promise<SyncReport> {
 		log(refusal)
 		return { siteId: opts.site.id, outcome: 'refused', reason: refusal, gate: [] }
 	}
-	const site = publicOnlySite(opts.site)
+	const site = publicOnlySite(limitOrigins(opts.site, opts.onlyOrigins))
 	const store = opts.store
 	const active = await store.getActiveKb(site.id)
 	const ingest = await (opts.ingest || runIngest)({ site, platform: opts.platform, store, crawlDir: opts.crawlDir, dryRun: true, log })
@@ -206,6 +218,7 @@ function finish(opts: SyncOptions, r: SyncReport, log: (m: string) => void, reas
 		r.seeds?.notCrawled.length ? `Seeds on origins not crawled in this run: ${r.seeds.notCrawled.join(', ')}\n` : '',
 		r.outcome === 'held' ? `To activate after review: \`npm run kb -- --site ${r.siteId} --activate ${r.versionId}\`` : '',
 		r.ingest?.reportFile ? `Build report: ${path.relative(path.dirname(file), r.ingest.reportFile)}` : '',
+		r.ingest?.reportFile && fs.existsSync(r.ingest.reportFile.replace(/\.md$/, '.manifest.json')) ? `Manifest (usable without a database: \`npm run demo:live -- --kb <this file>\`): ${r.ingest.reportFile.replace(/\.md$/, '.manifest.json')}` : '',
 	]
 	fs.writeFileSync(file, lines.join('\n'))
 	fs.writeFileSync(file.replace(/\.md$/, '.json'), JSON.stringify(r, null, 1))

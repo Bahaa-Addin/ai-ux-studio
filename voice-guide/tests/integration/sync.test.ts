@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { test } from 'node:test'
 
-import { publicOnlySite, runSync, scheduleRefusal } from '#jobs/sync-lib.ts'
+import { limitOrigins, publicOnlySite, runSync, scheduleRefusal } from '#jobs/sync-lib.ts'
 import { loadPlatformConfig, loadSiteConfig, ROOT, type SiteConfig } from '#shared/config.ts'
 import { MemoryStore } from '#shared/store/index.ts'
 
@@ -91,4 +91,12 @@ test('a missing seed page holds the version', async () => {
 	assert.equal(seeds.ok, false)
 	assert.deepEqual(r.seeds!.missing, ['https://web.vodafone.com.eg/en/mobile-internet-bundles'])
 	assert.equal(r.outcome, 'dry-run')
+})
+
+test('--origin web leaves the shop out of the run entirely', () => {
+	const web = limitOrigins(real, ['web'])
+	assert.deepEqual(web.origins.map((o) => o.key), ['web'])
+	assert.ok(web.crawl.start.length > 0 && web.crawl.start.every((u) => u.startsWith('https://web.vodafone.com.eg/')))
+	assert.throws(() => limitOrigins(real, ['nope']), /unknown origin/)
+	assert.equal(limitOrigins(real, undefined), real)
 })
