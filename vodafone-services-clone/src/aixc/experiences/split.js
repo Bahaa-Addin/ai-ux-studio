@@ -104,7 +104,11 @@ export const renderSplit = (schema, index) => {
       h('span', { class: 'ss-rail__label', 'aria-hidden': 'true' }, group.title),
       h('span', { class: 'ss-rail__ticks', 'aria-hidden': 'true' }, lines),
     )
-    button.addEventListener('click', () => stepper.goTo(firstIndexOf.get(group.id)))
+    // A long jump is one clean split transition rather than a scroll through every slide.
+    button.addEventListener('click', () => {
+      const target = firstIndexOf.get(group.id)
+      stepper.goTo(target, { instant: Math.abs(target - active) > 2 })
+    })
     return button
   })
   const rail = h('nav', { class: 'ss-rail', 'aria-label': 'Categories' }, h('ul', null, railButtons.map((button) => h('li', null, button))))

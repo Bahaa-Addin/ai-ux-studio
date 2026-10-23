@@ -93,7 +93,7 @@ Then open the page, choose **Reimagine this page**, and click a ready-made exper
 ```bash
 npm test             # validator, content model and template unit tests (Node built-in runner)
 
-# Optional browser checks (291 checks across all experiences; Gemini is mocked, no key needed):
+# Optional browser checks (292 checks across all experiences; Gemini is mocked, no key needed):
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
@@ -249,7 +249,7 @@ its stylesheet scoped under `.aixc-vx--<name>` and link it in `index.html`, regi
 ## Known limitations and source notes
 
 - **Gemini has not been called live from this build.** The request format, headers and response
-  parsing were tested against a mocked endpoint (291 browser checks). Verify with a real key before
+  parsing were tested against a mocked endpoint (292 browser checks). Verify with a real key before
   a demo; if the chosen model rejects `responseSchema`, the client retries once in plain JSON mode.
 - **Content capture.** Text and images were captured on 2026-04-21; links and the hero heading
   were re-checked against the live page on 2026-10-19. The live site may have changed since.
