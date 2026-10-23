@@ -37,7 +37,7 @@ export interface IngestReport {
 	published: boolean
 	activated: boolean
 	unchanged: boolean
-	crawl: { id: string; pages: number; errors: { url: string; error: string }[]; ms: number }
+	crawl: { id: string; pages: number; errors: { url: string; error: string }[]; ms: number; stopped?: string }
 	describe: { visionCalls: number; cacheHits: number }
 	stats?: BuildStats
 	issues: Issue[]
@@ -71,7 +71,7 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
 		published: false,
 		activated: false,
 		unchanged: false,
-		crawl: { id: crawl.id, pages: crawl.pages.length, errors: crawl.errors, ms: crawlMs },
+		crawl: { id: crawl.id, pages: crawl.pages.length, errors: crawl.errors, ms: crawlMs, ...(crawl.stopped ? { stopped: crawl.stopped } : {}) },
 		describe: { visionCalls: described.visionCalls, cacheHits: described.cacheHits },
 		stats: built.stats,
 		issues: built.issues,

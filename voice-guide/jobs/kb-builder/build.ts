@@ -123,7 +123,25 @@ export function buildManifest(input: BuildInput): BuildOutput {
 	}
 	// Soft 404s (a 200 with a "page not found" page) are not pages.
 	const soft404 = (p: PageSnap) => SOFT_404.test(cleanTitle(p.title).trim()) || SOFT_404.test((p.h1 || '').trim())
-	crawl = { ...crawl, pages: crawl.pages.filter((p) => !soft404(p)) }
+	// URLs the crawl saw redirect to a page it captured separately (the in-browser crawler records
+	// /en/vodafone-flex -> /spa/vodafone-flex as an error because the /spa/ app is crawled on its
+	// own, ADR-0032) are aliases of that page, so links and seeds that use them still resolve.
+	const redirectedTo = new Map<string, string[]>()
+	for (const e of crawl.errors || []) {
+		const m = /redirected (?:out of scope )?to (\S+)$/.exec(e.error)
+		if (!m) continue
+		const to = norm(m[1])
+		redirectedTo.set(to, [...(redirectedTo.get(to) || []), e.url])
+	}
+	crawl = {
+		...crawl,
+		pages: crawl.pages
+			.filter((p) => !soft404(p))
+			.map((p) => {
+				const extra = redirectedTo.get(norm(p.url))
+				return extra ? { ...p, aliases: [...new Set([...(p.aliases || []), ...extra])] } : p
+			}),
+	}
 	const byUrl = new Map(crawl.pages.map((p) => [p.url, p]))
 	// URLs that redirected to a crawled page (the live site sends /ar/<english-slug> to an Arabic slug).
 	const aliasOf = new Map<string, string>()
@@ -193,12 +211,21 @@ export function buildManifest(input: BuildInput): BuildOutput {
 		let id = `${originKey(ref.url)}.${asciiSlug(s) || shortHash(ref.url)}`
 		for (let n = 2; usedIds.has(id); n++) id = `${id}-${n}`
 		usedIds.add(id)
-		const variants: Record<string, { url: string; title: string }> = {}
+		const variants: Record<string, { url: string; title: string; aliases?: string[] }> = {}
 		const vmap = new Map<string, PageSnap>()
 		for (const m of members) {
 			const fromPath = site.crawl.pairLanguagesBy === 'path' ? langOfPath(m.url) : undefined
 			const lang = fromPath || (languages.includes(m.lang) ? m.lang : site.defaultLanguage)
-			if (variants[lang]) continue
+			if (variants[lang]) {
+				// The same page under a second URL in the same language (the live site answers
+				// /en/HomeDSLcatalog and /en/homedslcatalog alike): an alias, not a lost page.
+				const v = variants[lang]
+				if (m.url !== v.url) {
+					v.aliases = [...new Set([...(v.aliases || []), m.url, ...(m.aliases || [])])]
+					pageIdByUrl.set(m.url, id)
+				}
+				continue
+			}
 			variants[lang] = { url: m.url, title: cleanTitle(m.title) || m.h1, ...(m.aliases?.length ? { aliases: m.aliases } : {}) }
 			vmap.set(lang, m)
 			pageIdByUrl.set(m.url, id)

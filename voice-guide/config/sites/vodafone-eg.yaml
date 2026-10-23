@@ -104,6 +104,7 @@ crawl:
 # SCHEDULED CRAWLING IS PAUSED (owner's instruction, 2026-10-23, and PRD D3: no scheduled
 # crawl of production before Vodafone's written approval). On-demand runs only:
 #   npm run sync -- --site vodafone-eg
+# `npm run sync -- --scheduled` (what a cron would call) refuses while `enabled` is false.
 sync:
   schedule:
     enabled: false
@@ -113,6 +114,8 @@ sync:
   gate:
     maxDestinationChurn: 0.15
     requireSeeds: true
+    evalCases: tests/fixtures/vodafone-utterances.yaml
+    maxEvalDrop: 0.02
   keepVersions: 10
 
 curated: config/curated/vodafone-eg.yaml

@@ -27,7 +27,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #00b0ca; outline-
 .msg.guide { background: #fff; border-inline-start: 3px solid var(--vf-red); box-shadow: 0 2px 4px rgba(0,0,0,.075); }
 .msg.note, .hint, .live { color: var(--vf-ink-2); }
 .chip { border-radius: 6px; border: 1px solid var(--vf-red); color: var(--vf-red); padding: 6px 12px; }
-.chip:hover { background: #fff5f5; }
+.chip:hover { background: var(--vf-bg); }
 .bar input { border-radius: 6px; border-color: #cccccc; }
 .mic, .send { border-radius: 50%; }
 .mic { background: var(--vf-red); color: #fff; }

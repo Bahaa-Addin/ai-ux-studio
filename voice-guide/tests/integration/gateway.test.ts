@@ -136,6 +136,52 @@ test('the X-ray stream delivers the session\'s trace events live', async () => {
 	assert.match(buf, /^id: \d+$/m)
 })
 
+test('long polling returns the backlog at once, then waits for new events, then times out empty (ADR-0031)', async () => {
+	const s = await newSession('en', `${ORIGIN}/en/index.html`)
+	const poll = (since: number, wait: number) => call(`/v1/events/poll?session=${s.sessionId}&k=${KEY}&since=${since}&wait=${wait}`)
+	// The flood test above may have used up the turn budget: wait for it to refill.
+	const turnNow = async (utterance: string) => {
+		for (let i = 0; i < 50; i++) {
+			const r = await call('/v1/turn', { sessionId: s.sessionId, utterance, page: { url: `${ORIGIN}/en/index.html` } })
+			if (r.status !== 429) return r.body
+			await new Promise((res) => setTimeout(res, 200))
+		}
+		throw new Error('rate limit did not refill')
+	}
+	// Backlog: the session's own events come back without waiting.
+	await turnNow('coverage')
+	let t0 = Date.now()
+	const first = await poll(0, 20)
+	assert.equal(first.status, 200)
+	assert.ok(Date.now() - t0 < 2000, 'backlog is immediate')
+	assert.ok(first.body.events.some((e: any) => e.name === 'turn.planned'), JSON.stringify(first.body).slice(0, 400))
+	let last = Math.max(...first.body.events.map((e: any) => e.seq))
+	// Drain anything still landing from that turn, so the next poll starts quiet.
+	await new Promise((r) => setTimeout(r, 300))
+	last = Math.max(last, ...(await poll(last, 0)).body.events.map((e: any) => e.seq))
+	// Waiting: a turn that arrives during the poll ends it with that turn's events in one response.
+	t0 = Date.now()
+	const pending = poll(last, 10)
+	await new Promise((r) => setTimeout(r, 300))
+	const turn = await turnNow('offers')
+	const next = await pending
+	const waited = Date.now() - t0
+	assert.ok(waited >= 300 && waited < 5000, `woke on the event (${waited} ms)`)
+	assert.ok(next.body.events.length > 0)
+	assert.ok(next.body.events.every((e: any) => e.seq > last), 'only events after `since`')
+	assert.ok(next.body.events.some((e: any) => e.turnId === turn.turnId), JSON.stringify(next.body.events.map((e: any) => [e.name, e.turnId])))
+	// Nothing new: the poll ends empty after `wait` seconds.
+	await new Promise((r) => setTimeout(r, 300))
+	const after = Math.max(...next.body.events.map((e: any) => e.seq))
+	const end = Math.max(after, ...(await poll(after, 0)).body.events.map((e: any) => e.seq))
+	t0 = Date.now()
+	const empty = await poll(end, 1)
+	assert.deepEqual(empty.body.events, [])
+	assert.ok(Date.now() - t0 >= 900, 'held for the wait time')
+	// Another site's key cannot read this session.
+	assert.notEqual((await call(`/v1/events/poll?session=${s.sessionId}&wait=0`, undefined, { key: 'pk_unknown' })).status, 200)
+})
+
 test('the agent proxy needs a valid token, masks page data and enforces the session budget', async () => {
 	const s = await newSession('en', `${ORIGIN}/en/subscribe.html`)
 	const body = {

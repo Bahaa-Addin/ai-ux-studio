@@ -242,11 +242,7 @@ test('Arabic, by voice: the words appear one by one, the wave follows the microp
 
 test('"subscribe to it" remembers the bundle, shows where to subscribe, and stops before signing in', async () => {
 	await say(['اشترك', 'فيها'])
-	await heard(page, /بنفسك/, 15_000).catch(async (e) => {
-		console.log('DEBUG spoken', JSON.stringify(await page.evaluate(() => (window as any).__spoken.map((x: any) => x.text))))
-		console.log('DEBUG xray', JSON.stringify(await page.evaluate(() => (window as any).voiceGuide.xray.view().turns.slice(-2)), null, 1).slice(0, 3000))
-		throw e
-	})
+	await heard(page, /بنفسك/, 15_000)
 	assert.equal(page.url(), `${WEB}/ar/mobile-internet-bundles`, 'no navigation into the signed-in app')
 	const framed = await page.evaluate(() => {
 		const s = document.querySelector('vg-guide')!.shadowRoot!.querySelector('.spot') as HTMLElement
