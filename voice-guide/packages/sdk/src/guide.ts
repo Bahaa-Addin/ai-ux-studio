@@ -4,7 +4,6 @@
  */
 import type { Plan, PlanStep } from '#kb'
 
-import type { AgentRunResult } from './agent.ts'
 import { Api, ApiError } from './api.ts'
 import { CommitGuard } from './dom.ts'
 import { Executor, type ExecutorHost, type StepEvent } from './executor.ts'
@@ -14,7 +13,7 @@ import { themeFromPage } from './theme.ts'
 import { VODAFONE_THEME } from './theme/vodafone.ts'
 import { GuideUi } from './ui.ts'
 import { MicStream } from './voice/audio.ts'
-import { type TraceEv, XrayModel } from './xray.ts'
+import type { TraceEv, XrayModel } from './xray.ts'
 
 export interface GuideOptions {
 	gateway: string
@@ -68,7 +67,10 @@ export class Guide {
 	readonly o: GuideOptions
 	readonly api: Api
 	readonly speech = new Speech()
-	readonly xray = new XrayModel()
+	/** The X-ray model, once the X-ray chunk is loaded (`loadXray`); events are kept until then. */
+	xray: XrayModel | null = null
+	#trace: TraceEv[] = []
+	#kbVersion: string | undefined
 	ui!: GuideUi
 	executor!: Executor
 	guard = new CommitGuard([])
@@ -102,7 +104,7 @@ export class Guide {
 		} catch {}
 		this.lang = this.session.page.pageLang || this.session.lang || this.lang
 		this.guard = new CommitGuard(this.session.page.commitTargets || [])
-		this.xray.kbVersion = this.session.page.kbVersion || undefined
+		this.#kbVersion = this.session.page.kbVersion || undefined
 
 		const brand = this.session.site.ui.theme === 'vodafone' ? 'vodafone' : 'page'
 		const theme = brand === 'vodafone' ? VODAFONE_THEME : themeFromPage(this.session.site.ui.accent)
@@ -125,7 +127,7 @@ export class Guide {
 				onXray: (open) => {
 					if (open) {
 						this.#openEvents()
-						this.ui.renderXray(this.xray.view())
+						void this.loadXray().then((x) => x && this.ui.renderXray(x.view()))
 					}
 				},
 				onClose: () => {
@@ -334,6 +336,11 @@ export class Guide {
 		this.#mic = null
 	}
 
+	#endListen(): void {
+		this.#releaseMic()
+		this.ui.setListening(false)
+	}
+
 	#cancelListening(): void {
 		this.speech.abortListening()
 		this.#releaseMic()
@@ -369,8 +376,7 @@ export class Guide {
 				this.#mic = new MicStream()
 				await this.#mic.open()
 			} catch (e) {
-				this.#releaseMic()
-				this.ui.setListening(false)
+				this.#endListen()
 				const denied = (e as DOMException)?.name === 'NotAllowedError'
 				v.setState('error', t(denied ? 'micDenied' : 'noMic', this.lang))
 				return
@@ -380,30 +386,18 @@ export class Guide {
 			v.startWave(() => mic.sample())
 		}
 		const failed = (code: string) => {
-			this.#releaseMic()
-			this.ui.setListening(false)
+			this.#endListen()
 			if (code === 'aborted') return v?.setState('idle')
-			if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
-				if (v) v.setState('error', t('micDenied', this.lang))
-				else {
-					this.ui.note(t('noMic', this.lang))
-					this.ui.focusInput()
-				}
-				return
-			}
-			// No speech service (Chromium builds, offline, a language the service lacks): say so
-			// plainly instead of "I didn't catch that", which would make people repeat themselves.
-			if (code === 'network' || code === 'language-not-supported') {
-				console.warn(`[voice-guide] speech recognition unavailable: ${code}`)
-				if (v) v.setState('error', t('speechUnavailable', this.lang))
-				else this.ui.note(t('speechUnavailable', this.lang))
+			// No speech service (Chromium builds, offline, a language the service lacks) is said
+			// plainly; "I didn't catch that" would make people repeat themselves for nothing.
+			const key = /not-allowed|audio-capture/.test(code) ? 'micDenied' : /network|language-not-supported/.test(code) ? 'speechUnavailable' : 'noSpeech'
+			if (key !== 'noSpeech') console.warn(`[voice-guide] speech: ${code}`)
+			if (v) v.setState('error', t(key, this.lang))
+			if (key === 'noSpeech') return v && setTimeout(() => v.state === 'error' && v.setState('idle'), 4000)
+			if (!v) this.ui.note(t(key === 'micDenied' ? 'noMic' : key, this.lang))
+			if (key === 'speechUnavailable' || !v) {
 				this.ui.open()
 				this.ui.focusInput()
-				return
-			}
-			if (v) {
-				v.setState('error', t('noSpeech', this.lang))
-				setTimeout(() => v.state === 'error' && v.setState('idle'), 4000)
 			}
 		}
 		try {
@@ -422,13 +416,12 @@ export class Guide {
 						const m = v?.metrics
 						const p95 = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * 0.95))] : undefined)
 						this.#listenMeta = {
-							mode,
+							...this.#listenMeta,
 							firstWordMs: m?.firstWordAt && speechStartAt ? Math.round(m.firstWordAt - speechStartAt) : undefined,
 							renderP95: m ? p95(m.renderMs) : undefined,
 							frameP95: m ? p95(m.frameMs) : undefined,
 						}
-						this.#releaseMic()
-						this.ui.setListening(false)
+						this.#endListen()
 						v?.finalize(text)
 						if (!text) return v?.setState('idle')
 						v?.setState('thinking')
@@ -439,8 +432,7 @@ export class Guide {
 					},
 					onError: failed,
 					onEnd: () => {
-						this.#releaseMic()
-						this.ui.setListening(false)
+						this.#endListen()
 						if (v?.state === 'listening' || v?.state === 'permission') v.setState('idle')
 					},
 				},
@@ -555,76 +547,62 @@ export class Guide {
 
 	// ---- fallback agent ----
 
-	async #loadAgent(): Promise<{ runAgent: (o: any) => Promise<AgentRunResult> }> {
+	#keep(ev: TraceEv): void {
+		this.xray?.add(ev)
+		this.#trace.push(ev)
+		if (this.#trace.length > 600) this.#trace.splice(0, this.#trace.length - 600)
+	}
+
+	/** Loads the X-ray chunk (demo tool): its model gets every event seen so far. */
+	async loadXray(): Promise<XrayModel | null> {
+		if (this.xray) return this.xray
 		const w = window as any
-		if (w.__vgAgent) return w.__vgAgent
-		await new Promise<void>((resolve, reject) => {
-			const s = document.createElement('script')
-			s.src = `${this.o.gateway}/sdk/agent.js`
-			s.async = true
-			s.onload = () => resolve()
-			s.onerror = () => reject(new Error('agent chunk failed to load'))
-			document.head.appendChild(s)
-		})
+		try {
+			if (!w.__vgXray) await loadScript(`${this.o.gateway}/sdk/xray.js`)
+			if (this.xray) return this.xray
+			const x = new w.__vgXray.XrayModel() as XrayModel
+			x.kbVersion = this.#kbVersion
+			for (const ev of this.#trace) x.add(ev)
+			this.ui.installXray(w.__vgXray.XRAY_CSS, w.__vgXray.renderXray)
+			this.xray = x
+			return x
+		} catch (e) {
+			console.warn('[voice-guide]', (e as Error).message)
+			return null
+		}
+	}
+
+	async #loadAgent(): Promise<{ runForGuide: (...a: any[]) => Promise<void> }> {
+		const w = window as any
+		if (!w.__vgAgent) await loadScript(`${this.o.gateway}/sdk/agent.js`)
 		return w.__vgAgent
 	}
 
 	async #runAgent(step: Extract<PlanStep, { op: 'agent' }>, turnId: string, signal: AbortSignal, previous?: { lines: string[]; steps: number; startedAt?: string }): Promise<void> {
-		if (!this.session.agentToken || !this.session.site.agent.enabled) {
-			await this.#say(t('agentUnavailable', this.lang))
-			return
-		}
+		if (!this.session.agentToken || !this.session.site.agent.enabled) return this.#say(t('agentUnavailable', this.lang))
 		const mod = await this.#loadAgent()
-		const abort = new AbortController()
-		signal.addEventListener('abort', () => abort.abort())
-		this.#agentAbort = abort
-		const t0 = performance.now()
-		// The time limit covers the whole task, across page loads.
-		const startedAt = previous?.startedAt || new Date().toISOString()
-		// Saves go out one after another: a step's save that is still in flight must never land
-		// after the final "done" (null) and bring a finished task back to life on the next page.
-		let saving: Promise<unknown> = Promise.resolve()
-		const save = (state: { lines: string[]; steps: number } | null) =>
-			(saving = saving.then(() =>
-				this.api
-					.post('/v1/agent/state', { sessionId: this.session.sessionId, agent: state ? { task: step.task, history: state.lines, steps: state.steps, startedAt, turnId, hints: step.hints, maxSteps: step.maxSteps } : null }, { keepalive: true })
-					.catch(() => {}),
-			))
-		try {
-			this.#host().firstMotion()
-			await save(previous ? { lines: previous.lines, steps: previous.steps } : { lines: [], steps: 0 })
-			const r = await mod.runAgent({
+		await mod.runForGuide(
+			{
 				gateway: this.o.gateway,
 				token: this.session.agentToken,
-				turnId,
-				task: step.task,
-				hints: step.hints,
+				sessionId: this.session.sessionId,
 				lang: this.lang,
-				maxSteps: step.maxSteps || this.session.site.agent.maxSteps,
+				maxSteps: this.session.site.agent.maxSteps,
 				timeoutSec: this.session.site.agent.timeoutSec,
 				commitSelectors: this.guard.selectors,
-				previous,
-				signal: abort.signal,
-				onStep: (ev: { step: number; action: string; goal?: string; ms: number }) => void this.#report(turnId, [{ name: 'agent.step', attrs: { step: ev.step, action: ev.action, goal: ev.goal }, ms: ev.ms }]),
-				onSave: (state: { lines: string[]; steps: number }) => void save(state),
-				onAsk: (q: string) => {
-					void this.#say(q)
-					return new Promise<string>((resolve) => (this.#askResolver = resolve))
-				},
-			})
-			await save(null)
-			void this.#report(turnId, [{ name: 'agent.done', attrs: { success: r.success, steps: r.steps, error: r.error }, ms: performance.now() - t0 }])
-			if (abort.signal.aborted) return
-			if (r.text) await this.#say(r.text)
-			else if (r.error) await this.#say(t('agentUnavailable', this.lang))
-		} catch (e) {
-			if (abort.signal.aborted) return
-			await save(null)
-			await this.#say(t('agentUnavailable', this.lang))
-			void this.#report(turnId, [{ name: 'sdk.step', attrs: { op: 'agent', ok: false, detail: (e as Error).message } }])
-		} finally {
-			this.#agentAbort = null
-		}
+				post: (p: string, body: unknown, o?: { keepalive?: boolean }) => this.api.post(p, body, o),
+				say: (text: string) => this.#say(text),
+				unavailable: t('agentUnavailable', this.lang),
+				report: (id: string, ev: StepEvent[]) => void this.#report(id, ev),
+				firstMotion: () => this.#host().firstMotion(),
+				onAbort: (a: AbortController | null) => (this.#agentAbort = a),
+				onAsk: (r: ((a: string) => void) | null) => (this.#askResolver = r),
+			},
+			step,
+			turnId,
+			signal,
+			previous,
+		)
 	}
 
 	async #resumeAgent(): Promise<void> {
@@ -641,40 +619,37 @@ export class Guide {
 
 	// ---- page watch ----
 
+	async #watchChunk(): Promise<any> {
+		const w = window as any
+		if (!w.__vgWatch) await loadScript(`${this.o.gateway}/sdk/watch.js`)
+		return w.__vgWatch
+	}
+
+	async #toast(title: string, body: string): Promise<void> {
+		try {
+			;(await this.#watchChunk()).toast(this.ui.root, this.ui.toastEl, title, body)
+		} catch (e) {
+			console.warn('[voice-guide] toast', e)
+		}
+	}
+
 	async #createWatch(): Promise<void> {
 		const pw = this.#pendingWatch
 		if (!pw) return
-		const { step, turnId } = pw
-		let subscriptionId: string | undefined
 		try {
-			subscriptionId = await this.#pushSubscription()
-		} catch (e) {
-			console.info('[voice-guide] push unavailable, using live delivery', e)
-		}
-		try {
-			if (!subscriptionId && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission().catch(() => 'denied')
-			await this.api.post('/v1/watch', { sessionId: this.session.sessionId, turnId, subscriptionId, url: step.url, pageId: step.pageId, target: step.target, label: step.label, lang: this.lang })
+			const ok = await (await this.#watchChunk()).createWatch(
+				{ post: (p: string, body: unknown) => this.api.post(p, body), sessionId: this.session.sessionId, push: this.session.push, lang: this.lang },
+				pw.step,
+				pw.turnId,
+			)
+			if (!ok) throw new Error('watch not created')
 			this.#pendingWatch = null
-			await this.#say(t('watching', this.lang, { label: step.label }))
+			await this.#say(t('watching', this.lang, { label: pw.step.label }))
 			this.#openEvents()
 		} catch (e) {
 			await this.#say(t('watchFailed', this.lang))
 			console.warn('[voice-guide] watch', e)
 		}
-	}
-
-	async #pushSubscription(): Promise<string | undefined> {
-		if (!this.session.push || !('serviceWorker' in navigator) || !('PushManager' in window)) return undefined
-		const perm = await Notification.requestPermission()
-		if (perm !== 'granted') return undefined
-		const reg = await navigator.serviceWorker.register('/vg-sw.js', { scope: '/' })
-		await navigator.serviceWorker.ready
-		const key = Uint8Array.from(atob(this.session.push.publicKey.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
-		// A browser that cannot reach its push service can stall here; fall back to live delivery.
-		const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('push subscribe timed out')), 4000))
-		const sub = (await reg.pushManager.getSubscription()) || (await Promise.race([reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }), timeout]))
-		const r = await this.api.post<{ subscriptionId: string }>('/v1/push/subscribe', { sessionId: this.session.sessionId, subscription: sub.toJSON() })
-		return r.subscriptionId
 	}
 
 	// ---- live events: X-ray and notifications ----
@@ -685,18 +660,18 @@ export class Guide {
 			this.session.sessionId,
 			(kind, ev: TraceEv) => {
 				if (kind === 'trace') {
-					this.xray.add(ev)
-					if (this.ui.xrayOpen) this.ui.renderXray(this.xray.view())
+					this.#keep(ev)
+					if (this.xray && this.ui.xrayOpen) this.ui.renderXray(this.xray.view())
 					return
 				}
-				this.xray.add(ev)
+				this.#keep(ev)
 				// The stream replays its backlog on every page load; announce each change once.
 				const seen = readStore<number>(NOTIFIED_KEY(this.o.siteKey), 0)
 				const stale = Date.now() - Date.parse(ev.at) > 5 * 60_000
 				if ((ev.seq ?? 0) <= seen || stale) return
 				writeStore(NOTIFIED_KEY(this.o.siteKey), ev.seq ?? 0)
 				const a = ev.attrs
-				this.ui.toast(a.title, a.body)
+				void this.#toast(a.title, a.body)
 				void this.#say(`${a.title}. ${a.body}`)
 				// Push watches are shown by the service worker; live ones by the page.
 				if ('Notification' in window && Notification.permission === 'granted' && a.channel !== 'push') {
@@ -721,4 +696,16 @@ export class Guide {
 	get busy(): boolean {
 		return this.#busy
 	}
+}
+
+/** Loads one of the SDK's on-demand chunks (agent, X-ray). */
+function loadScript(src: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const s = document.createElement('script')
+		s.src = src
+		s.async = true
+		s.onload = () => resolve()
+		s.onerror = () => reject(new Error(`${src} failed to load`))
+		document.head.appendChild(s)
+	})
 }

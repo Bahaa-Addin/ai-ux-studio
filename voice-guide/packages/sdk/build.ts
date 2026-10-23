@@ -1,5 +1,5 @@
 /**
- * Builds the SDK (ADR-0007): guide.js (loader, UI, executor), agent.js (page-agent,
+ * Builds the SDK (ADR-0007): guide.js (loader, UI, executor), xray.js (X-ray drawer, on demand), agent.js (page-agent,
  * loaded only on the fallback path) and sw.js (push service worker).
  */
 import fs from 'node:fs'
@@ -75,6 +75,8 @@ export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<
 		platform: 'browser',
 		target: 'es2022',
 		minify: opts.minify ?? true,
+		// Arabic strings as UTF-8, not \uXXXX escapes (3x smaller); the gateway serves charset=utf-8.
+		charset: 'utf8',
 		sourcemap: true,
 		legalComments: 'linked',
 		logLevel: 'warning',
@@ -85,10 +87,12 @@ export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<
 	await Promise.all([
 		esbuild.build({ ...common, plugins: [...(opts.minify ?? true ? [cssMinify] : []), raw, stubs, alias], entryPoints: [path.join(SRC, 'index.ts')], outfile: path.join(OUT, 'guide.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'agent.ts')], outfile: path.join(OUT, 'agent.js') }),
+		esbuild.build({ ...common, plugins: [...(opts.minify ?? true ? [cssMinify] : []), raw, stubs, alias], entryPoints: [path.join(SRC, 'xray-chunk.ts')], outfile: path.join(OUT, 'xray.js') }),
+		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'watch-chunk.ts')], outfile: path.join(OUT, 'watch.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'sw.ts')], outfile: path.join(OUT, 'sw.js') }),
 	])
 	const sizes: Record<string, number> = {}
-	for (const f of ['guide.js', 'agent.js', 'sw.js']) sizes[f] = fs.statSync(path.join(OUT, f)).size
+	for (const f of ['guide.js', 'agent.js', 'xray.js', 'watch.js', 'sw.js']) sizes[f] = fs.statSync(path.join(OUT, f)).size
 	return sizes
 }
 

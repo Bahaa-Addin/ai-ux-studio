@@ -38,5 +38,4 @@ button:focus-visible, input:focus-visible { outline: 3px solid #00b0ca; outline-
 .pointer { background: var(--vf-red); }
 .toast { border-radius: 6px; border-inline-start-color: var(--vf-red); box-shadow: var(--vf-shadow-float); }
 .xray { background: var(--vf-night); }
-.badge.replay { background: var(--vf-red-dark); }
 `
