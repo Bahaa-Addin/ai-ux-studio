@@ -1,5 +1,7 @@
 # Voice guide
 
+> **Current phase: Vodafone live.** The guide moves onto the real Vodafone Egypt website with a voice-first microphone UI, Vodafone's design language and a knowledge base kept in step with the live site. Start with [`AGENTS.md`](AGENTS.md), the [handoff](docs/handoff/HANDOFF.md) and the [build prompt](docs/prompts/vodafone-live-demo.prompt.md). All documents: [`docs/README.md`](docs/README.md).
+
 A guide that works on top of any existing website. A person asks it something out loud, in Egyptian Arabic or English, and it guides them to the answer on the site itself. It goes to the right page, opens the hidden tab, scrolls, puts a spotlight on the answer and reads the live value aloud. It also follows the person into the web app on another domain and tells them when something they watched changes. When the request is outside what the guide knows, a fallback agent (page-agent) does the action on the page. The guide never presses a commit button.
 
 This repository is the demo build. The parts are real: the SDK, the gateway, five services, Postgres, the ingestion jobs and page-agent. Stand-ins are used only where the system meets the outside world (ADR-0024). Every architecture decision is recorded in [`docs/adr`](docs/adr/README.md), with the settings to tune for the pilot and the measurement that should reopen it.
@@ -64,6 +66,7 @@ Without a model key, requests that need the fallback agent get a short "I can't 
 | `npm run test:e2e` | The demo flow in Chromium, end to end. |
 | `npm run typecheck` | Both TypeScript projects. One known upstream mismatch is allowlisted (ADR-0017). |
 | `npm run record:demo -- --out <dir>` | Records the demo flow to an MP4 with captions. |
+| `npm run docs:diagrams` | Renders and syntax-checks the Mermaid diagrams in `docs/diagrams/`. |
 
 ## Measured on the demo build (2026-10-23)
 
@@ -93,7 +96,7 @@ All figures come from one machine with no network between the browser and the se
 
 ## Where to look
 
-- [`docs/adr/README.md`](docs/adr/README.md): the 20 decisions (ADR-0006 to ADR-0025), what each changed in the demo plan, and the bugs that changed them.
+- [`docs/adr/README.md`](docs/adr/README.md): the decisions (ADR-0006 to ADR-0025 accepted; ADR-0026 to ADR-0030 proposed for the Vodafone live phase), what each changed, and the bugs that changed them.
 - [`docs/pilot-tuning.md`](docs/pilot-tuning.md): every setting, its default, which measurement moves it, and SQL over the traces.
 - [`docs/kb-standard.md`](docs/kb-standard.md): the site knowledge standard 0.1, with its JSON Schema. `docs/plan-contract.schema.json` is the schema of the plans the server sends to the SDK.
 - `packages/sdk`: the browser SDK. `services/`: gateway and services. `jobs/`: ingestion. `packages/kb`, `packages/text`: the shared standard and text matching.

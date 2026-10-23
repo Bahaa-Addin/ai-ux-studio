@@ -5,3 +5,8 @@ Experiments in AI-composed user experiences.
 - [`vodafone-services-clone/`](vodafone-services-clone/README.md) — **AI Experience Composer (AIXC), Phase 1**:
   a local Vodafone Egypt Services page whose main content can be recomposed as an editorial
   magazine from a natural-language prompt (Gemini), without changing the content or the site shell.
+- [`voice-guide/`](voice-guide/README.md) — **Voice guide**: a voice-first guide that takes people to the
+  answer on the real Vodafone Egypt website (navigate, open tabs, spotlight, read live values), keeps one
+  conversation across the CMS pages, the `/spa/` app and the shop, and keeps its site knowledge in step with
+  the live site. Agent setup and the current brief: [`voice-guide/AGENTS.md`](voice-guide/AGENTS.md),
+  [`voice-guide/docs/prompts/vodafone-live-demo.prompt.md`](voice-guide/docs/prompts/vodafone-live-demo.prompt.md).

@@ -1,0 +1,52 @@
+# Curated overlay for vodafone-eg (ADR-0011). STARTER: only what the crawler cannot know.
+#
+# Page and destination ids come from the first ingest report
+# (`npm run ingest -- --site vodafone-eg --dry-run`, task T-201). Add pages:, destinations:
+# and flows: entries only after that report exists, using its ids. Entries that name ids the
+# crawl did not produce make the build fail its integrity check.
+#
+# Facts used below: docs/reference/vodafone-live-site-audit.md §6, §8, §9.
+
+lexicon:
+  synonyms:
+    # Products, as Vodafone writes them, with common Egyptian spellings and transliterations.
+    - [فودافون فليكس, فليكس, flex, vodafone flex]
+    - [ريد, رد, red, vodafone red]
+    - [بلس, plus, vodafone plus, ڤودافون بلس, فودافون بلس]
+    - [بلس ابس, plus apps, باقات التطبيقات]
+    - [فودافون كاش, ڤودافون كاش, كاش, محفظة, vodafone cash, cash, wallet, e-wallet]
+    - [انا فودافون, أنا ڤودافون, ana vodafone, the app, التطبيق]
+    - [الكارت, كارت الكروت, el-kart, el kart, prepaid, كارت]
+    - [شكرا, شكراً, shokran]
+    # Generic telecom words (from the fixture overlay, which tested well).
+    - [نت, انترنت, إنترنت, داتا, بيانات, internet, data]
+    - [باقة, باقات, باقه, bundle, bundles, plan, plans, package]
+    - [ميجا, ميجابايت, mb, mega, megabyte, megabytes]
+    - [جيجا, جيجابايت, جيجات, gb, giga, gigabyte, gigabytes]
+    - [النت الهوائي, wireless, wireless net, 4g home, هوائي]
+    - [ارضي, أرضي, dsl, adsl, home internet, نت البيت, الانترنت المنزلي]
+    - [فرع, فروع, محل, store, stores, branch, store locator]
+    - [تغطية, الشبكة, ابراج, coverage, network, signal]
+    - [عرض, عروض, خصم, offer, offers, promo, promotions, deal]
+    - [رصيد, balance, credit]
+    - [اشحن, شحن, recharge, top up, topup]
+  intents:
+    watch:
+      ar: [عرفني لما, بلغني لما, نبهني لما, قولي لو اتغير, ابعتلي لما يتغير]
+      en: [tell me when, notify me when, let me know if, alert me when]
+
+# After the first ingest, add for example:
+#
+# destinations:
+#   - id: <id of the mobile internet bundles page's bundle collection>
+#     priority: 1.3        # most "internet bundle" requests mean mobile data
+#     labels:
+#       ar: [باقات النت, باقات الإنترنت, باقات بلس]
+#       en: [internet bundles, mobile data bundles, plus bundles]
+#     examples:
+#       ar: [إيه أرخص باقة نت, عايز باقة نت رخيصة, إيه أكبر باقة]
+#       en: [what's the cheapest internet bundle, which bundle has the most data]
+#
+# Commit points (the guide and the agent never press these): confirmation and payment
+# buttons inside /spa/miManagement and the shop's checkout. Mark them with `commit: true`
+# on their destinations once their selectors are known from a signed-in crawl.
