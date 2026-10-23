@@ -1,0 +1,120 @@
+# Vodafone Egypt live site (Vodafone live phase). Facts behind every value:
+# docs/reference/vodafone-live-site-audit.md. Specs: SPEC-03 (integration), SPEC-04 (sync).
+#
+# STARTER CONFIG: written from the 2026-10-23 audit, validated against the schema, not
+# yet crawled (the build sandbox could not reach the site). First task on a networked
+# machine: `npm run ingest -- --site vodafone-eg --dry-run` and read the report (T-201).
+#
+# Scheduled crawling of production needs Vodafone's written approval first (SPEC-04 §4).
+id: vodafone-eg
+name: { ar: ڤودافون مصر, en: Vodafone Egypt }
+languages: [ar, en]
+defaultLanguage: ar
+# Public key placed in the script tag or injected by the demo browser (ADR-0022, ADR-0026).
+siteKey: pk_vodafone_eg
+
+origins:
+  - url: https://web.vodafone.com.eg
+    key: web
+  - url: https://eshop.vodafone.com.eg
+    key: shop
+
+crawl:
+  # Seeds: the real navigation (audit §8), both languages. SPEC-04 renames this to `seeds`.
+  start:
+    - https://web.vodafone.com.eg/ar/home
+    - https://web.vodafone.com.eg/en/home
+    - https://web.vodafone.com.eg/ar/mobile-internet-bundles
+    - https://web.vodafone.com.eg/en/mobile-internet-bundles
+    - https://web.vodafone.com.eg/ar/vodafone-rate-plans
+    - https://web.vodafone.com.eg/en/vodafone-rate-plans
+    - https://web.vodafone.com.eg/ar/vodafone-red1
+    - https://web.vodafone.com.eg/en/vodafone-red1
+    - https://web.vodafone.com.eg/en/vodafone-flex
+    - https://web.vodafone.com.eg/ar/kart-el-korout
+    - https://web.vodafone.com.eg/en/kart-el-korout
+    - https://web.vodafone.com.eg/ar/wireless-net
+    - https://web.vodafone.com.eg/en/wireless-net
+    - https://web.vodafone.com.eg/en/HomeDSLcatalog
+    - https://web.vodafone.com.eg/ar/services
+    - https://web.vodafone.com.eg/en/services
+    - https://web.vodafone.com.eg/ar/promotions
+    - https://web.vodafone.com.eg/en/promotions
+    - https://web.vodafone.com.eg/ar/vodafone-cash
+    - https://web.vodafone.com.eg/en/vodafone-cash
+    - https://web.vodafone.com.eg/en/wifi-calling
+    - https://web.vodafone.com.eg/en/anavodafone
+    - https://web.vodafone.com.eg/ar/faq
+    - https://web.vodafone.com.eg/en/faq
+    - https://web.vodafone.com.eg/en/contact-us
+    - https://web.vodafone.com.eg/spa/storeLocator
+    - https://web.vodafone.com.eg/spa/NetworkCoverageChecker
+    - https://web.vodafone.com.eg/spa/contact-us
+    - https://eshop.vodafone.com.eg/en/
+    - https://eshop.vodafone.com.eg/ar/
+    - https://eshop.vodafone.com.eg/en/internetServices/dsl/bundles
+  include:
+    - '^https://web\.vodafone\.com\.eg/(en|ar|spa)/'
+    - '^https://eshop\.vodafone\.com\.eg/(en|ar)/'
+  exclude:
+    # Test, hidden and legacy pages seen in the sitemaps (audit §7).
+    - '/(bbbbbbb|sssssss|xxxxx|lorem|x?test\d*|testing4admin|admin-liferay|hiddenpages|dont-remove-the-page|iframes|asset-publisher|formtest|loadbalancercheck|home-compound-test|empty-page|lock-sample|message-board|revamp-)'
+    # Article series, CSR and ESG pages: outside the personal-products demo scope.
+    - '/(en|ar)/(ezayak-|esg-|sustainab|vodafone-egypt-and-|vodafone-business-and-)'
+    - '(-old|_old|_rd|-bkp|_backup|-backup|_hid)(\?|#|$)'
+    - 'nudge'
+    - '/(en|ar)/\d+(\?|#|$)'
+    # Terms pages: not guidance destinations (add back per page in the overlay if needed).
+    - '(terms|t-c|tandc|termsandconditions|tcs)'
+    # News archive, people pages and careers: outside the personal-products demo scope.
+    - '/(en|ar)/(latest-news|latest-vodafone-egypt-news|vodafone-egypt-press-releases|\d{4}-news|careers|executive-team|our-history|working-at-vodafone)'
+    # Logged-in and transactional journeys (shop robots.txt; SPEC-04 §2) and logged-in SPA views.
+    - '^https://eshop\.vodafone\.com\.eg/(en/|ar/)?(cart|checkout|wishlist|register|account)'
+    - '[?&](Color|Storage|Size|variantID)='
+    - '^https://web\.vodafone\.com\.eg/spa/(myHome|miManagement)'
+  maxPages: 800
+  # SPEC-04 §4: at most 2 pages at a time per origin.
+  concurrency: 2
+  # Signed out. The demo account's cookies are added only on the demo machine, never committed.
+  cookies: []
+  collections: { minItems: 3 }
+  # Proposed fields, added to the schema by T-201 (SPEC-04 §6). Kept as comments until then
+  # because the current schema would drop them silently.
+  # sitemaps:
+  #   - https://web.vodafone.com.eg/site-a/sitemap-en.xml
+  #   - https://web.vodafone.com.eg/site-a/sitemap-ar.xml
+  # respectRobots: true
+  # userAgent: VodafoneEG-VoiceGuide-Crawler/0.1 (+mailto:<team contact>)
+  # rate: { perOriginConcurrency: 2, perOriginPerSecond: 1 }
+  # languageFrom: path
+  # pairLanguagesBy: path
+  # ignoreSelectors: ['#onetrust-banner-sdk', '#onetrust-consent-sdk', '.onetrust-pc-dark-filter', 'accessibility-widget', '#vodafone-aw-icon']
+
+curated: config/curated/vodafone-eg.yaml
+
+speech:
+  # Egyptian Arabic, whatever the page's lang attribute says (it says ar-SA; audit §6).
+  stt: { ar: ar-EG, en: en-US }
+  tts: { ar: ar-EG, en: en-US }
+  # Proposed (SPEC-02 §6): onDevice: prefer
+
+ui:
+  # Vodafone red. SPEC-01 replaces derivation with the fixed theme (ui.theme: vodafone, T-101).
+  accent: '#e60000'
+  position: end
+  xray: button
+
+router:
+  decider: local
+  acceptAt: 0.55
+  clarifyAt: 0.3
+  topK: 8
+
+agent:
+  enabled: true
+  maxSteps: 12
+  timeoutSec: 60
+
+watch:
+  enabled: true
+  intervalSec: 900

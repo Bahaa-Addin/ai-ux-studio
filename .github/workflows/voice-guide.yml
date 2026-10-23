@@ -1,0 +1,49 @@
+# Voice guide: typecheck, unit + integration, end to end (voice-guide/docs/qa/test-plan.md).
+# Not run yet (task T-501). Mirrors the local setup in voice-guide/docs/handoff/HANDOFF.md §4.
+name: voice-guide
+
+on:
+  pull_request:
+    paths: ['voice-guide/**', '.github/workflows/voice-guide.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: voice-guide-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: voice-guide
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: devpass
+          POSTGRES_DB: voiceguide
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgres://postgres:devpass@127.0.0.1:54329/voiceguide
+      DATABASE_URL_TEST: postgres://postgres:devpass@127.0.0.1:54329/voiceguide_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # No lockfile yet (ADR-0008, T-502): switch to `npm ci` once package-lock.json is committed.
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Create the test database
+        run: node -e "const {Client}=require('pg');const c=new Client({connectionString:'postgres://postgres:devpass@127.0.0.1:54329/postgres'});c.connect().then(()=>c.query('create database voiceguide_test')).then(()=>c.end())"
+      - run: npm run db:migrate
+      - run: npm run typecheck
+      - run: timeout 600 npm test
+      - run: timeout 600 npm run test:e2e

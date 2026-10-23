@@ -2,6 +2,8 @@
 
 ADR-0001 to ADR-0005 belong to the page watch prototype and live in the project's `page-watch-adrs.md`. This repository continues the numbering. To change a decision, add a new ADR that supersedes it and update the old one's status.
 
+ADR-0026 to ADR-0030 are **Proposed** for the Vodafone live phase: the build prompt (`docs/prompts/vodafone-live-demo.prompt.md`) implements them, and each is accepted when its spec's acceptance criteria pass. Change the status line and the table row when that happens.
+
 Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisit when** (the measurement that should reopen it). `docs/pilot-tuning.md` collects all knobs in one place.
 
 | # | Decision | Area | Status |
@@ -26,6 +28,11 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0023](0023-page-watch-on-the-platform.md) | Page watch on the platform: rendered checks, push or live delivery | Page watch | Accepted; supersedes part of ADR-0004 |
 | [0024](0024-testing-with-fakes-only-at-the-edges.md) | Test the real system with stand-ins only at the edges | Testing | Accepted |
 | [0025](0025-configuration-per-site.md) | Two YAML files per site; environment variables per environment | Configuration | Accepted |
+| [0026](0026-real-pages-via-tag-manager-and-demo-browser.md) | Real Vodafone pages: Tealium tag in production, loader-injecting demo browser for the demo | Live site integration | Proposed |
+| [0027](0027-voice-first-launcher-one-microphone-stream.md) | Voice-first launcher: microphone button, one microphone stream for recognition and waveform, transcript bar | Speech and UI | Proposed; amends 0019, 0020 |
+| [0028](0028-live-knowledge-sync.md) | Live knowledge sync: seeds plus sitemap lastmod, polite crawling, path language pairing, gated activation | Ingestion | Proposed; extends 0012 |
+| [0029](0029-vodafone-theme-as-fixed-tokens.md) | Fixed Vodafone token set on Vodafone sites | UI and brand | Proposed; amends 0020 |
+| [0030](0030-sdk-follows-spa-route-changes.md) | The SDK follows single-page-app route changes | Session continuity | Proposed; extends 0016 |
 
 ## Changes to the demo plan these decisions made
 
