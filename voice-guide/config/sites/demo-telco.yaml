@@ -1,0 +1,60 @@
+# Site configuration: one file per site (ADR-0025).
+# The demo-telco fixture stands in for the team's cloned pages. To use a real
+# clone, copy this file, point `origins[].serve` at the clone folder (or drop
+# `serve` if the clone is already hosted) and adjust `crawl`.
+id: demo-telco
+name: { ar: ديمو تيلكو, en: Demo Telco }
+languages: [ar, en]
+defaultLanguage: ar
+# Public key placed in the script tag. It identifies the site; it is not a secret (ADR-0022).
+siteKey: pk_demo_telco
+
+origins:
+  - url: http://localhost:4401
+    key: web
+    serve: fixtures/sites/demo-telco/web
+  - url: http://localhost:4402
+    key: app
+    serve: fixtures/sites/demo-telco/app
+
+crawl:
+  start:
+    - http://localhost:4401/ar/index.html
+    - http://localhost:4401/en/index.html
+    - http://localhost:4402/ar/account.html
+    - http://localhost:4402/en/account.html
+  include: ['^http://localhost:440[12]/']
+  exclude: ['/login\.html']
+  maxPages: 200
+  concurrency: 4
+  # Pre-signed-in demo account for the web app (no real customer data).
+  cookies:
+    - { url: http://localhost:4402, name: demo_session, value: demo }
+  collections: { minItems: 3 }
+
+curated: config/curated/demo-telco.yaml
+
+speech:
+  # Web Speech API language tags (ADR-0019).
+  stt: { ar: ar-EG, en: en-US }
+  tts: { ar: ar-EG, en: en-US }
+
+ui:
+  accent: '#0b6e6e'
+  position: end
+  xray: button
+
+router:
+  decider: local      # local | jev | laya (ADR-0014)
+  acceptAt: 0.55      # act when confidence is at least this
+  clarifyAt: 0.3      # between clarifyAt and acceptAt: offer the top two
+  topK: 8             # candidates passed to the decision model
+
+agent:
+  enabled: true
+  maxSteps: 12
+  timeoutSec: 60
+
+watch:
+  enabled: true
+  intervalSec: 15

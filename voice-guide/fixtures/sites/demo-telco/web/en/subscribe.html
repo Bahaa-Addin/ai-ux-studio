@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Telco | Confirm your subscription</title>
+<link rel="alternate" hreflang="ar" href="/ar/subscribe.html">
+<link rel="alternate" hreflang="en" href="/en/subscribe.html">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+	<a class="logo" href="/en/index.html"><img src="/assets/logo.svg" alt=""> Demo Telco</a>
+	<nav class="main" aria-label="Main">
+		<a href="/en/index.html">Home</a>
+		<a href="/en/bundles.html">Bundles</a>
+		<a href="/en/offers.html">Offers</a>
+		<a href="/en/coverage.html">Coverage</a>
+		<a href="/en/help.html">Help</a>
+		<a href="http://localhost:4402/en/account.html">My account</a>
+	</nav>
+	<a class="lang-switch" href="/ar/subscribe.html" hreflang="ar" lang="ar">العربية</a>
+</div></header>
+<main class="wrap">
+	<h1>Confirm your subscription</h1>
+	<div class="panel" id="checkout">
+		<p>Selected bundle: <strong id="order-summary">Choose a bundle first</strong></p>
+		<form id="checkout-form">
+			<div class="row"><label for="msisdn">Mobile number</label><input id="msisdn" name="msisdn" type="tel" placeholder="01xxxxxxxxx" autocomplete="tel"></div>
+			<fieldset class="row"><legend>Payment method</legend>
+				<label><input type="radio" name="pay" value="wallet" checked> Mobile wallet</label>
+				<label><input type="radio" name="pay" value="card"> Bank card</label>
+			</fieldset>
+			<div class="row"><label><input type="checkbox" id="terms" required> I agree to the terms and conditions</label></div>
+			<button class="btn" type="submit" id="confirm-pay">Confirm and pay</button>
+		</form>
+		<p id="order-status" class="notice" hidden>Order placed. This is a demo; nothing was charged.</p>
+	</div>
+</main>
+<footer class="site"><div class="wrap">© 2026 Demo Telco. A fictional site used to test the voice guide.</div></footer>
+<script src="/assets/site.js"></script>
+</body>
+</html>

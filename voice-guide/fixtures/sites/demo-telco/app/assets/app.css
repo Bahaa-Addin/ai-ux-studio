@@ -1,0 +1,57 @@
+/* Demo Telco: a fictional brand standing in for the team's cloned pages. */
+:root {
+	--brand: #0b6e6e;
+	--brand-dark: #084f4f;
+	--ink: #14212b;
+	--muted: #5b6770;
+	--line: #dde3e6;
+	--bg: #f6f8f9;
+	--card: #ffffff;
+	--radius: 12px;
+	font-family: 'Segoe UI', 'Noto Sans', 'Noto Sans Arabic', Tahoma, Arial, sans-serif;
+	color: var(--ink);
+	background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; line-height: 1.55; }
+a { color: var(--brand-dark); }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+header.site { background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+header.site .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--ink); text-decoration: none; font-size: 18px; }
+.logo img { width: 28px; height: 28px; }
+nav.main { display: flex; gap: 18px; flex: 1; flex-wrap: wrap; }
+nav.main a { text-decoration: none; color: var(--ink); font-weight: 500; padding: 4px 0; border-bottom: 2px solid transparent; }
+nav.main a[aria-current='page'] { border-color: var(--brand); color: var(--brand-dark); }
+.lang-switch { font-size: 14px; }
+main { padding: 28px 0 64px; }
+h1 { font-size: 30px; margin: 8px 0 18px; }
+h2 { font-size: 22px; margin: 28px 0 12px; }
+.hero img { width: 100%; height: auto; border-radius: var(--radius); display: block; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.bundle-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+.bundle-card h3 { margin: 0; font-size: 19px; }
+.bundle-card .data { font-size: 26px; font-weight: 700; color: var(--brand-dark); }
+.bundle-card .price { font-weight: 600; }
+.bundle-card .validity { color: var(--muted); font-size: 14px; }
+.btn { display: inline-block; text-align: center; background: var(--brand); color: #fff; text-decoration: none; border: 0; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; margin-top: 8px; }
+.btn:hover { background: var(--brand-dark); }
+.btn.secondary { background: transparent; color: var(--brand-dark); border: 1px solid var(--brand); }
+.tabs [role='tablist'] { display: flex; gap: 8px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.tabs [role='tab'] { background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 14px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; }
+.tabs [role='tab'][aria-selected='true'] { color: var(--brand-dark); border-color: var(--brand); }
+.offer { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; }
+.offer h2 { margin-top: 0; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+form .row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+input[type='tel'], input[type='password'], input[type='text'] { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; max-width: 360px; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 10px; }
+summary { cursor: pointer; font-weight: 600; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+.balance { display: flex; gap: 32px; flex-wrap: wrap; }
+.balance .big { font-size: 40px; font-weight: 700; color: var(--brand-dark); }
+footer.site { border-top: 1px solid var(--line); padding: 24px 0; color: var(--muted); font-size: 14px; }
+.notice { background: #e8f4f4; border-radius: 8px; padding: 10px 14px; margin: 12px 0; }

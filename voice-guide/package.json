@@ -1,0 +1,47 @@
+{
+  "name": "voice-guide",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Voice guide platform: one SDK script tag on any page, stateless services behind a gateway, ingestion jobs that build the site knowledge base.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "imports": {
+    "#text": "./packages/text/src/index.ts",
+    "#kb": "./packages/kb/src/index.ts",
+    "#shared/*": "./services/shared/*",
+    "#services/*": "./services/*",
+    "#jobs/*": "./jobs/*"
+  },
+  "scripts": {
+    "dev": "node tools/dev.ts",
+    "fixtures": "node tools/serve-site.ts --site demo-telco",
+    "build:sdk": "node packages/sdk/build.ts",
+    "ingest": "node jobs/ingest.ts",
+    "db:migrate": "node services/shared/migrate.ts",
+    "eval:router": "node tools/eval-router.ts",
+    "test": "node --test --test-concurrency=1 --test-timeout=120000 \"tests/unit/**/*.test.ts\" \"tests/integration/**/*.test.ts\"",
+    "test:unit": "node --test \"tests/unit/**/*.test.ts\"",
+    "test:e2e": "node --test --test-concurrency=1 --test-timeout=120000 \"tests/e2e/**/*.test.ts\"",
+    "typecheck": "node tools/typecheck.ts",
+    "snapshot:manifest": "node tools/fixtures/snapshot-manifest.ts",
+    "record:demo": "node tools/record-demo.ts",
+    "gateway": "node services/gateway/main.ts",
+    "service": "node services/run-service.ts"
+  },
+  "dependencies": {
+    "pg": "8.23.1",
+    "playwright": "1.56.0",
+    "yaml": "2.9.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@page-agent/core": "1.12.4",
+    "@page-agent/llms": "1.12.4",
+    "@page-agent/page-controller": "1.12.4",
+    "@types/node": "26.6.3",
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  }
+}

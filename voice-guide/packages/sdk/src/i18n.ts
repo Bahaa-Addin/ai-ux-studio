@@ -1,0 +1,31 @@
+/** UI strings. Spoken lines come from the server (services/router/phrases.ts). */
+const S = {
+	open: { ar: 'اسأل المرشد', en: 'Ask the guide' },
+	close: { ar: 'إغلاق', en: 'Close' },
+	listen: { ar: 'اتكلم', en: 'Speak' },
+	listening: { ar: 'سامعك…', en: 'Listening…' },
+	thinking: { ar: 'ثواني…', en: 'One moment…' },
+	placeholder: { ar: 'اكتب سؤالك هنا', en: 'Type your question' },
+	send: { ar: 'إرسال', en: 'Send' },
+	hint: { ar: 'جرّب: «إيه أرخص باقة نت؟»', en: 'Try: "What\'s the cheapest internet bundle?"' },
+	watch: { ar: 'عرّفني لما يتغير', en: 'Notify me when it changes' },
+	watching: { ar: 'تمام، هعرفك لما «{label}» يتغير.', en: 'Done. I will tell you when "{label}" changes.' },
+	watchFailed: { ar: 'مقدرتش أراقب الجزء ده.', en: "I couldn't watch that section." },
+	changed: { ar: 'اتغير', en: 'Changed' },
+	xray: { ar: 'أشعة إكس', en: 'X-ray' },
+	mute: { ar: 'كتم الصوت', en: 'Mute' },
+	unmute: { ar: 'تشغيل الصوت', en: 'Unmute' },
+	noMic: { ar: 'الميكروفون مش متاح. اكتب سؤالك.', en: 'The microphone is not available. Type your question.' },
+	error: { ar: 'حصلت مشكلة. جرّب تاني.', en: 'Something went wrong. Please try again.' },
+	agentUnavailable: { ar: 'مش قادر أدور دلوقتي. جرّب تسأل بطريقة تانية.', en: "I can't search the page right now. Try asking another way." },
+	commitBlocked: { ar: 'ده زرار شراء، دوس عليه بنفسك.', en: 'That button completes a purchase; press it yourself.' },
+	you: { ar: 'إنت', en: 'You' },
+	guide: { ar: 'المرشد', en: 'Guide' },
+} as const
+
+export type UiKey = keyof typeof S
+
+export function t(key: UiKey, lang: string, vars: Record<string, string> = {}): string {
+	const s = (S[key] as Record<string, string>)[lang.slice(0, 2)] ?? S[key].en
+	return s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '')
+}

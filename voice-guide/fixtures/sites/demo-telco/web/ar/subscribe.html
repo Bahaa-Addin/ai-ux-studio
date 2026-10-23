@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ديمو تيلكو | تأكيد الاشتراك</title>
+<link rel="alternate" hreflang="ar" href="/ar/subscribe.html">
+<link rel="alternate" hreflang="en" href="/en/subscribe.html">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+	<a class="logo" href="/ar/index.html"><img src="/assets/logo.svg" alt=""> ديمو تيلكو</a>
+	<nav class="main" aria-label="القائمة الرئيسية">
+		<a href="/ar/index.html">الرئيسية</a>
+		<a href="/ar/bundles.html">الباقات</a>
+		<a href="/ar/offers.html">العروض</a>
+		<a href="/ar/coverage.html">التغطية</a>
+		<a href="/ar/help.html">المساعدة</a>
+		<a href="http://localhost:4402/ar/account.html">حسابي</a>
+	</nav>
+	<a class="lang-switch" href="/en/subscribe.html" hreflang="en" lang="en">English</a>
+</div></header>
+<main class="wrap">
+	<h1>تأكيد الاشتراك</h1>
+	<div class="panel" id="checkout">
+		<p>الباقة المختارة: <strong id="order-summary">اختر باقة أولًا</strong></p>
+		<form id="checkout-form">
+			<div class="row"><label for="msisdn">رقم الموبايل</label><input id="msisdn" name="msisdn" type="tel" placeholder="01xxxxxxxxx" autocomplete="tel"></div>
+			<fieldset class="row"><legend>طريقة الدفع</legend>
+				<label><input type="radio" name="pay" value="wallet" checked> المحفظة الإلكترونية</label>
+				<label><input type="radio" name="pay" value="card"> بطاقة بنكية</label>
+			</fieldset>
+			<div class="row"><label><input type="checkbox" id="terms" required> أوافق على الشروط والأحكام</label></div>
+			<button class="btn" type="submit" id="confirm-pay">تأكيد والدفع</button>
+		</form>
+		<p id="order-status" class="notice" hidden>تم تسجيل الطلب. هذا عرض تجريبي ولم يتم خصم أي مبلغ.</p>
+	</div>
+</main>
+<footer class="site"><div class="wrap">© ٢٠٢٦ ديمو تيلكو. موقع وهمي لاختبار المرشد الصوتي.</div></footer>
+<script src="/assets/site.js"></script>
+</body>
+</html>

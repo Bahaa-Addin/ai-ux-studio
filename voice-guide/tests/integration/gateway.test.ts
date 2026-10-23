@@ -1,0 +1,221 @@
+/** The public API over HTTP with real Postgres: sessions, turns, progress, handoff, SSE, agent proxy, watch, edge checks. */
+import assert from 'node:assert/strict'
+import { after, before, test } from 'node:test'
+
+import type { Target } from '#kb'
+
+import { type MockLlm, startMockLlm } from '../helpers/mock-llm.ts'
+import { startPlatform, type TestPlatform } from '../helpers/platform.ts'
+
+const ORIGIN = 'http://localhost:4401'
+const KEY = 'pk_demo_telco'
+let p: TestPlatform
+let llm: MockLlm
+const pageText = new Map<string, string>()
+
+before(async () => {
+	llm = await startMockLlm()
+	p = await startPlatform({
+		port: 4490,
+		env: { VG_LLM_BASE_URL: llm.url, VG_LLM_MODEL: 'mock-agent-1', VG_LLM_FALLBACK_BASE_URL: llm.url, VG_LLM_FALLBACK_MODEL: 'mock-agent-fallback', VG_RATE_TURNS_PER_MIN: '600', VG_RATE_BURST: '40', VG_AGENT_STEPS_PER_SESSION: '3' },
+		options: {
+			// The watch checker reads a section; here it reads from a map the test controls.
+			watchChecker: {
+				read: async (url: string, t: Target) => {
+					const text = pageText.get(`${url} ${t.css[0]}`)
+					return text === undefined ? { found: false, text: '', hash: '' } : { found: true, text, hash: `h:${text}` }
+				},
+				close: async () => {},
+			},
+		},
+	})
+})
+after(async () => {
+	await p?.close()
+	await llm?.close()
+})
+
+async function call(path: string, body?: unknown, opts: { origin?: string | null; key?: string; method?: string; headers?: Record<string, string> } = {}) {
+	const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-vg-site-key': opts.key ?? KEY, ...opts.headers }
+	if (opts.origin !== null) headers.Origin = opts.origin ?? ORIGIN
+	const res = await fetch(`${p.url}${path}`, { method: opts.method || (body === undefined ? 'GET' : 'POST'), headers, body: body === undefined ? undefined : JSON.stringify(body) })
+	return { status: res.status, body: (await res.json().catch(() => ({}))) as any, headers: res.headers }
+}
+
+const newSession = async (lang = 'ar', url = `${ORIGIN}/ar/index.html`) => (await call('/v1/session', { lang, page: { url } })).body
+
+test('a session starts, resumes by id, and crosses origins with a single-use handoff token', async () => {
+	const s = await newSession()
+	assert.match(s.sessionId, /^ses_/)
+	assert.equal(s.via, 'new')
+	assert.equal(s.page.pageId, 'web.home')
+	assert.deepEqual(s.page.commitTargets, [['#confirm-pay', '#checkout-form > button.btn']])
+	assert.ok(s.agentToken)
+	assert.ok(s.push.publicKey.length > 80)
+	const again = (await call('/v1/session', { sessionId: s.sessionId, lang: 'ar', page: { url: `${ORIGIN}/ar/bundles.html` } })).body
+	assert.equal(again.sessionId, s.sessionId)
+	assert.equal(again.via, 'resumed')
+	const { token } = (await call('/v1/handoff', { sessionId: s.sessionId })).body
+	const there = (await call('/v1/session', { handoff: token, lang: 'ar', page: { url: 'http://localhost:4402/ar/account.html' } }, { origin: 'http://localhost:4402' })).body
+	assert.equal(there.sessionId, s.sessionId)
+	assert.equal(there.via, 'handoff')
+	assert.equal(there.page.pageId, 'app.account')
+	const replay = (await call('/v1/session', { handoff: token, lang: 'ar', page: { url: 'http://localhost:4402/ar/account.html' } }, { origin: 'http://localhost:4402' })).body
+	assert.notEqual(replay.sessionId, s.sessionId, 'a used token starts a new session')
+})
+
+test('a turn returns a validated plan, records it in the session and traces every layer', async () => {
+	const s = await newSession()
+	const r = await call('/v1/turn', { sessionId: s.sessionId, utterance: 'إيه أرخص باقة نت؟', page: { url: `${ORIGIN}/ar/index.html` } })
+	assert.equal(r.status, 200, JSON.stringify(r.body))
+	assert.deepEqual(
+		r.body.plan.steps.map((x: any) => x.op),
+		['navigate', 'pickItem', 'spotlight'],
+	)
+	assert.equal(r.body.plan.meta.route, 'replay')
+	const state = await p.store.getSession(s.sessionId)
+	assert.equal(state?.plan?.turnId, r.body.turnId)
+	assert.equal(state?.turns.at(-1)?.utterance, 'إيه أرخص باقة نت؟')
+	const names = (await p.store.listTrace(s.sessionId)).filter((e) => e.turnId === r.body.turnId).map((e) => e.name)
+	for (const n of ['turn.received', 'router.understood', 'planner.plan', 'turn.planned']) assert.ok(names.includes(n), `${n} in ${names}`)
+})
+
+test('progress carries the picked item into the next request ("subscribe to it")', async () => {
+	const s = await newSession()
+	const t1 = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'إيه أرخص باقة نت؟', page: { url: `${ORIGIN}/ar/index.html` } })).body
+	await call('/v1/progress', { sessionId: s.sessionId, turnId: t1.turnId, cursor: 1, awaitingNavigation: true })
+	await call('/v1/progress', { sessionId: s.sessionId, turnId: t1.turnId, cursor: 2, item: { collectionId: 'web.bundles.mobile-internet', key: 'mi-10', name: 'سوبر ١٠' } })
+	const mid = await p.store.getSession(s.sessionId)
+	assert.equal(mid?.plan?.cursor, 2)
+	assert.equal(mid?.last?.destinationId, 'web.bundles.mobile-internet.mi-10')
+	await call('/v1/progress', { sessionId: s.sessionId, turnId: t1.turnId, cursor: 3, done: true })
+	assert.equal((await p.store.getSession(s.sessionId))?.plan, null)
+	const t2 = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'أشترك فيها إزاي؟', page: { url: `${ORIGIN}/ar/bundles.html` } })).body
+	assert.deepEqual(t2.plan.steps[0], {
+		op: 'pickItem',
+		collection: t2.plan.steps[0].collection,
+		select: { by: 'key', key: 'mi-10' },
+	})
+	assert.equal(t2.plan.steps.at(-1).op, 'confirm')
+	// stale progress from the old turn is ignored
+	assert.equal((await call('/v1/progress', { sessionId: s.sessionId, turnId: t1.turnId, cursor: 1 })).body.stale, true)
+})
+
+test('the edge rejects unknown site keys, foreign origins and floods', async () => {
+	assert.equal((await call('/v1/session', { lang: 'ar' }, { key: 'pk_nope' })).status, 401)
+	const foreign = await call('/v1/session', { lang: 'ar' }, { origin: 'https://evil.example' })
+	assert.equal(foreign.status, 403)
+	assert.equal(foreign.body.code, 'bad_origin')
+	const s = await newSession()
+	assert.equal((await call('/v1/turn', { sessionId: 'ses_forged', utterance: 'offers', page: { url: ORIGIN } })).status, 404)
+	const pre = await fetch(`${p.url}/v1/turn`, { method: 'OPTIONS', headers: { Origin: ORIGIN, 'Access-Control-Request-Method': 'POST' } })
+	assert.equal(pre.status, 204)
+	assert.equal(pre.headers.get('access-control-allow-origin'), ORIGIN)
+	let limited = 0
+	for (let i = 0; i < 60; i++) if ((await call('/v1/turn', { sessionId: s.sessionId, utterance: 'offers', page: { url: `${ORIGIN}/en/index.html` } })).status === 429) limited++
+	assert.ok(limited > 0, 'burst of 40 then 429')
+})
+
+test('the X-ray stream delivers the session\'s trace events live', async () => {
+	const s = await newSession('en', `${ORIGIN}/en/index.html`)
+	const ac = new AbortController()
+	const res = await fetch(`${p.url}/v1/events?session=${s.sessionId}&k=${KEY}`, { headers: { Origin: ORIGIN }, signal: ac.signal })
+	assert.equal(res.headers.get('content-type'), 'text/event-stream; charset=utf-8')
+	const reader = res.body!.getReader()
+	await new Promise((r) => setTimeout(r, 100))
+	const turn = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'coverage', page: { url: `${ORIGIN}/en/index.html` } })).body
+	let buf = ''
+	const deadline = Date.now() + 3000
+	while (!buf.includes('turn.planned') && Date.now() < deadline) {
+		const { value } = await Promise.race([reader.read(), new Promise<any>((r) => setTimeout(() => r({ value: undefined }), 500))])
+		if (value) buf += new TextDecoder().decode(value)
+	}
+	ac.abort()
+	assert.ok(buf.includes(`"turnId":"${turn.turnId}"`))
+	for (const n of ['router.understood', 'planner.plan', 'turn.planned']) assert.ok(buf.includes(`"name":"${n}"`), n)
+	assert.match(buf, /^id: \d+$/m)
+})
+
+test('the agent proxy needs a valid token, masks page data and enforces the session budget', async () => {
+	const s = await newSession('en', `${ORIGIN}/en/subscribe.html`)
+	const body = {
+		model: 'whatever-the-browser-says',
+		messages: [
+			{ role: 'system', content: 'sys' },
+			{ role: 'user', content: '<user_request>\nselect bank card and type my number 01012345678\n</user_request>\n<browser_state>\n[3]<input value=01098765432 /> contact a@b.co\n[4]<input type=radio name=pay value=card />\n</browser_state>' },
+		],
+		tools: [],
+	}
+	const agentCall = (token: string) => fetch(`${p.url}/v1/agent/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Origin: ORIGIN }, body: JSON.stringify(body) })
+	assert.equal((await agentCall('forged.token')).status, 401)
+	const ok = await agentCall(s.agentToken)
+	assert.equal(ok.status, 200)
+	const sent = llm.requests.at(-1)!.body
+	assert.equal(sent.model, 'mock-agent-1', 'the proxy picks the model')
+	const user = sent.messages[1].content as string
+	assert.ok(user.includes('type my number 01012345678'), "the person's own request is kept")
+	assert.ok(!user.includes('01098765432') && user.includes('[phone]'), 'page phone masked')
+	assert.ok(!user.includes('a@b.co') && user.includes('[email]'), 'page email masked')
+	const usage = (await p.store.getSession(s.sessionId))!.usage
+	assert.equal(usage.agentSteps, 1)
+	assert.ok(usage.agentTokens > 0)
+	assert.equal((await agentCall(s.agentToken)).status, 200)
+	assert.equal((await agentCall(s.agentToken)).status, 200)
+	const over = await agentCall(s.agentToken)
+	assert.equal(over.status, 429, 'budget of 3 steps per session')
+	const names = (await p.store.listTrace(s.sessionId)).map((e) => e.name)
+	assert.ok(names.includes('agent.llm') && names.includes('agent.quota'))
+})
+
+test('the agent proxy falls back to the second provider when the first fails', async () => {
+	const s = await newSession('en', `${ORIGIN}/en/subscribe.html`)
+	llm.failNext = 1
+	const res = await fetch(`${p.url}/v1/agent/chat/completions`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.agentToken}`, Origin: ORIGIN },
+		body: JSON.stringify({ messages: [{ role: 'user', content: '<user_request>\nselect card\n</user_request>' }] }),
+	})
+	assert.equal(res.status, 200)
+	assert.equal(llm.requests.at(-1)!.body.model, 'mock-agent-fallback')
+	const ev = (await p.store.listTrace(s.sessionId)).find((e) => e.name === 'agent.llm')!
+	assert.equal(ev.attrs.provider, 'fallback')
+})
+
+test('page watch: a live watch records a baseline, then a change reaches the session stream', async () => {
+	const s = await newSession('en', `${ORIGIN}/en/offers.html`)
+	const url = `${ORIGIN}/en/offers.html`
+	pageText.set(`${url} #weekend-offer`, 'Weekend offer Double data on all mobile internet bundles')
+	const w = await call('/v1/watch', { sessionId: s.sessionId, url, pageId: 'web.offers', target: { css: ['#weekend-offer'] }, label: 'Weekend offer', lang: 'en' })
+	assert.equal(w.status, 200, JSON.stringify(w.body))
+	assert.equal(w.body.channel, 'live')
+	assert.match(w.body.baseline, /Double data/)
+	assert.equal((await call('/v1/watch', { sessionId: s.sessionId, url, target: { css: ['#nope'] }, label: 'x', lang: 'en' })).status, 422)
+	assert.equal((await call('/v1/watch', { sessionId: s.sessionId, url: 'https://evil.example/x', target: { css: ['#a'] }, label: 'x', lang: 'en' })).status, 400)
+
+	await p.store.updateWatch(w.body.watchId, { nextCheckAt: new Date(Date.now() - 1000).toISOString() })
+	let tick = await p.services.local.watch.tick({})
+	assert.equal(tick.changed, 0, 'same text, no change')
+	pageText.set(`${url} #weekend-offer`, 'Weekend offer Triple data on all mobile internet bundles')
+	await p.store.updateWatch(w.body.watchId, { nextCheckAt: new Date(Date.now() - 1000).toISOString() })
+	tick = await p.services.local.watch.tick({})
+	assert.equal(tick.changed, 1)
+	const changes = await p.store.listChanges(w.body.watchId)
+	assert.match(changes[0].after, /Triple data/)
+	assert.match(changes[0].before, /Double data/)
+	const ev = (await p.store.listTrace(s.sessionId)).find((e) => e.name === 'watch.changed')!
+	assert.equal(ev.attrs.title, 'Changed: Weekend offer')
+	const list = await call(`/v1/watches?session=${s.sessionId}`)
+	assert.equal(list.body.watches.length, 1)
+	assert.equal((await call(`/v1/watch/${w.body.watchId}?session=${s.sessionId}`, undefined, { method: 'DELETE' })).status, 200)
+})
+
+test('admin endpoints list and activate knowledge versions from loopback', async () => {
+	const r = await fetch(`${p.url}/admin/sites/demo-telco/kb`)
+	const body = (await r.json()) as any
+	assert.equal(body.versions.length, 1)
+	assert.equal(body.versions[0].active, true)
+	assert.equal((await fetch(`${p.url}/admin/sites/demo-telco/kb/nope/activate`, { method: 'POST' })).status, 404)
+	const health = (await (await fetch(`${p.url}/health`)).json()) as any
+	assert.equal(health.store, 'postgres')
+	assert.equal(health.agent.available, true)
+})

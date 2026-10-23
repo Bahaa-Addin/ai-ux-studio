@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Telco | My account</title>
+<link rel="alternate" hreflang="ar" href="/ar/account.html">
+<link rel="alternate" hreflang="en" href="/en/account.html">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+	<a class="logo" href="http://localhost:4401/en/index.html"><img src="/assets/logo.svg" alt=""> Demo Telco</a>
+	<nav class="main" aria-label="Account">
+		<a href="/en/account.html" aria-current="page">My account</a>
+		<a href="http://localhost:4401/en/bundles.html">Bundles</a>
+		<a href="http://localhost:4401/en/help.html">Help</a>
+	</nav>
+	<a class="lang-switch" href="/ar/account.html" hreflang="ar" lang="ar">العربية</a>
+	<button class="btn secondary" id="sign-out" type="button">Sign out</button>
+</div></header>
+<main class="wrap">
+	<h1>My account</h1>
+	<section class="panel" id="data-balance">
+		<h2>Remaining data</h2>
+		<div class="balance">
+			<div><div class="big" id="remaining-data">7.5 GB</div><div>of <span id="bundle-allowance">25 GB</span></div></div>
+			<div><div>Renews on</div><strong id="renewal-date">1 November</strong></div>
+		</div>
+	</section>
+	<section class="panel" id="current-bundle" style="margin-top:16px">
+		<h2>Current bundle</h2>
+		<p>Mega 25 · 25 GB · 250 EGP / month · auto-renewal on</p>
+		<a class="btn secondary" href="http://localhost:4401/en/bundles.html">Change bundle</a>
+	</section>
+</main>
+<footer class="site"><div class="wrap">© 2026 Demo Telco. Demo account; no real customer data.</div></footer>
+<script src="/assets/app.js"></script>
+</body>
+</html>
