@@ -260,6 +260,131 @@ export const chromeOffset = () => {
 }
 
 /** Smoothly scrolls the window to an absolute Y, honouring reduced motion. */
-export const scrollToY = (y) => window.scrollTo({ top: Math.max(0, y), behavior: reducedMotion() ? 'auto' : 'smooth' })
+export const scrollToY = (y, { instant = false } = {}) =>
+  window.scrollTo({ top: Math.max(0, y), behavior: instant || reducedMotion() ? 'auto' : 'smooth' })
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+
+/**
+ * Pinned-stage stepping shared by the scroll-driven experiences. The stage is
+ * sticky inside `track`, which is one stage tall plus `step()` pixels per item,
+ * so page scroll (wheel, keys, scrollbar, touch) moves through the items.
+ *
+ *   position()  fractional item index from the scroll position (0 … count - 1)
+ *   goTo(i)     scrolls to item i
+ *   settle()    call on scroll: once scrolling stops inside the track, eases to
+ *               the nearest item so the next step always starts from a whole item
+ */
+export const scrollStepper = ({ track, count, step, settleMs = 200, tolerance = 0.02 }) => {
+  let timer = 0
+  const last = Math.max(0, count - 1)
+  const trackTop = () => track.getBoundingClientRect().top + window.scrollY
+  const position = () => clamp((chromeOffset() - track.getBoundingClientRect().top) / step(), 0, last)
+  const pinned = () => {
+    const rect = track.getBoundingClientRect()
+    return rect.top <= chromeOffset() + 1 && rect.bottom >= window.innerHeight - 1
+  }
+  const goTo = (at, { instant = false } = {}) => scrollToY(trackTop() + clamp(at, 0, last) * step() - chromeOffset() + 1, { instant })
+  const settle = () => {
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => {
+      if (!pinned()) return
+      const at = position()
+      if (Math.abs(at - Math.round(at)) > tolerance) goTo(Math.round(at))
+    }, settleMs)
+  }
+  const stop = () => window.clearTimeout(timer)
+  return { position, goTo, settle, stop, pinned }
+}
+
+/**
+ * Lets a mouse (or pen) drag on `surface` scroll the page, so dragging moves a
+ * scroll-driven stage like the references' drag handlers did. `axis` is the drag
+ * direction that maps onto scrolling; `factor` is scroll pixels per dragged pixel
+ * (drag left/up = forward). With `touch`, horizontal touch drags are handled too
+ * (vertical touch keeps native scrolling via `touch-action: pan-y` in CSS).
+ * A drag that moved suppresses the click that follows it. Returns a cleanup.
+ */
+export const dragToScroll = (surface, { axis = 'y', factor = 1, touch = false } = {}) => {
+  let pointer = null
+  let start = 0
+  let moved = false
+  const coord = (event) => (axis === 'x' ? event.clientX : event.clientY)
+  const onDown = (event) => {
+    if (event.button !== 0 || (event.pointerType === 'touch' && !touch)) return
+    if (event.target.closest('a, button:not([data-drag-through]), input, textarea, select, [data-no-drag]')) return
+    pointer = event.pointerId
+    start = coord(event)
+    moved = false
+  }
+  const onMove = (event) => {
+    if (event.pointerId !== pointer) return
+    const delta = coord(event) - start
+    if (!moved && Math.abs(delta) < 6) return
+    if (!moved) {
+      moved = true
+      surface.setPointerCapture?.(event.pointerId)
+      surface.classList.add('is-dragging')
+    }
+    start = coord(event)
+    window.scrollBy({ top: -delta * factor, behavior: 'auto' })
+  }
+  const onUp = (event) => {
+    if (event.pointerId !== pointer) return
+    pointer = null
+    surface.classList.remove('is-dragging')
+    if (moved) {
+      const swallow = (click) => {
+        click.stopPropagation()
+        click.preventDefault()
+      }
+      surface.addEventListener('click', swallow, { capture: true, once: true })
+      window.setTimeout(() => surface.removeEventListener('click', swallow, { capture: true }), 0)
+    }
+  }
+  surface.addEventListener('pointerdown', onDown)
+  surface.addEventListener('pointermove', onMove)
+  surface.addEventListener('pointerup', onUp)
+  surface.addEventListener('pointercancel', onUp)
+  return () => {
+    surface.removeEventListener('pointerdown', onDown)
+    surface.removeEventListener('pointermove', onMove)
+    surface.removeEventListener('pointerup', onUp)
+    surface.removeEventListener('pointercancel', onUp)
+  }
+}
+
+/** Arrow-key stepping for a stage: calls step(-1 | 1) and first/last for Home/End. */
+export const arrowKeys = (stage, { step, first, last, axis = 'both' }) => {
+  const back = axis === 'y' ? ['ArrowUp'] : axis === 'x' ? ['ArrowLeft'] : ['ArrowLeft', 'ArrowUp']
+  const forward = axis === 'y' ? ['ArrowDown'] : axis === 'x' ? ['ArrowRight'] : ['ArrowRight', 'ArrowDown']
+  stage.addEventListener('keydown', (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    if (event.target.closest?.('input, textarea, select')) return
+    if (back.includes(event.key)) step(-1)
+    else if (forward.includes(event.key)) step(1)
+    else if (event.key === 'Home' && first) first()
+    else if (event.key === 'End' && last) last()
+    else return
+    event.preventDefault()
+  })
+}
+
+/** Balanced line split for big display titles: returns the longest line's length. */
+export const longestLine = (text, maxLines = 3) => {
+  const words = String(text).trim().split(/\s+/)
+  const width = (from, to) => words.slice(from, to).join(' ').length
+  let best = width(0, words.length)
+  if (maxLines >= 2) {
+    for (let i = 1; i < words.length; i += 1) best = Math.min(best, Math.max(width(0, i), width(i, words.length)))
+  }
+  if (maxLines >= 3 && best > 18) {
+    for (let i = 1; i < words.length - 1; i += 1) {
+      for (let j = i + 1; j < words.length; j += 1) best = Math.min(best, Math.max(width(0, i), width(i, j), width(j, words.length)))
+    }
+  }
+  return Math.max(4, best)
+}
+
+/** A polite, visually hidden status line for announcing the current item. */
+export const liveStatus = () => h('p', { class: 'vx-sr-only', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' })

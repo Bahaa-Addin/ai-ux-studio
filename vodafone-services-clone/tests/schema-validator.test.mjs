@@ -177,7 +177,7 @@ test('poor content degrades instead of throwing', () => {
 import { TEMPLATES, buildTemplateSchema, matchTemplate } from '../src/aixc/templates.js'
 
 test('every template builds a valid, complete schema with no warnings', () => {
-  assert.equal(TEMPLATES.length, 7)
+  assert.equal(TEMPLATES.length, 13)
   for (const template of TEMPLATES) {
     const result = validateSchema(buildTemplateSchema(template, index), index, { prompt: template.prompt })
     assert.equal(result.ok, true, template.id)
@@ -186,6 +186,12 @@ test('every template builds a valid, complete schema with no warnings', () => {
     assertComplete(result.schema, index)
     assert.equal(result.schema.sections.at(-1).type, 'closing-promotion', template.id)
   }
+})
+
+test('every template experience is allowed by the validator and has a renderer label', async () => {
+  const { EXPERIENCES } = await import('../src/aixc/schema-validator.js')
+  for (const template of TEMPLATES) assert.ok(EXPERIENCES.includes(template.experience), template.experience)
+  assert.equal(new Set(TEMPLATES.map((template) => template.id)).size, TEMPLATES.length)
 })
 
 test('group experiences get one group per source section, in source order', () => {
@@ -222,6 +228,14 @@ test('typed prompts are matched to templates by plain wording', () => {
   assert.equal(matchTemplate('full-screen spotlight cards')?.id, 'spotlight')
   assert.equal(matchTemplate('Turn this into a magazine.')?.id, 'magazine')
   assert.equal(matchTemplate('make it look like Netflix')?.id, 'streaming')
+  assert.equal(matchTemplate('a split screen slideshow')?.id, 'split')
+  assert.equal(matchTemplate('fan out the cards like a deck')?.id, 'fan')
+  assert.equal(matchTemplate('put them on a 3D ring')?.id, 'ring')
+  assert.equal(matchTemplate('a hyperspace tunnel')?.id, 'tunnel')
+  assert.equal(matchTemplate('an infinite gallery I can drag around')?.id, 'canvas')
+  assert.equal(matchTemplate('like album covers in a cover flow')?.id, 'coverflow')
+  assert.equal(matchTemplate('a simple slideshow')?.id, 'spotlight')
+  assert.equal(matchTemplate('Use more white space'), null)
   assert.equal(matchTemplate('make it nicer'), null)
   assert.equal(matchTemplate('share on facebook'), null)
 })

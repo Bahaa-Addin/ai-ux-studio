@@ -16,6 +16,12 @@ import { renderGallery } from './experiences/gallery.js'
 import { renderFlipbook } from './experiences/flipbook.js'
 import { renderCube } from './experiences/cube.js'
 import { renderStreaming } from './experiences/streaming.js'
+import { renderSplit } from './experiences/split.js'
+import { renderFan } from './experiences/fan.js'
+import { renderRing } from './experiences/ring.js'
+import { renderTunnel } from './experiences/tunnel.js'
+import { renderCanvas } from './experiences/canvas.js'
+import { renderCoverflow } from './experiences/coverflow.js'
 
 const experiences = {
   magazine: { label: 'Magazine experience', render: renderMagazine },
@@ -25,6 +31,12 @@ const experiences = {
   flipbook: { label: 'Flipbook', render: renderFlipbook },
   cube: { label: 'Service cube', render: renderCube },
   streaming: { label: 'Streaming showcase', render: renderStreaming },
+  split: { label: 'Split slideshow', render: renderSplit },
+  fan: { label: 'Card fan', render: renderFan },
+  ring: { label: 'Service ring', render: renderRing },
+  tunnel: { label: 'Hyper tunnel', render: renderTunnel },
+  canvas: { label: 'Infinite canvas', render: renderCanvas },
+  coverflow: { label: 'Cover flow', render: renderCoverflow },
 }
 
 export const experienceLabel = (name) => experiences[name]?.label ?? 'Reimagined view'

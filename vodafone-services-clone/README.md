@@ -10,6 +10,12 @@ and components:
 | Template | What it does | Adapted from |
 |---|---|---|
 | Streaming showcase | Cinematic VODAFONE logo intro that flies into the top bar, then a billboard and paged rows of services with hover-expanding cards and a preview modal | [Flix](https://codepen.io/Bahaa-Addin/pen/YayLbo) (the author's own pen, rebuilt) |
+| Split slideshow | Each service fills a split screen; the halves slide past each other in opposite directions as you scroll while the big tracked title rises through its mask | [Split Slick Slideshow](https://codepen.io/supah/pen/zZaPeE) |
+| Card fan | Numbered cards fan out on a diagonal (80% across, 20% down, 12° per card) and settle with the reference's snappy ease; drag, scroll, click or use the keys | [Carousel with drag and wheel](https://codepen.io/supah/pen/xxJMbbg) |
+| Service ring | Outlined titles on a huge 3D ring seen from inside; scrolling turns it, red-tinted photo panels slide behind, fast scrolling stretches and blurs it | [Infinite February](https://codepen.io/cobra_winfrey/pen/podWgvv) |
+| Hyper tunnel | Fly down a 3D tunnel: each category opens with giant outlined words, then glass service cards on a spiral; speed warps the view, streaks stars and splits the words red/white | [Hyper Scroll](https://codepen.io/aleksa-rakocevic/pen/pvbboZx) |
+| Infinite canvas | Drag an endless, wrapping grid of services with momentum; open a card to zoom it on the reference's "hop" ease with the title rising word by word | [Infinite Draggable Image Gallery](https://codepen.io/filipz/pen/dPPyJZX) |
+| Cover flow | Services flip past like album covers on a glossy floor, following the reference's pan/turn/lift timeline, looping round | [Infinite Cover Flow](https://codepen.io/jh3y/pen/WNRvqJP) |
 | Spotlight cards | One service fills the stage; the next ones queue as cards; auto-advances with pause | [Timed Cards Opening](https://codepen.io/dilums/full/NWodZMd) |
 | Scroll journey | Layered landscape (Vodafone mark as the sun) moves from day to night as chapters scroll by | [Parallax scroll animation](https://codepen.io/isladjan/pen/abdyPBw) |
 | Gallery wall | Every service framed on an angled 3D wall you walk along by scrolling | [Infinite Gallery Hall](https://codepen.io/nassimberrada/pen/EayPjpM) |
@@ -17,8 +23,30 @@ and components:
 | Service cube | A 3D cube turns to one face per category as you read, with HUD and scene dots | [Six Faces](https://codepen.io/luis-lessrain/pen/ZYpyoRV) |
 | Editorial magazine | Cover story, asymmetric spreads, service index | the Phase 1 brief |
 
-The references were re-implemented natively (no GSAP, no Three.js, no jQuery or Slick, none of
-their copy or images).
+The references were re-implemented natively (no GSAP, no Three.js, no jQuery or Slick, no Lenis,
+none of their copy or images). Their own easings and timings were kept where they define the feel
+(the split slideshow's `cubic-bezier(0.7, 0, 0.3, 1)` at 1000/950/900 ms, the fan's
+`cubic-bezier(0, 0.02, 0, 1)`, the canvas's 0.075 drag ease, ×200 momentum and "hop" zoom, the cover
+flow's power1/power4 timeline).
+
+**Notes on the second set.**
+
+- *Page friendly.* The references take over the whole window (wheel capture, `overflow: hidden`,
+  scroll that loops forever). Here the scroll-driven ones pin a stage under the Vodafone header and
+  step one service per stretch of page scroll, settling on the nearest, then let the page carry on to
+  the app band and footer. Drag, click, prev/next and the arrow keys move them too.
+- *Every service exactly once.* The infinite references repeat their tiles. The canvas wraps its
+  tiles round instead (it only wraps when the grid is big enough that no tile could show twice), and
+  the ring and cover flow loop visually while each service still exists once in the page.
+- *Small source images.* The page's images are 150–510 px wide, so full-screen uses (split
+  slideshow, ring panels) soften them in proportion to how far they are enlarged, and the Vodafone
+  Cash illustration (`fit: contain`) becomes a white mark on Vodafone red.
+- *Colours.* The references' purples and cyans became Vodafone red `#e60000`, dark red `#990000`
+  and ink `#14141e`; the tunnel's red/cyan split is red/white. Type is Vodafone Regular, Bold and Light.
+- *Accessibility.* Only the shown service's links are reachable in the slideshows; tabbing to a
+  tunnel card flies to it and tabbing on the canvas glides each card to the centre; the canvas
+  detail is a native `<dialog>` that returns focus. Under reduced motion transitions stop, the ring
+  and cover flow move a whole service at a time, and the tunnel is laid flat as a grid.
 
 **Streaming showcase notes.** The original pen animated `font-size` and a 100-layer `text-shadow`
 (full repaints every frame), had an invalid keyframe and never landed the logo in the header. The
@@ -65,7 +93,7 @@ Then open the page, choose **Reimagine this page**, and click a ready-made exper
 ```bash
 npm test             # validator, content model and template unit tests (Node built-in runner)
 
-# Optional browser checks (191 checks across all experiences; Gemini is mocked, no key needed):
+# Optional browser checks (291 checks across all experiences; Gemini is mocked, no key needed):
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
@@ -139,7 +167,8 @@ src/
     experiences/magazine.css     magazine styles, all scoped under .aixc-magazine
     experiences/shared.js        shared Vodafone building blocks for the template experiences
     experiences/vodafone.css     Vodafone tokens + shared components, scoped under .aixc-vx
-    experiences/{streaming,spotlight,journey,gallery,flipbook,cube}.{js,css}   one plugin each
+    experiences/{streaming,split,fan,ring,tunnel,canvas,coverflow,spotlight,journey,gallery,flipbook,cube}.{js,css}
+                                 one plugin each
     controller.js                state, launcher, composer, view bar, cache, fallbacks
     aixc.css                     composer/launcher/view-bar styles (all .aixc- prefixed)
     dom.js                       tiny DOM builder with attribute + URL allowlists
@@ -220,7 +249,7 @@ its stylesheet scoped under `.aixc-vx--<name>` and link it in `index.html`, regi
 ## Known limitations and source notes
 
 - **Gemini has not been called live from this build.** The request format, headers and response
-  parsing were tested against a mocked endpoint (191 browser checks). Verify with a real key before
+  parsing were tested against a mocked endpoint (291 browser checks). Verify with a real key before
   a demo; if the chosen model rejects `responseSchema`, the client retries once in plain JSON mode.
 - **Content capture.** Text and images were captured on 2026-04-21; links and the hero heading
   were re-checked against the live page on 2026-10-19. The live site may have changed since.

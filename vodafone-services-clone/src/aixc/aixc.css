@@ -442,7 +442,7 @@
   align-items: start;
   width: 100%;
   height: 100%;
-  padding: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--aixc-line);
   border-radius: 8px;
   background: var(--aixc-paper);
@@ -500,9 +500,14 @@
 }
 
 .aixc-template__prompt {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--aixc-muted);
   font-size: 0.8125rem;
   line-height: 1.35;
+  /* Thirteen templates: two lines each keeps the grid scannable. */
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .aixc-form-label {

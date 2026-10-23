@@ -1,0 +1,514 @@
+/* Split slideshow — scoped to .aixc-vx--split. Tokens from vodafone.css. */
+
+.aixc-vx--split {
+  /* The reference's easing and timings: right half 1000 ms, left 950 ms, text 900 ms. */
+  --ss-ease: cubic-bezier(0.7, 0, 0.3, 1);
+  --ss-right: 1s;
+  --ss-left: 0.95s;
+  --ss-text: 0.9s;
+  background: var(--vx-ink);
+}
+
+.aixc-vx--split .ss-track {
+  position: relative;
+  height: calc(var(--vx-vh) + (var(--count) - 1) * var(--step));
+}
+
+.aixc-vx--split .ss-stage {
+  position: sticky;
+  top: var(--vx-top);
+  height: var(--vx-vh);
+  min-height: 520px;
+  /* clip, not hidden: focus must never scroll the stage itself */
+  overflow: hidden;
+  overflow: clip;
+  background: #000;
+  color: var(--vx-white);
+  container-type: inline-size;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.aixc-vx--split .ss-stage.is-dragging {
+  cursor: grabbing;
+}
+
+/* ------------------------------------------------------------------ halves */
+
+.aixc-vx--split .ss-halves {
+  position: absolute;
+  inset: 0;
+}
+
+.aixc-vx--split .ss-half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  overflow: hidden;
+}
+
+.aixc-vx--split .ss-half--left {
+  left: 0;
+}
+
+.aixc-vx--split .ss-half--right {
+  right: 0;
+}
+
+.aixc-vx--split .ss-pane {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  transition: transform var(--ss-right) var(--ss-ease), visibility 0s linear var(--ss-right);
+}
+
+.aixc-vx--split .ss-half--left .ss-pane {
+  transition: transform var(--ss-left) var(--ss-ease), visibility 0s linear var(--ss-left);
+}
+
+.aixc-vx--split .ss-pane[data-pos='0'] {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+/* Right half moves up as you advance; the left half (reverse order) moves down. */
+.aixc-vx--split .ss-half--right .ss-pane[data-pos='1'],
+.aixc-vx--split .ss-half--left .ss-pane[data-pos='-1'] {
+  transform: translateY(100%);
+}
+
+.aixc-vx--split .ss-half--right .ss-pane[data-pos='-1'],
+.aixc-vx--split .ss-half--left .ss-pane[data-pos='1'] {
+  transform: translateY(-100%);
+}
+
+.aixc-vx--split .is-jump,
+.aixc-vx--split .is-jump * {
+  transition: none !important;
+}
+
+/* Each half shows its side of one stage-wide picture, so at rest the image is whole. */
+.aixc-vx--split .ss-art {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 200%;
+  background: var(--vx-ink);
+}
+
+.aixc-vx--split .ss-half--left .ss-art {
+  left: 0;
+}
+
+.aixc-vx--split .ss-half--right .ss-art {
+  right: 0;
+}
+
+.aixc-vx--split .ss-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Small source images are softened in proportion to how far they are enlarged,
+     so they read as a backdrop rather than as pixels. */
+  filter: brightness(0.66) saturate(0.95) blur(clamp(0px, calc((100cqi / var(--src-w, 1000px) - 3.2) * 0.7px), 3px));
+  transform: scale(1.03);
+}
+
+.aixc-vx--split .ss-pane.is-mark .ss-art {
+  background:
+    radial-gradient(70% 90% at 50% 40%, var(--vx-red) 0%, #c30000 70%, var(--vx-red-dark) 100%);
+}
+
+.aixc-vx--split .ss-pane.is-mark .ss-art img {
+  position: absolute;
+  top: 7%;
+  left: 50%;
+  width: auto;
+  max-width: 60%;
+  height: 25%;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  transform: translateX(-50%);
+}
+
+/* Keeps the centred type legible on any photograph. */
+.aixc-vx--split .ss-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(62% 56% at 50% 55%, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 72%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 24%, rgba(0, 0, 0, 0) 68%, rgba(0, 0, 0, 0.6) 100%);
+  transition: opacity var(--ss-right) var(--ss-ease);
+}
+
+.aixc-vx--split .ss-stage[data-tone='mark'] .ss-scrim {
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------------------------- texts */
+
+.aixc-vx--split .ss-texts {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.aixc-vx--split .ss-text {
+  position: absolute;
+  inset: 64px var(--vx-gutter) 104px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+  justify-items: center;
+  text-align: center;
+  visibility: hidden;
+  transition: visibility 0s linear var(--ss-text);
+}
+
+.aixc-vx--split .ss-text[data-pos='0'] {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.aixc-vx--split .ss-text[data-pos='0'] > * {
+  pointer-events: auto;
+}
+
+.aixc-vx--split .ss-text__top {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: clamp(0.75rem, 2.4vh, 1.5rem);
+}
+
+.aixc-vx--split .ss-text__bottom {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: clamp(0.85rem, 2.4vh, 1.5rem);
+  width: min(100%, 1120px);
+  padding-top: clamp(0.85rem, 2.6vh, 1.6rem);
+}
+
+.aixc-vx--split .ss-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9375rem;
+  letter-spacing: 0.04em;
+}
+
+.aixc-vx--split .ss-place__num {
+  font-family: var(--vx-font-bold);
+  color: var(--vx-white);
+}
+
+.aixc-vx--split .ss-place__num::after {
+  content: '';
+  display: inline-block;
+  width: 28px;
+  height: 2px;
+  margin: 0 0 0.3em 12px;
+  vertical-align: middle;
+  background: var(--vx-red);
+}
+
+.aixc-vx--split .ss-stage[data-tone='mark'] .ss-place__num::after {
+  background: var(--vx-white);
+}
+
+/* The reference's big, light, widely tracked word: sized from the longest line. */
+.aixc-vx--split .ss-title {
+  width: min(100%, 1180px);
+  font-family: var(--vx-font-light);
+  font-size: clamp(1.75rem, calc(108cqi / var(--cpl)), 6rem);
+  line-height: 0.95;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  /* Trailing tracking would push the centred word off centre. */
+  margin-right: -0.18em;
+}
+
+.aixc-vx--split .ss-title__mask {
+  display: block;
+  overflow: hidden;
+  padding: 0.08em 0 0.04em;
+}
+
+.aixc-vx--split .ss-title__text {
+  display: block;
+  text-wrap: balance;
+  transition: transform var(--ss-text) var(--ss-ease);
+}
+
+.aixc-vx--split .ss-text[data-pos='1'] .ss-title__text {
+  transform: translateY(108%);
+}
+
+.aixc-vx--split .ss-text[data-pos='-1'] .ss-title__text {
+  transform: translateY(-108%);
+}
+
+.aixc-vx--split .ss-desc {
+  max-width: 36rem;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: clamp(1rem, 1.25vw, 1.1875rem);
+  line-height: 1.55;
+}
+
+.aixc-vx--split .ss-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+.aixc-vx--split .ss-actions .vx-extras {
+  justify-content: center;
+}
+
+.aixc-vx--split .ss-place,
+.aixc-vx--split .ss-desc,
+.aixc-vx--split .ss-actions {
+  transition: opacity 0.45s ease, transform var(--ss-text) var(--ss-ease);
+}
+
+.aixc-vx--split .ss-text[data-pos='0'] .ss-desc {
+  transition-delay: 0.12s;
+}
+
+.aixc-vx--split .ss-text[data-pos='0'] .ss-actions {
+  transition-delay: 0.2s;
+}
+
+.aixc-vx--split .ss-text:not([data-pos='0']) :is(.ss-place, .ss-desc, .ss-actions) {
+  opacity: 0;
+}
+
+.aixc-vx--split .ss-text[data-pos='1'] :is(.ss-place, .ss-desc, .ss-actions) {
+  transform: translateY(28px);
+}
+
+.aixc-vx--split .ss-text[data-pos='-1'] :is(.ss-place, .ss-desc, .ss-actions) {
+  transform: translateY(-28px);
+}
+
+.aixc-vx--split .ss-actions .vx-btn--secondary.vx-on-dark:hover {
+  background: var(--vx-white);
+  color: var(--vx-red);
+}
+
+.aixc-vx--split .ss-actions .vx-inert.vx-on-dark {
+  padding: 0.6rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--vx-radius-btn);
+  color: var(--vx-white);
+  font-size: 0.9375rem;
+}
+
+/* -------------------------------------------------------------- head, rail */
+
+.aixc-vx--split .ss-head {
+  position: absolute;
+  top: clamp(16px, 3.4vh, 30px);
+  left: var(--vx-gutter);
+  z-index: 3;
+  display: grid;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.aixc-vx--split .ss-brand {
+  font-family: var(--vx-font-bold);
+  font-size: 0.875rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.aixc-vx--split .ss-hint {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.8125rem;
+}
+
+.aixc-vx--split .ss-rail {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  z-index: 3;
+  transform: translateY(-50%);
+}
+
+.aixc-vx--split .ss-rail ul {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.aixc-vx--split .ss-rail__group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 24px;
+  padding: 5px var(--vx-gutter) 5px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--vx-white);
+  cursor: pointer;
+}
+
+.aixc-vx--split .ss-rail__ticks {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  width: 40px;
+}
+
+.aixc-vx--split .ss-rail__tick {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--vx-white);
+  opacity: 0.5;
+  transition: width 0.3s ease-in-out, opacity 0.3s ease-in-out, background-color 0.3s ease-in-out;
+}
+
+.aixc-vx--split .ss-rail__group.is-current .ss-rail__tick {
+  opacity: 0.85;
+}
+
+.aixc-vx--split .ss-rail__tick.is-current {
+  width: 40px;
+  opacity: 1 !important;
+  background: var(--vx-red);
+}
+
+.aixc-vx--split .ss-stage[data-tone='mark'] .ss-rail__tick.is-current {
+  background: var(--vx-white);
+}
+
+.aixc-vx--split .ss-rail__label {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.aixc-vx--split .ss-rail__group:hover .ss-rail__label,
+.aixc-vx--split .ss-rail__group:focus-visible .ss-rail__label {
+  opacity: 1;
+  transform: none;
+}
+
+.aixc-vx--split .ss-rail__group:hover .ss-rail__tick {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.aixc-vx--split .ss-controls {
+  position: absolute;
+  bottom: clamp(16px, 4vh, 36px);
+  left: var(--vx-gutter);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.aixc-vx--split .ss-counter {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-right: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.aixc-vx--split .ss-counter__now {
+  font-family: var(--vx-font-light);
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  line-height: 1;
+}
+
+.aixc-vx--split .ss-counter__total {
+  font-size: 1rem;
+  opacity: 0.72;
+}
+
+.aixc-vx--split .ss-controls .vx-round {
+  color: var(--vx-white);
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 719px) {
+  .aixc-vx--split .ss-text {
+    inset: 56px 48px 92px 16px;
+    /* A little more room under the title for the description and actions. */
+    grid-template-rows: minmax(0, 0.72fr) auto minmax(0, 1.28fr);
+  }
+
+  /* A QR code to scan with the same phone is no help; the app button stays. */
+  .aixc-vx--split .ss-actions .vx-aside {
+    display: none;
+  }
+
+  .aixc-vx--split .ss-pane.is-mark .ss-art img {
+    top: 4%;
+    height: 18%;
+  }
+
+  .aixc-vx--split .ss-title {
+    font-size: clamp(1.5rem, calc(118cqi / var(--cpl)), 3rem);
+    letter-spacing: 0.08em;
+    margin-right: -0.08em;
+  }
+
+  .aixc-vx--split .ss-desc {
+    font-size: 0.9375rem;
+  }
+
+  .aixc-vx--split .ss-head {
+    display: none;
+  }
+
+  .aixc-vx--split .ss-rail ul {
+    gap: 4px;
+  }
+
+  .aixc-vx--split .ss-rail__group {
+    padding-right: 12px;
+  }
+
+  .aixc-vx--split .ss-rail__ticks {
+    gap: 5px;
+    width: 24px;
+  }
+
+  .aixc-vx--split .ss-rail__tick {
+    width: 12px;
+  }
+
+  .aixc-vx--split .ss-rail__tick.is-current {
+    width: 24px;
+  }
+
+  .aixc-vx--split .ss-rail__label {
+    display: none;
+  }
+
+  .aixc-vx--split .ss-controls .vx-round {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-vx--split .ss-pane,
+  .aixc-vx--split .ss-text,
+  .aixc-vx--split .ss-text *,
+  .aixc-vx--split .ss-scrim {
+    transition: none !important;
+  }
+}
