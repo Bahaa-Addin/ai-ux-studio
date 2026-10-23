@@ -29,7 +29,10 @@
     "record:demo": "node tools/record-demo.ts",
     "gateway": "node services/gateway/main.ts",
     "service": "node services/run-service.ts",
-    "docs:diagrams": "node tools/docs/render-diagrams.ts"
+    "docs:diagrams": "node tools/docs/render-diagrams.ts",
+    "demo:live": "node tools/demo-live.ts",
+    "live-crawl:import": "node tools/live-crawl/import.ts",
+    "live-crawl:bundle": "node tools/live-crawl/bundle.ts"
   },
   "dependencies": {
     "pg": "8.23.1",

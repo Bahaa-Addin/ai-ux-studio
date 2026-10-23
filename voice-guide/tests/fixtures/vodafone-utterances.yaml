@@ -1,0 +1,35 @@
+# Vodafone tuning set (ADR-0014, T-206): the demo script's requests and close variations, against
+# the knowledge base built from the 2026-10-23 public-only crawl. Tune the overlay on this set;
+# score the held-out set (vodafone-utterances-heldout.yaml) without tuning on it.
+#   npm run eval:router -- --manifest config/kb/vodafone-eg.manifest.json --cases tests/fixtures/vodafone-utterances.yaml
+- { say: إيه أرخص باقة نت؟, dest: web.mobile-internet-bundles.vodafone-plus, select: min-price }
+- { say: عايز باقة نت رخيصة, dest: web.mobile-internet-bundles.vodafone-plus, select: min-price }
+- { say: إيه أكبر باقة نت؟, dest: web.mobile-internet-bundles.vodafone-plus, select: max-data }
+- { say: وريني باقات النت, dest: web.mobile-internet-bundles.vodafone-plus }
+- { say: "What's the cheapest internet bundle?", dest: web.mobile-internet-bundles.plus--37---600egp, select: min-price }
+- { say: which bundle has the most data, dest: web.mobile-internet-bundles.plus--37---600egp, select: max-data }
+- { say: show me the internet bundles, dest: web.mobile-internet-bundles.plus--37---600egp }
+- { say: اشترك فيها, intent: flow, dest: web.mobile-internet-bundles.vodafone-plus.0, last: { kind: item, destinationId: web.mobile-internet-bundles.vodafone-plus.0, collectionId: web.mobile-internet-bundles.vodafone-plus, key: '#0' } }
+- { say: subscribe to it, intent: flow, dest: web.mobile-internet-bundles.plus--37---600egp.0, last: { kind: item, destinationId: web.mobile-internet-bundles.plus--37---600egp.0, collectionId: web.mobile-internet-bundles.plus--37---600egp, key: '#0' } }
+- { say: فين أقرب فرع؟, dest: web.spa-storelocator.search }
+- { say: "Where's the nearest store?", dest: web.spa-storelocator.search }
+- { say: عايز أروح فرع ڤودافون, dest: web.spa-storelocator.search }
+- { say: البانر ده مكتوب فيه إيه؟, page: web.mobile-internet-bundles, intent: describe, dest: web.mobile-internet-bundles.pablo.visual }
+- { say: What does this banner say?, page: web.mobile-internet-bundles, intent: describe, dest: web.mobile-internet-bundles.pablo.visual }
+- { say: عرفني لما العروض تتغير, page: web.promotions, intent: watch, dest: web.promotions.check-out-our-latest-offers-and-choose-y }
+- { say: tell me when the offers change, page: web.promotions, intent: watch, dest: web.promotions.check-out-our-latest-offers-and-choose-y }
+- { say: وريني فودافون كاش, dest: web.vodafone-cash }
+- { say: عايز أعرف عن ريد, dest: web.vodafone-red1 }
+- { say: تغطية الشبكة في منطقتي, dest: web.spa-networkcoveragechecker }
+- { say: network coverage map, dest: web.spa-networkcoveragechecker }
+- { say: النت الهوائي, dest: web.wireless-net }
+- { say: home wireless internet, dest: web.wireless-net }
+- { say: wifi calling, dest: web.wifi-calling }
+- { say: فليكس, dest: web.spa-vodafone-flex }
+- { say: vodafone flex plans, dest: web.spa-vodafone-flex }
+- { say: الأسئلة الشائعة, dest: web.spa-faq }
+- { say: contact customer service, dest: web.spa-contact-us }
+- { say: أنظمة الكارت, dest: web.kart-el-korout }
+- { say: prepaid plans, dest: web.kart-el-korout }
+- { say: الإنترنت الأرضي, dest: web.homedslcatalog }
+- { say: الصفحة الرئيسية, dest: web.home }

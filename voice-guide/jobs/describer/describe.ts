@@ -56,6 +56,29 @@ const PHRASES: Record<string, Record<string, (s: string) => string>> = {
 
 const sentence = (s: string) => (/[.!؟?。]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
 
+/**
+ * Alt and title texts as authors write them on real sites: HTML pasted into alt attributes, layout
+ * words ("main desktop banner") and file names ("pablo", "img_23"). Returns '' when nothing
+ * meaningful is left, so the next source (heading, vision, curation) is used instead.
+ */
+export function cleanAlt(s: string | undefined): string {
+	if (!s) return ''
+	let t = s
+		.replace(/<[^>]*>/g, ' ')
+		.replace(/&nbsp;/g, ' ')
+		.replace(/&amp;/g, '&')
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;|&apos;/g, "'")
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/\s+/g, ' ')
+		.trim()
+	t = t.replace(/\s*(main\s+)?(desktop|mobile|tablet|web)\s+(banner|image|img|version)\s*$/i, '').trim()
+	if (/^(pablo|image|img|photo|picture|banner|untitled|screenshot|logo|icon|frame|welcome|h1)\d*$/i.test(t)) return ''
+	if (/^[a-z0-9]+([_-][a-z0-9]+)+(\.(png|jpe?g|webp|gif|svg))?$/i.test(t)) return ''
+	return t
+}
+
 /** Description from markup only, in the page's own language. */
 export function describeFromMetadata(v: VisualSnap, page: PageSnap, linkTitle?: string): VisualDescription | null {
 	const m = v.meta
@@ -68,7 +91,7 @@ export function describeFromMetadata(v: VisualSnap, page: PageSnap, linkTitle?: 
 		if (parts.length) return { descriptions: { [lang]: parts.map(sentence).join(' ') }, source: 'metadata', confidence: m.svgDesc ? 0.8 : 0.6 }
 		if (m.svgText) return { descriptions: { [lang]: ph.map(m.svgText) }, source: 'metadata', confidence: 0.5 }
 	}
-	const explicit = [m.alt, m.ariaLabel, m.labelledBy, m.title, m.describedBy, m.figcaption].filter(Boolean) as string[]
+	const explicit = [m.alt, m.ariaLabel, m.labelledBy, m.title, m.describedBy, m.figcaption].map(cleanAlt).filter(Boolean)
 	if (explicit.length) {
 		const base = v.kind === 'canvas' || v.kind === 'webgl' ? [m.heading, ...explicit].filter(Boolean) : explicit
 		return { descriptions: { [lang]: [...new Set(base as string[])].map(sentence).join(' ') }, source: 'metadata', confidence: 0.6 }

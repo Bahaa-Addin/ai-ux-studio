@@ -66,6 +66,10 @@ crawl:
     # Business, foundation, corporate and investor pages: outside the personal-products demo scope.
     - '/(en|ar)/(business|foundation|vodafone-egypt1|enterprise|public-sector|about-us|corporate|investor|our-purpose|social-|community|v-hub|newsroom|events|management)'
     - '/(en|ar)/[^/]*(business|machine-to-machine|smart-meter|iot|m2m|sd-wan|cloud|fleet|dedicated-internet|co-location|ready-)'
+    # Enterprise products, careers and staff pages linked from personal pages (seen in the 2026-10-23 crawl).
+    - '/(en|ar)/(office-4g|3arabety|AI|ai|connectivity|fixed-connectivity|sdwan[^/]*|virtual-servers|disaster-recovery|fleet[^/]*|Fleet|techies-hub|early-careers|development-tools|vodafone_scoop|c-nam|el-asly-plus[^/]*)(\?|#|$)'
+    # Arabic-slug privacy notice and smart-meter pages (percent-encoded paths).
+    - '/ar/(%D8%A7%D8%B4%D8%B9%D8%A7%D8%B1-%D8%A7%D9%84%D8%AE%D8%B5%D9%88%D8%B5%D9%8A%D8%A9|%D8%A7%D9%84%D8%B4%D8%A8%D9%83%D8%A9-%D8%A7%D9%84%D8%B0%D9%83%D9%8A%D8%A9)'
     # News archive, people pages and careers: outside the personal-products demo scope.
     - '/(en|ar)/(latest-news|latest-vodafone-egypt-news|vodafone-egypt-press-releases|\d{4}-news|press-|careers|executive-team|our-history|history|working-at-vodafone|risk-awareness|tv%20commercials|TV%20Commercials|join-vodafone|privacy|exposure-)'
     # Logged-in and transactional journeys (shop robots.txt; SPEC-04 §2) and logged-in SPA views.

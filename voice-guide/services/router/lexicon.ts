@@ -35,7 +35,7 @@ export const INTENT_PHRASES: Record<'watch' | 'describe' | 'stop' | 'repeat' | '
 
 /** Superlatives that select one item of a collection by a field. */
 export const SELECTORS: { by: 'min' | 'max'; field: 'price' | 'data'; phrases: Phrases }[] = [
-	{ by: 'min', field: 'price', phrases: { en: ['cheapest', 'lowest price', 'least expensive', 'most affordable', 'cheaper'], ar: ['ارخص', 'اقل سعر', 'الارخص', 'ارخص حاجه', 'اوفر'] } },
+	{ by: 'min', field: 'price', phrases: { en: ['cheapest', 'lowest price', 'least expensive', 'most affordable', 'cheaper'], ar: ['ارخص', 'اقل سعر', 'الارخص', 'ارخص حاجه', 'اوفر', 'رخيصه', 'رخيص', 'الرخيصه'] } },
 	{ by: 'max', field: 'price', phrases: { en: ['most expensive', 'priciest', 'highest price'], ar: ['اغلي', 'الاغلي', 'اعلي سعر'] } },
 	{ by: 'max', field: 'data', phrases: { en: ['most data', 'biggest', 'largest', 'most gb', 'most gigabytes', 'highest data'], ar: ['اكبر', 'اكتر جيجا', 'اكثر داتا', 'اكتر داتا', 'اكبر باقه', 'اكتر نت'] } },
 	{ by: 'min', field: 'data', phrases: { en: ['smallest', 'least data'], ar: ['اصغر', 'اقل داتا', 'اقل جيجا'] } },

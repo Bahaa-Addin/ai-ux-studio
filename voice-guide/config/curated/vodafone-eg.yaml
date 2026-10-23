@@ -1,52 +1,207 @@
-# Curated overlay for vodafone-eg (ADR-0011). STARTER: only what the crawler cannot know.
+# Curated overlay for vodafone-eg (ADR-0011): only what the crawler cannot know.
 #
-# Page and destination ids come from the first ingest report
-# (`npm run ingest -- --site vodafone-eg --dry-run`, task T-201). Add pages:, destinations:
-# and flows: entries only after that report exists, using its ids. Entries that name ids the
-# crawl did not produce make the build fail its integrity check.
+# Ids come from the knowledge base built from the 2026-10-23 public-only crawl (ADR-0032).
+# A rebuild that no longer produces an id named here fails the integrity check, so a changed
+# page shows up in the report instead of silently losing its curation.
 #
-# Facts used below: docs/reference/vodafone-live-site-audit.md §6, §8, §9.
+# Values (prices, amounts) are never written here: the guide reads them from the live page.
 
 lexicon:
   synonyms:
     # Products, as Vodafone writes them, with common Egyptian spellings and transliterations.
-    - [فودافون فليكس, فليكس, flex, vodafone flex]
-    - [ريد, رد, red, vodafone red]
+    - [فودافون فليكس, ڤودافون فليكس, فليكس, flex, vodafone flex]
+    - [ريد, رد, نظام ريد, red, vodafone red]
     - [بلس, plus, vodafone plus, ڤودافون بلس, فودافون بلس]
     - [بلس ابس, plus apps, باقات التطبيقات]
     - [فودافون كاش, ڤودافون كاش, كاش, محفظة, vodafone cash, cash, wallet, e-wallet]
-    - [انا فودافون, أنا ڤودافون, ana vodafone, the app, التطبيق]
+    - [انا فودافون, أنا ڤودافون, أنا فودافون, ana vodafone, the app, التطبيق]
     - [الكارت, كارت الكروت, el-kart, el kart, prepaid, كارت]
     - [شكرا, شكراً, shokran]
-    # Generic telecom words (from the fixture overlay, which tested well).
-    - [نت, انترنت, إنترنت, داتا, بيانات, internet, data]
+    # Generic telecom words.
+    - [نت, انترنت, إنترنت, الانترنت, الإنترنت, داتا, بيانات, internet, data]
     - [باقة, باقات, باقه, bundle, bundles, plan, plans, package]
     - [ميجا, ميجابايت, mb, mega, megabyte, megabytes]
     - [جيجا, جيجابايت, جيجات, gb, giga, gigabyte, gigabytes]
-    - [النت الهوائي, wireless, wireless net, 4g home, هوائي]
-    - [ارضي, أرضي, dsl, adsl, home internet, نت البيت, الانترنت المنزلي]
-    - [فرع, فروع, محل, store, stores, branch, store locator]
-    - [تغطية, الشبكة, ابراج, coverage, network, signal]
-    - [عرض, عروض, خصم, offer, offers, promo, promotions, deal]
+    - [النت الهوائي, الراوتر الهوائي, هوائي, wireless, home wireless, 4g home]
+    - [ارضي, أرضي, dsl, adsl, home dsl, نت البيت, الانترنت المنزلي]
+    - [فرع, فروع, الفروع, محل, store, stores, branch, branches, store locator]
+    - [تغطية, التغطية, الشبكة, ابراج, coverage, network, signal]
+    - [عرض, عروض, العروض, خصم, offer, offers, promo, promotions, deal, deals]
     - [رصيد, balance, credit]
-    - [اشحن, شحن, recharge, top up, topup]
+    - [اشحن, شحن, الشحن, recharge, top up, topup]
+    - [واي فاي, الواي فاي, wifi, wi-fi]
   intents:
     watch:
-      ar: [عرفني لما, بلغني لما, نبهني لما, قولي لو اتغير, ابعتلي لما يتغير]
+      ar: [عرفني لما, بلغني لما, نبهني لما, قولي لو اتغير, ابعتلي لما يتغير, قولي لما]
       en: [tell me when, notify me when, let me know if, alert me when]
 
-# After the first ingest, add for example:
-#
-# destinations:
-#   - id: <id of the mobile internet bundles page's bundle collection>
-#     priority: 1.3        # most "internet bundle" requests mean mobile data
-#     labels:
-#       ar: [باقات النت, باقات الإنترنت, باقات بلس]
-#       en: [internet bundles, mobile data bundles, plus bundles]
-#     examples:
-#       ar: [إيه أرخص باقة نت, عايز باقة نت رخيصة, إيه أكبر باقة]
-#       en: [what's the cheapest internet bundle, which bundle has the most data]
-#
-# Commit points (the guide and the agent never press these): confirmation and payment
-# buttons inside /spa/miManagement and the shop's checkout. Mark them with `commit: true`
-# on their destinations once their selectors are known from a signed-in crawl.
+pages:
+  - id: web.home
+    labels:
+      ar: [الصفحة الرئيسية, الرئيسية, صفحة فودافون]
+      en: [home page, main page, homepage]
+    summary:
+      ar: الصفحة الرئيسية لڤودافون مصر، فيها عروض RED وفليكس والواي فاي، وروابط لإدارة الحساب والفروع وڤودافون كاش.
+      en: Vodafone Egypt's home page, with the RED, Flex and Wi-Fi offers and links to your account, stores and Vodafone Cash.
+  - id: web.mobile-internet-bundles
+    labels:
+      ar: [باقات النت, باقات الإنترنت, باقات الانترنت, نت الموبايل, باقات بلس]
+      en: [internet bundles, mobile internet bundles, data bundles, plus bundles]
+    summary:
+      ar: صفحة باقات النت للموبايل، فيها باقات ڤودافون بلس وباقات التطبيقات والأسئلة الشائعة.
+      en: The mobile internet bundles page, with the Vodafone Plus bundles, the app bundles and FAQs.
+  - id: web.spa-storelocator
+    labels:
+      ar: [الفروع, فروع ڤودافون, أقرب فرع, محدد الفروع]
+      en: [store locator, stores, nearest store, find a store]
+    summary:
+      ar: محدد الفروع، تقدر تدور على أقرب فرع ڤودافون بالمحافظة والمنطقة.
+      en: The store locator, where you can search for the nearest Vodafone store by city and area.
+  - id: web.promotions
+    labels:
+      ar: [العروض, عروض ڤودافون, عروض فودافون]
+      en: [promotions, offers, vodafone offers, deals]
+  - id: web.spa-networkcoveragechecker
+    labels:
+      ar: [تغطية الشبكة, خريطة التغطية, التغطية في منطقتي]
+      en: [network coverage, coverage map, network coverage map]
+  - id: web.spa-vodafone-flex
+    labels:
+      ar: [فليكس, نظام فليكس, باقات فليكس, ڤودافون فليكس]
+      en: [flex, vodafone flex, flex plans, flex bundles]
+  - id: web.vodafone-red1
+    labels:
+      ar: [ريد, نظام ريد, خطوط ريد, ڤودافون ريد]
+      en: [red, vodafone red, red lines, red plans]
+  - id: web.kart-el-korout
+    labels:
+      ar: [الكارت, كارت الكروت, خطوط الكارت, أنظمة الكارت]
+      en: [prepaid, el-kart, prepaid plans, kart el korout]
+  - id: web.vodafone-cash
+    labels:
+      ar: [فودافون كاش, ڤودافون كاش, المحفظة]
+      en: [vodafone cash, cash, e-wallet, wallet]
+  - id: web.wireless-net
+    labels:
+      ar: [النت الهوائي, الراوتر الهوائي, نت البيت الهوائي, هوم وايرلس]
+      en: [home wireless, home wireless internet, wireless router, 4g home internet]
+  - id: web.wifi-calling
+    labels:
+      ar: [مكالمات الواي فاي, الاتصال عبر الواي فاي]
+      en: [wifi calling, wi-fi calling, calls over wifi]
+  - id: web.recharge
+    labels:
+      ar: [الشحن, طرق الشحن, اشحن رصيدي, اشحن]
+      en: [recharge, top up, recharge methods]
+  - id: web.spa-faq
+    labels:
+      ar: [الأسئلة الشائعة, اسألنا, أسئلة]
+      en: [faq, frequently asked questions, questions]
+  - id: web.spa-contact-us
+    labels:
+      ar: [اتصل بنا, كلمنا, خدمة العملاء, المساعدة]
+      en: [contact us, call us, customer service, help]
+  - id: web.anavodafone
+    labels:
+      ar: [أنا ڤودافون, انا فودافون, تطبيق انا فودافون, التطبيق]
+      en: [ana vodafone, ana vodafone app, the app, vodafone app]
+  - id: web.homedslcatalog
+    labels:
+      ar: [الإنترنت الأرضي, نت البيت, هوم دي اس ال]
+      en: [home dsl, home internet, adsl]
+
+collections:
+  # Arabic page: the "Vodafone Plus" tab of bundle cards (audit §9).
+  - id: web.mobile-internet-bundles.vodafone-plus
+    labels:
+      ar: [باقات ڤودافون بلس, باقات بلس, باقات النت]
+  # English page: same bundles, different markup.
+  - id: web.mobile-internet-bundles.plus--37---600egp
+    labels:
+      en: [Vodafone Plus bundles, plus bundles, internet bundles]
+    # The English cards carry the data amount in the header ("1400 Mega"), as the Arabic ones do.
+    fields:
+      data: { css: 'div.card-subscription.radius > div.card-subscription-header > h5.card-subscription-header-title.color-red', type: data }
+
+destinations:
+  # Most "internet bundle" requests mean the mobile Plus bundles; home internet must be named.
+  - id: web.mobile-internet-bundles.vodafone-plus
+    priority: 1.4
+    labels:
+      ar: [باقات النت, باقات الإنترنت, باقات الانترنت, باقات بلس, باقات ڤودافون بلس, باقة نت]
+    examples:
+      ar: [إيه أرخص باقة نت, عايز باقة نت رخيصة, إيه أكبر باقة نت, باقات النت بكام, وريني باقات النت]
+    flows: [subscribe]
+  - id: web.mobile-internet-bundles.plus--37---600egp
+    priority: 1.4
+    labels:
+      en: [internet bundles, mobile internet bundles, data bundles, plus bundles, internet bundle]
+    examples:
+      en: [what's the cheapest internet bundle, which bundle has the most data, show me the internet bundles, how much are the data bundles]
+    flows: [subscribe]
+  # The store finder's search box (seen on the live page 2026-10-23: #keyword, with city and area lists).
+  - id: web.spa-storelocator.search
+    pageId: web.spa-storelocator
+    kind: section
+    target: { css: ['#keyword', 'input[type="search"]'], text: {} }
+    labels:
+      ar: [ابحث عن فرع, دور على فرع, أقرب فرع, فين أقرب فرع]
+      en: [search for a store, find a store, nearest store, store search]
+    examples:
+      ar: [فين أقرب فرع, عايز أروح فرع ڤودافون, فين فرع ڤودافون]
+      en: [where's the nearest store, find a vodafone store near me, where can I find a store]
+    priority: 1.3
+  # Page watch on the offers list.
+  - id: web.promotions.check-out-our-latest-offers-and-choose-y
+    watchable: true
+    labels:
+      ar: [العروض, عروض ڤودافون]
+      en: [offers, the offers, promotions]
+  - id: web.spa-networkcoveragechecker
+    priority: 1.2
+  - id: web.spa-vodafone-flex
+    priority: 1.2
+    examples:
+      ar: [عايز أعرف عن فليكس, أنظمة فليكس]
+      en: [tell me about flex, vodafone flex plans]
+  - id: web.wireless-net
+    priority: 1.2
+  - id: web.spa-faq
+    priority: 1.3
+    examples:
+      ar: [عندي سؤال, الأسئلة الشائعة]
+      en: [frequently asked questions, I have a question]
+  - id: web.vodafone-cash
+    priority: 1.2
+  - id: web.vodafone-red1
+    priority: 1.2
+
+visuals:
+  # The bundles page hero has its Arabic copy inside the picture (audit §9). Described from the
+  # live page on 2026-10-23; re-check after every sync (it changes with campaigns).
+  - id: web.mobile-internet-bundles.pablo
+    confidence: 0.9
+    description:
+      ar: 'إعلان ڤودافون بلس: «لما يبقى مفيش زيك متنافسش إلا نفسك». جدد باقة ڤودافون بلس وصوّت من تطبيق أنا ڤودافون عشان تكسب بلايستيشن 5.'
+      en: 'A Vodafone Plus ad: "When there is no one like you, you only compete with yourself". Renew your Vodafone Plus bundle and vote in the Ana Vodafone app to win a PlayStation 5.'
+
+flows:
+  # Public pages only (ADR-0032): the guide shows where to subscribe and stops. Subscribing happens
+  # in Vodafone's signed-in app, which the guide neither signs in to nor confirms.
+  - id: subscribe
+    labels:
+      ar: [اشترك, الاشتراك, اشتراك, فعّل الباقة, أشترك]
+      en: [subscribe, sign up, buy this bundle, activate]
+    examples:
+      ar: [أشترك فيها إزاي, عايز أشترك في الباقة دي, اشتركلي فيها, اشترك فيها]
+      en: [how do I subscribe to it, subscribe me to this bundle, I want to buy it, subscribe to it]
+    appliesTo: { collectionIds: [web.mobile-internet-bundles.vodafone-plus, web.mobile-internet-bundles.plus--37---600egp] }
+    steps:
+      - op: spotlight
+        target: { css: ['a[href*="miManagement"]', 'a.btn'], within: item, text: { ar: اشترك الاّن, en: Subscribe now } }
+        caption: { ar: اشترك من هنا, en: Subscribe here }
+      - op: confirm
+        target: { css: ['a[href*="miManagement"]', 'a.btn'], within: item, text: { ar: اشترك الاّن, en: Subscribe now } }
+        message:
+          ar: 'دوس «اشترك الآن» بنفسك، وهتدخل على حسابك في ڤودافون وتأكد الاشتراك هناك. أنا مش بدخل على الحسابات ولا بأكد اشتراكات.'
+          en: 'Press "Subscribe now" yourself. You will sign in to your Vodafone account and confirm there. I do not sign in or confirm subscriptions.'
