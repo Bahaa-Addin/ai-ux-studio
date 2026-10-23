@@ -25,7 +25,7 @@ import { buildSdk } from '../../packages/sdk/build.ts'
 import { createGateway } from '../../services/gateway/server.ts'
 import { createServices } from '../../services/index.ts'
 import { type DemoBrowser, launchDemoBrowser } from '../../tools/demo-browser.ts'
-import { heard } from './browser.ts'
+import { heard, type } from './browser.ts'
 
 const PORT = 4471
 const WEB = 'https://web.vodafone.com.eg'
@@ -296,7 +296,8 @@ test('"stop" ends what the guide is doing', async () => {
 })
 
 test('X-ray fills from long-polled events through the page origin', async () => {
-	const turns = await page.evaluate(() => (window as any).voiceGuide.xray.view().turns.length)
+	// The X-ray is its own chunk (T-504): load it, and it gets every event seen so far.
+	const turns = await page.evaluate(async () => (await (window as any).voiceGuide.loadXray()).view().turns.length)
 	assert.ok(turns >= 1, `the X-ray has turns (${turns})`)
 	const view = await page.evaluate(() => (window as any).voiceGuide.xray.view())
 	const layers = view.turns.flatMap((t: any) => t.events.map((e: any) => e.layer))
@@ -329,4 +330,32 @@ test('no speech service (Chromium, offline): the bar says so, the mic is release
 	assert.match(v.bar, /تكتب|type/i, 'it offers typing instead of "try again"')
 	assert.equal(v.focused, 'INPUT', 'the text box has focus')
 	assert.ok(await page.evaluate(() => ((window as any).__vgStreams as MediaStream[]).every((s) => s.getTracks().every((t) => t.readyState === 'ended'))), 'the microphone was released')
+})
+
+test('a typed request with the panel open: the panel moves so it never covers the highlighted card', async () => {
+	await page.goto(`${WEB}/ar/mobile-internet-bundles`)
+	await ready()
+	await page.evaluate(() => (window as any).voiceGuide.ui.open())
+	const before = (await rect('.panel', true))!
+	await type(page, 'إيه أرخص باقة نت')
+	await heard(page, /37/, 15_000)
+	await page.waitForTimeout(700)
+	const r = await shadow((root) => {
+		const box = (el: Element | null) => {
+			if (!el || getComputedStyle(el).display === 'none') return null
+			const b = el.getBoundingClientRect()
+			return { l: b.left, t: b.top, r: b.right, b: b.bottom }
+		}
+		return { spot: box(root.querySelector('.spot.on')), panel: box(root.querySelector('.panel')) }
+	})
+	assert.ok(r.spot, 'the card is highlighted')
+	if (r.panel) {
+		const overlap = r.spot!.l < r.panel.r && r.spot!.r > r.panel.l && r.spot!.t < r.panel.b && r.spot!.b > r.panel.t
+		assert.equal(overlap, false, `panel ${JSON.stringify(r.panel)} covers spotlight ${JSON.stringify(r.spot)}`)
+		assert.notEqual(Math.round(r.panel.l), Math.round(before.x), 'the panel moved to the other side')
+	}
+	// When the spotlight ends, the panel goes back where the person had it.
+	await page.evaluate(() => (window as any).voiceGuide.ui.clearSpotlight())
+	const after = (await rect('.panel', true))!
+	assert.equal(Math.round(after.x), Math.round(before.x))
 })

@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import { VODAFONE_CSS, VODAFONE_THEME } from '../../packages/sdk/src/theme/vodafone.ts'
 import { levelFromRms, smooth } from '../../packages/sdk/src/voice/audio.ts'
 import { LAUNCHER_CSS } from '../../packages/sdk/src/voice/launcher.ts'
+import { XRAY_CSS } from '../../packages/sdk/src/xray-css.ts'
 import { diffWords, tokenize, wordsOf } from '../../packages/sdk/src/voice/words.ts'
 
 test('words: final words first, then interim ones', () => {
@@ -93,6 +94,7 @@ test('theme: the guide uses only Vodafone palette colours (no new colours, rule 
 	for (const [name, css] of [
 		['VODAFONE_CSS', VODAFONE_CSS],
 		['LAUNCHER_CSS', LAUNCHER_CSS],
+		['XRAY_CSS', XRAY_CSS],
 	] as const) {
 		const colours = css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g) || []
 		const outside = [...new Set(colours.map(rgbOf))].filter((c) => !PALETTE.includes(c))

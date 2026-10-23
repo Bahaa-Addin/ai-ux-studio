@@ -140,4 +140,79 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 	}
 }
 
-;(window as any).__vgAgent = { runAgent }
+export interface GuideAgentContext {
+	gateway: string
+	token: string
+	sessionId: string
+	lang: string
+	maxSteps: number
+	timeoutSec: number
+	commitSelectors: string[]
+	post(path: string, body: unknown, opts?: { keepalive?: boolean }): Promise<unknown>
+	say(text: string): Promise<void>
+	unavailable: string
+	report(turnId: string, events: { name: string; attrs: Record<string, unknown>; ms?: number }[]): void
+	firstMotion(): void
+	onAbort(abort: AbortController | null): void
+	onAsk(resolve: ((answer: string) => void) | null): void
+}
+
+/**
+ * The guide's side of an agent task (moved here from guide.js to keep the main script small,
+ * T-504): saves progress in order after every step, reports steps, speaks only the model's own
+ * closing words.
+ */
+export async function runForGuide(c: GuideAgentContext, step: { task: string; hints?: string; maxSteps?: number }, turnId: string, signal: AbortSignal, previous?: { lines: string[]; steps: number; startedAt?: string }): Promise<void> {
+	const abort = new AbortController()
+	signal.addEventListener('abort', () => abort.abort())
+	c.onAbort(abort)
+	const t0 = performance.now()
+	// The time limit covers the whole task, across page loads.
+	const startedAt = previous?.startedAt || new Date().toISOString()
+	// Saves go out one after another: a step's save that is still in flight must never land
+	// after the final "done" (null) and bring a finished task back to life on the next page.
+	let saving: Promise<unknown> = Promise.resolve()
+	const save = (state: { lines: string[]; steps: number } | null) =>
+		(saving = saving.then(() =>
+			c
+				.post('/v1/agent/state', { sessionId: c.sessionId, agent: state ? { task: step.task, history: state.lines, steps: state.steps, startedAt, turnId, hints: step.hints, maxSteps: step.maxSteps } : null }, { keepalive: true })
+				.catch(() => {}),
+		))
+	try {
+		c.firstMotion()
+		await save(previous ? { lines: previous.lines, steps: previous.steps } : { lines: [], steps: 0 })
+		const r = await runAgent({
+			gateway: c.gateway,
+			token: c.token,
+			turnId,
+			task: step.task,
+			hints: step.hints,
+			lang: c.lang,
+			maxSteps: step.maxSteps || c.maxSteps,
+			timeoutSec: c.timeoutSec,
+			commitSelectors: c.commitSelectors,
+			previous,
+			signal: abort.signal,
+			onStep: (ev) => c.report(turnId, [{ name: 'agent.step', attrs: { step: ev.step, action: ev.action, goal: ev.goal }, ms: ev.ms }]),
+			onSave: (state) => void save(state),
+			onAsk: (q) => {
+				void c.say(q)
+				return new Promise<string>((resolve) => c.onAsk(resolve))
+			},
+		})
+		await save(null)
+		c.report(turnId, [{ name: 'agent.done', attrs: { success: r.success, steps: r.steps, error: r.error }, ms: performance.now() - t0 }])
+		if (abort.signal.aborted) return
+		if (r.text) await c.say(r.text)
+		else if (r.error) await c.say(c.unavailable)
+	} catch (e) {
+		if (abort.signal.aborted) return
+		await save(null)
+		await c.say(c.unavailable)
+		c.report(turnId, [{ name: 'sdk.step', attrs: { op: 'agent', ok: false, detail: (e as Error).message } }])
+	} finally {
+		c.onAbort(null)
+	}
+}
+
+;(window as any).__vgAgent = { runAgent, runForGuide }
