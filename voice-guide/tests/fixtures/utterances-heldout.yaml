@@ -1,0 +1,28 @@
+# Held-out set: written after tuning on utterances.yaml and never tuned against.
+# Its score is the honest estimate of how the local router does on new phrasings.
+# Do not fix failures by editing the router to fit these lines; move a line into
+# utterances.yaml first, then fix, and write new held-out lines.
+- { say: عايز أرخص باقة, dest: web.bundles.mobile-internet, select: min-price }
+- { say: فيه باقة نت رخيصة؟, dest: web.bundles.mobile-internet, select: min-price }
+- { say: إيه أغلى باقة, dest: web.bundles.mobile-internet, select: max-price }
+- { say: باقات البيت, dest: web.bundles.home-internet }
+- { say: لو عايز نت في البيت أعمل إيه, dest: web.bundles.home-internet }
+- { say: "I need more data for my phone", dest: web.bundles.mobile-internet }
+- { say: "what plans do you have for home broadband", dest: web.bundles.home-internet }
+- { say: "biggest bundle", dest: web.bundles.mobile-internet, select: max-data }
+- { say: "how much is Super 10", dest: web.bundles.mobile-internet.mi-10 }
+- { say: سعر ماكس ١٢٠ كام, dest: web.bundles.mobile-internet.mi-120 }
+- { say: اشتركلي في ميجا ٢٥, intent: flow, dest: web.bundles.mobile-internet.mi-25 }
+- { say: "sign me up for Home Lite", intent: flow, dest: web.bundles.home-internet.hi-140 }
+- { say: "what's on this picture", page: web.home, intent: describe, dest: web.home.demo-telco.visual }
+- { say: الخريطة بتقول إيه, page: web.coverage, intent: describe, dest: web.coverage.4g-and-5g-coverage-by-region.visual }
+- { say: "is 5G available in Cairo", dest: web.coverage.4g-and-5g-coverage-by-region.visual }
+- { say: "where can I see my remaining gigabytes", dest: app.account.data-balance }
+- { say: باقي كام في الباقة, dest: app.account.data-balance }
+- { say: "notify me when the students offer changes", intent: watch, dest: web.offers.students-offer }
+- { say: نبهني لو عرض التجوال اتغير, intent: watch, dest: web.offers.roaming-offer }
+- { say: "how can I top up my line", dest: web.help.faq-recharge }
+- { say: إزاي أعرف رصيدي, dest: web.help.faq-balance }
+- { say: "roaming discounts in the gulf", dest: web.offers.roaming-offer }
+- { say: "are there any deals right now", dest: web.offers }
+- { say: "type my number 01012345678", page: web.subscribe, intent: act, route: agent }

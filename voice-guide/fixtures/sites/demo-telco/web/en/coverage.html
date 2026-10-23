@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demo Telco | Coverage</title>
+<link rel="alternate" hreflang="ar" href="/ar/coverage.html">
+<link rel="alternate" hreflang="en" href="/en/coverage.html">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<header class="site"><div class="wrap">
+	<a class="logo" href="/en/index.html"><img src="/assets/logo.svg" alt=""> Demo Telco</a>
+	<nav class="main" aria-label="Main">
+		<a href="/en/index.html">Home</a>
+		<a href="/en/bundles.html">Bundles</a>
+		<a href="/en/offers.html">Offers</a>
+		<a href="/en/coverage.html" aria-current="page">Coverage</a>
+		<a href="/en/help.html">Help</a>
+		<a href="http://localhost:4402/en/account.html">My account</a>
+	</nav>
+	<a class="lang-switch" href="/ar/coverage.html" hreflang="ar" lang="ar">العربية</a>
+</div></header>
+<main class="wrap">
+	<h1>Coverage</h1>
+	<h2>Coverage map</h2>
+	<figure id="coverage-map">
+		<svg role="img" aria-labelledby="map-title map-desc" viewBox="0 0 420 300" width="100%" height="300">
+			<title id="map-title">4G and 5G coverage by region</title>
+			<desc id="map-desc">5G is available in Cairo, Giza and Alexandria. Aswan has 4G coverage.</desc>
+			<rect x="0" y="0" width="420" height="300" fill="#eef3f4"/>
+			<path d="M60 40 L170 30 L190 110 L80 120 Z" fill="#0b6e6e"><title>Alexandria: 5G</title></path>
+			<path d="M200 120 L300 110 L310 180 L210 190 Z" fill="#0b6e6e"><title>Cairo: 5G</title></path>
+			<path d="M150 130 L200 125 L205 195 L145 200 Z" fill="#0b6e6e"><title>Giza: 5G</title></path>
+			<path d="M260 220 L330 215 L340 285 L270 290 Z" fill="#8cc7c7"><title>Aswan: 4G</title></path>
+			<text x="85" y="80" fill="#fff" font-size="13">Alexandria</text>
+			<text x="225" y="155" fill="#fff" font-size="13">Cairo</text>
+			<text x="155" y="170" fill="#fff" font-size="13">Giza</text>
+			<text x="280" y="258" fill="#14212b" font-size="13">Aswan</text>
+		</svg>
+		<figcaption>Dark: 5G. Light: 4G.</figcaption>
+	</figure>
+	<div class="charts">
+		<figure id="speed">
+			<h2>Average download speed by city</h2>
+			<canvas id="speed-chart" width="520" height="230"></canvas>
+		</figure>
+		<figure id="rollout">
+			<h2>5G rollout progress</h2>
+			<canvas id="rollout-gl" width="520" height="230"></canvas>
+			<figcaption>Share of sites upgraded, by quarter.</figcaption>
+		</figure>
+	</div>
+</main>
+<footer class="site"><div class="wrap">© 2026 Demo Telco. A fictional site used to test the voice guide.</div></footer>
+<script src="/assets/site.js"></script>
+</body>
+</html>

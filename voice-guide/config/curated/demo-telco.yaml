@@ -1,0 +1,115 @@
+# Curated overlay for demo-telco (ADR-0011). The KB builder merges this over the
+# crawler's output. Keep it small: add what the crawler cannot know (how people
+# ask, Egyptian Arabic phrasings, journeys, commit points) and nothing else.
+# Ids come from the ingest report (npm run ingest -- --site demo-telco --dry-run).
+
+lexicon:
+  synonyms:
+    - [نت, انترنت, إنترنت, داتا, بيانات, internet, data]
+    - [باقة, باقات, باقه, عرض الباقة, bundle, bundles, plan, plans, package]
+    - [جيجا, جيجابايت, جيجات, gb, giga, gigabyte, gigabytes]
+    - [موبايل, محمول, الموبايل, mobile, cellular, phone]
+    - [منزلي, البيت, هوم, ارضي, أرضي, home, adsl, broadband, router]
+    - [رصيد, balance, credit]
+    - [اشحن, شحن, recharge, top up, topup]
+    - [تغطية, شبكة, ابراج, coverage, network, signal]
+    - [عرض, عروض, خصم, offer, offers, promo, promotion, deal]
+    - [سرعة, سرعه, speed, mbps]
+  intents:
+    watch:
+      ar: [عرفني لما, بلغني لما, نبهني لما, قولي لو اتغير, ابعتلي لما يتغير]
+      en: [tell me when, notify me when, let me know if, alert me when]
+
+pages:
+  - id: web.home
+    labels:
+      ar: [الصفحة الرئيسية, الرئيسية]
+      en: [home page, main page, homepage]
+  - id: web.subscribe
+    kind: checkout
+  - id: app.account
+    kind: account
+    requiresAuth: true
+    labels:
+      ar: [حسابي, حسابي على ديمو تيلكو]
+      en: [my account, account]
+  - id: web.help
+    kind: help
+
+destinations:
+  - id: web.bundles.mobile-internet
+    # Most "internet bundle" requests mean mobile; home internet must be named.
+    priority: 1.3
+    labels:
+      ar: [باقات إنترنت الموبايل, باقات النت, باقات الداتا, باقات الإنترنت]
+      en: [mobile internet bundles, mobile data bundles, internet bundles, data plans]
+    examples:
+      ar: [إيه أرخص باقة نت, عايز باقة إنترنت للموبايل, إيه أكبر باقة داتا]
+      en: [what's the cheapest internet bundle, show me the mobile data bundles, which bundle has the most data]
+    flows: [subscribe]
+
+  - id: web.bundles.home-internet
+    labels:
+      ar: [باقات الإنترنت المنزلي, النت الأرضي, إنترنت البيت]
+      en: [home internet bundles, home broadband, adsl plans]
+    examples:
+      ar: [إيه أرخص باقة نت للبيت, عايز إنترنت أرضي]
+      en: [what's the cheapest home internet plan, show me home internet]
+    flows: [subscribe]
+
+  - id: web.offers.weekend-offer
+    watchable: true
+    labels:
+      ar: [عرض نهاية الأسبوع, عرض الويك إند, الداتا الدبل]
+      en: [weekend offer, double data weekend]
+  - id: web.offers.roaming-offer
+    watchable: true
+  - id: web.offers.students-offer
+    watchable: true
+
+  - id: app.account.data-balance
+    labels:
+      ar: [الإنترنت المتبقي, فاضل كام جيجا, رصيد النت, الباقي من الباقة]
+      en: [remaining data, data balance, data left]
+    examples:
+      ar: [فاضلي كام جيجا, باقي معايا كام نت]
+      en: [how much data do I have left, what's my data balance]
+    answer:
+      fields:
+        remaining: { css: ['#remaining-data'] }
+        allowance: { css: ['#bundle-allowance'] }
+        renewal: { css: ['#renewal-date'] }
+      template:
+        ar: 'فاضل لك {remaining} من {allowance}، والباقة بتتجدد في {renewal}.'
+        en: 'You have {remaining} left of {allowance}. It renews on {renewal}.'
+
+  - id: web.help.faq-balance
+    examples:
+      ar: [أعرف رصيدي إزاي, عايز أعرف رصيدي]
+      en: [how do I check my balance, how can I see my balance]
+  - id: web.help.faq-recharge
+    examples:
+      ar: [أشحن رصيد إزاي, عايز أشحن]
+      en: [how do I recharge, how can I top up]
+
+flows:
+  - id: subscribe
+    labels:
+      ar: [اشترك, الاشتراك, اشتراك, فعّل الباقة]
+      en: [subscribe, sign up, buy this bundle, activate]
+    examples:
+      ar: [أشترك فيها إزاي, عايز أشترك في الباقة دي, اشتركلي فيها]
+      en: [how do I subscribe to it, subscribe me to this bundle, I want to buy it]
+    appliesTo: { collectionIds: [web.bundles.mobile-internet, web.bundles.home-internet] }
+    steps:
+      - op: click
+        target: { css: ['a.btn'], within: item, text: { ar: اشترك الآن, en: Subscribe } }
+      - { op: waitForPage, pageId: web.subscribe }
+      - op: spotlight
+        target: { css: ['#checkout'] }
+        caption: { ar: راجع الباقة وبيانات الدفع, en: Review the bundle and payment details }
+      - op: confirm
+        target: { css: ['#confirm-pay'] }
+        message:
+          ar: 'لما تكون جاهز، دوس «تأكيد والدفع» بنفسك. أنا مش هدوس عليه.'
+          en: 'When you are ready, press "Confirm and pay" yourself. I will not press it for you.'

@@ -1,0 +1,1548 @@
+{
+ "standard": "site-knowledge/0.1",
+ "site": {
+  "id": "demo-telco",
+  "name": {
+   "ar": "ديمو تيلكو",
+   "en": "Demo Telco"
+  },
+  "origins": [
+   "http://localhost:4401",
+   "http://localhost:4402"
+  ],
+  "languages": [
+   "ar",
+   "en"
+  ],
+  "defaultLanguage": "ar"
+ },
+ "version": {
+  "id": "20261023-021650-553745",
+  "createdAt": "2026-10-23T02:16:50.241Z",
+  "hash": "5537458a8bacd36d",
+  "crawl": {
+   "id": "crawl-20261023T021646",
+   "startedAt": "2026-10-23T02:16:46.679Z",
+   "pages": 14
+  }
+ },
+ "pages": [
+  {
+   "id": "web.bundles",
+   "kind": "content",
+   "variants": {
+    "ar": {
+     "url": "http://localhost:4401/ar/bundles.html",
+     "title": "باقات الإنترنت"
+    },
+    "en": {
+     "url": "http://localhost:4401/en/bundles.html",
+     "title": "Internet bundles"
+    }
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.coverage",
+   "kind": "content",
+   "variants": {
+    "ar": {
+     "url": "http://localhost:4401/ar/coverage.html",
+     "title": "التغطية"
+    },
+    "en": {
+     "url": "http://localhost:4401/en/coverage.html",
+     "title": "Coverage"
+    }
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.help",
+   "kind": "help",
+   "variants": {
+    "ar": {
+     "url": "http://localhost:4401/ar/help.html",
+     "title": "المساعدة"
+    },
+    "en": {
+     "url": "http://localhost:4401/en/help.html",
+     "title": "Help"
+    }
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "web.home",
+   "kind": "content",
+   "variants": {
+    "ar": {
+     "url": "http://localhost:4401/ar/index.html",
+     "title": "الرئيسية"
+    },
+    "en": {
+     "url": "http://localhost:4401/en/index.html",
+     "title": "Home"
+    }
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "web.offers",
+   "kind": "content",
+   "variants": {
+    "ar": {
+     "url": "http://localhost:4401/ar/offers.html",
+     "title": "العروض"
+    },
+    "en": {
+     "url": "http://localhost:4401/en/offers.html",
+     "title": "Offers"
+    }
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.subscribe",
+   "kind": "checkout",
+   "variants": {
+    "ar": {
+     "url": "http://localhost:4401/ar/subscribe.html",
+     "title": "تأكيد الاشتراك"
+    },
+    "en": {
+     "url": "http://localhost:4401/en/subscribe.html",
+     "title": "Confirm your subscription"
+    }
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "app.account",
+   "kind": "account",
+   "variants": {
+    "ar": {
+     "url": "http://localhost:4402/ar/account.html",
+     "title": "حسابي"
+    },
+    "en": {
+     "url": "http://localhost:4402/en/account.html",
+     "title": "My account"
+    }
+   },
+   "requiresAuth": true,
+   "provenance": "merged"
+  }
+ ],
+ "destinations": [
+  {
+   "id": "web.bundles",
+   "pageId": "web.bundles",
+   "kind": "page",
+   "labels": {
+    "ar": [
+     "باقات الإنترنت",
+     "الباقات",
+     "تغيير الباقة",
+     "باقات الموبايل",
+     "الإنترنت المنزلي",
+     "اختر باقة"
+    ],
+    "en": [
+     "Internet bundles",
+     "Bundles",
+     "Change bundle",
+     "See mobile bundles",
+     "See home internet",
+     "Choose a bundle"
+    ]
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.coverage",
+   "pageId": "web.coverage",
+   "kind": "page",
+   "labels": {
+    "ar": [
+     "التغطية"
+    ],
+    "en": [
+     "Coverage"
+    ]
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.help",
+   "pageId": "web.help",
+   "kind": "page",
+   "labels": {
+    "ar": [
+     "المساعدة"
+    ],
+    "en": [
+     "Help"
+    ]
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "web.home",
+   "pageId": "web.home",
+   "kind": "page",
+   "labels": {
+    "ar": [
+     "الصفحة الرئيسية",
+     "الرئيسية",
+     "ديمو تيلكو"
+    ],
+    "en": [
+     "home page",
+     "main page",
+     "homepage",
+     "Home",
+     "Demo Telco"
+    ]
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "web.offers",
+   "pageId": "web.offers",
+   "kind": "page",
+   "labels": {
+    "ar": [
+     "العروض"
+    ],
+    "en": [
+     "Offers"
+    ]
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.subscribe",
+   "pageId": "web.subscribe",
+   "kind": "page",
+   "labels": {
+    "ar": [
+     "تأكيد الاشتراك",
+     "اشترك الآن"
+    ],
+    "en": [
+     "Confirm your subscription",
+     "Subscribe"
+    ]
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "app.account",
+   "pageId": "app.account",
+   "kind": "page",
+   "labels": {
+    "ar": [
+     "حسابي",
+     "حسابي على ديمو تيلكو"
+    ],
+    "en": [
+     "my account",
+     "account",
+     "My account"
+    ]
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "web.bundles.mobile-internet",
+   "pageId": "web.bundles",
+   "kind": "collection",
+   "target": {
+    "css": [
+     "#mobile-internet",
+     "#bundle-tabs > section:nth-of-type(1)"
+    ],
+    "text": {
+     "ar": "إنترنت الموبايل",
+     "en": "Mobile internet"
+    }
+   },
+   "labels": {
+    "ar": [
+     "باقات إنترنت الموبايل",
+     "باقات النت",
+     "باقات الداتا",
+     "باقات الإنترنت",
+     "إنترنت الموبايل"
+    ],
+    "en": [
+     "mobile internet bundles",
+     "mobile data bundles",
+     "internet bundles",
+     "data plans",
+     "Mobile internet"
+    ]
+   },
+   "examples": {
+    "ar": [
+     "إيه أرخص باقة نت",
+     "عايز باقة إنترنت للموبايل",
+     "إيه أكبر باقة داتا"
+    ],
+    "en": [
+     "what's the cheapest internet bundle",
+     "show me the mobile data bundles",
+     "which bundle has the most data"
+    ]
+   },
+   "collectionId": "web.bundles.mobile-internet",
+   "flows": [
+    "subscribe"
+   ],
+   "priority": 1.3,
+   "provenance": "merged"
+  },
+  {
+   "id": "web.bundles.mobile-internet.mi-10",
+   "pageId": "web.bundles",
+   "kind": "item",
+   "target": {
+    "css": [
+     "#mobile-internet > div.grid > article.bundle-card[data-bundle=\"mi-10\"]"
+    ],
+    "text": {
+     "ar": "سوبر ١٠",
+     "en": "Super 10"
+    }
+   },
+   "labels": {
+    "ar": [
+     "سوبر ١٠"
+    ],
+    "en": [
+     "Super 10"
+    ]
+   },
+   "collectionId": "web.bundles.mobile-internet",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.mobile-internet.mi-25",
+   "pageId": "web.bundles",
+   "kind": "item",
+   "target": {
+    "css": [
+     "#mobile-internet > div.grid > article.bundle-card[data-bundle=\"mi-25\"]"
+    ],
+    "text": {
+     "ar": "ميجا ٢٥",
+     "en": "Mega 25"
+    }
+   },
+   "labels": {
+    "ar": [
+     "ميجا ٢٥"
+    ],
+    "en": [
+     "Mega 25"
+    ]
+   },
+   "collectionId": "web.bundles.mobile-internet",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.mobile-internet.mi-60",
+   "pageId": "web.bundles",
+   "kind": "item",
+   "target": {
+    "css": [
+     "#mobile-internet > div.grid > article.bundle-card[data-bundle=\"mi-60\"]"
+    ],
+    "text": {
+     "ar": "ألترا ٦٠",
+     "en": "Ultra 60"
+    }
+   },
+   "labels": {
+    "ar": [
+     "ألترا ٦٠"
+    ],
+    "en": [
+     "Ultra 60"
+    ]
+   },
+   "collectionId": "web.bundles.mobile-internet",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.mobile-internet.mi-120",
+   "pageId": "web.bundles",
+   "kind": "item",
+   "target": {
+    "css": [
+     "#mobile-internet > div.grid > article.bundle-card[data-bundle=\"mi-120\"]"
+    ],
+    "text": {
+     "ar": "ماكس ١٢٠",
+     "en": "Max 120"
+    }
+   },
+   "labels": {
+    "ar": [
+     "ماكس ١٢٠"
+    ],
+    "en": [
+     "Max 120"
+    ]
+   },
+   "collectionId": "web.bundles.mobile-internet",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.home-internet",
+   "pageId": "web.bundles",
+   "kind": "collection",
+   "target": {
+    "css": [
+     "#home-internet",
+     "#bundle-tabs > section:nth-of-type(2)"
+    ],
+    "text": {
+     "ar": "الإنترنت المنزلي",
+     "en": "Home internet"
+    }
+   },
+   "labels": {
+    "ar": [
+     "باقات الإنترنت المنزلي",
+     "النت الأرضي",
+     "إنترنت البيت",
+     "الإنترنت المنزلي"
+    ],
+    "en": [
+     "home internet bundles",
+     "home broadband",
+     "adsl plans",
+     "Home internet"
+    ]
+   },
+   "examples": {
+    "ar": [
+     "إيه أرخص باقة نت للبيت",
+     "عايز إنترنت أرضي"
+    ],
+    "en": [
+     "what's the cheapest home internet plan",
+     "show me home internet"
+    ]
+   },
+   "reveal": [
+    {
+     "css": [
+      "#tab-home",
+      "button[aria-controls=\"home-internet\"]",
+      "#bundle-tabs > div > button:nth-of-type(2)"
+     ],
+     "text": {
+      "ar": "الإنترنت المنزلي",
+      "en": "Home internet"
+     },
+     "role": "tab"
+    }
+   ],
+   "collectionId": "web.bundles.home-internet",
+   "flows": [
+    "subscribe"
+   ],
+   "provenance": "merged"
+  },
+  {
+   "id": "web.bundles.home-internet.hi-140",
+   "pageId": "web.bundles",
+   "kind": "item",
+   "target": {
+    "css": [
+     "#home-internet > div.grid > article.bundle-card[data-bundle=\"hi-140\"]"
+    ],
+    "text": {
+     "ar": "هوم لايت",
+     "en": "Home Lite"
+    }
+   },
+   "labels": {
+    "ar": [
+     "هوم لايت"
+    ],
+    "en": [
+     "Home Lite"
+    ]
+   },
+   "reveal": [
+    {
+     "css": [
+      "#tab-home",
+      "button[aria-controls=\"home-internet\"]",
+      "#bundle-tabs > div > button:nth-of-type(2)"
+     ],
+     "text": {
+      "ar": "الإنترنت المنزلي",
+      "en": "Home internet"
+     },
+     "role": "tab"
+    }
+   ],
+   "collectionId": "web.bundles.home-internet",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.home-internet.hi-250",
+   "pageId": "web.bundles",
+   "kind": "item",
+   "target": {
+    "css": [
+     "#home-internet > div.grid > article.bundle-card[data-bundle=\"hi-250\"]"
+    ],
+    "text": {
+     "ar": "هوم بلس",
+     "en": "Home Plus"
+    }
+   },
+   "labels": {
+    "ar": [
+     "هوم بلس"
+    ],
+    "en": [
+     "Home Plus"
+    ]
+   },
+   "reveal": [
+    {
+     "css": [
+      "#tab-home",
+      "button[aria-controls=\"home-internet\"]",
+      "#bundle-tabs > div > button:nth-of-type(2)"
+     ],
+     "text": {
+      "ar": "الإنترنت المنزلي",
+      "en": "Home internet"
+     },
+     "role": "tab"
+    }
+   ],
+   "collectionId": "web.bundles.home-internet",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.home-internet.hi-400",
+   "pageId": "web.bundles",
+   "kind": "item",
+   "target": {
+    "css": [
+     "#home-internet > div.grid > article.bundle-card[data-bundle=\"hi-400\"]"
+    ],
+    "text": {
+     "ar": "هوم ماكس",
+     "en": "Home Max"
+    }
+   },
+   "labels": {
+    "ar": [
+     "هوم ماكس"
+    ],
+    "en": [
+     "Home Max"
+    ]
+   },
+   "reveal": [
+    {
+     "css": [
+      "#tab-home",
+      "button[aria-controls=\"home-internet\"]",
+      "#bundle-tabs > div > button:nth-of-type(2)"
+     ],
+     "text": {
+      "ar": "الإنترنت المنزلي",
+      "en": "Home internet"
+     },
+     "role": "tab"
+    }
+   ],
+   "collectionId": "web.bundles.home-internet",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.bundle-tabs",
+   "pageId": "web.bundles",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#bundle-tabs",
+     "main.wrap > div.tabs"
+    ],
+    "text": {
+     "ar": "باقات الإنترنت",
+     "en": "Internet bundles"
+    }
+   },
+   "labels": {
+    "ar": [
+     "باقات الإنترنت"
+    ],
+    "en": [
+     "Internet bundles"
+    ]
+   },
+   "description": {
+    "ar": "إنترنت الموبايل الإنترنت المنزلي سوبر ١٠ ١٠ جيجابايت ١٥٠ جنيه / شهريًا صالحة ٣٠ يومًا اشترك الآن ميجا ٢٥ ٢٥ جيجابايت ٢٥٠ جنيه / شهريًا صالحة ٣٠ يومًا اشترك الآن ألترا ٦٠ ٦٠ جيجابايت ٤٠٠ جنيه / شهريًا صالحة ٣٠ يومًا اشترك الآن ماكس ١٢٠ ١٢٠ ج",
+    "en": "Mobile internet Home internet Super 10 10 GB 150 EGP / month Valid for 30 days Subscribe Mega 25 25 GB 250 EGP / month Valid for 30 days Subscribe Ultra 60 60 GB 400 EGP / month Valid for 30 days Subscribe Max 120 120 GB 650 EGP / month Val"
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.help.faq-balance",
+   "pageId": "web.help",
+   "kind": "faq",
+   "target": {
+    "css": [
+     "#faq-balance",
+     "main.wrap > details:nth-of-type(1)"
+    ],
+    "text": {
+     "ar": "إزاي أعرف رصيدي؟",
+     "en": "How do I check my balance?"
+    }
+   },
+   "labels": {
+    "ar": [
+     "إزاي أعرف رصيدي؟"
+    ],
+    "en": [
+     "How do I check my balance?"
+    ]
+   },
+   "examples": {
+    "ar": [
+     "أعرف رصيدي إزاي",
+     "عايز أعرف رصيدي"
+    ],
+    "en": [
+     "how do I check my balance",
+     "how can I see my balance"
+    ]
+   },
+   "description": {
+    "ar": "اطلب ‎*868*1#‎ أو افتح «حسابي» عشان تشوف الإنترنت المتبقي ورصيدك.",
+    "en": "Dial *868*1# or open My account to see your remaining data and balance."
+   },
+   "reveal": [
+    {
+     "css": [
+      "#faq-balance > summary"
+     ],
+     "text": {
+      "ar": "إزاي أعرف رصيدي؟",
+      "en": "How do I check my balance?"
+     },
+     "role": "summary"
+    }
+   ],
+   "answer": {
+    "fields": {
+     "answer": {
+      "css": [
+       "#faq-balance > :not(summary)"
+      ]
+     }
+    },
+    "template": {
+     "ar": "{answer}",
+     "en": "{answer}"
+    }
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "web.help.faq-recharge",
+   "pageId": "web.help",
+   "kind": "faq",
+   "target": {
+    "css": [
+     "#faq-recharge",
+     "main.wrap > details:nth-of-type(2)"
+    ],
+    "text": {
+     "ar": "إزاي أشحن رصيد؟",
+     "en": "How do I recharge?"
+    }
+   },
+   "labels": {
+    "ar": [
+     "إزاي أشحن رصيد؟"
+    ],
+    "en": [
+     "How do I recharge?"
+    ]
+   },
+   "examples": {
+    "ar": [
+     "أشحن رصيد إزاي",
+     "عايز أشحن"
+    ],
+    "en": [
+     "how do I recharge",
+     "how can I top up"
+    ]
+   },
+   "description": {
+    "ar": "اشحن من المحفظة الإلكترونية أو بكارت شحن أو من أي فرع لديمو تيلكو.",
+    "en": "Recharge with a mobile wallet, a scratch card, or at any Demo Telco store."
+   },
+   "reveal": [
+    {
+     "css": [
+      "#faq-recharge > summary"
+     ],
+     "text": {
+      "ar": "إزاي أشحن رصيد؟",
+      "en": "How do I recharge?"
+     },
+     "role": "summary"
+    }
+   ],
+   "answer": {
+    "fields": {
+     "answer": {
+      "css": [
+       "#faq-recharge > :not(summary)"
+      ]
+     }
+    },
+    "template": {
+     "ar": "{answer}",
+     "en": "{answer}"
+    }
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "web.help.faq-renewal",
+   "pageId": "web.help",
+   "kind": "faq",
+   "target": {
+    "css": [
+     "#faq-renewal",
+     "main.wrap > details:nth-of-type(3)"
+    ],
+    "text": {
+     "ar": "إزاي أوقف التجديد التلقائي؟",
+     "en": "How do I stop auto-renewal?"
+    }
+   },
+   "labels": {
+    "ar": [
+     "إزاي أوقف التجديد التلقائي؟"
+    ],
+    "en": [
+     "How do I stop auto-renewal?"
+    ]
+   },
+   "description": {
+    "ar": "افتح «حسابي» واختار باقتك وبعدين أوقف التجديد التلقائي.",
+    "en": "Open My account, choose your bundle, then turn off auto-renewal."
+   },
+   "reveal": [
+    {
+     "css": [
+      "#faq-renewal > summary"
+     ],
+     "text": {
+      "ar": "إزاي أوقف التجديد التلقائي؟",
+      "en": "How do I stop auto-renewal?"
+     },
+     "role": "summary"
+    }
+   ],
+   "answer": {
+    "fields": {
+     "answer": {
+      "css": [
+       "#faq-renewal > :not(summary)"
+      ]
+     }
+    },
+    "template": {
+     "ar": "{answer}",
+     "en": "{answer}"
+    }
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.help.faq-roaming",
+   "pageId": "web.help",
+   "kind": "faq",
+   "target": {
+    "css": [
+     "#faq-roaming",
+     "main.wrap > details:nth-of-type(4)"
+    ],
+    "text": {
+     "ar": "إزاي أفعّل التجوال؟",
+     "en": "How do I activate roaming?"
+    }
+   },
+   "labels": {
+    "ar": [
+     "إزاي أفعّل التجوال؟"
+    ],
+    "en": [
+     "How do I activate roaming?"
+    ]
+   },
+   "description": {
+    "ar": "التجوال مفعّل على كل خطوط الفاتورة. عملاء الكارت يطلبوا ‎*868*5#‎ قبل السفر.",
+    "en": "Roaming is active on all postpaid lines. Prepaid customers dial *868*5# before travelling."
+   },
+   "reveal": [
+    {
+     "css": [
+      "#faq-roaming > summary"
+     ],
+     "text": {
+      "ar": "إزاي أفعّل التجوال؟",
+      "en": "How do I activate roaming?"
+     },
+     "role": "summary"
+    }
+   ],
+   "answer": {
+    "fields": {
+     "answer": {
+      "css": [
+       "#faq-roaming > :not(summary)"
+      ]
+     }
+    },
+    "template": {
+     "ar": "{answer}",
+     "en": "{answer}"
+    }
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.home.popular",
+   "pageId": "web.home",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#popular",
+     "main.wrap > div.grid"
+    ],
+    "text": {
+     "ar": "الباقات الأكثر طلبًا",
+     "en": "Popular bundles"
+    }
+   },
+   "labels": {
+    "ar": [
+     "الباقات الأكثر طلبًا"
+    ],
+    "en": [
+     "Popular bundles"
+    ]
+   },
+   "description": {
+    "ar": "ميجا ٢٥ ٢٥ جيجابايت باقات الموبايل هوم بلس ٢٥٠ جيجابايت الإنترنت المنزلي",
+    "en": "Mega 25 25 GB See mobile bundles Home Plus 250 GB See home internet"
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.offers.weekend-offer",
+   "pageId": "web.offers",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#weekend-offer",
+     "main.wrap > section.offer:nth-of-type(1)"
+    ],
+    "text": {
+     "ar": "عرض نهاية الأسبوع",
+     "en": "Weekend offer"
+    }
+   },
+   "labels": {
+    "ar": [
+     "عرض نهاية الأسبوع",
+     "عرض الويك إند",
+     "الداتا الدبل"
+    ],
+    "en": [
+     "weekend offer",
+     "double data weekend",
+     "Weekend offer"
+    ]
+   },
+   "description": {
+    "ar": "ضعف الإنترنت على كل باقات إنترنت الموبايل من الخميس إلى السبت. اختر باقة",
+    "en": "Double data on all mobile internet bundles from Thursday to Saturday. Choose a bundle"
+   },
+   "watchable": true,
+   "provenance": "merged"
+  },
+  {
+   "id": "web.offers.roaming-offer",
+   "pageId": "web.offers",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#roaming-offer",
+     "main.wrap > section.offer:nth-of-type(2)"
+    ],
+    "text": {
+     "ar": "عرض التجوال",
+     "en": "Roaming offer"
+    }
+   },
+   "labels": {
+    "ar": [
+     "عرض التجوال"
+    ],
+    "en": [
+     "Roaming offer"
+    ]
+   },
+   "description": {
+    "ar": "خصم ٥٠٪ على باقات التجوال في دول الخليج حتى ٣٠ نوفمبر.",
+    "en": "50% off roaming bundles in the Gulf countries until 30 November."
+   },
+   "watchable": true,
+   "provenance": "merged"
+  },
+  {
+   "id": "web.offers.students-offer",
+   "pageId": "web.offers",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#students-offer",
+     "main.wrap > section.offer:nth-of-type(3)"
+    ],
+    "text": {
+     "ar": "عرض الطلاب",
+     "en": "Students offer"
+    }
+   },
+   "labels": {
+    "ar": [
+     "عرض الطلاب"
+    ],
+    "en": [
+     "Students offer"
+    ]
+   },
+   "description": {
+    "ar": "٥ جيجابايت إضافية كل شهر لطلاب الجامعات ببطاقة طالب سارية.",
+    "en": "An extra 5 GB every month for university students with a valid student ID."
+   },
+   "watchable": true,
+   "provenance": "merged"
+  },
+  {
+   "id": "web.subscribe.checkout",
+   "pageId": "web.subscribe",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#checkout",
+     "main.wrap > div.panel"
+    ],
+    "text": {
+     "ar": "تأكيد الاشتراك",
+     "en": "Confirm your subscription"
+    }
+   },
+   "labels": {
+    "ar": [
+     "تأكيد الاشتراك"
+    ],
+    "en": [
+     "Confirm your subscription"
+    ]
+   },
+   "description": {
+    "ar": "الباقة المختارة: اختر باقة أولًا رقم الموبايل طريقة الدفع المحفظة الإلكترونية بطاقة بنكية أوافق على الشروط والأحكام تأكيد والدفع تم تسجيل الطلب. هذا عرض تجريبي ولم يتم خصم أي مبلغ.",
+    "en": "Selected bundle: Choose a bundle first Mobile number Payment method Mobile wallet Bank card I agree to the terms and conditions Confirm and pay Order placed. This is a demo; nothing was charged."
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "app.account.data-balance",
+   "pageId": "app.account",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#data-balance",
+     "main.wrap > section.panel:nth-of-type(1)"
+    ],
+    "text": {
+     "ar": "الإنترنت المتبقي",
+     "en": "Remaining data"
+    }
+   },
+   "labels": {
+    "ar": [
+     "الإنترنت المتبقي",
+     "فاضل كام جيجا",
+     "رصيد النت",
+     "الباقي من الباقة"
+    ],
+    "en": [
+     "remaining data",
+     "data balance",
+     "data left",
+     "Remaining data"
+    ]
+   },
+   "examples": {
+    "ar": [
+     "فاضلي كام جيجا",
+     "باقي معايا كام نت"
+    ],
+    "en": [
+     "how much data do I have left",
+     "what's my data balance"
+    ]
+   },
+   "description": {
+    "ar": "٧٫٥ جيجابايت من ٢٥ جيجابايت تتجدد في ١ نوفمبر",
+    "en": "7.5 GB of 25 GB Renews on 1 November"
+   },
+   "answer": {
+    "fields": {
+     "remaining": {
+      "css": [
+       "#remaining-data"
+      ]
+     },
+     "allowance": {
+      "css": [
+       "#bundle-allowance"
+      ]
+     },
+     "renewal": {
+      "css": [
+       "#renewal-date"
+      ]
+     }
+    },
+    "template": {
+     "ar": "فاضل لك {remaining} من {allowance}، والباقة بتتجدد في {renewal}.",
+     "en": "You have {remaining} left of {allowance}. It renews on {renewal}."
+    }
+   },
+   "provenance": "merged"
+  },
+  {
+   "id": "app.account.current-bundle",
+   "pageId": "app.account",
+   "kind": "section",
+   "target": {
+    "css": [
+     "#current-bundle",
+     "main.wrap > section.panel:nth-of-type(2)"
+    ],
+    "text": {
+     "ar": "الباقة الحالية",
+     "en": "Current bundle"
+    }
+   },
+   "labels": {
+    "ar": [
+     "الباقة الحالية"
+    ],
+    "en": [
+     "Current bundle"
+    ]
+   },
+   "description": {
+    "ar": "ميجا ٢٥ · ٢٥ جيجابايت · ٢٥٠ جنيه / شهريًا · التجديد التلقائي مفعّل تغيير الباقة",
+    "en": "Mega 25 · 25 GB · 250 EGP / month · auto-renewal on Change bundle"
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.coverage.4g-and-5g-coverage-by-region.visual",
+   "pageId": "web.coverage",
+   "kind": "visual",
+   "target": {
+    "css": [
+     "#coverage-map > svg"
+    ]
+   },
+   "labels": {
+    "ar": [
+     "تغطية الجيل الرابع والخامس حسب المنطقة",
+     "خريطة التغطية",
+     "الخريطة"
+    ],
+    "en": [
+     "4G and 5G coverage by region",
+     "Coverage map",
+     "map",
+     "coverage map"
+    ]
+   },
+   "description": {
+    "ar": "خريطة التغطية: الجيل الخامس في القاهرة والجيزة والإسكندرية، والرابع في أسوان.",
+    "en": "Coverage map: 5G in Cairo, Giza and Alexandria; 4G in Aswan."
+   },
+   "visualId": "web.coverage.4g-and-5g-coverage-by-region",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.coverage.speed-chart.visual",
+   "pageId": "web.coverage",
+   "kind": "visual",
+   "target": {
+    "css": [
+     "#speed-chart",
+     "#speed > canvas"
+    ]
+   },
+   "labels": {
+    "ar": [
+     "متوسط سرعة التحميل حسب المدينة",
+     "الرسم البياني",
+     "الشارت"
+    ],
+    "en": [
+     "Average download speed by city",
+     "chart",
+     "graph"
+    ]
+   },
+   "description": {
+    "ar": "رسم بياني لمتوسط سرعة التحميل: القاهرة ٤٨ ميجابت، الجيزة ٤٥، الإسكندرية ٤١، أسوان ٢٢.",
+    "en": "Bar chart of average download speed: Cairo 48 Mbps, Giza 45, Alexandria 41, Aswan 22."
+   },
+   "visualId": "web.coverage.speed-chart",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.coverage.rollout-gl.visual",
+   "pageId": "web.coverage",
+   "kind": "visual",
+   "target": {
+    "css": [
+     "#rollout-gl",
+     "#rollout > canvas"
+    ]
+   },
+   "labels": {
+    "ar": [
+     "تقدم تغطية الجيل الخامس",
+     "الرسم البياني",
+     "الرسم"
+    ],
+    "en": [
+     "5G rollout progress",
+     "chart",
+     "graphic"
+    ]
+   },
+   "description": {
+    "ar": "تقدم تغطية الجيل الخامس حسب الربع، من حوالي ٢٠٪ إلى ٨٠٪ من المواقع.",
+    "en": "5G rollout progress by quarter, rising from about 20% to 80% of sites."
+   },
+   "visualId": "web.coverage.rollout-gl",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.home.demo-telco.visual",
+   "pageId": "web.home",
+   "kind": "visual",
+   "target": {
+    "css": [
+     "#hero > a > img.promo"
+    ]
+   },
+   "labels": {
+    "ar": [
+     "ديمو تيلكو",
+     "البانر",
+     "الصورة"
+    ],
+    "en": [
+     "Demo Telco",
+     "banner",
+     "image",
+     "picture"
+    ]
+   },
+   "description": {
+    "ar": "بانر عرض «ويك إند الداتا الدبل»: ضعف الجيجابايت على كل باقات إنترنت الموبايل من الخميس للسبت.",
+    "en": "Promo banner \"Double data weekend\": twice the gigabytes on all mobile internet bundles, Thursday to Saturday."
+   },
+   "visualId": "web.home.demo-telco",
+   "provenance": "auto"
+  },
+  {
+   "id": "web.subscribe.confirm-pay",
+   "pageId": "web.subscribe",
+   "kind": "action",
+   "target": {
+    "css": [
+     "#confirm-pay",
+     "#checkout-form > button.btn"
+    ],
+    "text": {
+     "ar": "تأكيد والدفع",
+     "en": "Confirm and pay"
+    }
+   },
+   "labels": {
+    "ar": [
+     "تأكيد والدفع"
+    ],
+    "en": [
+     "Confirm and pay"
+    ]
+   },
+   "commit": true,
+   "provenance": "auto"
+  }
+ ],
+ "collections": [
+  {
+   "id": "web.bundles.mobile-internet",
+   "pageId": "web.bundles",
+   "itemCss": "#mobile-internet > div.grid > article.bundle-card",
+   "keyAttr": "data-bundle",
+   "nameField": "name",
+   "fields": {
+    "name": {
+     "css": "h3",
+     "type": "text"
+    },
+    "price": {
+     "css": "div.price",
+     "type": "money"
+    },
+    "data": {
+     "css": "div.data",
+     "type": "data"
+    }
+   },
+   "labels": {
+    "ar": [
+     "باقات إنترنت الموبايل",
+     "باقات النت",
+     "باقات الداتا",
+     "باقات الإنترنت",
+     "إنترنت الموبايل"
+    ],
+    "en": [
+     "mobile internet bundles",
+     "mobile data bundles",
+     "internet bundles",
+     "data plans",
+     "Mobile internet"
+    ]
+   },
+   "provenance": "auto"
+  },
+  {
+   "id": "web.bundles.home-internet",
+   "pageId": "web.bundles",
+   "itemCss": "#home-internet > div.grid > article.bundle-card",
+   "keyAttr": "data-bundle",
+   "nameField": "name",
+   "fields": {
+    "name": {
+     "css": "h3",
+     "type": "text"
+    },
+    "price": {
+     "css": "div.price",
+     "type": "money"
+    },
+    "data": {
+     "css": "div.data",
+     "type": "data"
+    }
+   },
+   "labels": {
+    "ar": [
+     "باقات الإنترنت المنزلي",
+     "النت الأرضي",
+     "إنترنت البيت",
+     "الإنترنت المنزلي"
+    ],
+    "en": [
+     "home internet bundles",
+     "home broadband",
+     "adsl plans",
+     "Home internet"
+    ]
+   },
+   "provenance": "auto"
+  }
+ ],
+ "flows": [
+  {
+   "id": "subscribe",
+   "labels": {
+    "ar": [
+     "اشترك",
+     "الاشتراك",
+     "اشتراك",
+     "فعّل الباقة"
+    ],
+    "en": [
+     "subscribe",
+     "sign up",
+     "buy this bundle",
+     "activate"
+    ]
+   },
+   "examples": {
+    "ar": [
+     "أشترك فيها إزاي",
+     "عايز أشترك في الباقة دي",
+     "اشتركلي فيها"
+    ],
+    "en": [
+     "how do I subscribe to it",
+     "subscribe me to this bundle",
+     "I want to buy it"
+    ]
+   },
+   "appliesTo": {
+    "collectionIds": [
+     "web.bundles.mobile-internet",
+     "web.bundles.home-internet"
+    ]
+   },
+   "steps": [
+    {
+     "op": "click",
+     "target": {
+      "css": [
+       "a.btn"
+      ],
+      "text": {
+       "ar": "اشترك الآن",
+       "en": "Subscribe"
+      },
+      "within": "item"
+     }
+    },
+    {
+     "op": "waitForPage",
+     "pageId": "web.subscribe"
+    },
+    {
+     "op": "spotlight",
+     "target": {
+      "css": [
+       "#checkout"
+      ]
+     },
+     "caption": {
+      "ar": "راجع الباقة وبيانات الدفع",
+      "en": "Review the bundle and payment details"
+     }
+    },
+    {
+     "op": "confirm",
+     "target": {
+      "css": [
+       "#confirm-pay"
+      ]
+     },
+     "message": {
+      "ar": "لما تكون جاهز، دوس «تأكيد والدفع» بنفسك. أنا مش هدوس عليه.",
+      "en": "When you are ready, press \"Confirm and pay\" yourself. I will not press it for you."
+     }
+    }
+   ],
+   "provenance": "curated"
+  }
+ ],
+ "visuals": [
+  {
+   "id": "web.coverage.4g-and-5g-coverage-by-region",
+   "pageId": "web.coverage",
+   "kind": "svg",
+   "target": {
+    "css": [
+     "#coverage-map > svg"
+    ]
+   },
+   "description": {
+    "ar": "خريطة التغطية: الجيل الخامس في القاهرة والجيزة والإسكندرية، والرابع في أسوان.",
+    "en": "Coverage map: 5G in Cairo, Giza and Alexandria; 4G in Aswan."
+   },
+   "source": "vision",
+   "confidence": 0.9
+  },
+  {
+   "id": "web.coverage.speed-chart",
+   "pageId": "web.coverage",
+   "kind": "canvas",
+   "target": {
+    "css": [
+     "#speed-chart",
+     "#speed > canvas"
+    ]
+   },
+   "description": {
+    "ar": "رسم بياني لمتوسط سرعة التحميل: القاهرة ٤٨ ميجابت، الجيزة ٤٥، الإسكندرية ٤١، أسوان ٢٢.",
+    "en": "Bar chart of average download speed: Cairo 48 Mbps, Giza 45, Alexandria 41, Aswan 22."
+   },
+   "source": "vision",
+   "confidence": 0.9
+  },
+  {
+   "id": "web.coverage.rollout-gl",
+   "pageId": "web.coverage",
+   "kind": "webgl",
+   "target": {
+    "css": [
+     "#rollout-gl",
+     "#rollout > canvas"
+    ]
+   },
+   "description": {
+    "ar": "تقدم تغطية الجيل الخامس حسب الربع، من حوالي ٢٠٪ إلى ٨٠٪ من المواقع.",
+    "en": "5G rollout progress by quarter, rising from about 20% to 80% of sites."
+   },
+   "source": "vision",
+   "confidence": 0.9
+  },
+  {
+   "id": "web.home.demo-telco",
+   "pageId": "web.home",
+   "kind": "image",
+   "target": {
+    "css": [
+     "#hero > a > img.promo"
+    ]
+   },
+   "description": {
+    "ar": "بانر عرض «ويك إند الداتا الدبل»: ضعف الجيجابايت على كل باقات إنترنت الموبايل من الخميس للسبت.",
+    "en": "Promo banner \"Double data weekend\": twice the gigabytes on all mobile internet bundles, Thursday to Saturday."
+   },
+   "source": "vision",
+   "confidence": 0.9
+  }
+ ],
+ "lexicon": {
+  "synonyms": [
+   [
+    "نت",
+    "انترنت",
+    "إنترنت",
+    "داتا",
+    "بيانات",
+    "internet",
+    "data"
+   ],
+   [
+    "باقة",
+    "باقات",
+    "باقه",
+    "عرض الباقة",
+    "bundle",
+    "bundles",
+    "plan",
+    "plans",
+    "package"
+   ],
+   [
+    "جيجا",
+    "جيجابايت",
+    "جيجات",
+    "gb",
+    "giga",
+    "gigabyte",
+    "gigabytes"
+   ],
+   [
+    "موبايل",
+    "محمول",
+    "الموبايل",
+    "mobile",
+    "cellular",
+    "phone"
+   ],
+   [
+    "منزلي",
+    "البيت",
+    "هوم",
+    "ارضي",
+    "أرضي",
+    "home",
+    "adsl",
+    "broadband",
+    "router"
+   ],
+   [
+    "رصيد",
+    "balance",
+    "credit"
+   ],
+   [
+    "اشحن",
+    "شحن",
+    "recharge",
+    "top up",
+    "topup"
+   ],
+   [
+    "تغطية",
+    "شبكة",
+    "ابراج",
+    "coverage",
+    "network",
+    "signal"
+   ],
+   [
+    "عرض",
+    "عروض",
+    "خصم",
+    "offer",
+    "offers",
+    "promo",
+    "promotion",
+    "deal"
+   ],
+   [
+    "سرعة",
+    "سرعه",
+    "speed",
+    "mbps"
+   ]
+  ],
+  "intents": {
+   "watch": {
+    "ar": [
+     "عرفني لما",
+     "بلغني لما",
+     "نبهني لما",
+     "قولي لو اتغير",
+     "ابعتلي لما يتغير"
+    ],
+    "en": [
+     "tell me when",
+     "notify me when",
+     "let me know if",
+     "alert me when"
+    ]
+   }
+  }
+ }
+}
