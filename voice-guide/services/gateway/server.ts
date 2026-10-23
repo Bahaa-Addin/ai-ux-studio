@@ -176,16 +176,22 @@ export function createGateway(opts: GatewayOptions) {
 			lastSeq = ev.seq || lastSeq
 			res.write(`id: ${ev.seq}\nevent: ${ev.name.startsWith('watch.changed') ? 'notify' : 'trace'}\ndata: ${JSON.stringify(ev)}\n\n`)
 		}
+		// Live events that arrive while the backlog loads wait for it: written first, their higher
+		// seq would make `write` drop the whole backlog (an X-ray with "requests 0" after a reload).
+		let pending: TraceEvent[] | null = []
+		const listener = (ev: TraceEvent) => (pending ? pending.push(ev) : write(ev))
 		const set = listeners.get(sessionId) || new Set()
-		set.add(write)
+		set.add(listener)
 		listeners.set(sessionId, set)
 		// Backlog: everything since `since` (only the latest turns when starting fresh).
 		const backlog = await s.store.listTrace(sessionId, since)
 		for (const ev of since ? backlog : recentTurns(backlog)) write(ev)
+		for (const ev of pending.sort((a, b) => (a.seq || 0) - (b.seq || 0))) write(ev)
+		pending = null
 		const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
 		req.on('close', () => {
 			clearInterval(ping)
-			set.delete(write)
+			set.delete(listener)
 			if (!set.size) listeners.delete(sessionId)
 		})
 	})
