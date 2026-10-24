@@ -126,7 +126,7 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 	else if (selector) intentSource = 'lexicon'
 
 	// What is left once intent words are removed is what the person is looking for.
-	let query = stripPhrases(text, [...watchHits, ...describeHits, ...selectorHits, ...pageHits, ...matchPhrases(text, INTENT_PHRASES.help), ...(watchHits.length ? matchPhrases(text, WATCH_FILLER) : [])])
+	let query = stripPhrases(text, [...watchHits, ...describeHits, ...selectorHits, ...pageHits, ...matchPhrases(text, INTENT_PHRASES.help), ...(watchHits.length ? matchPhrases(text, WATCH_FILLER) : []), ...(settings.agentEnabled ? [] : actHits)])
 	if (flowId) {
 		const flowQuery = query.split(' ').filter((w) => !terms(w).some((t) => kb.flowTerms.get(flowId!)!.has(t))).join(' ')
 		// "How do I activate roaming": a flow verb, but the rest names something outside the flow's
@@ -246,7 +246,8 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 	}
 
 	// "Select bank card", "fill my number": doing something on this page is the agent's job.
-	if (intent === 'act') {
+	// Without an agent, the request is answered like any other: show the closest place.
+	if (intent === 'act' && settings.agentEnabled) {
 		return done({
 			lang,
 			intent,
@@ -257,7 +258,7 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 			candidates,
 			alternatives: [],
 			decision: { confidence: 0, provider: 'lexicon', latencyMs: 0 },
-			route: settings.agentEnabled ? 'agent' : 'none',
+			route: 'agent',
 			ms: 0,
 		})
 	}
@@ -342,8 +343,14 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 			// Most of the request is not on the site: asking "A or B?" would be a guess.
 			route = settings.agentEnabled ? 'agent' : 'none'
 		} else if (second && second.score >= 0.75 * top.score) {
-			route = 'clarify'
-			alternatives = [top, second]
+			// Ask only when both options cover the request. Two half-matches on different words
+			// ("open a business": a router guide's "open the wifi" and "Business International")
+			// make "A or B?" a guess about two things the person did not ask for.
+			if (second.absolute <= 0.5) route = settings.agentEnabled ? 'agent' : 'none'
+			else {
+				route = 'clarify'
+				alternatives = [top, second]
+			}
 		} else route = 'replay'
 	}
 	return done({

@@ -1,6 +1,6 @@
 # ADR-0017: Use page-agent 1.12.4 as a pinned, wrapped fallback, not a fork
 
-- Status: Accepted (demo slice). Implements the fork-or-build evaluation ("neither: wrap the DOM layer, own the orchestration").
+- Status: Accepted (demo slice); amended by ADR-0034 (zod 4, no allowlisted type error; no agent routing without a model). Implements the fork-or-build evaluation ("neither: wrap the DOM layer, own the orchestration").
 - Date: 2026-10-23
 - Area: Fallback agent
 - Code: `packages/sdk/src/agent.ts`, `packages/sdk/build.ts`

@@ -15,9 +15,10 @@ import type { CrawlResult } from '../../jobs/crawler/types.ts'
 import { cleanAlt } from '../../jobs/describer/describe.ts'
 import { buildManifest } from '../../jobs/kb-builder/build.ts'
 import { type EvalCase, evaluate } from '#services/router/eval.ts'
+import { createRouter } from '#services/router/handlers.ts'
 import { buildPlan } from '#services/router/planner.ts'
 import { understand } from '#services/router/understand.ts'
-import { loadSiteConfig, ROOT } from '#shared/config.ts'
+import { loadPlatformConfig, loadSiteConfig, ROOT } from '#shared/config.ts'
 import { buildKbIndex } from '#shared/kb-index.ts'
 
 const site = loadSiteConfig(path.join(ROOT, 'config/sites/vodafone-eg.yaml'))
@@ -55,6 +56,19 @@ test('builder: skip links and generic anchors never become destination labels', 
 	const bad = /^(skip to (main )?content|main content start|know more|learn more|read more|press enter to redirect|go to internet)$/i
 	for (const d of m.destinations)
 		for (const labels of Object.values(d.labels || {})) for (const l of labels as string[]) assert.equal(bad.test(l.trim()), false, `${d.id}: "${l}"`)
+})
+
+test('builder: the wrapper around a whole page is not a section ("promotions-lite" competed with the page\'s own cards)', () => {
+	const m = build().manifest!
+	const wrappers = m.destinations.filter((d) => d.kind === 'section' && /^(#content|#wrapper|#main|main|body)$/i.test(d.target?.css[0] || ''))
+	assert.deepEqual(wrappers.map((d) => d.id), [])
+})
+
+test('builder: links to retired pages that redirect home do not label the home page', () => {
+	const home = build().manifest!.destinations.find((d) => d.id === 'web.home')!
+	const labels = Object.values(home.labels).flat()
+	assert.equal(labels.some((l) => /wifi page|wi-fi/i.test(l)), false, labels.join(' | '))
+	assert.ok(labels.includes('Personal'), 'a direct link to the home page still labels it')
 })
 
 test('builder: a soft 404 (200 with a "not found" page) is dropped', () => {
@@ -134,4 +148,67 @@ test('router: subscribing on a public page shows the button and stops (no click,
 	)
 	// Cards on the live page have no id attribute: the item is found again by position.
 	assert.deepEqual((plan.steps[0] as any).select, { by: 'key', key: '#2' })
+})
+
+// ---- the demo conversation of 2026-10-23 (offers, "buy the 400 mega offer", "open a business") ----
+
+const routerFor = (env: Record<string, string> = {}) =>
+	createRouter({ platform: loadPlatformConfig({ ...env, VG_SECRET: 'test' }), sites: new Map([[site.id, site]]), kb: { get: async () => kb } as never, tracer: { event: async () => {} } as never })
+async function converse(router: ReturnType<typeof createRouter>, says: string[], url: string) {
+	const s = session()
+	const out = []
+	for (const say of says) {
+		const r = await router.turn({ siteId: site.id, session: s, utterance: say, page: { url } }, { trace: {} } as never)
+		if (r.last) s.last = r.last
+		s.turns.push(r.turn)
+		out.push(r)
+	}
+	return out
+}
+const PROMOTIONS = 'https://web.vodafone.com.eg/ar/%D8%A7%D9%84%D8%B9%D8%B1%D9%88%D8%B6'
+
+test('router: with no language model configured, nothing is routed to the agent', async () => {
+	const [best, business] = await converse(routerFor(), ['اختر لي افضل عرض', 'عايز افتح بيزنس'], PROMOTIONS)
+	for (const r of [best, business]) {
+		assert.notEqual(r.plan.meta.route, 'agent')
+		assert.equal(r.plan.steps.some((x) => x.op === 'agent'), false)
+	}
+	const [withModel] = await converse(routerFor({ VG_LLM_BASE_URL: 'http://127.0.0.1:1', VG_LLM_MODEL: 'm' }), ['اختر لي افضل عرض'], PROMOTIONS)
+	assert.equal(withModel.plan.meta.route, 'agent')
+})
+
+test('router: "buy the 400 mega offer" shows the offer card, with no "A or B?" against the page wrapper', async () => {
+	const [r] = await converse(routerFor(), ['اشتري عرض ال ٤٠٠ ميجا'], PROMOTIONS)
+	assert.equal(r.plan.meta.route, 'replay')
+	assert.equal(r.plan.meta.destinationId, 'web.promotions.400-megabyte.visual')
+	// The picture's alt text is "400 mega": the card around it is read instead of echoing it.
+	const spot = r.plan.steps.find((x) => x.op === 'spotlight') as any
+	assert.match(spot.target.css[0], /> a\.tiles-link$/)
+	assert.ok(spot.read)
+	assert.equal(r.plan.steps.some((x) => x.op === 'say' && /^400 mega\.?$/i.test(x.text)), false)
+	assert.equal(kb.manifest.destinations.some((d) => d.id.endsWith('.content') && d.target?.css[0] === '#content'), false)
+})
+
+test('router: two half-matches on different words are not offered as "A or B?"', async () => {
+	const [r] = await converse(routerFor(), ['عايز افتح بيزنس'], PROMOTIONS)
+	assert.notEqual(r.plan.meta.route, 'clarify')
+})
+
+test('router: a typed answer to "A or B?" picks the option and keeps the question\'s language', async () => {
+	const router = routerFor()
+	const s = session()
+	const ask = { id: 't1', utterance: 'اشتري عرض ال ٤٠٠ ميجا', lang: 'ar', intent: 'navigate', route: 'clarify', options: ['web.promotions.400-megabyte.visual', 'web.promotions.check-out-our-latest-offers-and-choose-y'], at: '' }
+	s.turns.push(ask)
+	const r = await router.turn({ siteId: site.id, session: s, utterance: '400 mega', page: { url: PROMOTIONS } }, { trace: {} } as never)
+	assert.equal(r.understanding.decision.provider, 'user-choice')
+	assert.equal(r.plan.meta.destinationId, 'web.promotions.400-megabyte.visual')
+	assert.equal(r.plan.lang, 'ar')
+	assert.equal(r.plan.steps.some((x) => x.op === 'navigate'), false, 'stays on the Arabic page')
+})
+
+test('router: "company offers" finds the Vodafone Business Red deal, written in English on the site', async () => {
+	const [r] = await converse(routerFor(), ['اخر عروض الشركات'], 'https://web.vodafone.com.eg/ar/home')
+	assert.equal(r.plan.meta.route, 'replay')
+	assert.equal(r.plan.meta.destinationId, 'web.exclusive-benefits.vodafone-red-business-2024-may-deal')
+	assert.ok(r.plan.steps.some((x) => x.op === 'spotlight' && x.read), 'the deal is read, not just its page opened')
 })

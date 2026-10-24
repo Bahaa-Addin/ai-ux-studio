@@ -37,15 +37,18 @@ const VOICE_STUB = `(() => {
 	const gum = navigator.mediaDevices && navigator.mediaDevices.getUserMedia && navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 	if (gum) navigator.mediaDevices.getUserMedia = async (c) => { const s = await gum(c); window.__vgStreams.push(s); return s; };
 	class FakeRecognition {
-		constructor() { this.lang = ''; this.interimResults = false; this.continuous = false; this.maxAlternatives = 1; }
+		constructor() { this.lang = ''; this.interimResults = false; this.continuous = false; this.maxAlternatives = 1; this.phrases = []; }
 		start(track) {
 			if (track !== undefined && !(track instanceof MediaStreamTrack)) throw new TypeError('not a track');
 			window.__activeRec = this; window.__recTrack = track ? track.kind : null; window.__recLang = this.lang;
+			// Like Chrome: phrase hints work only on-device; the server engine fails the request.
+			if (this.phrases && this.phrases.length && !this.processLocally) { window.__activeRec = null; setTimeout(() => { this.onerror && this.onerror({ error: 'phrases-not-supported' }); this.onend && this.onend(); }, 10); return; }
 			setTimeout(() => this.onsoundstart && this.onsoundstart(), 30);
 		}
 		stop() { if (window.__activeRec === this) { window.__activeRec = null; setTimeout(() => this.onend && this.onend(), 0); } }
 		abort() { this.stop(); }
 	}
+	window.SpeechRecognitionPhrase = class { constructor(phrase, boost) { this.phrase = phrase; this.boost = boost; } };
 	window.SpeechRecognition = FakeRecognition;
 	window.webkitSpeechRecognition = FakeRecognition;
 	window.__vgSayWords = async (words, stepMs = 140, confidence = 0.92) => {
@@ -331,6 +334,35 @@ test('no speech service (Chromium, offline): the bar says so, the mic is release
 	assert.match(v.bar, /تكتب|type/i, 'it offers typing instead of "try again"')
 	assert.equal(v.focused, 'INPUT', 'the text box has focus')
 	assert.ok(await page.evaluate(() => ((window as any).__vgStreams as MediaStream[]).every((s) => s.getTracks().every((t) => t.readyState === 'ended'))), 'the microphone was released')
+})
+
+test('recognition that takes the shared track and hears nothing: the bar says so, and the next press lets recognition open the microphone', async () => {
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec, null, { timeout: 10_000 })
+	assert.equal(await page.evaluate(() => (window as any).__recTrack), 'audio', 'first press shares the guide\'s track')
+	// What some Chrome builds do: accept start(track), then end with no result and no error.
+	await page.evaluate(() => {
+		const rec = (window as any).__activeRec
+		;(window as any).__activeRec = null
+		rec.onend && rec.onend()
+	})
+	await page.waitForFunction(() => /مسمعتكش|catch that/.test(document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-bar')?.textContent || ''), null, { timeout: 5000 })
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec, null, { timeout: 10_000 })
+	assert.equal(await page.evaluate(() => (window as any).__recTrack), null, 'second press: recognition captures on its own')
+	assert.ok(await page.evaluate(() => (window as any).__vgSayWords(['العروض'])))
+	await heard(page, /العروض/, 15_000)
+})
+
+test('phrase hints go only to on-device recognition: the server engine rejects them ("phrases-not-supported")', async () => {
+	await page.evaluate(() => ((window as any).voiceGuide.session.site.speech.phrases = ['العروض', 'ڤودافون كاش']))
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec, null, { timeout: 5000 })
+	// The words were recognised when the guide takes the person to the Vodafone Cash page. Waiting
+	// for that page also keeps the navigation from landing in the next test.
+	await page.evaluate(() => (window as any).__vgSayWords(['ڤودافون', 'كاش'])).catch(() => {})
+	await page.waitForURL(`${WEB}/ar/vodafone-cash`, { timeout: 15_000 })
+	await ready()
 })
 
 test('a typed request with the panel open: the panel moves so it never covers the highlighted card', async () => {

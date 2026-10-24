@@ -12,6 +12,8 @@ export interface Turn {
 	intent: string
 	route: string
 	destinationId?: string
+	/** A clarifying question's options (destination ids), so a typed or spoken answer can pick one. */
+	options?: string[]
 	at: string
 }
 

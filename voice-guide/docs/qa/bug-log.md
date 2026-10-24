@@ -87,3 +87,58 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** the guide navigates as soon as the final words arrive; the test read the word counts from the old page afterwards.
 - **Fix:** the counts are kept in session storage and read on the new page.
 - **Test:** `tests/e2e/live-replay.e2e.test.ts`, test 2.
+
+## B-10 "Let me look", then 503 three times, with no model configured
+
+- **Seen:** on the live site, "اختر لي افضل عرض" and "خطوط شركات" said "ثواني، هدور عليها في الصفحة." then "مش قادر أدور دلوقتي."; the console showed three `POST /__vg/v1/agent/chat/completions 503`.
+- **Cause:** the agent proxy returns 503 `agent_unavailable` when no `VG_LLM_*` provider is set; the router routed to the agent on `site.agent.enabled` alone, and page-agent retried each call.
+- **Fix:** agent routing, the agent token and the SDK's `agent.enabled` need a configured model (`agentModelConfigured`).
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "with no language model configured, nothing is routed to the agent".
+- **Decision:** ADR-0034.
+
+## B-11 "Did you mean 400 mega or promotions-lite?"
+
+- **Seen:** "اشتري عرض ال ٤٠٠ ميجا" on the offers page.
+- **Cause:** each Vodafone page's `<section id="content">` became a section destination labelled with the CMS template name, matching anything on its page. `ال` counted as an unmatched word and "buy" was not a subscribe verb.
+- **Fix:** page wrappers are skipped by the builder and were removed from the committed knowledge base; buy verbs and `ال`, `لي`, `ليا` added.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "the wrapper around a whole page is not a section" (fails with the old rule) and "buy the 400 mega offer".
+- **Decision:** ADR-0034.
+
+## B-12 A typed answer to "A or B?" switched language and echoed the alt text
+
+- **Seen:** typing "400 mega" after the question moved to `/en/promotions` and said "400 mega.".
+- **Cause:** the answer was routed as a new request (Latin script, so English), and the picture's only description was its alt text.
+- **Fix:** clarify turns record their options; an answer naming one option is that choice, in the question's language. Alt-only pictures spotlight and read their card.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "a typed answer to "A or B?" picks the option".
+- **Decision:** ADR-0034.
+
+## B-13 "A or B?" between two half-matches
+
+- **Seen:** "عايز افتح بيزنس" asked "دليل الإستخدام ولا خدمات الاتصال الدولي؟".
+- **Cause:** the clarify rule compared scores only; each option matched a different half of the request.
+- **Fix:** the second option must cover at least half the request too.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "two half-matches on different words are not offered".
+- **Decision:** ADR-0034.
+
+## B-14 X-ray showed "requests 0" after a reload (first CI run)
+
+- **Seen:** `tests/e2e/guide.e2e.test.ts`, "X-ray shows every layer", failed on the first GitHub Actions run with only the loop-guard row in the X-ray.
+- **Cause:** the X-ray stream registered its live listener before reading the backlog. A live event arriving during that read was written first, and its higher `seq` made the stream drop every backlog event.
+- **Fix:** live events wait until the backlog is written, then follow in `seq` order (`services/gateway/server.ts`, `/v1/events`).
+- **Test:** `tests/integration/gateway.test.ts`, "a live event that arrives while the X-ray backlog loads does not drop the backlog" (fails without the fix).
+
+## B-15 "اخر عروض الشركات" said "not exactly" and only opened the page
+
+- **Seen:** the guide said "مش لاقيها بالظبط. أقرب حاجة صفحة عروض حصريه." and opened the page that has the Vodafone Business Red deal, without showing it.
+- **Cause:** the site writes its business offers in English ("Vodafone Business Red"), and nothing linked "شركات" to "business". An earlier attempt at that synonym sent requests to the home page, because links to retired pages ("Business Data Wallet", "Data bundles", "Email & Domain") redirect to the home page and the builder gave their link texts to it.
+- **Fix:** link texts that reach the home page through a redirect no longer label it (builder, and the committed knowledge base); synonym group شركات / بيزنس / business; "A or B?" needs the second option to cover more than half of the request.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "links to retired pages … do not label the home page" (fails without the fix) and "company offers finds the Vodafone Business Red deal".
+
+## B-16 Pressing the microphone and speaking: nothing happens
+
+- **Seen:** on the live site, speaking after pressing the microphone gave no words and no message; the console then showed `[voice-guide] speech: phrases-not-supported`.
+- **Cause:** the guide sends the page's contextual phrases (`rec.phrases`) with every request. Chrome accepts phrase hints only for on-device recognition; with the server engine it fails the whole request with `phrases-not-supported`. The test stand-in had no `phrases` property, so the guide never set them in tests.
+- **Fix:** phrases are set only when on-device recognition is in use. The stand-in now has `phrases` and rejects them off-device like Chrome; without the fix 13 voice tests fail.
+- **Also hardened (found while looking):** the guide hands its own microphone track to recognition (`start(track)`, ADR-0027). A browser can accept the track and then hear nothing, ending with no result and no error, which the guide treated as a quiet stop. Separately, the on-device check (`SpeechRecognition.available`) was awaited with no time limit before `start()`.
+- **Hardening:** an empty end the guide did not ask for, or `no-speech`, now shows "مسمعتكش كويس، جرّب تاني" and logs `[voice-guide] speech: no-speech`; after an empty end with the shared track, the next press lets recognition open the microphone itself. The on-device check gives up after 800 ms. `guide.js` is exactly at its 20 KB budget after this change.
+- **Test:** `tests/e2e/live-replay.e2e.test.ts`, "phrase hints go only to on-device recognition" and "recognition that takes the shared track and hears nothing" (each fails without its fix).

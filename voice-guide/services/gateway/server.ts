@@ -9,7 +9,7 @@ import path from 'node:path'
 
 import type { Services } from '../index.ts'
 import type { SiteConfig } from '../shared/config.ts'
-import { ROOT } from '../shared/config.ts'
+import { agentModelConfigured, ROOT } from '../shared/config.ts'
 import { clientIp, HttpError, readJson, Router, sendJson } from '../shared/http.ts'
 import { newId, signToken, verifyToken } from '../shared/ids.ts'
 import { log } from '../shared/log.ts'
@@ -87,6 +87,7 @@ export function createGateway(opts: GatewayOptions) {
 		const page = await s.knowledge.pageContext({ siteId: site.id, url: String(body.page?.url || '') }, ctx)
 		const plan = session.plan && Date.now() - new Date(session.plan.startedAt).getTime() < 120_000 ? session.plan : null
 		metrics.inc(`session.${via}`)
+		const agentOn = site.agent.enabled && agentModelConfigured(platform)
 		sendJson(res, 200, {
 			sessionId: session.id,
 			via,
@@ -94,9 +95,9 @@ export function createGateway(opts: GatewayOptions) {
 			plan,
 			last: session.last ?? null,
 			agent: session.agent ?? null,
-			agentToken: site.agent.enabled ? agentToken(site.id, session.id) : null,
+			agentToken: agentOn ? agentToken(site.id, session.id) : null,
 			page,
-			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: site.agent.enabled, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled } },
+			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled } },
 			push: site.watch.enabled ? s.local.watch.publicKey() : null,
 		})
 	})
@@ -175,16 +176,22 @@ export function createGateway(opts: GatewayOptions) {
 			lastSeq = ev.seq || lastSeq
 			res.write(`id: ${ev.seq}\nevent: ${ev.name.startsWith('watch.changed') ? 'notify' : 'trace'}\ndata: ${JSON.stringify(ev)}\n\n`)
 		}
+		// Live events that arrive while the backlog loads wait for it: written first, their higher
+		// seq would make `write` drop the whole backlog (an X-ray with "requests 0" after a reload).
+		let pending: TraceEvent[] | null = []
+		const listener = (ev: TraceEvent) => (pending ? pending.push(ev) : write(ev))
 		const set = listeners.get(sessionId) || new Set()
-		set.add(write)
+		set.add(listener)
 		listeners.set(sessionId, set)
 		// Backlog: everything since `since` (only the latest turns when starting fresh).
 		const backlog = await s.store.listTrace(sessionId, since)
 		for (const ev of since ? backlog : recentTurns(backlog)) write(ev)
+		for (const ev of pending.sort((a, b) => (a.seq || 0) - (b.seq || 0))) write(ev)
+		pending = null
 		const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
 		req.on('close', () => {
 			clearInterval(ping)
-			set.delete(write)
+			set.delete(listener)
 			if (!set.size) listeners.delete(sessionId)
 		})
 	})

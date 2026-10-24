@@ -30,6 +30,8 @@ lexicon:
     - [رصيد, balance, credit]
     - [اشحن, شحن, الشحن, recharge, top up, topup]
     - [واي فاي, الواي فاي, wifi, wi-fi]
+    # Vodafone writes its business offers in English ("Vodafone Business Red"); people ask in Arabic.
+    - [شركات, الشركات, شركة, بيزنس, business]
   intents:
     watch:
       ar: [عرفني لما, بلغني لما, نبهني لما, قولي لو اتغير, ابعتلي لما يتغير, قولي لما]
@@ -190,8 +192,8 @@ flows:
   # in Vodafone's signed-in app, which the guide neither signs in to nor confirms.
   - id: subscribe
     labels:
-      ar: [اشترك, الاشتراك, اشتراك, فعّل الباقة, أشترك]
-      en: [subscribe, sign up, buy this bundle, activate]
+      ar: [اشترك, الاشتراك, اشتراك, فعّل الباقة, أشترك, اشتري, أشتري, اشتريلي, شراء]
+      en: [subscribe, sign up, buy this bundle, activate, buy]
     examples:
       ar: [أشترك فيها إزاي, عايز أشترك في الباقة دي, اشتركلي فيها, اشترك فيها]
       en: [how do I subscribe to it, subscribe me to this bundle, I want to buy it, subscribe to it]
