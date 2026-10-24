@@ -393,7 +393,7 @@ export class Guide {
 			// No speech service (Chromium builds, offline, a language the service lacks) is said
 			// plainly; "I didn't catch that" would make people repeat themselves for nothing.
 			const key = /not-allowed|audio-capture/.test(code) ? 'micDenied' : /network|language-not-supported/.test(code) ? 'speechUnavailable' : 'noSpeech'
-			if (key !== 'noSpeech') console.warn(`[voice-guide] speech: ${code}`)
+			console.warn(`[voice-guide] speech: ${code}`)
 			if (v) v.setState('error', t(key, this.lang))
 			if (key === 'noSpeech') return v && setTimeout(() => v.state === 'error' && v.setState('idle'), 4000)
 			if (!v) this.ui.note(t(key === 'micDenied' ? 'noMic' : key, this.lang))
@@ -445,8 +445,7 @@ export class Guide {
 			clearTimeout(this.#maxTimer)
 			this.#maxTimer = window.setTimeout(() => this.speech.stopListening(), 15_000)
 		} catch (e) {
-			console.warn('[voice-guide] listen failed', e)
-			failed('error')
+			failed(`${e}`)
 		}
 	}
 

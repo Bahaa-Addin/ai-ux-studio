@@ -1052,6 +1052,13 @@
     "الواي فاي",
     "wifi",
     "wi-fi"
+   ],
+   [
+    "شركات",
+    "الشركات",
+    "شركة",
+    "بيزنس",
+    "business"
    ]
   ]
  },
@@ -4533,10 +4540,6 @@
      "فودافون الصفحه الرئيسيه",
      "الصفحه الرئيسية لڤودافون مصر",
      "أفراد",
-     "خدمات ال Wifi page. خدمات ال Wifi ڤودافون بتقدملك طري",
-     "باقات الداتا",
-     "Business Data Wallet",
-     "البريد الالكتروني و النطاق",
      "الصفحه الرئيسيه"
     ],
     "en": [
@@ -4545,11 +4548,7 @@
      "homepage",
      "Home",
      "Vodafone Egypt home page",
-     "Personal",
-     "WiFi page. WiFi Vodafone is now offering you Wi-Fi se",
-     "Data bundles",
-     "Business Data Wallet",
-     "Email & Domain"
+     "Personal"
     ]
    },
    "pageId": "web.home",

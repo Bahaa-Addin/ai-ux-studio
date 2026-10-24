@@ -38,8 +38,10 @@ Causes, all reproduced offline with the committed knowledge base:
 3. **Page wrappers are not destinations.** `isPageWrapper` (`#content`, `#main`, `#wrapper`, `main`, `body`, `#main-content…`) is skipped by the builder. The committed knowledge base was edited the same way (33 destinations removed, version id kept) because the full crawl it was built from is not in the repository.
 4. **Buy verbs** (`اشتري`, `أشتري`, `اشتريلي`, `شراء`, `buy`) are subscribe-flow labels; `ال`, `لي`, `ليا` are stopwords. The flow's existing check still sends "buy the 400 mega offer" to the promotions card, since that offer is not one of the bundle collections.
 5. **Answers to "A or B?".** A clarify turn records its options (`Turn.options`). The next utterance picks an option when all its words (through synonyms) are in that option's labels and no other's; the choice keeps the question's language and intent, exactly like a tapped chip.
-6. **Ask only between full matches.** "A or B?" needs the second option to cover at least half of the request (`absolute ≥ 0.5`), the same bar the first option already had. Otherwise the turn goes to the agent, or without one to the closest page.
+6. **Ask only between full matches.** "A or B?" needs the second option to cover more than half of the request (`absolute > 0.5`; a two-word request where it matches one word is not enough). Otherwise the turn goes to the agent, or without one to the closest page.
 7. **Alt-text-only pictures read their card.** For a picture whose description comes from metadata, the plan spotlights the link or card around it (`cardAround`: the nearest `a`, else the nearest `.tile`, `.card` or `.banner` that is not an image wrapper) and reads its text.
+
+8. **Follow-up, 2026-10-24.** Link texts that reach the home page through a redirect (retired pages) no longer label it, and شركات / بيزنس / business are synonyms, so "اخر عروض الشركات" finds the Vodafone Business Red deal (bug log B-15). Recognition that ends empty on the shared microphone track is reported and the next press lets recognition capture on its own; the on-device check is capped at 800 ms (B-16).
 
 ## Options considered
 
@@ -47,7 +49,7 @@ Causes, all reproduced offline with the committed knowledge base:
 |---|---|
 | Keep the agent on and say "I can't search" faster | Rejected: the person still hears "let me look" followed by an apology, and the closest page is usually right |
 | Normalise tool schemas in the agent proxy instead of upgrading zod | Rejected: fixes the payload, not the warning, and keeps a type-check allowlist |
-| A business synonym group (بيزنس، شركات، business) | Tried and dropped: the home page's anchor labels include "Business Data", so "خطوط شركات" went to the home page. Vodafone Business is a separate site outside our origins; this is a content gap |
+| A business synonym group (بيزنس، شركات، business) | First dropped: the home page's anchor labels included "Business Data Wallet", so "خطوط شركات" went to the home page. Adopted on 2026-10-24 once those retired-link labels were removed (decision 8). Vodafone Business's own site is still outside our origins |
 | Rebuild the committed knowledge base | Not possible here: the full crawl is not in the repository. The next sync builds without page wrappers |
 
 ## Consequences

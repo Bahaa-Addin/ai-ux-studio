@@ -30,6 +30,8 @@ lexicon:
     - [رصيد, balance, credit]
     - [اشحن, شحن, الشحن, recharge, top up, topup]
     - [واي فاي, الواي فاي, wifi, wi-fi]
+    # Vodafone writes its business offers in English ("Vodafone Business Red"); people ask in Arabic.
+    - [شركات, الشركات, شركة, بيزنس, business]
   intents:
     watch:
       ar: [عرفني لما, بلغني لما, نبهني لما, قولي لو اتغير, ابعتلي لما يتغير, قولي لما]

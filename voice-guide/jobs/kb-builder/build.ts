@@ -69,6 +69,8 @@ const BOILERPLATE = /^(skip to (main )?content|main content start|تخطي إل�
  * matches anything on the page, so it competes with the page's own sections and pictures.
  */
 export const isPageWrapper = (css: string[]) => /^(#content|#main|#wrapper|main|body)$/i.test(css[0] || '') || /^#main-content/.test(css[0] || '')
+/** The site's home page: "/", "/ar", "/en/home", "/index.html". */
+const isHomePath = (url: string) => /^\/(?:[a-z]{2}\/?)?(?:home|index(?:\.html?)?)?\/?$/i.test(new URL(url).pathname)
 /** Call-to-action texts that say nothing about where they lead ("Know more", "أعرف أكتر"). */
 const GENERIC_ANCHOR = /^(know more|learn more|read more|view more|see more|more|here|click here|check now|details|h1|go|start|اعرف أكتر|أعرف أكتر|اعرف اكتر|أعرف اكتر|اعرف أكثر|اعرف اكثر|أعرف أكثر|المزيد|اضغط هنا|هنا|التفاصيل)$/i
 /** Accessible names some sites put on links: "Press Enter to redirect to X" -> "X". */
@@ -262,6 +264,9 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			// Links to the page they sit on (skip links, "Go to …" menu headers with href="#") say
 			// nothing about that page.
 			const text = cleanAnchor(l.text)
+			// Sites retire a page by redirecting it to the home page; the old link's text ("Business
+			// Data Wallet", "Data bundles") names the retired page, not the home page.
+			if (u && aliasOf.has(norm(l.href)) && isHomePath(u)) continue
 			if (!target || u === p.url || BOILERPLATE.test(text) || GENERIC_ANCHOR.test(text) || languageNames.test(text) || l.hreflang) continue
 			const list = anchorLabels.get(target) || {}
 			addTo(list, p.lang, text)

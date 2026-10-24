@@ -333,6 +333,24 @@ test('no speech service (Chromium, offline): the bar says so, the mic is release
 	assert.ok(await page.evaluate(() => ((window as any).__vgStreams as MediaStream[]).every((s) => s.getTracks().every((t) => t.readyState === 'ended'))), 'the microphone was released')
 })
 
+test('recognition that takes the shared track and hears nothing: the bar says so, and the next press lets recognition open the microphone', async () => {
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec, null, { timeout: 10_000 })
+	assert.equal(await page.evaluate(() => (window as any).__recTrack), 'audio', 'first press shares the guide\'s track')
+	// What some Chrome builds do: accept start(track), then end with no result and no error.
+	await page.evaluate(() => {
+		const rec = (window as any).__activeRec
+		;(window as any).__activeRec = null
+		rec.onend && rec.onend()
+	})
+	await page.waitForFunction(() => /مسمعتكش|catch that/.test(document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-bar')?.textContent || ''), null, { timeout: 5000 })
+	await page.locator('vg-guide .vg-mic').click()
+	await page.waitForFunction(() => !!(window as any).__activeRec, null, { timeout: 10_000 })
+	assert.equal(await page.evaluate(() => (window as any).__recTrack), null, 'second press: recognition captures on its own')
+	assert.ok(await page.evaluate(() => (window as any).__vgSayWords(['العروض'])))
+	await heard(page, /العروض/, 15_000)
+})
+
 test('a typed request with the panel open: the panel moves so it never covers the highlighted card', async () => {
 	await page.goto(`${WEB}/ar/mobile-internet-bundles`)
 	await ready()
