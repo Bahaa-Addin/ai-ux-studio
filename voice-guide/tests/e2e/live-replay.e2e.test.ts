@@ -358,8 +358,11 @@ test('phrase hints go only to on-device recognition: the server engine rejects t
 	await page.evaluate(() => ((window as any).voiceGuide.session.site.speech.phrases = ['العروض', 'ڤودافون كاش']))
 	await page.locator('vg-guide .vg-mic').click()
 	await page.waitForFunction(() => !!(window as any).__activeRec, null, { timeout: 5000 })
-	assert.ok(await page.evaluate(() => (window as any).__vgSayWords(['ڤودافون', 'كاش'])))
-	await heard(page, /كاش/, 15_000)
+	// The words were recognised when the guide takes the person to the Vodafone Cash page. Waiting
+	// for that page also keeps the navigation from landing in the next test.
+	await page.evaluate(() => (window as any).__vgSayWords(['ڤودافون', 'كاش'])).catch(() => {})
+	await page.waitForURL(`${WEB}/ar/vodafone-cash`, { timeout: 15_000 })
+	await ready()
 })
 
 test('a typed request with the panel open: the panel moves so it never covers the highlighted card', async () => {
