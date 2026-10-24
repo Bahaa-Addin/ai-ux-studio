@@ -346,7 +346,7 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 			// Ask only when both options cover the request. Two half-matches on different words
 			// ("open a business": a router guide's "open the wifi" and "Business International")
 			// make "A or B?" a guess about two things the person did not ask for.
-			if (second.absolute < 0.5) route = settings.agentEnabled ? 'agent' : 'none'
+			if (second.absolute <= 0.5) route = settings.agentEnabled ? 'agent' : 'none'
 			else {
 				route = 'clarify'
 				alternatives = [top, second]

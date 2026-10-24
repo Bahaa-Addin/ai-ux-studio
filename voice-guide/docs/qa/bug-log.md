@@ -126,3 +126,17 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** the X-ray stream registered its live listener before reading the backlog. A live event arriving during that read was written first, and its higher `seq` made the stream drop every backlog event.
 - **Fix:** live events wait until the backlog is written, then follow in `seq` order (`services/gateway/server.ts`, `/v1/events`).
 - **Test:** `tests/integration/gateway.test.ts`, "a live event that arrives while the X-ray backlog loads does not drop the backlog" (fails without the fix).
+
+## B-15 "اخر عروض الشركات" said "not exactly" and only opened the page
+
+- **Seen:** the guide said "مش لاقيها بالظبط. أقرب حاجة صفحة عروض حصريه." and opened the page that has the Vodafone Business Red deal, without showing it.
+- **Cause:** the site writes its business offers in English ("Vodafone Business Red"), and nothing linked "شركات" to "business". An earlier attempt at that synonym sent requests to the home page, because links to retired pages ("Business Data Wallet", "Data bundles", "Email & Domain") redirect to the home page and the builder gave their link texts to it.
+- **Fix:** link texts that reach the home page through a redirect no longer label it (builder, and the committed knowledge base); synonym group شركات / بيزنس / business; "A or B?" needs the second option to cover more than half of the request.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "links to retired pages … do not label the home page" (fails without the fix) and "company offers finds the Vodafone Business Red deal".
+
+## B-16 Pressing the microphone and speaking: nothing happens
+
+- **Seen:** on the live site, speaking after pressing the microphone gave no words and no message.
+- **Likely cause (not reproduced on the demo machine yet):** the guide hands its own microphone track to recognition (`start(track)`, ADR-0027). A browser can accept the track and then hear nothing, ending with no result and no error, which the guide treated as a quiet stop. Separately, the on-device check (`SpeechRecognition.available`) was awaited with no time limit before `start()`.
+- **Fix:** an empty end the guide did not ask for, or `no-speech`, now shows "مسمعتكش كويس، جرّب تاني" and logs `[voice-guide] speech: no-speech`; after an empty end with the shared track, the next press lets recognition open the microphone itself. The on-device check gives up after 800 ms. `guide.js` is exactly at its 20 KB budget after this change.
+- **Test:** `tests/e2e/live-replay.e2e.test.ts`, "recognition that takes the shared track and hears nothing" (fails without the fix).

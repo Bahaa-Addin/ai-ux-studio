@@ -101,6 +101,36 @@ test('progress carries the picked item into the next request ("subscribe to it")
 	assert.equal((await call('/v1/progress', { sessionId: s.sessionId, turnId: t1.turnId, cursor: 1 })).body.stale, true)
 })
 
+// Before the flood test below, which uses up the turn rate limit.
+test('a live event that arrives while the X-ray backlog loads does not drop the backlog', async () => {
+	const s = await newSession('en', `${ORIGIN}/en/index.html`)
+	const turn = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'coverage', page: { url: `${ORIGIN}/en/index.html` } })).body
+	// Hold the backlog read until a newer event for the same session has been delivered live.
+	const listTrace = p.store.listTrace.bind(p.store)
+	p.store.listTrace = async (sessionId: string, since?: number) => {
+		const backlog = await listTrace(sessionId, since)
+		await p.services.tracer('test').event({ sessionId: s.sessionId, siteId: 'demo-telco', turnId: 'turn_live', traceId: 'tr_live', spanId: 'sp_live' }, 'test.live')
+		await new Promise((r) => setTimeout(r, 300))
+		return backlog
+	}
+	const ac = new AbortController()
+	try {
+		const res = await fetch(`${p.url}/v1/events?session=${s.sessionId}&k=${KEY}`, { headers: { Origin: ORIGIN }, signal: ac.signal })
+		const reader = res.body!.getReader()
+		let buf = ''
+		const deadline = Date.now() + 3000
+		while (!(buf.includes('test.live') && buf.includes('turn.planned')) && Date.now() < deadline) {
+			const { value } = await Promise.race([reader.read(), new Promise<any>((r) => setTimeout(() => r({ value: undefined }), 500))])
+			if (value) buf += new TextDecoder().decode(value)
+		}
+		assert.ok(buf.includes(`"turnId":"${turn.turnId}"`), 'the earlier turn is in the backlog')
+		assert.ok(buf.includes('"name":"test.live"'), 'the live event follows it')
+	} finally {
+		ac.abort()
+		p.store.listTrace = listTrace
+	}
+})
+
 test('the edge rejects unknown site keys, foreign origins and floods', async () => {
 	assert.equal((await call('/v1/session', { lang: 'ar' }, { key: 'pk_nope' })).status, 401)
 	const foreign = await call('/v1/session', { lang: 'ar' }, { origin: 'https://evil.example' })
@@ -134,35 +164,6 @@ test('the X-ray stream delivers the session\'s trace events live', async () => {
 	assert.ok(buf.includes(`"turnId":"${turn.turnId}"`))
 	for (const n of ['router.understood', 'planner.plan', 'turn.planned']) assert.ok(buf.includes(`"name":"${n}"`), n)
 	assert.match(buf, /^id: \d+$/m)
-})
-
-test('a live event that arrives while the X-ray backlog loads does not drop the backlog', async () => {
-	const s = await newSession('en', `${ORIGIN}/en/index.html`)
-	const turn = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'coverage', page: { url: `${ORIGIN}/en/index.html` } })).body
-	// Hold the backlog read until a newer event for the same session has been delivered live.
-	const listTrace = p.store.listTrace.bind(p.store)
-	p.store.listTrace = async (sessionId: string, since?: number) => {
-		const backlog = await listTrace(sessionId, since)
-		await p.services.tracer('test').event({ sessionId: s.sessionId, siteId: 'demo-telco', turnId: 'turn_live', traceId: 'tr_live', spanId: 'sp_live' }, 'test.live')
-		await new Promise((r) => setTimeout(r, 300))
-		return backlog
-	}
-	const ac = new AbortController()
-	try {
-		const res = await fetch(`${p.url}/v1/events?session=${s.sessionId}&k=${KEY}`, { headers: { Origin: ORIGIN }, signal: ac.signal })
-		const reader = res.body!.getReader()
-		let buf = ''
-		const deadline = Date.now() + 3000
-		while (!(buf.includes('test.live') && buf.includes('turn.planned')) && Date.now() < deadline) {
-			const { value } = await Promise.race([reader.read(), new Promise<any>((r) => setTimeout(() => r({ value: undefined }), 500))])
-			if (value) buf += new TextDecoder().decode(value)
-		}
-		assert.ok(buf.includes(`"turnId":"${turn.turnId}"`), 'the earlier turn is in the backlog')
-		assert.ok(buf.includes('"name":"test.live"'), 'the live event follows it')
-	} finally {
-		ac.abort()
-		p.store.listTrace = listTrace
-	}
 })
 
 test('long polling returns the backlog at once, then waits for new events, then times out empty (ADR-0031)', async () => {

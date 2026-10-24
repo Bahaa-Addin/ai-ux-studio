@@ -64,6 +64,13 @@ test('builder: the wrapper around a whole page is not a section ("promotions-lit
 	assert.deepEqual(wrappers.map((d) => d.id), [])
 })
 
+test('builder: links to retired pages that redirect home do not label the home page', () => {
+	const home = build().manifest!.destinations.find((d) => d.id === 'web.home')!
+	const labels = Object.values(home.labels).flat()
+	assert.equal(labels.some((l) => /wifi page|wi-fi/i.test(l)), false, labels.join(' | '))
+	assert.ok(labels.includes('Personal'), 'a direct link to the home page still labels it')
+})
+
 test('builder: a soft 404 (200 with a "not found" page) is dropped', () => {
 	const c = crawl()
 	const copy = structuredClone(c.pages[0])
@@ -197,4 +204,11 @@ test('router: a typed answer to "A or B?" picks the option and keeps the questio
 	assert.equal(r.plan.meta.destinationId, 'web.promotions.400-megabyte.visual')
 	assert.equal(r.plan.lang, 'ar')
 	assert.equal(r.plan.steps.some((x) => x.op === 'navigate'), false, 'stays on the Arabic page')
+})
+
+test('router: "company offers" finds the Vodafone Business Red deal, written in English on the site', async () => {
+	const [r] = await converse(routerFor(), ['اخر عروض الشركات'], 'https://web.vodafone.com.eg/ar/home')
+	assert.equal(r.plan.meta.route, 'replay')
+	assert.equal(r.plan.meta.destinationId, 'web.exclusive-benefits.vodafone-red-business-2024-may-deal')
+	assert.ok(r.plan.steps.some((x) => x.op === 'spotlight' && x.read), 'the deal is read, not just its page opened')
 })

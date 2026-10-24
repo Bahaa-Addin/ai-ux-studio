@@ -12,6 +12,7 @@ type Rec = {
 	continuous: boolean
 	maxAlternatives: number
 	processLocally?: boolean
+	stopped?: boolean
 	phrases?: unknown[]
 	start(track?: MediaStreamTrack): void
 	stop(): void
@@ -54,6 +55,8 @@ export class Speech {
 	#rec: Rec | null = null
 	#voices: SpeechSynthesisVoice[] = []
 	muted = false
+	/** Set when a shared track produced no words: some builds accept start(track) and then hear nothing. */
+	#noTrack = false
 
 	constructor() {
 		const w = window as any
@@ -83,7 +86,10 @@ export class Speech {
 			} catch {}
 		}
 		let finalSent = false
+		let heard = false
+		const useTrack = opts.track && !this.#noTrack
 		rec.onresult = (e: any) => {
+			heard = true
 			let finalText = ''
 			let interim = ''
 			let confidence = 1
@@ -101,17 +107,22 @@ export class Speech {
 				h.onFinal(finalText.trim(), confidence)
 			}
 		}
-		rec.onerror = (e: any) => h.onError(e.error || 'error')
+		// "no-speech" is left to onend, which follows every error.
+		rec.onerror = (e: any) => e.error !== 'no-speech' && ((heard = true), h.onError(e.error || 'error'))
 		rec.onspeechstart = () => h.onSpeechStart?.()
 		rec.onsoundstart = () => h.onSound?.(true)
 		rec.onsoundend = () => h.onSound?.(false)
 		rec.onend = () => {
 			if (this.#rec === rec) this.#rec = null
-			h.onEnd()
+			// Ended with no words and no error: "nothing happens" for the person. Say so, and stop
+			// handing this browser our track (the next press lets recognition open the microphone).
+			if (heard || rec.stopped) return h.onEnd()
+			if (useTrack) this.#noTrack = true
+			h.onError('no-speech')
 		}
 		this.#rec = rec
 		let mode: ListenInfo['mode'] = 'own-capture'
-		if (opts.track) {
+		if (useTrack) {
 			try {
 				rec.start(opts.track)
 				mode = 'shared-track'
@@ -125,7 +136,8 @@ export class Speech {
 	async #preferOnDevice(R: any, rec: Rec, lang: string, pref: 'prefer' | 'require' | 'off'): Promise<boolean> {
 		if (pref === 'off' || typeof R.available !== 'function' || !('processLocally' in rec)) return false
 		try {
-			const status = await R.available({ langs: [lang], processLocally: true })
+			// Some builds never settle this promise; recognition must not wait on it.
+			const status = await Promise.race([R.available({ langs: [lang], processLocally: true }), new Promise((r) => setTimeout(r, 800))])
 			if (status === 'available') {
 				rec.processLocally = true
 				return true
@@ -138,6 +150,8 @@ export class Speech {
 
 	stopListening(): void {
 		try {
+			// Stopped by the guide (a second press, the time limit): ending empty is expected.
+			if (this.#rec) this.#rec.stopped = true
 			this.#rec?.stop()
 		} catch {}
 	}
@@ -146,6 +160,7 @@ export class Speech {
 		const r = this.#rec
 		this.#rec = null
 		try {
+			if (r) r.stopped = true
 			r?.abort()
 		} catch {}
 	}
