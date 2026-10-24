@@ -136,7 +136,9 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 
 ## B-16 Pressing the microphone and speaking: nothing happens
 
-- **Seen:** on the live site, speaking after pressing the microphone gave no words and no message.
-- **Likely cause (not reproduced on the demo machine yet):** the guide hands its own microphone track to recognition (`start(track)`, ADR-0027). A browser can accept the track and then hear nothing, ending with no result and no error, which the guide treated as a quiet stop. Separately, the on-device check (`SpeechRecognition.available`) was awaited with no time limit before `start()`.
-- **Fix:** an empty end the guide did not ask for, or `no-speech`, now shows "مسمعتكش كويس، جرّب تاني" and logs `[voice-guide] speech: no-speech`; after an empty end with the shared track, the next press lets recognition open the microphone itself. The on-device check gives up after 800 ms. `guide.js` is exactly at its 20 KB budget after this change.
-- **Test:** `tests/e2e/live-replay.e2e.test.ts`, "recognition that takes the shared track and hears nothing" (fails without the fix).
+- **Seen:** on the live site, speaking after pressing the microphone gave no words and no message; the console then showed `[voice-guide] speech: phrases-not-supported`.
+- **Cause:** the guide sends the page's contextual phrases (`rec.phrases`) with every request. Chrome accepts phrase hints only for on-device recognition; with the server engine it fails the whole request with `phrases-not-supported`. The test stand-in had no `phrases` property, so the guide never set them in tests.
+- **Fix:** phrases are set only when on-device recognition is in use. The stand-in now has `phrases` and rejects them off-device like Chrome; without the fix 13 voice tests fail.
+- **Also hardened (found while looking):** the guide hands its own microphone track to recognition (`start(track)`, ADR-0027). A browser can accept the track and then hear nothing, ending with no result and no error, which the guide treated as a quiet stop. Separately, the on-device check (`SpeechRecognition.available`) was awaited with no time limit before `start()`.
+- **Hardening:** an empty end the guide did not ask for, or `no-speech`, now shows "مسمعتكش كويس، جرّب تاني" and logs `[voice-guide] speech: no-speech`; after an empty end with the shared track, the next press lets recognition open the microphone itself. The on-device check gives up after 800 ms. `guide.js` is exactly at its 20 KB budget after this change.
+- **Test:** `tests/e2e/live-replay.e2e.test.ts`, "phrase hints go only to on-device recognition" and "recognition that takes the shared track and hears nothing" (each fails without its fix).

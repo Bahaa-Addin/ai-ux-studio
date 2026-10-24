@@ -80,7 +80,9 @@ export class Speech {
 		rec.continuous = false
 		rec.maxAlternatives = 1
 		const onDevice = await this.#preferOnDevice(R, rec, lang, opts.onDevice || 'off')
-		if (opts.phrases?.length && w.SpeechRecognitionPhrase && 'phrases' in rec) {
+		// Chrome takes phrase hints only for on-device recognition; the server engine fails the whole
+		// request with "phrases-not-supported" (seen on the live demo, 2026-10-24).
+		if (onDevice && opts.phrases?.length) {
 			try {
 				rec.phrases = opts.phrases.slice(0, 50).map((p) => new w.SpeechRecognitionPhrase(p, 2))
 			} catch {}

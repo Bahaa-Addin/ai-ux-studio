@@ -41,7 +41,7 @@ Causes, all reproduced offline with the committed knowledge base:
 6. **Ask only between full matches.** "A or B?" needs the second option to cover more than half of the request (`absolute > 0.5`; a two-word request where it matches one word is not enough). Otherwise the turn goes to the agent, or without one to the closest page.
 7. **Alt-text-only pictures read their card.** For a picture whose description comes from metadata, the plan spotlights the link or card around it (`cardAround`: the nearest `a`, else the nearest `.tile`, `.card` or `.banner` that is not an image wrapper) and reads its text.
 
-8. **Follow-up, 2026-10-24.** Link texts that reach the home page through a redirect (retired pages) no longer label it, and شركات / بيزنس / business are synonyms, so "اخر عروض الشركات" finds the Vodafone Business Red deal (bug log B-15). Recognition that ends empty on the shared microphone track is reported and the next press lets recognition capture on its own; the on-device check is capped at 800 ms (B-16).
+8. **Follow-up, 2026-10-24.** Link texts that reach the home page through a redirect (retired pages) no longer label it, and شركات / بيزنس / business are synonyms, so "اخر عروض الشركات" finds the Vodafone Business Red deal (bug log B-15). Phrase hints are sent only with on-device recognition: Chrome's server engine rejects them with `phrases-not-supported`, which made the microphone do nothing (B-16). Recognition that ends empty on the shared microphone track is reported and the next press lets recognition capture on its own; the on-device check is capped at 800 ms (B-16).
 
 ## Options considered
 
