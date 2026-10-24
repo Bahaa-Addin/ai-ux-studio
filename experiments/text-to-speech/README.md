@@ -1,5 +1,7 @@
 # Text to Speech × Vodafone Services — raw demo
 
+The branch now also includes a [VoiceTut Arabic–English experiment](../voicetut/README.md), available directly on the same page without an extension. The original extension below is retained for comparison.
+
 Branch: `experiment/text-to-speech`. Based on `fc52fe2` of `Bahaa-Addin/ai-ux-studio`.
 
 The [upstream README](https://github.com/BuildChromeExtensions/textToSpeech) describes a Chrome extension with popup speech controls and a selection context menu; it does **not** contain a quick-start guide. The steps below are local setup instructions based on its Manifest V3 extension, not a claimed upstream guide.
