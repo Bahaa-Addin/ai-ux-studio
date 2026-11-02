@@ -8,7 +8,7 @@
  * Provenance
  * - Text and images: captured from the live page on 2026-04-21 (see docs/design-system.md).
  * - Links, hero heading and the "Roaming Services" title: re-checked against the live
- *   page on 2026-10-19.
+ *   page on 2026-11-02.
  * - Copy is kept exactly as published, including source typos and slug-like titles
  *   ("International standarad rates", "visa-appointment", "park-your-line",
  *   "Vodafone-advertising") and irregular spacing ("line , your").
@@ -23,7 +23,8 @@
  * Field notes
  * - `cta.label === null` means the source card is itself the link (no separate CTA text).
  * - `cta.href === null` means the source provides no destination; renderers must not
- *   invent one. (Great Entertainment cards only have a "Subscribe now" label.)
+ *   invent one. Great Entertainment cards use the live page's shared Ana Vodafone
+ *   flow, except Play&Win which has a dedicated Vodafone page.
  * - `image.width/height` are the intrinsic pixel sizes of the local asset. Renderers use
  *   them to pick crops and avoid upscaling small images.
  */
@@ -36,7 +37,7 @@ export const vodafoneServicesPage = {
   pageId: 'vodafone-services',
   sourceUrl: `${VF}/en/services`,
   capturedOn: '2026-04-21',
-  linksVerifiedOn: '2026-10-19',
+  linksVerifiedOn: '2026-11-02',
   title: 'Vodafone Services',
   intro: 'Manage your line , your payment, balance, and all the services you need',
   heroImage: img('hero-banner.jpg', 1920, 350),
