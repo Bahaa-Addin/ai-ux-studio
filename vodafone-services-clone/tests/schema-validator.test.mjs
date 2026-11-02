@@ -23,6 +23,15 @@ test('content model is clean and complete', () => {
   }
 })
 
+test('every entertainment subscription has a working Vodafone destination', () => {
+  const entertainment = model.sections.find((section) => section.id === 'great-entertainment')
+  assert.ok(entertainment)
+  for (const item of entertainment.items) {
+    assert.match(item.cta?.href ?? '', /^https:\/\//, `${item.id} has an absolute subscription URL`)
+  }
+  assert.equal(index.get('play-and-win').cta.href, 'https://web.vodafone.com.eg/en/play-win')
+})
+
 test('model payload carries no URLs or markup', () => {
   const text = JSON.stringify(buildModelPayload(index))
   assert.doesNotMatch(text, /https?:\/\//)

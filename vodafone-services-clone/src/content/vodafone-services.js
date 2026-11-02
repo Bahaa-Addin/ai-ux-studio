@@ -29,6 +29,7 @@
  */
 
 const VF = 'https://web.vodafone.com.eg'
+const ANA_VODAFONE = 'https://vf.eg/anavodafone'
 const img = (file, width, height) => ({ src: `/assets/images/${file}`, width, height })
 
 export const vodafoneServicesPage = {
@@ -131,7 +132,7 @@ export const vodafoneServicesPage = {
       id: 'great-entertainment',
       title: 'Great Entertainment',
       description: 'Enjoy entertainment services from Vodafone and select your favorite',
-      cta: { label: 'Download Ana Vodafone App', href: 'https://vf.eg/anavodafone' },
+      cta: { label: 'Download Ana Vodafone App', href: ANA_VODAFONE },
       aside: {
         title: 'Download Ana Vodafone',
         description: 'Scan the QR to enjoy the service',
@@ -143,49 +144,49 @@ export const vodafoneServicesPage = {
           title: 'Mo Salah World',
           description: 'Subscribe and stay updated with all news &videos of M.Salah',
           image: img('mo-salah-world.png', 200, 430),
-          cta: { label: 'Subscribe now', href: null },
+          cta: { label: 'Subscribe now', href: ANA_VODAFONE },
         },
         {
           id: '3alam-mama',
           title: '3alam Mama',
           description: 'Get information from the moment of pregnancy till your child is older',
           image: img('3alam-mama.png', 200, 200),
-          cta: { label: 'Subscribe now', href: null },
+          cta: { label: 'Subscribe now', href: ANA_VODAFONE },
         },
         {
           id: 'henedy-world',
           title: 'Henedy World',
           description: "Subscribe &stay connected with all Henedy's news, behind the scenes ,memes and more",
           image: img('henedy-world.png', 200, 200),
-          cta: { label: 'Subscribe now', href: null },
+          cta: { label: 'Subscribe now', href: ANA_VODAFONE },
         },
         {
           id: 'vf-play',
           title: 'VF Play',
           description: 'Enjoy the ultimate gaming experience with VF Play for free',
           image: img('vf-play.png', 200, 200),
-          cta: { label: 'Subscribe now', href: null },
+          cta: { label: 'Subscribe now', href: ANA_VODAFONE },
         },
         {
           id: '90-mins',
           title: '90 Mins',
           description: 'Know the latest news of the European league',
           image: img('90-mins.png', 200, 200),
-          cta: { label: 'Subscribe now', href: null },
+          cta: { label: 'Subscribe now', href: ANA_VODAFONE },
         },
         {
           id: 'play-and-win',
           title: 'Play&Win',
           description: 'Answer 10 questions correctly and win 10,000 pounds',
           image: img('play-win.png', 430, 200),
-          cta: { label: 'Subscribe now', href: null },
+          cta: { label: 'Subscribe now', href: `${VF}/en/play-win` },
         },
         {
           id: 'el-hadaba-world',
           title: 'El Hadaba World',
           description: "Know Amr Diab's latest news",
           image: img('amr-diab.png', 200, 430),
-          cta: { label: 'Subscribe now', href: null },
+          cta: { label: 'Subscribe now', href: ANA_VODAFONE },
         },
       ],
     },
