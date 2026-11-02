@@ -18,8 +18,7 @@
   pointer-events: none;
 }
 
-.pocket-mascot__mover,
-.pocket-mascot__facing {
+.pocket-mascot__mover {
   position: absolute;
   inset: 0;
 }
@@ -31,8 +30,12 @@
   overflow: visible;
 }
 
-.pocket-mascot svg [data-part] {
-  transform-box: view-box;
+.pocket-mascot svg [data-part='eye'],
+.pocket-mascot svg [data-part='iris-core'],
+.pocket-mascot svg [data-part='brow'],
+.pocket-mascot svg [data-part='apple'] {
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 /* Resting places owned by the state; the clips travel between them. */
@@ -55,7 +58,6 @@
 .pocket-mascot [data-part='eye-closed'],
 .pocket-mascot [data-part='brow'],
 .pocket-mascot [data-part='blush'],
-.pocket-mascot [data-part='arms-crossed'],
 .pocket-mascot [data-part='apple'],
 .pocket-mascot [data-apple-shape],
 .pocket-mascot [data-part='marks'],
@@ -78,7 +80,6 @@
 .pocket-mascot[data-sweat] [data-part='sweat'],
 .pocket-mascot[data-marks] [data-part='marks'],
 .pocket-mascot[data-zzz] [data-part='zzz'],
-.pocket-mascot[data-arms='crossed'] [data-part='arms-crossed'],
 .pocket-mascot[data-apple='whole'] [data-part='apple'],
 .pocket-mascot[data-apple='bitten'] [data-part='apple'],
 .pocket-mascot[data-apple='core'] [data-part='apple'],
@@ -88,9 +89,7 @@
   display: inline;
 }
 
-.pocket-mascot[data-eye='closed'] [data-part='eye'],
-.pocket-mascot[data-arms='crossed'] [data-part='arm-l'],
-.pocket-mascot[data-arms='crossed'] [data-part='arm-r'] {
+.pocket-mascot[data-eye='closed'] [data-part='eye'] {
   display: none;
 }
 
@@ -220,20 +219,6 @@
   overflow: visible;
 }
 
-.pocket-drone svg [data-part] {
-  transform-box: view-box;
-}
-
-.pocket-drone [data-part='blades'] {
-  animation: pocket-drone-spin 0.16s linear infinite;
-}
-
-.pocket-drone[data-drone-state='drawing-heart'] [data-part='blades'],
-.pocket-drone[data-drone-state='dragging'] [data-part='blades'],
-.pocket-drone[data-drone-state='evading'] [data-part='blades'] {
-  animation-duration: 0.09s;
-}
-
 .pocket-drone[data-drone-state='home-hover'] .pocket-drone__bob {
   animation: pocket-drone-bob 2.6s ease-in-out infinite;
 }
@@ -245,12 +230,6 @@
 
 .pocket-drone[data-drone-state='home-hover'] [data-part='lift-lines'] {
   opacity: 0.9;
-}
-
-@keyframes pocket-drone-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes pocket-drone-bob {
@@ -290,7 +269,6 @@
 /* ------------------------------------------------------------ reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
-  .pocket-drone [data-part='blades'],
   .pocket-drone[data-drone-state='home-hover'] .pocket-drone__bob {
     animation: none;
   }

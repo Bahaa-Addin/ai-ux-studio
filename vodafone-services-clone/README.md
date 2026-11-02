@@ -231,18 +231,21 @@ pocket; **Reimagine this page** sits top-right under the header and opens its pa
 button → click it → remove one sticker → *Back to Services* → *Put back* on a liner.
 
 **The mascot and the drone** (`src/pocket/pocket-actors.js`, details in
-[docs/pocket-actors.md](docs/pocket-actors.md)). A Vodafone-red mascot lives *under* the page
-curl. It sits in the curl's `under` layer, so the lifted paper really covers it. Pocketing an
-item makes it peek out from under the curl, wave and duck back. When the page turns it gets
-caught at about 60% of the turn and sprints to the opposite corner, where it lives: its eye
-follows the pointer, it jumps when you hover a card, and if left alone it gets impatient, eats
-an apple and falls asleep until you move. A small red drone draws a dashed heart once per
-opening, dodges the pointer and can be dragged (it always springs home). Both are decoration:
-they never delay saving, opening or closing, never cover controls or cards (the mascot sits
-lower or tucks away when content reaches its corner), and with reduced motion they appear as a
-calm still pose. The assets are hand-drawn layered SVG rigs, traced from the reference art, with
-a manifest (`src/pocket/actors/assets/`). There are no new dependencies, and the build grows by
-about 19 KB gzip.
+[docs/pocket-actors.md](docs/pocket-actors.md)) are 3D models drawn as SVG every frame, so they
+really turn, lean, bank and twirl.
+- **The mascot** is a Vodafone-red flame that lives *under* the page curl. It sits in the curl's
+  `under` layer, so the lifted paper really covers it. Pocketing an item makes it slide out from
+  under the curl, turn to you, wave and dive back under. When the page turns it gets caught,
+  turns and sprints to the opposite corner, skids and swings back round to face you. There its
+  body turns toward the pointer, it twirls when you hover a card, and if left alone it gets
+  impatient, eats an apple and dozes off until you move.
+- **The drone** draws a dashed heart once per opening: it turns its nose into each curve and
+  banks with its rotors spinning in perspective. It dodges the pointer with a pirouette and can
+  be dragged (it always springs home).
+- **They stay out of the way.** They never delay saving, opening or closing, and never cover
+  controls or cards. With reduced motion they appear as calm still poses.
+- **No dependencies.** There is no library: just a small 3D kit, procedural models and SVG decal
+  sheets traced from the reference art. The build grows by about 25 KB gzip.
 
 **How the curl works** (`src/pocket/curl.js`). The sheet wraps around a cylinder whose axis sits
 `x` px from the peeled corner. The flat part, the back half of the roll (sliced into strips and
@@ -261,11 +264,12 @@ src/pocket/
   pocket.css  all .pocket- / .curl- styles, Vodafone tokens only
   pocket-actors.js   the mascot and drone: rigs, clips, layout, input, lifecycle (called by pocket.js)
   pocket-actors.css  .pocket-actor- / .pocket-mascot- / .pocket-drone- styles
-  actors/            state machines (mascot-brain, drone-brain), clips, motion geometry, timing,
-                     cleanup scope; assets/ holds mascot.svg, drone.svg and manifest.json
+  actors/            state machines (mascot-brain, drone-brain), 3D kit (space), 3D models
+                     (mascot-model, drone-model), SVG renderer, pose clips, flight geometry (motion),
+                     timing, cleanup scope; assets/ holds the decal sheets and manifest.json
 tests/
   pocket-curl.test.mjs     curl geometry (npm test)
-  pocket-actors.test.mjs   actor states, idle ladder, drag, cleanup, geometry, assets (npm test)
+  pocket-actors.test.mjs   actor states, idle ladder, drag, cleanup, 3D models and projection, assets (npm test)
   e2e/pocket_e2e.py        119 browser checks: every flow, keyboard, reduced motion, mobile, persistence,
                            and the actors (occlusion, greeting, page-turn run, idle ladder, drone, 7 viewports)
 ```

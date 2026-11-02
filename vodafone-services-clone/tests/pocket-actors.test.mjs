@@ -1,6 +1,6 @@
 /**
- * Pocket actors: the mascot and drone state machines, their geometry, the cleanup scope and
- * the asset interface. Time is driven by a fake clock, randomness by a fixed seed, so every
+ * Pocket actors: the mascot and drone state machines, the 3D models and their projection,
+ * the pose animator, the flight geometry, the cleanup scope and the asset interface. Time is driven by a fake clock, randomness by a fixed seed, so every
  * threshold is checked exactly. The DOM side is covered by tests/e2e/pocket_e2e.py.
  */
 import { test } from 'node:test'
@@ -10,7 +10,10 @@ import { TIMING, seededRandom, pick, withTiming } from '../src/pocket/actors/tim
 import { createMascotBrain, MASCOT_STATES, PRIORITY, priorityOf } from '../src/pocket/actors/mascot-brain.js'
 import { createDroneBrain } from '../src/pocket/actors/drone-brain.js'
 import { createScope } from '../src/pocket/actors/scope.js'
-import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, BLINK } from '../src/pocket/actors/clips.js'
+import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, BLINK, createPoseAnimator } from '../src/pocket/actors/clips.js'
+import { createCamera, orientation, apply, rotateY, projectEllipsoid, capsulePath, v3, dot, length } from '../src/pocket/actors/space.js'
+import { mascotFrame, restPose, POSE_KEYS } from '../src/pocket/actors/mascot-model.js'
+import { droneFrame } from '../src/pocket/actors/drone-model.js'
 import { gazeOffset, smoothToward, curlSide, oppositeSide, heartFlight, samplePath, rect, rectsOverlap, contains, chooseAnchor, planHeart } from '../src/pocket/actors/motion.js'
 
 /* ------------------------------------------------------------------ helpers */
@@ -638,46 +641,174 @@ test('scope: one dispose releases listeners, timers, frames, observers and anima
   assert.equal(scope.timeout(() => {}, 10), null) // nothing new after dispose
 })
 
+/* ------------------------------------------------------------- 3D kit */
+
+const near = (a, b, epsilon = 1e-6) => Math.abs(a - b) < epsilon
+
+test('3D: pose rotations are rigid; yaw turns the front toward the viewer\'s right', () => {
+  const m = orientation({ yaw: 37, pitch: -12, roll: 25 })
+  const a = apply(m, v3(1, 2, 3))
+  assert.ok(near(length(a), length(v3(1, 2, 3)), 1e-9), 'length preserved')
+  assert.ok(near(dot(apply(m, v3(1, 0, 0)), apply(m, v3(0, 1, 0))), 0, 1e-9), 'axes stay orthogonal')
+  const front = apply(rotateY(90), v3(0, 0, 1))
+  assert.ok(near(front.x, 1) && near(front.z, 0))
+})
+
+test('3D: perspective makes nearer things bigger; a sphere projects to a circle', () => {
+  const camera = createCamera({ distance: 900, tilt: 0 })
+  const near1 = camera.project(v3(10, 0, 100))
+  const far1 = camera.project(v3(10, 0, -100))
+  assert.ok(near1.k > 1 && far1.k < 1 && near1.x > far1.x)
+  const tilted = createCamera({ distance: 900, tilt: 20 })
+  const r = 30
+  const sphere = projectEllipsoid(tilted, v3(0, 0, 0), v3(r, 0, 0), v3(0, r, 0), v3(0, 0, r))
+  assert.ok(near(sphere.rx, sphere.ry, 1e-6) && near(sphere.rx, r, 1e-6))
+  const disc = projectEllipsoid(tilted, v3(0, 0, 0), tilted.toView(v3(r, 0, 0)), tilted.toView(v3(0, 0.001, 0)), tilted.toView(v3(0, 0, r)))
+  assert.ok(disc.ry < disc.rx * 0.5, 'a ground disc seen from above is a flat ellipse')
+  assert.match(capsulePath({ x: 0, y: 0 }, 6, { x: 40, y: 10 }, 3), /^M.*A.*A.*Z$/)
+})
+
+const mascotCamera = () => createCamera({ distance: 900, tilt: 12, origin: { x: 60, y: 147 } })
+const finite = (value) => {
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value === 'string') return !/NaN|Infinity/.test(value)
+  if (Array.isArray(value)) return value.every(finite)
+  if (value && typeof value === 'object') return Object.values(value).every(finite)
+  return true
+}
+
+test('mascot model: a closed, finite silhouette from every angle, ending in the flame tip', () => {
+  const camera = mascotCamera()
+  for (let yaw = -180; yaw <= 180; yaw += 15) {
+    for (const extra of [{}, { pitch: 18, roll: -8 }, { sx: 1.14, sy: 0.84, bend: 6, nod: -12 }]) {
+      const frame = mascotFrame({ yaw, ...extra }, camera)
+      assert.ok(frame.body.outline.length > 30, `outline at yaw ${yaw}`)
+      assert.ok(finite(frame), `finite at yaw ${yaw}`)
+      assert.match(frame.body.d, /^M.*Z$/)
+    }
+  }
+  // Facing the viewer the tip curls up to the right, as in the reference.
+  const front = mascotFrame({}, camera)
+  const top = front.body.outline.reduce((a, b) => (a.y < b.y ? a : b))
+  assert.ok(top.x > 75 && top.y < 20, `tip at ${top.x.toFixed(1)}, ${top.y.toFixed(1)}`)
+})
+
+test('mascot model: the face turns with the body and hides behind it', () => {
+  const camera = mascotCamera()
+  const facing = (yaw) => mascotFrame({ yaw }, camera).decals.eye.facing
+  assert.ok(facing(0) > 0.95)
+  assert.ok(facing(50) > 0.4 && facing(50) < 0.8)
+  assert.ok(facing(180) < -0.9)
+  // The eye slides toward the side the body turns to.
+  const eyeX = (yaw) => mascotFrame({ yaw }, camera).decals.eye.matrix[4]
+  assert.ok(eyeX(40) > eyeX(0) + 10 && eyeX(-40) < eyeX(0) - 10)
+})
+
+test('mascot model: limbs swap in front of and behind the body as it turns', () => {
+  const camera = mascotCamera()
+  const front = mascotFrame({ yaw: 0 }, camera)
+  assert.deepEqual(front.order.front.sort(), ['armL', 'armR'])
+  const turned = mascotFrame({ yaw: 90 }, camera)
+  assert.ok(turned.order.back.includes('armR') || turned.order.back.includes('armL'), 'the far arm goes behind')
+  const raised = mascotFrame({ armRa: 160 }, camera)
+  assert.ok(raised.limbs.armR.end.y < raised.limbs.armR.root.y - 15, 'a raised arm points up')
+  const jump = mascotFrame({ y: 26 }, camera)
+  assert.ok(near(jump.shadow.cy, front.shadow.cy, 0.5), 'the shadow stays on the ground')
+})
+
+test('drone model: four rotor units and a hull, ordered by depth, banking in 3D', () => {
+  const camera = createCamera({ distance: 900, tilt: 26, origin: { x: 100, y: 74 } })
+  const level = droneFrame({}, camera, 0)
+  assert.equal(level.units.length, 4)
+  assert.ok(finite(level))
+  const order = (frame) => frame.units.map((unit, index) => [unit.z, index]).sort((a, b) => a[0] - b[0]).map(([, index]) => index).join()
+  assert.notEqual(order(droneFrame({ yaw: 0 }, camera)), order(droneFrame({ yaw: 180 }, camera)))
+  const banked = droneFrame({ roll: -25 }, camera)
+  const left = banked.units.reduce((a, b) => (a.pod.cx < b.pod.cx ? a : b))
+  const right = banked.units.reduce((a, b) => (a.pod.cx > b.pod.cx ? a : b))
+  assert.ok(right.pod.cy > left.pod.cy, 'rolling right drops the right side')
+  // Rotors spin: blade matrices change with the spin angle.
+  assert.notDeepEqual(droneFrame({}, camera, 0).units[0].blades[0], droneFrame({}, camera, 40).units[0].blades[0])
+})
+
+test('pose animator: tracks play on time, interruptions blend, untouched keys settle to rest', () => {
+  const animator = createPoseAnimator({ blend: 90, settle: 180 })
+  animator.play({ pose: { yaw: [[0, 0], [1, 90]] } }, 0, 1000)
+  animator.tick(500)
+  assert.ok(animator.pose.yaw > 40 && animator.pose.yaw < 50)
+  // A new clip starting from a different value blends from where the body is (no pop).
+  animator.play({ pose: { pitch: [[0, 20], [1, 20]] } }, 500, 400)
+  const at = animator.pose.yaw
+  animator.tick(510)
+  assert.ok(Math.abs(animator.pose.yaw - at) < 5, 'yaw continues smoothly')
+  assert.ok(animator.pose.pitch < 5, 'pitch eases in rather than jumping')
+  assert.equal(animator.tick(900).active, false)
+  assert.ok(near(animator.pose.yaw, 0, 1e-6), 'yaw settled back to rest')
+  assert.ok(near(animator.pose.pitch, 20, 1e-6))
+  // A finished twirl does not unwind: 360 folds back to 0 before the next clip.
+  animator.play({ pose: { yaw: [[0, 0], [1, 360]] } }, 1000, 100)
+  animator.tick(1100)
+  animator.play({ pose: { roll: [[1, 5]] } }, 1100, 100)
+  animator.tick(1150)
+  assert.ok(Math.abs(animator.pose.yaw) < 1e-6)
+  // Loops keep running; hold() sets a still pose at once.
+  animator.play({ loop: true, duration: 1000, pose: { sy: [[0, 1], [0.5, 1.02], [1, 1]] } }, 2000)
+  assert.equal(animator.tick(4500).looping, true)
+  animator.hold({ yaw: 12 })
+  assert.equal(animator.pose.yaw, 12)
+  assert.equal(animator.tick(5000).looping, false)
+})
+
 /* ------------------------------------------------------------- the assets */
 
 const assetUrl = (name) => new URL(`../src/pocket/actors/assets/${name}`, import.meta.url)
-const partsIn = (svg) => new Set([...svg.matchAll(/data-part="([^"]+)"/g)].map((match) => match[1]))
+const attributeValues = (svg, attribute) => new Set([...svg.matchAll(new RegExp(`${attribute}="([^"]+)"`, 'g'))].map((match) => match[1]))
 
-test('asset interface: every part named by the manifest and the clips exists in the rigs', async () => {
+test('asset interface: the models and decal sheets provide every part the manifest names', async () => {
   const manifest = JSON.parse(await readFile(assetUrl('manifest.json'), 'utf8'))
-  const mascot = partsIn(await readFile(assetUrl('mascot.svg'), 'utf8'))
-  const drone = partsIn(await readFile(assetUrl('drone.svg'), 'utf8'))
-  for (const part of Object.keys(manifest.assets.mascot.parts)) assert.ok(mascot.has(part), `mascot part ${part}`)
-  for (const part of Object.keys(manifest.assets.drone.parts)) assert.ok(drone.has(part), `drone part ${part}`)
-  // The brief's minimum: separately controllable eye/pupil, eyelid, body, arms, legs, mouth, apple, sleep.
-  for (const part of ['eye', 'iris', 'lid', 'body', 'arm-l', 'arm-r', 'leg-l', 'leg-r', 'mouth', 'apple', 'zzz']) assert.ok(mascot.has(part), part)
   const mascotSvg = await readFile(assetUrl('mascot.svg'), 'utf8')
-  for (const shape of manifest.assets.mascot.expressions.mouth) assert.match(mascotSvg, new RegExp(`data-mouth-shape="${shape}"`))
-  for (const name of Object.keys(MASCOT_CLIPS)) assert.ok(manifest.assets.mascot.clips.includes(name), `clip ${name} in manifest`)
+  const droneSvg = await readFile(assetUrl('drone.svg'), 'utf8')
+  const { mascot, drone } = manifest.assets
+  for (const name of mascot.decalSheet) assert.ok(attributeValues(mascotSvg, 'data-decal').has(name), `mascot decal ${name}`)
+  for (const part of Object.keys(mascot.decalParts)) assert.ok(attributeValues(mascotSvg, 'data-part').has(part), `mascot part ${part}`)
+  for (const name of drone.decalSheet) assert.ok(attributeValues(droneSvg, 'data-decal').has(name), `drone decal ${name}`)
+  for (const part of Object.keys(drone.decalParts)) assert.ok(attributeValues(droneSvg, 'data-part').has(part), `drone part ${part}`)
+  assert.deepEqual([...mascot.pose].sort(), [...POSE_KEYS].sort())
+  // The brief's minimum: separately controllable eye/pupil, eyelid, body, arms, legs, mouth, apple, sleep.
+  const frame = mascotFrame({}, mascotCamera())
+  for (const part of ['armL', 'armR', 'legL', 'legR']) assert.ok(frame.limbs[part].d, part)
+  for (const part of Object.keys(mascot.modelParts)) assert.ok(part === 'body' ? frame.body.d : frame.limbs[part] || frame.feet[part] || frame[part], `model part ${part}`)
+  for (const part of ['eye', 'iris', 'lid', 'mouth', 'apple', 'zzz']) assert.ok(attributeValues(mascotSvg, 'data-part').has(part), part)
+  for (const shape of mascot.expressions.mouth) assert.match(mascotSvg, new RegExp(`data-mouth-shape="${shape}"`))
+  for (const name of Object.keys(MASCOT_CLIPS)) assert.ok(mascot.clips.includes(name), `clip ${name} in manifest`)
 })
 
-test('clips: well-formed keyframes on parts that exist, expressions from the known set', async () => {
-  const mascot = partsIn(await readFile(assetUrl('mascot.svg'), 'utf8'))
+test('clips: pose tracks use known keys with ordered times; decal tracks resolve in the sheet', async () => {
+  const mascotSvg = await readFile(assetUrl('mascot.svg'), 'utf8')
   const params = { duration: 600, look: 200, from: { x: -40, y: -30 }, to: { x: -40, y: -30 }, originX: 900, endX: -14, hideY: 110, dir: -1, phases: TIMING.glance }
+  const rest = restPose()
   for (const [name, make] of Object.entries(MASCOT_CLIPS)) {
     const clip = make(params)
     for (const key of Object.keys(clip.expression ?? {})) assert.ok(key in EXPRESSION_DEFAULTS, `${name}: expression ${key}`)
-    for (const track of clip.tracks ?? []) {
-      if (track.part) assert.ok(track.part === 'mover' || track.part === 'facing' || mascot.has(track.part), `${name}: part ${track.part}`)
-      assert.ok(track.keyframes.length >= 1, `${name}: keyframes`)
+    for (const [key, keys] of Object.entries(clip.pose ?? {})) {
+      assert.ok(key in rest, `${name}: pose key ${key}`)
       let last = -1
-      for (const frame of track.keyframes) {
-        if (frame.offset === undefined) continue
-        assert.ok(frame.offset >= 0 && frame.offset <= 1 && frame.offset >= last, `${name}: offsets ascend`)
-        last = frame.offset
+      for (const [t, value] of keys) {
+        assert.ok(t >= 0 && t <= 1 && t >= last, `${name}.${key}: times ascend`)
+        assert.ok(Number.isFinite(value), `${name}.${key}: values are numbers`)
+        last = t
       }
+    }
+    for (const track of clip.decals ?? []) {
+      const [, attribute, value] = track.selector.match(/\[(data-[a-z-]+)="([^"]+)"\]/)
+      assert.ok(attributeValues(mascotSvg, attribute).has(value), `${name}: ${track.selector}`)
     }
     for (const [at] of clip.beats ?? []) assert.ok(at >= 0 && at <= params.duration, `${name}: beat inside the clip`)
   }
   assert.ok(BLINK.every((frame) => frame.offset > 0 && frame.offset < 1), 'blink starts and ends at the resting lid')
 })
 
-test('budget: the whole actor layer (assets, JS, CSS) stays well under 250 KB', async () => {
+test('budget: the whole actor layer (models, decals, JS, CSS) stays well under 250 KB', async () => {
   const files = [
     '../src/pocket/actors/assets/mascot.svg',
     '../src/pocket/actors/assets/drone.svg',
@@ -687,6 +818,10 @@ test('budget: the whole actor layer (assets, JS, CSS) stays well under 250 KB', 
     '../src/pocket/actors/motion.js',
     '../src/pocket/actors/clips.js',
     '../src/pocket/actors/scope.js',
+    '../src/pocket/actors/space.js',
+    '../src/pocket/actors/mascot-model.js',
+    '../src/pocket/actors/drone-model.js',
+    '../src/pocket/actors/renderer.js',
     '../src/pocket/pocket-actors.js',
     '../src/pocket/pocket-actors.css',
   ]
