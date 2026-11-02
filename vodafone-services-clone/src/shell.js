@@ -6,37 +6,72 @@
  * Markup is generated from static, local data in this file.
  */
 
-const topNav = [
-  'Personal',
-  'Business',
-  'ڤودافون مصر',
-  'Network Coverage Map',
-  'Vodafone Egypt Foundation',
-]
+const VF = 'https://web.vodafone.com.eg'
 
-const mainNav = ['Shop', 'Services', 'Promotions']
-
-const footerColumns = [
-  {
-    title: 'About Vodafone',
-    items: ['Careers', 'News & press releases', 'TV Commercials'],
-  },
-  {
-    title: 'Products and services',
-    items: ['Shop', 'DSL', 'Broadband'],
-  },
-  {
-    title: 'Help',
-    items: ["Services FAQ's", 'Call us', 'Store Locator'],
-  },
-]
-
-const footerLinks = ['Contact us', 'Switch to business', 'Terms & conditions', 'Privacy policy']
+/** Public destinations from the live page, with stale links mapped to current official equivalents. */
+export const shellLinks = {
+  home: `${VF}/en/home`,
+  language: `${VF}/ar/services`,
+  search: `${VF}/spa/search`,
+  topNav: [
+    { label: 'Personal', href: `${VF}/en/home`, active: true },
+    { label: 'Business', href: `${VF}/en/business` },
+    { label: 'ڤودافون مصر', href: `${VF}/en/vodafone-egypt1` },
+    { label: 'Network Coverage Map', href: `${VF}/spa/NetworkCoverageChecker` },
+    { label: 'Vodafone Egypt Foundation', href: `${VF}/en/foundation-home` },
+  ],
+  mainNav: [
+    { label: 'Shop', href: 'https://eshop.vodafone.com.eg/en/' },
+    { label: 'Services', href: `${VF}/en/services` },
+    { label: 'Promotions', href: `${VF}/en/promotions` },
+  ],
+  social: [
+    { label: 'Facebook', icon: 'icon-facebook', href: 'https://www.facebook.com/Vodafone.Egypt/' },
+    { label: 'Twitter', icon: 'icon-twitter', href: 'https://twitter.com/VodafoneEgypt' },
+    { label: 'Instagram', icon: 'icon-instagram', href: 'https://www.instagram.com/vodafoneegypt/' },
+    { label: 'Youtube', icon: 'icon-youtube', href: 'https://www.youtube.com/VodafoneEgypt' },
+  ],
+  footerColumns: [
+    {
+      title: 'About Vodafone',
+      items: [
+        { label: 'Careers', href: 'https://careers.vodafone.com/' },
+        { label: 'News & press releases', href: `${VF}/en/newsroom` },
+        { label: 'TV Commercials', href: 'https://www.youtube.com/user/vodafoneegypt' },
+      ],
+    },
+    {
+      title: 'Products and services',
+      items: [
+        { label: 'Shop', href: 'https://eshop.vodafone.com.eg/en/' },
+        { label: 'DSL', href: 'https://eshop.vodafone.com.eg/en/internetServices/dsl/bundles' },
+        { label: 'Broadband', href: `${VF}/en/mobile-internet-bundles` },
+      ],
+    },
+    {
+      title: 'Help',
+      items: [
+        { label: "Services FAQ's", href: `${VF}/en/faq` },
+        { label: 'Call us', href: `${VF}/spa/contact-us` },
+        { label: 'Store Locator', href: `${VF}/spa/storeLocator` },
+      ],
+    },
+  ],
+  footerLinks: [
+    { label: 'Contact us', href: `${VF}/en/contact-us` },
+    { label: 'Switch to business', href: `${VF}/en/business` },
+    { label: 'Terms & conditions', href: `${VF}/en/website-terms-conditions` },
+    { label: 'Privacy policy', href: `${VF}/en/privacy-policy-of-vodafone-egypt` },
+  ],
+}
 
 const escapeHtml = (value) =>
   String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
 
 const svg = String.raw
+
+const externalAttrs = (href, label) =>
+  `href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(label)} (opens in a new tab)"`
 
 export const sprite = svg`
   <svg class="sprite" aria-hidden="true" focusable="false">
@@ -93,7 +128,7 @@ const renderFooterColumn = ({ title, items }) => `
   <div class="footer__column">
     <h3>${escapeHtml(title)}</h3>
     <ul>
-      ${items.map((item) => `<li><a href="#">${escapeHtml(item)}</a></li>`).join('')}
+      ${items.map((item) => `<li><a ${externalAttrs(item.href, item.label)}>${escapeHtml(item.label)}</a></li>`).join('')}
     </ul>
   </div>
 `
@@ -103,28 +138,28 @@ const renderHeader = () => `
     <div class="switcher-bar">
       <div class="container switcher-bar__inner">
         <nav class="switcher-bar__nav" aria-label="Vodafone sections">
-          ${topNav
+          ${shellLinks.topNav
             .map(
-              (item, index) =>
-                `<a class="switcher-bar__link ${index === 1 ? 'is-active' : ''}" href="#">${escapeHtml(item)}</a>`,
+              (item) =>
+                `<a class="switcher-bar__link ${item.active ? 'is-active' : ''}" ${externalAttrs(item.href, item.label)}>${escapeHtml(item.label)}</a>`,
             )
             .join('')}
         </nav>
-        <a class="switcher-bar__lang" href="#">العربية</a>
+        <a class="switcher-bar__lang" ${externalAttrs(shellLinks.language, 'العربية')}>العربية</a>
       </div>
     </div>
     <div class="header-main">
       <div class="container header-main__inner">
-        <a href="#" class="brand-mark" aria-label="Vodafone Home">
+        <a ${externalAttrs(shellLinks.home, 'Vodafone Home')} class="brand-mark">
           ${svgUse('icon-vodafone-logo', 'brand-mark__icon')}
         </a>
         <nav class="header-main__nav" aria-label="Primary">
-          ${mainNav.map((item) => `<a href="#">${escapeHtml(item)}</a>`).join('')}
+          ${shellLinks.mainNav.map((item) => `<a ${externalAttrs(item.href, item.label)}>${escapeHtml(item.label)}</a>`).join('')}
         </nav>
         <div class="header-main__tools">
-          <button class="icon-button" aria-label="Search">
+          <a class="icon-button" ${externalAttrs(shellLinks.search, 'Search')}>
             ${svgUse('icon-search', 'icon-button__icon')}
-          </button>
+          </a>
           <button class="icon-button" aria-label="Profile">
             ${svgUse('icon-vodafone-profile', 'icon-button__icon')}
           </button>
@@ -138,22 +173,19 @@ const renderFooter = () => `
   <footer class="site-footer" id="site-footer">
     <div class="container">
       <div class="site-footer__top">
-        <a href="#" class="site-footer__brand" aria-label="Vodafone Home">
+        <a ${externalAttrs(shellLinks.home, 'Vodafone Home')} class="site-footer__brand">
           ${svgUse('icon-vodafone-logo-white', 'site-footer__brand-icon')}
         </a>
         <div class="site-footer__social">
-          <a href="#" aria-label="Facebook">${svgUse('icon-facebook', 'social-icon')}</a>
-          <a href="#" aria-label="Twitter">${svgUse('icon-twitter', 'social-icon')}</a>
-          <a href="#" aria-label="Instagram">${svgUse('icon-instagram', 'social-icon')}</a>
-          <a href="#" aria-label="Youtube">${svgUse('icon-youtube', 'social-icon')}</a>
+          ${shellLinks.social.map((item) => `<a ${externalAttrs(item.href, item.label)}>${svgUse(item.icon, 'social-icon')}</a>`).join('')}
         </div>
       </div>
       <hr />
       <div class="site-footer__columns">
-        ${footerColumns.map(renderFooterColumn).join('')}
+        ${shellLinks.footerColumns.map(renderFooterColumn).join('')}
       </div>
       <ul class="site-footer__links">
-        ${footerLinks.map((item) => `<li><a href="#">${escapeHtml(item)}</a></li>`).join('')}
+        ${shellLinks.footerLinks.map((item) => `<li><a ${externalAttrs(item.href, item.label)}>${escapeHtml(item.label)}</a></li>`).join('')}
       </ul>
       <p class="site-footer__copyright">© <span id="js-year"></span> Vodafone Egypt</p>
     </div>

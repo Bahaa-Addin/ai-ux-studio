@@ -6,6 +6,7 @@ import { vodafoneServicesPage } from '../src/content/vodafone-services.js'
 import { buildContentIndex, normalizeContentModel, buildModelPayload } from '../src/aixc/content-index.js'
 import { validateSchema, assertComplete, promptRequestsFiltering } from '../src/aixc/schema-validator.js'
 import { buildFallbackSchema, densityFromPrompt } from '../src/aixc/fallback-schema.js'
+import { shellLinks } from '../src/shell.js'
 
 const { model, problems } = normalizeContentModel(vodafoneServicesPage)
 const index = buildContentIndex(model)
@@ -30,6 +31,22 @@ test('every entertainment subscription has a working Vodafone destination', () =
     assert.match(item.cta?.href ?? '', /^https:\/\//, `${item.id} has an absolute subscription URL`)
   }
   assert.equal(index.get('play-and-win').cta.href, 'https://web.vodafone.com.eg/en/play-win')
+})
+
+test('the protected shell contains no placeholder destinations', () => {
+  const collect = (value) => {
+    if (Array.isArray(value)) return value.flatMap(collect)
+    if (!value || typeof value !== 'object') return []
+    return [...('href' in value ? [value.href] : []), ...Object.values(value).flatMap(collect)]
+  }
+  const destinations = [
+    shellLinks.home,
+    shellLinks.language,
+    shellLinks.search,
+    ...collect(shellLinks),
+  ]
+  assert.ok(destinations.length >= 28)
+  for (const href of destinations) assert.match(href, /^https:\/\//, href)
 })
 
 test('model payload carries no URLs or markup', () => {
