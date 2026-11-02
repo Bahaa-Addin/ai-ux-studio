@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "format": "layered-svg",
+  "status": "temporary production asset: hand-authored vector rigs traced from the supplied references, pending an illustrator-made rig",
+  "references": {
+    "mascot": "IMG_2441.jpeg (six-pose character sheet)",
+    "drone": "IMG_2442.gif (UPLIFT quadcopter, 13 frames) and ScreenRecording_10-24-2026_17-35-25_1.mov (motion art direction)"
+  },
+  "assets": {
+    "mascot": {
+      "file": "mascot.svg",
+      "viewBox": [0, 0, 120, 150],
+      "ground": 147,
+      "parts": {
+        "shadow": "ground shadow (squashes on jumps and runs)",
+        "rig": "whole body: squash, stretch, lean, bob (pivot at the feet)",
+        "leg-l": "left leg and foot (pivot at the hip)",
+        "leg-r": "right leg (pivot at the hip)",
+        "foot-r": "right foot, taps from the heel",
+        "body": "red droplet/flame silhouette with shading and gloss",
+        "face": "face group (small head tilts)",
+        "eye": "sclera and outline (scales when startled)",
+        "iris": "pupil group moved only by the gaze loop (7 units of travel)",
+        "iris-core": "iris and pupil (constricts when startled)",
+        "lid": "eyelid: blink, half-closed, closed",
+        "eye-closed": "contented closed-eye lash arc",
+        "brow": "single brow (raised, lowered)",
+        "mouth": "mouth shapes: smile, grin, o, yawn, chew, wobble, snore",
+        "blush": "cheeks",
+        "arm-l": "left arm (pivot at the shoulder)",
+        "arm-r": "right arm (waves; pivot at the shoulder)",
+        "hand-r": "right mitten hand (counter-rotates while waving)",
+        "arms-crossed": "folded-arms pose (replaces both arms)",
+        "apple": "green apple prop: whole, bitten, core",
+        "fx": "effects group",
+        "marks": "startle marks",
+        "sweat": "sweat drop",
+        "zzz": "sleep Zs"
+      },
+      "expressions": {
+        "mouth": ["smile", "grin", "o", "yawn", "chew", "wobble", "snore"],
+        "eye": ["open", "half", "wide", "closed"],
+        "brow": ["none", "up", "down"],
+        "arms": ["free", "crossed"],
+        "apple": ["none", "whole", "bitten", "core"],
+        "flags": ["blush", "sweat", "marks", "zzz"]
+      },
+      "clips": ["rise", "wave", "duck", "startle", "run", "recover", "closeDuck", "idle", "untuck", "tuck", "glance", "jump", "beam", "impatient", "eat", "yawn", "sleep", "wake", "blink"]
+    },
+    "drone": {
+      "file": "drone.svg",
+      "viewBox": [0, 0, 200, 140],
+      "parts": {
+        "frame": "whole drone (pivot at the hull)",
+        "lift-lines": "hover motion lines under the hull",
+        "rotors": "the four rotors",
+        "rotor-l": "left rotor disc (flattened for perspective)",
+        "rotor-t": "top rotor disc",
+        "rotor-r": "right rotor disc",
+        "rotor-b": "bottom rotor disc",
+        "blades": "spinning blades inside each rotor disc",
+        "body": "arms, motor pods and hull",
+        "details": "white hull details",
+        "guards": "open calligraphic propeller guards"
+      },
+      "capabilities": ["rotor loop", "body tilt", "heart-path flight", "home hover", "hover evasion", "drag tilt", "return-home spring"]
+    }
+  },
+  "runtime": "No animation library: Web Animations API clips (src/pocket/actors/clips.js), one requestAnimationFrame loop each for the eye and the drone, CSS keyframes for rotors and the hover bob.",
+  "illustratorRequests": [
+    "Mascot side/three-quarter run cycle (4-6 drawings) with separated legs and arms; the current run reuses the front view with a lean.",
+    "Mascot back-of-head and turn-around drawings for the skid and the duck under the curl.",
+    "Folded-arms pose drawn as overlapping forearms with hands tucked (current version is a simplified fold).",
+    "Mascot hands in three states (open palm for waving, fist, holding) as separate layers.",
+    "Apple-eating sequence: two-hand hold, cheek bulge drawings and a proper core toss.",
+    "Yawn stretch and a curled-up sleeping pose with its own Z artwork in the Vodafone palette.",
+    "Mouth shapes for the full set above drawn to the reference style (tongue, teeth, lip line).",
+    "Drone: rotor blur discs and blade drawings per guard, a banked (tilted) view and a top view for the heart path, so heading can turn rather than only tilt.",
+    "Hand-drawn heart trail as a vector brush (variable dash length and pressure) instead of the generated dash pattern.",
+    "Ideally a single Rive file with a state machine exposing gaze x/y, expression and the clips listed above."
+  ]
+}
