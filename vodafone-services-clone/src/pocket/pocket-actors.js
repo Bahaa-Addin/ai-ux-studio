@@ -12,16 +12,20 @@
  *                   jumps for cards); the drone draws one heart per opening, hovers home,
  *                   dodges the pointer and can be dragged (it always springs back).
  *
- * pocket.js drives this through a handful of lifecycle calls (itemPocketed, openRequested,
- * openStart/Progress/Complete, closeStart/Complete, destroy). State lives in two small state
- * machines (./actors/*-brain.js); this file is the DOM side: rigs, clips, layout, input.
+ * Both are 3D models drawn as SVG (./actors/space.js, *-model.js, renderer.js), so they turn,
+ * lean, bank and twirl. pocket.js drives this through a handful of lifecycle calls
+ * (itemPocketed, openRequested, openStart/Progress/Complete, closeStart/Complete, destroy).
+ * State lives in two small state machines (./actors/*-brain.js); this file is the DOM side:
+ * the animation loops, clips, layout and input.
  * QA hooks: data-mascot-state, data-drone-state, body[data-pocket-actor-ready].
  */
 
 import { realClock, seededRandom, withTiming, pick } from './actors/timing.js'
 import { createMascotBrain } from './actors/mascot-brain.js'
 import { createDroneBrain } from './actors/drone-brain.js'
-import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, BLINK } from './actors/clips.js'
+import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, BLINK, createPoseAnimator } from './actors/clips.js'
+import { createMascotView, createDroneView } from './actors/renderer.js'
+import { restDronePose } from './actors/drone-model.js'
 import { createScope } from './actors/scope.js'
 import {
   clamp,
@@ -103,8 +107,6 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   /* ------------------------------------------------------------ the DOM */
   const mascot = el('div', 'pocket-mascot', { 'aria-hidden': 'true', 'data-mascot-state': 'hidden' })
   const mover = el('div', 'pocket-mascot__mover')
-  const facing = el('div', 'pocket-mascot__facing')
-  mover.append(facing)
   mascot.append(mover)
 
   // Inside the curl's `under` box (sheet coordinates): clipped by the paper, covered by the roll.
@@ -138,19 +140,23 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   pocketRoot.append(layer, floor)
 
   /* ----------------------------------------------------------- the rigs */
-  let rig = null // { svg, parts, eye, iris, lid }
+  let rig = null // the mascot: its 3D view plus the decal parts the eye loop and blinks drive
+  let droneView = null
 
   const mountRigs = (mascotSvg, droneSvg) => {
-    facing.append(mascotSvg)
-    const parts = new Map()
-    for (const node of mascotSvg.querySelectorAll('[data-part]')) if (!parts.has(node.dataset.part)) parts.set(node.dataset.part, node)
-    rig = { svg: mascotSvg, parts, eye: parts.get('eye'), iris: parts.get('iris'), lid: parts.get('lid') }
+    mover.append(mascotSvg)
+    const part = (name) => mascotSvg.querySelector(`[data-part="${name}"]`)
+    rig = { svg: mascotSvg, view: createMascotView(mascotSvg), eye: part('eye'), iris: part('iris'), lid: part('lid') }
     droneBob.append(droneSvg)
+    droneView = createDroneView(droneSvg)
     applyExpression({})
+    rig.view.draw(animator.pose)
+    droneView.draw(attitude, 0)
   }
 
   /* ----------------------------------------------------- mascot: clips */
-  const running = new Set()
+  const animator = createPoseAnimator()
+  const running = new Set() // Web Animations of the current clip (travel, decal tracks)
   const beats = new Set()
   let expression = { ...EXPRESSION_DEFAULTS }
 
@@ -163,9 +169,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     }
   }
 
-  const partNode = (name) => (name === 'mover' ? mover : name === 'facing' ? facing : rig?.parts.get(name))
-
-  /** Stops the current clip, returning each animated node's pose at this instant. */
+  /** Stops the current clip's Web Animations, returning each animated node's pose at this instant. */
   const stopClip = () => {
     const poses = new Map()
     for (const animation of running) {
@@ -189,54 +193,58 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     return animation
   }
 
+  const continuing = (keyframes) => (keyframes.length === 1 && keyframes[0].offset === undefined) || (keyframes[0].offset ?? 0) > 0
+
   /**
-   * Plays a clip from ./actors/clips.js. Parts the new clip leaves alone ease back to their
-   * resting pose, and tracks that do not state a first frame continue from the current pose,
-   * so one state can interrupt another without a jump.
+   * Plays a clip from ./actors/clips.js: the 3D pose tracks go to the pose animator (drawn by
+   * the mascot loop), travel and decal tracks are Web Animations. Nothing jumps when one clip
+   * interrupts another: pose tracks blend from where they were, travel continues from the
+   * current position, and anything the new clip leaves alone eases back to rest.
    */
   const play = (name, params = {}) => {
     const poses = stopClip()
     if (!rig) return
     const clip = MASCOT_CLIPS[name](params)
+    const duration = clip.duration ?? params.duration ?? 300
     applyExpression(clip.expression ?? {}, EXPRESSION_DEFAULTS)
     const touched = new Set()
-    for (const track of clip.tracks ?? []) {
-      const nodes = track.selector ? [...rig.svg.querySelectorAll(track.selector)] : [partNode(track.part)].filter(Boolean)
-      for (const node of nodes) {
+    if (clip.mover) {
+      touched.add(mover)
+      const from = poses.get(mover)
+      const keyframes = continuing(clip.mover) && from ? [{ transform: from.transform, offset: 0 }, ...clip.mover] : clip.mover
+      animate(mover, keyframes, { duration: clip.moverDuration ?? duration, easing: clip.moverEase ?? 'ease-in-out', fill: 'forwards' })
+    }
+    for (const track of clip.decals ?? []) {
+      for (const node of rig.svg.querySelectorAll(track.selector)) {
         touched.add(node)
-        let keyframes = track.keyframes
-        const pose = poses.get(node)
-        const continues = (keyframes.length === 1 && keyframes[0].offset === undefined) || (keyframes[0].offset ?? 0) > 0
-        if (continues && pose) keyframes = [{ transform: pose.transform, offset: 0 }, ...keyframes]
-        animate(node, keyframes, {
-          duration: track.duration ?? params.duration ?? 300,
-          delay: track.delay ?? 0,
-          easing: track.easing ?? 'ease-in-out',
-          iterations: track.iterations ?? 1,
-          direction: track.direction ?? 'normal',
-          fill: track.fill ?? 'forwards',
-        })
+        animate(node, track.keyframes, { duration: track.duration ?? duration, delay: track.delay ?? 0, easing: track.easing ?? 'ease-in-out', iterations: track.iterations ?? 1, fill: track.fill ?? 'forwards' })
       }
     }
     for (const [node, pose] of poses) {
       if (!touched.has(node)) animate(node, [{ transform: pose.transform, opacity: pose.opacity, offset: 0 }], { duration: 160, easing: 'ease-out' })
     }
+    animator.play(clip, performance.now(), duration)
     for (const [at, patch] of clip.beats ?? []) beats.add(life.timeout(() => applyExpression(patch), at))
     for (const [at, mode] of clip.gaze ?? []) {
       if (at <= 0) setGaze(mode)
       else beats.add(life.timeout(() => setGaze(mode), at))
     }
+    wakeMascot()
   }
 
-  /** Static pose (reduced motion, suspended tab): no motion at all. */
+  /** Static pose (reduced motion, suspended tab): drawn once, no motion at all. */
   const still = (patch = {}) => {
     stopClip()
+    animator.hold()
     applyExpression(patch, EXPRESSION_DEFAULTS)
     setGaze('viewer')
   }
 
-  /* ------------------------------------------------------ mascot: eye */
-  const gaze = { mode: 'viewer', x: 0, y: 0, tx: 0, ty: 0, center: null, pointer: null, frame: null, last: 0, dir: -1 }
+  /* --------------------------------------- mascot: one loop for pose, eye and drawing */
+  const gaze = { mode: 'viewer', x: 0, y: 0, look: 0, center: null, pointer: null, dir: -1 }
+  let mascotFrameId = null
+  let mascotLast = 0
+  let idleTick = 0
 
   const trackingAllowed = () => gaze.mode === 'pointer' && gaze.pointer && !document.hidden && !reducedMotion() && finePointer()
 
@@ -255,7 +263,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
         if (!trackingAllowed()) return { x: 0, y: 0 }
         if (!gaze.center && rig?.eye) {
           const box = rig.eye.getBoundingClientRect()
-          gaze.center = { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+          if (box.width) gaze.center = { x: box.left + box.width / 2, y: box.top + box.height / 2 }
         }
         if (!gaze.center) return { x: 0, y: 0 }
         return gazeOffset(gaze.pointer.x - gaze.center.x, gaze.pointer.y - gaze.center.y, { max: GAZE_TRAVEL })
@@ -265,30 +273,43 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     }
   }
 
-  const gazeFrame = (now) => {
-    gaze.frame = null
-    if (!rig?.iris) return
+  const tickMascot = (now) => {
+    mascotFrameId = null
+    if (!rig) return
+    const dt = mascotLast ? Math.min(64, now - mascotLast) : 16
+    mascotLast = now
+    const { active, looping } = animator.tick(now)
     const target = gazeTarget()
-    gaze.tx = target.x
-    gaze.ty = target.y
-    const dt = gaze.last ? Math.min(64, now - gaze.last) : 16
-    gaze.last = now
     gaze.x = smoothToward(gaze.x, target.x, dt, 70)
     gaze.y = smoothToward(gaze.y, target.y, dt, 70)
-    rig.iris.style.transform = `translate(${gaze.x.toFixed(2)}px, ${gaze.y.toFixed(2)}px)`
-    rig.iris.dataset.gaze = `${gaze.x.toFixed(2)},${gaze.y.toFixed(2)}`
-    if (Math.abs(gaze.x - target.x) > 0.02 || Math.abs(gaze.y - target.y) > 0.02) gaze.frame = life.frame(gazeFrame)
-    else gaze.last = 0
+    // While it follows the pointer the whole body turns a little toward it, not just the eye.
+    const lookTarget = gaze.mode === 'pointer' && trackingAllowed() ? (gaze.x / GAZE_TRAVEL) * 18 : 0
+    gaze.look = smoothToward(gaze.look, lookTarget, dt, 180)
+    const settling = Math.abs(gaze.x - target.x) > 0.02 || Math.abs(gaze.y - target.y) > 0.02 || Math.abs(gaze.look - lookTarget) > 0.05
+    // An idle loop alone (breathing, dozing) only needs every other frame.
+    const quiet = !active && !settling
+    idleTick += 1
+    if (!quiet || idleTick % 2 === 0) {
+      rig.iris.style.transform = `translate(${gaze.x.toFixed(2)}px, ${gaze.y.toFixed(2)}px)`
+      rig.iris.dataset.gaze = `${gaze.x.toFixed(2)},${gaze.y.toFixed(2)}`
+      if (mascot.dataset.mascotState !== 'hidden') {
+        const pose = animator.pose
+        rig.view.draw({ ...pose, yaw: pose.yaw + gaze.look, pitch: pose.pitch - (gaze.y / GAZE_TRAVEL) * 4 })
+      }
+    }
+    if (!quiet) mascotLast = now
+    if (!quiet || (looping && !document.hidden && mascot.dataset.mascotState !== 'hidden')) mascotFrameId = life.frame(tickMascot)
+    else mascotLast = 0
   }
 
-  const wakeGaze = () => {
-    if (gaze.frame === null) gaze.frame = life.frame(gazeFrame)
+  const wakeMascot = () => {
+    if (mascotFrameId === null && rig) mascotFrameId = life.frame(tickMascot)
   }
 
   const setGaze = (mode) => {
     gaze.mode = mode
     gaze.center = null
-    wakeGaze()
+    wakeMascot()
   }
 
   /* ------------------------------------------------------ mascot: blink */
@@ -482,78 +503,115 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     },
   })
 
-  /* ------------------------------------------------------- drone: flight */
-  const flight = { x: 0, y: 0, tilt: 0, frame: null, last: 0, mode: null, path: null, home: null, heart: null, trailLength: 0 }
+  /* ---------------------------------- drone: one loop for flight, attitude and rotors */
+  const rest = restDronePose()
+  const attitude = { ...rest } // the 3D attitude drawn each frame: yaw (heading), pitch, roll (bank)
+  const flight = { x: 0, y: 0, frame: null, last: 0, mode: null, path: null, home: null, trailLength: 0, spin: 0, onScreen: true, tick: 0 }
+
+  const droneLive = () => droneView && !drone.hidden && !document.hidden && flight.onScreen && !reducedMotion()
 
   const applyFlight = () => {
     drone.style.transform = flight.x || flight.y ? `translate3d(${flight.x.toFixed(1)}px, ${flight.y.toFixed(1)}px, 0)` : ''
-    droneTilt.style.transform = Math.abs(flight.tilt) > 0.05 ? `rotate(${flight.tilt.toFixed(2)}deg)` : ''
+  }
+
+  /** Shortest-way angle smoothing, so a heading never unwinds a full turn. */
+  const turnToward = (from, to, dt, tau) => {
+    const delta = ((((to - from) % 360) + 540) % 360) - 180
+    return from + delta * (1 - Math.exp(-dt / tau))
   }
 
   const flightFrame = (now) => {
     flight.frame = null
-    const mode = flight.mode
-    if (!mode) return
+    if (!droneView) return
     const dt = flight.last ? Math.min(64, now - flight.last) : 16
     flight.last = now
+    const mode = flight.mode
+    // Hovering: a slow look round, never still.
+    let target = { yaw: rest.yaw + 12 * Math.sin(now / 1500), pitch: 2.5 * Math.sin(now / 1100), roll: 3 * Math.sin(now / 900) }
+    let direct = null
+    let speed = 1.2 // rotor degrees per millisecond
     let done = false
-    if (mode.kind === 'heart') {
+    if (mode?.kind === 'heart') {
       const t = clamp((now - mode.start) / mode.duration, 0, 1)
       const u = easeInOutSine(t)
       const point = samplePath(flight.path, u)
       flight.x = point.x - flight.home.x
       flight.y = point.y - flight.home.y
-      // Bank into the turn: tilt follows the horizontal component of the heading.
-      flight.tilt = smoothToward(flight.tilt, clamp(Math.cos(point.angle) * 13, -13, 13), dt, 60)
+      // Nose into the direction of travel, bank into the turn, tip into the climb or dive.
+      const vx = Math.cos(point.angle)
+      const vy = Math.sin(point.angle)
+      target = { yaw: rest.yaw + vx * 70, pitch: 6 - vy * 14, roll: -vx * 18 }
+      speed = 2.6
       trailReveal.style.strokeDashoffset = String(flight.trailLength * (1 - u))
       done = t >= 1
-    } else if (mode.kind === 'evade') {
+    } else if (mode?.kind === 'evade') {
+      // Startled: hops aside and pirouettes once.
       const t = clamp((now - mode.start) / mode.duration, 0, 1)
       const hop = Math.sin(Math.PI * t)
       flight.x = mode.dx * hop + mode.px * Math.sin(2 * Math.PI * t)
       flight.y = mode.dy * hop + mode.py * Math.sin(2 * Math.PI * t)
-      flight.tilt = mode.tilt * Math.sin(2 * Math.PI * t)
+      direct = { yaw: mode.yaw + mode.spin * 360 * easeInOutSine(t), pitch: 10 * hop, roll: mode.tilt * Math.sin(2 * Math.PI * t) }
+      speed = 2.4
       done = t >= 1
-    } else if (mode.kind === 'drag') {
-      const previous = flight.x
+    } else if (mode?.kind === 'drag') {
+      const px = flight.x
+      const py = flight.y
       flight.x = smoothToward(flight.x, mode.tx, dt, 55)
       flight.y = smoothToward(flight.y, mode.ty, dt, 55)
-      flight.tilt = smoothToward(flight.tilt, clamp(((flight.x - previous) / Math.max(1, dt)) * 22, -16, 16), dt, 80)
-    } else if (mode.kind === 'return') {
+      const vx = (flight.x - px) / Math.max(1, dt)
+      const vy = (flight.y - py) / Math.max(1, dt)
+      target = { yaw: rest.yaw + clamp(vx * 45, -60, 60), pitch: 4 + clamp(vy * 22, -20, 20), roll: clamp(-vx * 28, -26, 26) }
+      speed = 2.4
+    } else if (mode?.kind === 'return') {
       const t = clamp((now - mode.start) / mode.duration, 0, 1)
       const e = easeOutBack(t, 1.2)
       flight.x = lerp(mode.fromX, 0, e)
       flight.y = lerp(mode.fromY, 0, e)
-      flight.tilt = lerp(mode.fromTilt, 0, Math.min(1, t * 1.6))
+      speed = 1.8
       done = t >= 1
     }
+    if (direct) Object.assign(attitude, direct)
+    else {
+      attitude.yaw = turnToward(attitude.yaw, target.yaw, dt, 120)
+      attitude.pitch = smoothToward(attitude.pitch, target.pitch, dt, 110)
+      attitude.roll = smoothToward(attitude.roll, target.roll, dt, 110)
+    }
+    flight.spin = (flight.spin + dt * speed) % 360
     if (done) {
       flight.mode = null
-      flight.last = 0
+      if (mode.kind === 'evade') attitude.yaw -= mode.spin * 360
       if (mode.kind !== 'heart') {
         flight.x = 0
         flight.y = 0
-        flight.tilt = 0
       }
     }
-    applyFlight()
-    if (!done) flight.frame = life.frame(flightFrame)
+    // Hovering alone only needs every other frame.
+    flight.tick += 1
+    if (flight.mode || flight.tick % 2 === 0) {
+      droneView.draw(attitude, flight.spin)
+      applyFlight()
+    }
+    if (droneLive()) flight.frame = life.frame(flightFrame)
+    else flight.last = 0
+  }
+
+  const startDrone = () => {
+    if (flight.frame === null && droneLive()) flight.frame = life.frame(flightFrame)
   }
 
   const fly = (mode) => {
     flight.mode = mode
-    flight.last = 0
-    if (flight.frame === null) flight.frame = life.frame(flightFrame)
+    startDrone()
   }
 
+  /** Back on its anchor at rest (and drawn once, for a still or reduced-motion drone). */
   const land = () => {
-    if (flight.frame !== null) life.cancelFrame(flight.frame)
-    flight.frame = null
     flight.mode = null
     flight.x = 0
     flight.y = 0
-    flight.tilt = 0
+    Object.assign(attitude, rest)
     applyFlight()
+    droneView?.draw(attitude, flight.spin)
   }
 
   let trailTimer = null
@@ -589,6 +647,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       }
       if (state === 'entering' || (state === 'home-hover' && info.instant)) {
         land()
+        startDrone()
         return
       }
       if (state === 'drawing-heart' && flight.path) {
@@ -605,7 +664,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       if (state === 'returning-home') {
         if (info.from === 'heart') trailTimer = life.timeout(() => hideTrail({ fade: true }), timing.heartLinger)
         else if (info.cause === 'relayout') hideTrail()
-        fly({ kind: 'return', start: performance.now(), duration: info.from === 'heart' ? timing.droneReturn : timing.droneSpringBack, fromX: flight.x, fromY: flight.y, fromTilt: flight.tilt })
+        fly({ kind: 'return', start: performance.now(), duration: info.from === 'heart' ? timing.droneReturn : timing.droneSpringBack, fromX: flight.x, fromY: flight.y })
         return
       }
       if (state === 'evading') {
@@ -621,10 +680,11 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
         }
         const length = Math.hypot(ax, ay) || 1
         const reach = small() ? 14 : 20
-        fly({ kind: 'evade', start: performance.now(), duration: timing.droneEvade, dx: (ax / length) * reach, dy: (ay / length) * reach, px: (-ay / length) * 6, py: (ax / length) * 6, tilt: ax >= 0 ? 9 : -9 })
+        fly({ kind: 'evade', start: performance.now(), duration: timing.droneEvade, dx: (ax / length) * reach, dy: (ay / length) * reach, px: (-ay / length) * 6, py: (ax / length) * 6, tilt: ax >= 0 ? -16 : 16, spin: ax >= 0 ? 1 : -1, yaw: attitude.yaw })
         return
       }
       if (state === 'home-hover' && previous !== 'returning-home' && previous !== 'evading') land()
+      if (state === 'home-hover') startDrone()
       if (state === 'closing') {
         land()
         hideTrail()
@@ -786,6 +846,13 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     )
     v.on(window, 'resize', relayout)
     v.observe(new ResizeObserver(relayout)).observe(pocketRoot)
+    // The drone only spins and sways while it is on screen.
+    v.observe(
+      new IntersectionObserver(([entry]) => {
+        flight.onScreen = entry.isIntersecting
+        startDrone()
+      }),
+    ).observe(drone)
 
     // Cards: one jump per pointer entry, a reduced reaction for keyboard focus or touch.
     const grid = pocketRoot.querySelector('.pocket-grid')
@@ -845,14 +912,20 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       if (cancelled) droneBrain.pointerCancel()
       else swallowClick = droneBrain.pointerUp()
     }
-    v.on(drone, 'pointerup', (event) => release(event, false))
+    v.on(drone, 'pointerup', (event) => {
+      release(event, false)
+      // Only the click that belongs to this release may be swallowed.
+      visit?.timeout(() => (swallowClick = false), 0)
+    })
     v.on(drone, 'pointercancel', (event) => release(event, true))
     v.on(drone, 'lostpointercapture', (event) => release(event, true))
-    v.on(drone, 'click', () => {
-      if (swallowClick) {
+    v.on(drone, 'click', (event) => {
+      // A drag's release is not a poke; keyboard activation (detail 0) always is.
+      if (swallowClick && event.detail !== 0) {
         swallowClick = false
         return
       }
+      swallowClick = false
       droneBrain.poke()
     })
     v.on(drone, 'keydown', (event) => {
@@ -885,7 +958,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       if (event.pointerType === 'touch') return
       gaze.pointer = { x: event.clientX, y: event.clientY }
       pointerAt = gaze.pointer
-      if (gaze.mode === 'pointer') wakeGaze()
+      if (gaze.mode === 'pointer') wakeMascot()
       noteActivity()
     },
     { passive: true },
@@ -897,6 +970,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       stopBlinking()
     } else {
       mascotBrain.resume()
+      wakeMascot()
+      startDrone()
     }
   })
 

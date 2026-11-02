@@ -4,6 +4,14 @@ A character layer on top of Pocket. A Vodafone-red mascot lives under the page c
 small red drone draws a heart over the pocket album. They are decoration. They never hold up a
 save, an open or a close, never block a control, never take focus, and make no sound.
 
+Both actors are **3D models drawn as SVG**. Every frame, a small 3D kit (`space.js`) poses the
+model, projects it with perspective and rewrites the SVG paths. That gives real turns, leans,
+banking and twirls while keeping crisp, outlined vector art. The mascot's outline is solved
+from its pose: a flame-shaped body whose curled tip swings round as it turns. Its face is flat
+artwork mapped onto the body's surface, so it slides round the body and disappears behind it.
+The drone's arms, pods, guard rings and rotor blades are placed in 3D, so its heading, banking
+and spinning blades show in true perspective.
+
 ## 1. Lifecycle audit and integration seams
 
 The Pocket lifecycle in `src/pocket/pocket.js`, with the calls that now drive the actors:
@@ -50,10 +58,10 @@ z 6   plane: curl `under` window (clipped at       z 3   .pocket-actor-layer (dr
 | ms | Corner | Mascot |
 |---|---|---|
 | 0–220 | corner starts opening | hidden under the paper |
-| 220–500 | corner mostly open | rises from under the curl: squash, then stretch, small overshoot |
-| 500–1150 | – | two compact waves (overshoot on the first), grin and blush |
+| 220–500 | corner mostly open | slides out from under the curl, still half turned toward it (yaw −40°), squash then stretch, and turns to face you |
+| 500–1150 | – | two compact waves, the arm sweeping in depth, body swaying and the tip following through; grin and blush |
 | 1150–1350 | – | holds and looks at the pointer |
-| 1350–1700 | – | ducks back under the paper ("o" mouth) |
+| 1350–1700 | – | turns back toward the curl and dives under the paper ("o" mouth) |
 | 1900 | sticker lands, corner bumps | already gone |
 
 Saves in quick succession join the running greeting. A save while it ducks makes it pop back up.
@@ -64,34 +72,41 @@ Pressing the pocket button mid-wave ducks it in 180 ms.
 | Turn | Mascot |
 |---|---|
 | 0–60% | hidden below the album floor at the curl's corner |
-| 60% | pops up, startled: wide eye, small pupil, marks, sweat, recoil (220 ms) |
-| ~80%–end, then a little after | sprints low to the opposite corner: three steps, lean, legs and arms swinging, eye leading (620 ms) |
-| after | skids past, recovers, scratches its head, embarrassed glance (780 ms) |
+| 60% | pops up facing you, startled: wide eye, small pupil, marks, sweat, recoil, winds up (220 ms) |
+| ~80%–end, then a little after | turns three-quarter toward the far corner and sprints: leaning in, three steps with legs and arms swinging in depth, the tip streaming behind (620 ms) |
+| after | skids past leaning back, steps back, swings round to face you, looks left and right, scratches its head (780 ms) |
 | then | lives in the corner |
 
 Focus moves to `#pocket-title` when the turn ends, whatever the mascot is doing. The opposite
 corner comes from `phi` (`curlSide`), so a mirrored or RTL curl sends it the other way.
 
-**In the album**: eye on the pointer; a glance to the viewer, left, right and back every 6–10 s;
-a jump per card hover (a squash and smile for keyboard focus or touch); and the idle ladder:
-impatient at 2 s (arms folded, four foot taps), an apple at 8–12 s (three bites, core tossed),
-then a yawn and sleep at 18–28 s (slow breathing, Zs). Any input wakes it gently and restarts
-the ladder.
+**In the album**: the eye follows the pointer and the whole body turns a little toward it. Every
+6–10 s it glances round, turning its body left and right. A card hover makes it jump with a
+twirl that ends facing you at the top (keyboard focus or touch gets a squash and a happy
+wiggle instead). Then the idle ladder: impatient at 2 s (arms folded in front, half turned away
+with a "hmph", four foot taps), an apple at 8–12 s (held up to its mouth, three bites, core
+tossed), then a yawn and sleep at 18–28 s (slumped and tilted, slow breathing, Zs). Any input
+wakes it with a shake and restarts the ladder.
 
-**Drone**: it waits at its home anchor while the page turns. On reveal it loops out, draws a
-dashed heart (about 1.55 s, banking into turns, rotors faster) and returns home. The heart
-lingers for 1.4 s, then fades. Hovering makes it hop 14–20 px away and spring back, once per
-entry. A click, tap, Enter or Space does the same hop. A mouse or pen drag (past 6 px) follows
-with lag and tilt, clamped to the viewport. Release, cancel, Escape or a resize springs it home.
+**Drone**: it waits at its home anchor while the page turns, hovering with a slow look round.
+On reveal it loops out and draws a dashed heart (about 1.55 s). Its nose turns into the
+direction of travel, it banks into each curve, tips into climbs and dives, and the rotors speed
+up. Then it returns home. The heart lingers for 1.4 s, then fades. Hovering makes it hop
+14–20 px away with a pirouette and spring back, once per entry. A click, tap, Enter or Space
+does the same. A mouse or pen drag (past 6 px) follows with lag, turning and banking with the
+motion, clamped to the viewport. Release, cancel, Escape or a resize springs it home.
 
 **Back to Services**: the mascot ducks below the floor (260 ms) and the drone stands down. Both
 reset when the page has landed.
 
 ## 4. State model
 
-One controller owns each actor's transforms. The mascot uses the mover for travel, the rig for
-body motion and the iris for gaze (gaze loop only). The drone uses the button for position and
-the tilt span for banking. CSS keyframes run only the rotors and the hover bob.
+One controller and one animation-frame loop own each actor. The mascot's HTML mover handles
+travel across the floor (Web Animations). Its 3D pose (yaw, pitch, roll, squash, the tip's
+follow-through, arms, legs, foot) is played by the pose animator (`clips.js`) and drawn by its
+loop, which also drives the pupil. The drone's button offset (flight) and 3D attitude (heading,
+pitch, bank, rotor angle) are driven by its loop. CSS keyframes only run the drone's gentle
+hover bob.
 
 **Mascot** (`src/pocket/actors/mascot-brain.js`). A lower priority number wins; a state only
 interrupts states it outranks.
@@ -119,8 +134,9 @@ returning-home → home-hover`. `home-hover` goes to `evading` and back. `home-h
 `closing` and then `hidden`. Dragging is impossible while entering or drawing the heart.
 
 Cancellation: timers live in the state machines (one per state) and in cleanup scopes
-(`src/pocket/actors/scope.js`, built on `AbortController`). Clips are Web Animations; an
-interrupted clip hands its current pose to the next one, so nothing jumps. A pocket visit has
+(`src/pocket/actors/scope.js`, built on `AbortController`). When one clip interrupts another,
+each pose track blends from where the body is, untouched pose keys ease back to rest, and
+travel continues from its current position, so nothing jumps. A pocket visit has
 its own scope, and closing disposes it. `document.hidden` settles any transient state at once
 and restarts the ladder on return, so nothing stale replays.
 
@@ -163,39 +179,64 @@ runtime API.
 
 ## 7. Performance
 
-- Only transforms and opacity are animated: Web Animations clips, one `requestAnimationFrame`
-  loop for the eye (it stops once settled) and one for the drone's flight, drag and spring.
-- Pointer input only stores coordinates. Activity is throttled to 120 ms.
-- No DOM cloning, no `will-change`, no actor snapshots. Rotor and bob animations run only while
-  the drone is shown.
-- Assets load once, at start-up, from the same origin (`fetch` of two small SVGs). If they fail,
-  the actors stay off.
-- Size added to the production build: JS +40.7 KB (+13.4 KB gzip), CSS +5.7 KB (+1.1 KB gzip),
-  SVG rigs 17.5 KB (+4.8 KB gzip), about 19 KB gzip in total. There are no new dependencies.
+- Each actor has one `requestAnimationFrame` loop that poses, projects and rewrites its SVG
+  attributes. No DOM is created per frame, and paint order changes only when a limb or rotor
+  actually crosses the body. Measured in Chromium: about 0.2 ms of script per mascot frame and
+  0.16 ms per drone frame, holding 60 fps.
+- The loops stop when nothing moves. A breathing or hovering idle draws every other frame. The
+  drone loop pauses while the drone is off screen, hidden or in a background tab.
+- Pointer input only stores coordinates. Activity is throttled to 120 ms. Layout is read only
+  when the layout changes (and for the eye centre after a scroll), never per frame.
+- No DOM cloning, no `will-change`, no actor snapshots.
+- Assets load once, at start-up, from the same origin (`fetch` of two small SVG decal sheets).
+  If they fail, the actors stay off.
+- Size added to the production build: JS +58 KB (+21.8 KB gzip), CSS +5 KB (+1 KB gzip),
+  decal sheets about 9 KB (+2.5 KB gzip), about 25 KB gzip in total. There are no new
+  dependencies.
 
 ## 8. Assets
 
-`src/pocket/actors/assets/` holds `mascot.svg`, `drone.svg` and `manifest.json` (parts,
-pivots, expressions, clips and the illustrator requests). Each moving part is a
-`[data-part]` group with its pivot set as `transform-origin` in viewBox units. Expressions are
-swapped by attributes on the host (`data-mouth`, `data-eye`, `data-brow`, `data-arms`,
-`data-apple`, `data-blush`, `data-sweat`, `data-marks`, `data-zzz`).
+- **Models** (code): `src/pocket/actors/mascot-model.js` and `drone-model.js`.
+  - The mascot body is a generalised cylinder: a spherical bulb whose spine rises and curls into
+    the flame tip, its sections tapering to a point. Arms and legs are tapered capsules from
+    surface anchors, feet are ellipsoids, and the shadow is a ground disc.
+  - The drone has an ellipsoid hull and camera bucket, capsule arms, sphere pods, open guard
+    rings and bladed rotors.
+- **Decal sheets** (`src/pocket/actors/assets/mascot.svg`, `drone.svg`): the flat artwork mapped
+  onto the models.
+  - Mascot: the eye (sclera, iris, lid, brow, closed eye), mouth shapes, a cheek, the mitten
+    hand, the apple and the head effects.
+  - Drone: the white hull details and the hover lift lines.
+- **Manifest** (`manifest.json`): model parts, decal parts, the pose keys, expressions, clips and
+  the illustrator requests.
+- Expressions are swapped by attributes on the host (`data-mouth`, `data-eye`, `data-brow`,
+  `data-apple`, `data-blush`, `data-sweat`, `data-marks`, `data-zzz`).
 
-**Asset limits.** The references are a flat six-pose sheet and a 13-frame GIF. Neither has
-separable layers, so they cannot be rigged directly. The rigs here are hand-traced vector
-redraws, built to be animated, and should be treated as temporary production assets. No Rive or
-Lottie source was available. What an illustrator should supply is listed in
-`manifest.json → illustratorRequests`: a proper run cycle, turnarounds, hands, the eating
-and sleeping drawings, the mouth set, drone rotor and banked views, a vector heart brush, and
-ideally one Rive file whose state machine exposes the same inputs.
+**Asset limits.** The references are a flat six-pose sheet and a 13-frame GIF; neither has
+layers or other views. The 3D models are built from them by eye, the decals are hand-traced,
+and both should be treated as temporary production assets. No Rive or Lottie source was
+available. What an illustrator should supply is listed in `manifest.json → illustratorRequests`:
+- a model sheet (front, three-quarter, side, back, top) to match the body exactly
+- the spur on the upper-left of the flame, which the procedural body does not reproduce yet
+- three-quarter mouth and eye drawings
+- hands
+- more drone angles
+- a vector brush for the heart
+- ideally a Rive file per actor exposing the same pose inputs
 
 ## 9. Tests
 
-- `tests/pocket-actors.test.mjs` (`npm test`): greeting timeline and coalescing, interruption,
-  the caught sequence, priorities, idle thresholds and resets, waking, card debounce,
-  deterministic glances, reduced motion, hidden-document handling, drone heart, drag, cancel,
-  Escape and relayout, gaze clamping and smoothing, opposite corner, heart planning and
-  collision checks, cleanup scope, asset interface and size budget.
+- `tests/pocket-actors.test.mjs` (`npm test`), covering:
+  - mascot states: greeting timeline and coalescing, interruption, the caught sequence,
+    priorities, idle thresholds and resets, waking, card debounce, deterministic glances,
+    reduced motion, hidden-document handling
+  - drone states: heart, drag, cancel, Escape and relayout
+  - the 3D kit: rigid rotations, perspective, ellipsoid and disc projection
+  - the models: a closed, finite silhouette at every angle, the tip in the right place, the face
+    turning and hiding, limbs swapping depth, a drone that banks with ordered rotor units
+  - the pose animator: timing, blending, settling, yaw folding and loops
+  - gaze, the opposite corner, heart planning, the cleanup scope, the asset interface and the
+    size budget
 - `tests/e2e/pocket_e2e.py`: the original 40 Pocket checks plus actor checks. These cover
   occlusion, the greeting, coalescing, mid-wave interruption, one instance, the opposite
   corner, card jump and keyboard reaction, pupil travel, the idle ladder, waking, the drone

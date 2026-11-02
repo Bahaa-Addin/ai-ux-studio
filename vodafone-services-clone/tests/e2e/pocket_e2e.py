@@ -384,7 +384,7 @@ async def main():
         await wait_state(page, "impatient", timeout=4000)
         impatient_at = next(e["t"] for e in await log(page, "mascot", t5) if e["state"] == "impatient") - t5
         check("actors: two seconds of inactivity makes it impatient", 1900 <= impatient_at <= 2500, impatient_at)
-        await page.wait_for_timeout(300)
+        await page.wait_for_timeout(700)
         await shot(page, "05-mascot-impatient", {"x": 0, "y": 740, "width": 300, "height": 160})
         await wait_state(page, "eating", timeout=4000)
         await page.wait_for_timeout(500)

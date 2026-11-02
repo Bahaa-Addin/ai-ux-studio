@@ -136,6 +136,7 @@ stay inside this system:
   wide (44 px minimum tap target).
 - Placement: never over the header, controls, title, lead or cards; drone in the upper right
   of the album, mascot in the corner opposite the page curl.
-- Motion: transforms and opacity only, with short holds between beats and one strong beat at a
-  time. Reduced motion shows still poses.
+- Motion: the actors are 3D models redrawn as SVG from their pose each frame, plus transforms
+  and opacity; nothing animates layout. Short holds between beats, one strong beat at a time.
+  Reduced motion shows still poses.
 - Selectors: everything is prefixed `.pocket-actor-`, `.pocket-mascot-` or `.pocket-drone-`.
