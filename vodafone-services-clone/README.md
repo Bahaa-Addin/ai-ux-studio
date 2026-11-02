@@ -53,7 +53,7 @@ npm test             # validator, content model and template unit tests (Node bu
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
-python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket: 40 checks
+python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket and its actors: 119 checks
 ```
 
 ---
@@ -230,6 +230,20 @@ pocket; **Reimagine this page** sits top-right under the header and opens its pa
 **Demo script.** Pocket *Calls services*, *Roaming Services* and *Play&Win* → hover the corner
 button → click it → remove one sticker → *Back to Services* → *Put back* on a liner.
 
+**The mascot and the drone** (`src/pocket/pocket-actors.js`, details in
+[docs/pocket-actors.md](docs/pocket-actors.md)). A Vodafone-red mascot lives *under* the page
+curl. It sits in the curl's `under` layer, so the lifted paper really covers it. Pocketing an
+item makes it peek out from under the curl, wave and duck back. When the page turns it gets
+caught at about 60% of the turn and sprints to the opposite corner, where it lives: its eye
+follows the pointer, it jumps when you hover a card, and if left alone it gets impatient, eats
+an apple and falls asleep until you move. A small red drone draws a dashed heart once per
+opening, dodges the pointer and can be dragged (it always springs home). Both are decoration:
+they never delay saving, opening or closing, never cover controls or cards (the mascot sits
+lower or tucks away when content reaches its corner), and with reduced motion they appear as a
+calm still pose. The assets are hand-drawn layered SVG rigs, traced from the reference art, with
+a manifest (`src/pocket/actors/assets/`). There are no new dependencies, and the build grows by
+about 19 KB gzip.
+
 **How the curl works** (`src/pocket/curl.js`). The sheet wraps around a cylinder whose axis sits
 `x` px from the peeled corner. The flat part, the back half of the roll (sliced into strips and
 shaded by their angle), the flipped-over part (mirrored, lifted to 2R, see-through optional) and
@@ -245,9 +259,15 @@ src/pocket/
   curl.js     page-curl engine: createCurl({ width, height, front, under, back }) → update({ x, phi, R, angle })
   pocket.js   chips, liners, sticker flight, peeking corner, page turn, pocket album, persistence
   pocket.css  all .pocket- / .curl- styles, Vodafone tokens only
+  pocket-actors.js   the mascot and drone: rigs, clips, layout, input, lifecycle (called by pocket.js)
+  pocket-actors.css  .pocket-actor- / .pocket-mascot- / .pocket-drone- styles
+  actors/            state machines (mascot-brain, drone-brain), clips, motion geometry, timing,
+                     cleanup scope; assets/ holds mascot.svg, drone.svg and manifest.json
 tests/
   pocket-curl.test.mjs     curl geometry (npm test)
-  e2e/pocket_e2e.py        40 browser checks: every flow, keyboard, reduced motion, mobile, persistence
+  pocket-actors.test.mjs   actor states, idle ladder, drag, cleanup, geometry, assets (npm test)
+  e2e/pocket_e2e.py        119 browser checks: every flow, keyboard, reduced motion, mobile, persistence,
+                           and the actors (occlusion, greeting, page-turn run, idle ladder, drone, 7 viewports)
 ```
 
 **Implementation notes for a production build.** Clones are made from the rendered DOM, so
