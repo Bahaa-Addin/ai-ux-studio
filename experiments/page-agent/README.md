@@ -23,7 +23,7 @@ English uses the native upstream panel. Version 1.12.4 has no Arabic UI locale, 
 2. Ask: `Find the Shokran services carousel and click its next arrow once. Stay on this page.`
 3. Ask: `What services can you see in the current section? Do not navigate away.`
 
-Observe the target highlighted by the agent and compare its action with the request. Record success/failure and latency. The page is a clone: header/footer links may be placeholders; service links can open the live Vodafone site, so use local scroll/carousel tasks for this demo.
+Observe the target highlighted by the agent and compare its action with the request. Record success/failure and latency. The clone's header, footer, and service links open real Vodafone destinations in new tabs, so use local scroll/carousel tasks when you want the demo to remain on the clone.
 
 ## Upstream limitations
 
@@ -49,3 +49,5 @@ To remove the experiment, remove the demo script from `index.html` and restore t
 ## Live service destinations
 
 The Great Entertainment cards now have working Vodafone links. Play&Win opens its official Vodafone page. The other six services open Vodafone's official Ana Vodafone deep link, matching the live Services page's shared app/QR subscription flow. Links open in a new tab so Page Agent can follow them without replacing the local experiment.
+
+The cloned Vodafone shell also uses the live page's real destinations for its top switcher, language selector, logo, primary navigation, search, social icons, footer columns and legal links. The profile control remains a button because the live page opens an authenticated login prompt rather than exposing a public URL.
