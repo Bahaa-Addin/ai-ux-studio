@@ -45,3 +45,7 @@ To remove the experiment, remove the demo script from `index.html` and restore t
 - Default mode now explicitly uses `en-US`; the page has an English/Arabic selector.
 - Arabic mode was tested live with `انتقل إلى قسم خدمات شكراً واضغط السهم التالي مرة واحدة. ابق في هذه الصفحة وأجب بالعربية.` The agent completed, replied in Arabic, and moved the carousel to `scrollLeft: 1010` without navigating away.
 - Arabic controls are a local adaptation, not an upstream Arabic locale. Internal diagnostic/tool messages can still be English.
+
+## Live service destinations
+
+The Great Entertainment cards now have working Vodafone links. Play&Win opens its official Vodafone page. The other six services open Vodafone's official Ana Vodafone deep link, matching the live Services page's shared app/QR subscription flow. Links open in a new tab so Page Agent can follow them without replacing the local experiment.

@@ -88,7 +88,11 @@ const renderEntertainmentCard = (item) => `
         <h3>${esc(item.title)}</h3>
         ${item.description ? `<p>${esc(item.description)}</p>` : ''}
       </div>
-      ${item.cta?.label ? `<span class="button button--primary action-card__button">${esc(item.cta.label)}</span>` : ''}
+      ${
+        item.cta?.href && item.cta?.label
+          ? `<a ${externalAttrs(item.cta.href)} class="button button--primary action-card__button">${esc(item.cta.label)}${newTab(item.title)}</a>`
+          : ''
+      }
     </div>
   </article>
 `
