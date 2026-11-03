@@ -693,3 +693,21 @@ body[data-pocket-view='open'] .aixc-composer {
     animation: none;
   }
 }
+
+/* Docking points for a companion such as the journey (./journey.css): a group beside
+   "Back to Services", and a stage where a layer can float over the album in the same cell. */
+.pocket-view__start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.pocket-stage {
+  display: grid;
+}
+
+.pocket-stage > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}

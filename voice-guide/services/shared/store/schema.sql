@@ -113,5 +113,35 @@ CREATE TABLE IF NOT EXISTS usage_counters (
 	updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-INSERT INTO schema_info (id, version) VALUES (1, 2)
+-- v3: site experience profiles (ADR-0036): immutable, each targets one knowledge version; one active per site.
+CREATE TABLE IF NOT EXISTS experience_profiles (
+	site_id text NOT NULL,
+	profile_id text NOT NULL,
+	kb_version_id text NOT NULL,
+	profile jsonb NOT NULL,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	PRIMARY KEY (site_id, profile_id)
+);
+CREATE TABLE IF NOT EXISTS experience_active (
+	site_id text PRIMARY KEY,
+	profile_id text NOT NULL,
+	activated_at timestamptz NOT NULL DEFAULT now(),
+	FOREIGN KEY (site_id, profile_id) REFERENCES experience_profiles (site_id, profile_id)
+);
+
+-- v3: approved anonymous attention counts (ADR-0037 §6), off by default. Counts per day only:
+-- no address, no session, no identifier; kept apart from traces and purged after the retention period.
+CREATE TABLE IF NOT EXISTS experience_interest (
+	site_id text NOT NULL,
+	kb_version_id text NOT NULL,
+	day date NOT NULL,
+	page_id text NOT NULL,
+	destination_id text NOT NULL,
+	warm int NOT NULL DEFAULT 0,
+	hot int NOT NULL DEFAULT 0,
+	activated int NOT NULL DEFAULT 0,
+	PRIMARY KEY (site_id, kb_version_id, day, page_id, destination_id)
+);
+
+INSERT INTO schema_info (id, version) VALUES (1, 3)
 	ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, applied_at = now();

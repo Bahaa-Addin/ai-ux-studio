@@ -33,8 +33,11 @@
     "service": "node services/run-service.ts",
     "docs:diagrams": "node tools/docs/render-diagrams.ts",
     "demo:live": "node tools/demo-live.ts",
+    "demo:trail": "node tools/demo-live.ts --replay --trail --start https://web.vodafone.com.eg/en/home",
+    "measure:trail": "node tools/trail-measure.ts",
     "live-crawl:import": "node tools/live-crawl/import.ts",
-    "live-crawl:bundle": "node tools/live-crawl/bundle.ts"
+    "live-crawl:bundle": "node tools/live-crawl/bundle.ts",
+    "experience": "node jobs/experience.ts"
   },
   "dependencies": {
     "pg": "8.23.1",
@@ -46,8 +49,17 @@
     "@page-agent/core": "1.12.4",
     "@page-agent/llms": "1.12.4",
     "@page-agent/page-controller": "1.12.4",
+    "@rrweb/record": "2.2.0",
+    "@rrweb/replay": "2.2.0",
     "@types/node": "26.6.3",
     "esbuild": "0.28.2",
     "typescript": "6.0.3"
+  },
+  "overrides": {
+    "rrweb": "2.2.0",
+    "rrweb-snapshot": "2.2.0",
+    "rrdom": "2.2.0",
+    "@rrweb/types": "2.2.0",
+    "@rrweb/utils": "2.2.0"
   }
 }

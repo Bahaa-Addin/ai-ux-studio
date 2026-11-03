@@ -130,4 +130,30 @@ export function storeContract(name: string, open: () => Promise<Store>, reset: (
 		assert.equal(await store.addUsage('tokens:s1:2026-10-22', 5), 5)
 		assert.equal(await store.addUsage('tokens:s1:2026-10-22', 7), 12)
 	})
+
+	test(`${name}: experience profiles are immutable and activated explicitly; interest counts add up per day`, async () => {
+		const profile = (id: string) => ({
+			standard: 'site-experience-profile/v1' as const,
+			id,
+			siteId: 's1',
+			kbVersionId: 'v1',
+			generatedAt: new Date().toISOString(),
+			generator: { name: 'test', version: '1' },
+			cohort: { minimum: 20, aggregationEnabled: false },
+			destinations: [{ destinationId: 'web.home', pageId: 'web.home', minimumCohortMet: false, suggestedQuestions: {} }],
+		})
+		await store.putExperienceProfile('s1', profile('p1'))
+		await assert.rejects(store.putExperienceProfile('s1', profile('p1')))
+		assert.equal(await store.getActiveExperienceProfile('s1'), null)
+		await store.activateExperienceProfile('s1', 'p1')
+		assert.equal((await store.getActiveExperienceProfile('s1'))?.id, 'p1')
+		const row = { siteId: 's1', kbVersionId: 'v1', day: '2026-11-02', pageId: 'web.home', destinationId: 'web.home', warm: 1, hot: 0, activated: 1 }
+		await store.addInterestCounts([row])
+		await store.addInterestCounts([{ ...row, warm: 0, hot: 1, activated: 0 }])
+		const got = await store.listInterestCounts('s1', 'v1', '2026-11-01', '2026-11-03')
+		assert.deepEqual(got.map((r) => [r.day, r.warm, r.hot, r.activated]), [['2026-11-02', 1, 1, 1]])
+		const purged = await store.purgeExpired(new Date('2027-06-01T00:00:00Z'), 7, 90)
+		assert.equal(purged.interest, 1)
+		assert.deepEqual(await store.listInterestCounts('s1', 'v1', '2026-01-01', '2027-12-31'), [])
+	})
 }

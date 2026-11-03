@@ -5,10 +5,10 @@ import { fileURLToPath } from 'node:url'
 
 import pg, { type Client, type Pool } from 'pg'
 
-import type { Manifest } from '#kb'
+import type { Manifest, SiteExperienceProfile } from '#kb'
 
 import { newId } from '../ids.ts'
-import type { KbVersionInfo, PushSubscriptionRow, SessionState, Store, TraceEvent, Watch, WatchChange } from './types.ts'
+import type { InterestCount, KbVersionInfo, PushSubscriptionRow, SessionState, Store, TraceEvent, Watch, WatchChange } from './types.ts'
 
 const SCHEMA = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'schema.sql'), 'utf8')
 const NOTIFY_LIMIT = 7000
@@ -93,7 +93,7 @@ export class PostgresStore implements Store {
 	/** Test helper: empties every table. */
 	async truncateAll() {
 		await this.#pool.query(
-			'TRUNCATE kb_active, kb_versions, sessions, handoff_tokens, trace_events, watch_changes, watches, push_subscriptions, cache, usage_counters RESTART IDENTITY CASCADE',
+			'TRUNCATE experience_active, experience_profiles, experience_interest, kb_active, kb_versions, sessions, handoff_tokens, trace_events, watch_changes, watches, push_subscriptions, cache, usage_counters RESTART IDENTITY CASCADE',
 		)
 	}
 
@@ -327,11 +327,54 @@ export class PostgresStore implements Store {
 		return Number(r.rows[0].total)
 	}
 
-	async purgeExpired(now: Date, traceRetentionDays: number) {
+	async putExperienceProfile(siteId: string, profile: SiteExperienceProfile) {
+		await this.#pool.query('INSERT INTO experience_profiles (site_id, profile_id, kb_version_id, profile, created_at) VALUES ($1, $2, $3, $4, $5)', [
+			siteId,
+			profile.id,
+			profile.kbVersionId,
+			JSON.stringify(profile),
+			profile.generatedAt,
+		])
+	}
+	async activateExperienceProfile(siteId: string, profileId: string) {
+		await this.#pool.query(
+			`INSERT INTO experience_active (site_id, profile_id) VALUES ($1, $2)
+			 ON CONFLICT (site_id) DO UPDATE SET profile_id = EXCLUDED.profile_id, activated_at = now()`,
+			[siteId, profileId],
+		)
+	}
+	async getActiveExperienceProfile(siteId: string): Promise<SiteExperienceProfile | null> {
+		const r = await this.#pool.query(
+			'SELECT p.profile FROM experience_active a JOIN experience_profiles p ON p.site_id = a.site_id AND p.profile_id = a.profile_id WHERE a.site_id = $1',
+			[siteId],
+		)
+		return r.rows[0]?.profile ?? null
+	}
+	async addInterestCounts(rows: InterestCount[]) {
+		for (const x of rows) {
+			await this.#pool.query(
+				`INSERT INTO experience_interest (site_id, kb_version_id, day, page_id, destination_id, warm, hot, activated) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				 ON CONFLICT (site_id, kb_version_id, day, page_id, destination_id) DO UPDATE SET warm = experience_interest.warm + EXCLUDED.warm,
+				 hot = experience_interest.hot + EXCLUDED.hot, activated = experience_interest.activated + EXCLUDED.activated`,
+				[x.siteId, x.kbVersionId, x.day, x.pageId, x.destinationId, x.warm, x.hot, x.activated],
+			)
+		}
+	}
+	async listInterestCounts(siteId: string, kbVersionId: string, fromDay: string, toDay: string): Promise<InterestCount[]> {
+		const r = await this.#pool.query(
+			`SELECT site_id, kb_version_id, to_char(day, 'YYYY-MM-DD') AS day, page_id, destination_id, warm, hot, activated FROM experience_interest
+			 WHERE site_id = $1 AND kb_version_id = $2 AND day BETWEEN $3 AND $4 ORDER BY day, destination_id`,
+			[siteId, kbVersionId, fromDay, toDay],
+		)
+		return r.rows.map((x: any) => ({ siteId: x.site_id, kbVersionId: x.kb_version_id, day: x.day, pageId: x.page_id, destinationId: x.destination_id, warm: x.warm, hot: x.hot, activated: x.activated }))
+	}
+
+	async purgeExpired(now: Date, traceRetentionDays: number, interestRetentionDays = 90) {
 		const s = await this.#pool.query('DELETE FROM sessions WHERE expires_at < $1', [now.toISOString()])
 		const h = await this.#pool.query('DELETE FROM handoff_tokens WHERE expires_at < $1', [now.toISOString()])
 		const t = await this.#pool.query("DELETE FROM trace_events WHERE at < $1::timestamptz - make_interval(days => $2)", [now.toISOString(), traceRetentionDays])
-		return { sessions: s.rowCount || 0, handoffs: h.rowCount || 0, traces: t.rowCount || 0 }
+		const i = await this.#pool.query("DELETE FROM experience_interest WHERE day < ($1::timestamptz - make_interval(days => $2))::date", [now.toISOString(), interestRetentionDays])
+		return { sessions: s.rowCount || 0, handoffs: h.rowCount || 0, traces: t.rowCount || 0, interest: i.rowCount || 0 }
 	}
 
 	async close() {

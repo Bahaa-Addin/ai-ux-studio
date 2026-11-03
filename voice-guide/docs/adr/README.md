@@ -10,7 +10,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 |---|---|---|---|
 | [0006](0006-platform-shape.md) | One SDK script tag plus stateless services behind one gateway | Architecture | Accepted |
 | [0007](0007-runtime-and-language.md) | TypeScript on Node 22 with type stripping; esbuild for the SDK | Tooling | Accepted |
-| [0008](0008-dependency-policy.md) | A small, pinned set of dependencies; Node built-ins for the rest | Dependencies | Accepted; zod pin amended by 0034 |
+| [0008](0008-dependency-policy.md) | A small, pinned set of dependencies; Node built-ins for the rest | Dependencies | Accepted; zod pin amended by 0034; rrweb added by 0035 |
 | [0009](0009-repo-and-service-seams.md) | One repository; each service runs in-process or over HTTP with the same handlers | Code organisation | Accepted |
 | [0010](0010-postgres-single-store.md) | Postgres is the only shared store; Redis deferred | Data | Accepted; changes the demo plan |
 | [0011](0011-site-knowledge-standard.md) | A site knowledge standard (v0.1) | Knowledge base | Accepted |
@@ -37,6 +37,12 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0032](0032-in-browser-crawler-public-pages-only.md) | Crawl the live site from a real browser tab when needed; public pages only; scheduled crawling paused | Ingestion | Accepted |
 | [0033](0033-google-chrome-for-speech-and-on-demand-sync-gate.md) | Demo browser is the installed Google Chrome (speech); on-demand sync gate; scheduled runs refused while paused; aliases | Live site integration, sync | Accepted; amends 0026 |
 | [0034](0034-agent-only-with-a-model-zod-4-and-clarify-between-full-matches.md) | The agent is offered only when a model is configured; zod 4; "A or B?" only between full matches; page wrappers dropped; typed answers to "A or B?" | Fallback agent, understanding | Accepted; amends 0008, 0014, 0017, 0018 |
+| [0035](0035-rrweb-for-local-journey-replay.md) | Exploration Trail: `@rrweb/record` and `@rrweb/replay` 2.2.0, pinned with overrides, in their own on-demand chunks; `guide.js` gets a gate only | Dependencies, SDK | Accepted for the prototype; amends 0008 |
+| [0036](0036-journey-memory-knowledge-and-experience-profile-are-separate.md) | Local journey memory, canonical site knowledge and the `site-experience-profile/v1` are three layers; questions are generated offline and verified by the router | Data, knowledge base | Accepted for the prototype |
+| [0037](0037-trail-consent-retention-masking-and-aggregation-boundary.md) | Trail consent, 24 h local retention, masking and blocking, public routes only, sanitized credential-free replay; anonymous aggregation built but off | Privacy and security | Accepted for the prototype; customers need D2 |
+| [0038](0038-trail-timeline-inside-the-guide-and-chips-through-the-turn-pipeline.md) | The timeline lives in the guide's shadow root with an explicit state machine; question chips are ordinary turns with a hint the router verifies | UI, understanding | Accepted for the prototype |
+| [0039](0039-trail-across-origins-boundaries-not-uploads.md) | Across origins the trail shows boundaries; replays are never uploaded to join them | Session continuity, privacy | Accepted for the prototype |
+| [0040](0040-trail-journey-hosted-in-the-pocket.md) | On Vodafone the journey is shown in the Services clone's Pocket, in its own design; the demo runs on Vodafone pages only | UI, demo | Accepted for the prototype |
 
 ## Changes to the demo plan these decisions made
 
@@ -68,3 +74,5 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | Demo run on the live site | "Did you mean 400 mega or promotions-lite?": every page's `#content` wrapper was a section labelled with its template name | Page wrappers are not destinations (ADR-0034) |
 | Demo run on the live site | A typed "400 mega" after "A or B?" switched to English, moved to `/en/promotions` and read the alt text back | Typed answers pick an option and keep the language; alt-only pictures read their card (ADR-0034) |
 | Demo run on the live site | "Open a business" offered a router guide or international calls, two half-matches | "A or B?" needs both options to cover the request (ADR-0034) |
+| Exploration Trail walkthrough | With the Home internet tab open, "What does Mega 25 include?" spotlit a card hidden in the closed Mobile tab: the crawler had seen that tab open, so the item had no reveal step | On the same page, a list in a tab panel gets a reveal of its own tab, skipped when visible (SPEC-06 §1, `services/router/planner.ts`) |
+| Exploration Trail end-to-end test | Leaving a page right after recording started stored only rrweb's Meta event: the first full snapshot comes a moment later | Buffered events are written when a link is activated; a visit shorter than the first snapshot has no preview, by design (ADR-0035) |

@@ -219,3 +219,38 @@ Offline-first: E1, E4 and T-302 are built and tested on fixtures before anything
 
 ### T-702 Keep the handoff current · S · ongoing · [ ]
 - After every task: HANDOFF §2 (state), §3 (verified numbers), §6 (known issues).
+
+## E8 Exploration Trail (SPEC-06, ADR-0035 to ADR-0039)
+
+### T-801 Contracts, ADRs and the experience profile · M · Owner: Claude · [x]
+- **Status 2026-11-03**: ADR-0035 to ADR-0039; `site-experience-profile/v1` (`packages/kb/src/experience.ts`) with join validation; schema version 3 (`experience_profiles`, `experience_active`, `experience_interest`); `npm run experience`; committed `config/experience/vodafone-eg.profile.json` (374 verified questions for the frozen knowledge base).
+- **Acceptance**: `tests/unit/experience.test.ts`, store contract on memory and Postgres.
+
+### T-802 Local recording · M · [x]
+- **Status 2026-11-03**: consent card and controls, route policy, lazy `trail-record.js`, step boundaries, chunked gzip IndexedDB storage with retention and eviction, cross-tab revocation.
+- **Acceptance**: `tests/unit/trail.test.ts`, `tests/integration/trail-browser.test.ts`, `tests/e2e/trail.e2e.test.ts` (journey, pause/revocation, private pages, failures).
+
+### T-803 Timeline and sandboxed replay · M · [x]
+- **Status 2026-11-03**: pill and sheet in the guide's shadow root, scrubbing by pointer, keyboard, touch; reduced motion; sanitizer and credential-free resources; adversarial tests.
+- **Acceptance**: e2e keyboard, Arabic, touch and reduced motion; `tests/integration/trail-browser.test.ts`.
+
+### T-804 Attention and questions into the guide · M · [x]
+- **Status 2026-11-03**: resolver, deliberate-attention scoring, top three; chips through `Guide.request` with a hint the router verifies (`router.hint` trace); hidden-tab reveal in the planner (bug found by the walkthrough).
+- **Acceptance**: e2e journey (chip answered in place, no panel), `tests/integration/experience.test.ts`.
+
+### T-805 Approved aggregation · S · needs D2 · [~]
+- **Status 2026-11-03**: endpoint, strict schema, rate limit, counts table, cohort ranking in the builder: built and tested, **off** (`trail.aggregation.enabled: false`, `VG_TRAIL_AGGREGATION` unset).
+- **Acceptance**: D2 approval; then a pilot measurement of contribution volume per day before choosing `minCohort`.
+
+### T-806 Real-site validation · M · 🌐 · needs D2 · [ ]
+- Turn the trail on for `vodafone-eg` in the demo browser only; walk the demo pages; add private selectors and paths found; measure storage growth and preview time on real pages; record in HANDOFF §3.
+- **Acceptance**: no private region in any replay of the demo pages; numbers recorded.
+
+### T-808 The journey in the Pocket, on Vodafone pages only · M · Owner: Claude · [x]
+- **Status 2026-11-03**: host mode (`<meta name="vg-trail-host">`, `TrailHostApi`, `trail.hostUrl`); the Services clone's Pocket draws "Your journey", a slim album-style slider and a lightly frosted layer with a staggered entrance (`vodafone-services-clone/src/pocket/journey.js`); clone sections marked with `data-vg-destination`; `npm run demo:trail` runs the saved Vodafone pages with the clone at `/en/services` (ADR-0040). The old fixture demo script is gone.
+- **Acceptance**: `tests/e2e/pocket-journey.e2e.test.ts` (5 scenarios); the clone's `pocket_e2e.py` still passes.
+
+### T-807 Knowledge relations for calls to action · S · [ ]
+- Extend the crawler and builder to keep "this card's link leads to that page" as an optional relation on destinations (a knowledge standard change), so questions like "where does this offer lead?" can be generated and verified. Today the browser resolves links at run time from the page paths.
+- **Acceptance**: relation round-trips through the manifest; integrity check; fixture re-crawl.
+

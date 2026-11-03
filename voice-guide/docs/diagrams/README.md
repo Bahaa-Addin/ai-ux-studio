@@ -13,3 +13,4 @@ All diagrams are Mermaid (GitHub renders them). Rendered SVGs are in `svg/` (reg
 | 07 | [Data model](07-data-model.md) | Postgres tables, with the proposed sync table |
 | 08 | [Deployment](08-deployment.md) | Demo (mode B) and pilot (mode A) |
 | 09 | [Demo journey](09-demo-journey.md) | The eight moments, page types and feelings |
+| 10 | [Exploration Trail](10-exploration-trail.md) | Local journey memory, knowledge, experience profile; the chip flow; the trail's states |

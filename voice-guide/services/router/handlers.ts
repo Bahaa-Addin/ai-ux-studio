@@ -3,8 +3,9 @@
  * Stateless: the session comes in with the request and the patch goes back
  * out; the gateway writes it through the sessions service.
  */
-import { Plan } from '#kb'
+import { Plan, type SuggestedQuestion } from '#kb'
 import { agentModelConfigured, type PlatformConfig, type SiteConfig } from '#shared/config.ts'
+import { type ExperienceCache, verifiedHint } from '#shared/experience.ts'
 import { HttpError } from '#shared/http.ts'
 import { newId } from '#shared/ids.ts'
 import { type KbCache, type KbIndex } from '#shared/kb-index.ts'
@@ -17,12 +18,22 @@ import { CircuitBreaker, type Decider, SystemOneDecider } from './deciders.ts'
 import { buildPlan } from './planner.ts'
 import { type Understanding, understand } from './understand.ts'
 
+/** Where a turn came from when it is not plain speech or typing (ADR-0038). */
+export interface TurnHint {
+	source: 'trail-suggestion'
+	destinationId: string
+	pageId?: string
+	trailStepId?: string
+	questionId?: string
+}
+
 export interface TurnInput {
 	siteId: string
 	session: SessionState
 	utterance: string
 	uiLang?: string
 	page: { url: string }
+	hint?: TurnHint
 }
 
 export interface TurnOutput {
@@ -38,6 +49,8 @@ export interface RouterDeps {
 	platform: PlatformConfig
 	sites: Map<string, SiteConfig>
 	kb: KbCache
+	/** Active experience profiles: a chip's destination hint is only used when its question is verified there (ADR-0038). */
+	experience?: ExperienceCache
 	tracer: Tracer
 	/** Tests inject deciders; production builds them from site config. */
 	deciderFor?: (site: SiteConfig) => Decider | undefined
@@ -76,7 +89,7 @@ export function createRouter(deps: RouterDeps) {
 			// With no model behind the agent proxy, a turn sent to the agent can only fail (a 503 and
 			// "I can't search right now"); the closest page or "not found" is the better answer.
 			const agent = { ...site.agent, enabled: site.agent.enabled && agentModelConfigured(deps.platform) }
-			const u = direct(utterance, kb, input) ?? (await understand({
+			let u = direct(utterance, kb, input) ?? (await understand({
 				utterance,
 				uiLang: input.uiLang,
 				pageId,
@@ -86,6 +99,12 @@ export function createRouter(deps: RouterDeps) {
 				decider,
 				breaker: decider ? breakers.get(decider.name) : undefined,
 			}))
+			if (input.hint) {
+				const x = (await deps.experience?.get(site.id, kb.versionId)) ?? null
+				const h = applyHint(u, verifiedHint(x, input.hint, utterance), site.router.acceptAt)
+				u = h.u
+				await deps.tracer.event(tctx, 'router.hint', { source: input.hint.source, destinationId: input.hint.destinationId, questionId: input.hint.questionId, trailStepId: input.hint.trailStepId, outcome: h.outcome, reason: h.reason })
+			}
 			await deps.tracer.event(
 				tctx,
 				'router.understood',
@@ -121,6 +140,37 @@ export function createRouter(deps: RouterDeps) {
 			if (plan.meta.route === 'clarify') turn.options = u.alternatives.map((a) => a.id)
 			return { turnId, plan, understanding: u, turn, last, kbVersion: kb.versionId }
 		},
+	}
+}
+
+/**
+ * Uses a trail chip's hint (ADR-0038) after the router has already planned on its own: agreement
+ * is recorded; a disagreement moves the decision to the question's expected destination only if
+ * the profile verified that question and retrieval found that destination too (evidence). The
+ * result is always a deterministic replay plan; a hint never sends a turn to the agent.
+ */
+export function applyHint(u: Understanding, q: SuggestedQuestion | null, acceptAt: number): { u: Understanding; outcome: 'agree' | 'override' | 'ignored'; reason?: string } {
+	if (u.route === 'control') return { u, outcome: 'ignored', reason: 'control request' }
+	if (!q) return { u, outcome: 'ignored', reason: 'not a verified question for this destination' }
+	const expected = q.expectedDestinationId
+	if (u.decision.destinationId === expected && u.route === 'replay') return { u, outcome: 'agree' }
+	const evidence = u.candidates.find((c) => c.id === expected)
+	if (!evidence) return { u, outcome: 'ignored', reason: 'retrieval did not find the destination' }
+	// The intent the router read when the question was verified: "how do I subscribe to X" is a flow.
+	const ri = q.routerIntent || 'navigate'
+	const flowId = ri.startsWith('flow:') ? ri.slice(5) : undefined
+	const intent: Understanding['intent'] = flowId ? 'flow' : ri === 'describe' ? 'describe' : 'navigate'
+	return {
+		u: {
+			...u,
+			intent,
+			flowId,
+			route: 'replay',
+			alternatives: [],
+			decision: { ...u.decision, destinationId: expected, confidence: Math.max(u.decision.confidence, acceptAt), provider: 'trail-hint' },
+		},
+		outcome: 'override',
+		reason: `router chose ${u.decision.destinationId ?? 'nothing'} (${u.route})`,
 	}
 }
 

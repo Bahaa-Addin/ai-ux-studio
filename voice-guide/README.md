@@ -81,6 +81,9 @@ Without a model key, requests that need the fallback agent get a short "I can't 
 | `npm run typecheck` | Both TypeScript projects. One known upstream mismatch is allowlisted (ADR-0017). |
 | `npm run record:demo -- --out <dir>` | Records the demo flow to an MP4 with captions. |
 | `npm run docs:diagrams` | Renders and syntax-checks the Mermaid diagrams in `docs/diagrams/`. |
+| `npm run demo:trail` | The Exploration Trail (SPEC-06) on the saved Vodafone pages, with the journey in the Services clone's Pocket (ADR-0040): remember your journey on this device, scrub it, ask about what you explored. No Postgres. |
+| `npm run experience -- --site <id> [--activate]` | Builds the site experience profile: suggested questions verified through the router (ADR-0036). |
+| `npm run measure:trail` | Measures the trail's bundles, storage growth, preview and scrub times, and memory. |
 
 ## Measured on the demo build (2026-10-23)
 
@@ -107,6 +110,10 @@ All figures come from one machine with no network between the browser and the se
 | Vision model (image descriptions at crawl time) | Any OpenAI-compatible vision endpoint; stand-in in tests. |
 | Speech | The browser's Web Speech API; simulated in tests. |
 | Web Push | Real encryption and VAPID; a local push server in tests. A live channel through the open page is the fallback. |
+
+## Exploration Trail (prototype)
+
+With consent, the guide remembers a person's journey across public pages **on their device** (rrweb, masked, IndexedDB, 24 h), shows it as a scrubbable timeline under the site's header, picks out the knowledge-base destinations they explored, and offers up to three router-verified questions for each. A question becomes an ordinary guide turn: the guide navigates, reveals, spotlights and answers; no chat window. Nothing recorded leaves the browser; anonymous aggregation is built but off. Spec: [`docs/specs/SPEC-06-exploration-trail.md`](docs/specs/SPEC-06-exploration-trail.md); decisions ADR-0035 to ADR-0039. On Vodafone the journey opens in the Pocket of the Services clone, in its own design (ADR-0040). Try it: `npm run demo:trail`. **Not production-ready**: customers need D2 (data protection), confirmed consent wording, retention approval, a security review and real-site validation.
 
 ## Where to look
 

@@ -1,6 +1,7 @@
 /**
  * Builds the SDK (ADR-0007): guide.js (loader, UI, executor), xray.js (X-ray drawer, on demand), agent.js (page-agent,
- * loaded only on the fallback path) and sw.js (push service worker).
+ * loaded only on the fallback path), sw.js (push service worker), and the Exploration Trail's three on-demand chunks
+ * (ADR-0035): trail.js (timeline, consent, storage), trail-record.js (rrweb record) and trail-replay.js (rrweb replay).
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -67,6 +68,8 @@ const alias: esbuild.Plugin = {
 	},
 }
 
+export const SDK_FILES = ['guide.js', 'agent.js', 'xray.js', 'watch.js', 'sw.js', 'trail.js', 'trail-record.js', 'trail-replay.js']
+
 export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<string, number>> {
 	fs.mkdirSync(OUT, { recursive: true })
 	const common: esbuild.BuildOptions = {
@@ -90,13 +93,16 @@ export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<
 		esbuild.build({ ...common, plugins: [...(opts.minify ?? true ? [cssMinify] : []), raw, stubs, alias], entryPoints: [path.join(SRC, 'xray-chunk.ts')], outfile: path.join(OUT, 'xray.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'watch-chunk.ts')], outfile: path.join(OUT, 'watch.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'sw.ts')], outfile: path.join(OUT, 'sw.js') }),
+		esbuild.build({ ...common, plugins: [...(opts.minify ?? true ? [cssMinify] : []), raw, stubs, alias], entryPoints: [path.join(SRC, 'trail-chunk.ts')], outfile: path.join(OUT, 'trail.js') }),
+		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'trail-record-chunk.ts')], outfile: path.join(OUT, 'trail-record.js') }),
+		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'trail-replay-chunk.ts')], outfile: path.join(OUT, 'trail-replay.js') }),
 	])
 	const sizes: Record<string, number> = {}
-	for (const f of ['guide.js', 'agent.js', 'xray.js', 'watch.js', 'sw.js']) sizes[f] = fs.statSync(path.join(OUT, f)).size
+	for (const f of SDK_FILES) sizes[f] = fs.statSync(path.join(OUT, f)).size
 	return sizes
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
 	const sizes = await buildSdk({ minify: !process.argv.includes('--dev') })
-	for (const [f, n] of Object.entries(sizes)) console.log(`${f.padEnd(9)} ${(n / 1024).toFixed(1)} KB`)
+	for (const [f, n] of Object.entries(sizes)) console.log(`${f.padEnd(16)} ${(n / 1024).toFixed(1)} KB`)
 }

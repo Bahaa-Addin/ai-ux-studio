@@ -7,6 +7,8 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 
+import { InterestContributionBatch } from '#kb'
+
 import type { Services } from '../index.ts'
 import type { SiteConfig } from '../shared/config.ts'
 import { agentModelConfigured, ROOT } from '../shared/config.ts'
@@ -19,6 +21,22 @@ import { newContext } from '../shared/trace.ts'
 import { Metrics, RateLimiter } from './limits.ts'
 
 const AGENT_TOKEN_TTL_SEC = 30 * 60
+
+/** What the SDK needs to run the trail (SPEC-06): never anything about a person. */
+function trailSettings(site: SiteConfig, aggregationApproved: boolean) {
+	const t = site.trail
+	return { enabled: t.enabled, retentionHours: t.retentionHours, excludePaths: t.excludePaths, privateSelectors: t.privateSelectors, topOffset: t.topOffset, hostUrl: t.hostUrl, aggregation: t.enabled && t.aggregation.enabled && aggregationApproved }
+}
+
+/** A trail chip's metadata (ADR-0038), or nothing: strict shape, short ids, one known source. */
+function turnHint(h: unknown): { source: 'trail-suggestion'; destinationId: string; pageId?: string; trailStepId?: string; questionId?: string } | undefined {
+	if (!h || typeof h !== 'object') return undefined
+	const o = h as Record<string, unknown>
+	const id = (v: unknown) => (typeof v === 'string' && v.length <= 160 && /^[a-z0-9][a-z0-9._:-]*$/i.test(v) ? v : undefined)
+	const destinationId = id(o.destinationId)
+	if (o.source !== 'trail-suggestion' || !destinationId) return undefined
+	return { source: 'trail-suggestion', destinationId, pageId: id(o.pageId), trailStepId: id(o.trailStepId), questionId: id(o.questionId) }
+}
 
 export interface GatewayOptions {
 	services: Services
@@ -33,6 +51,8 @@ export function createGateway(opts: GatewayOptions) {
 	const bySiteKey = new Map([...s.sites.values()].map((x) => [x.siteKey, x]))
 	const turnLimiter = new RateLimiter(platform.rateLimit.turnsPerMinute, platform.rateLimit.burst)
 	const agentLimiter = new RateLimiter(platform.rateLimit.turnsPerMinute * 4, platform.rateLimit.burst * 4)
+	// Approved aggregation only (ADR-0037 §6): one batch per address and site every ten minutes.
+	const contributionLimiter = new RateLimiter(0.1, 1)
 	const metrics = new Metrics()
 	const router = new Router()
 
@@ -97,7 +117,7 @@ export function createGateway(opts: GatewayOptions) {
 			agent: session.agent ?? null,
 			agentToken: agentOn ? agentToken(site.id, session.id) : null,
 			page,
-			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled } },
+			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled }, trail: trailSettings(site, platform.trailAggregation) },
 			push: site.watch.enabled ? s.local.watch.publicKey() : null,
 		})
 	})
@@ -112,7 +132,7 @@ export function createGateway(opts: GatewayOptions) {
 		const turnId = newId('turn', 9)
 		const ctx = ctxFor(req, site, sessionId, turnId)
 		const session = await s.sessions.get({ siteId: site.id, sessionId }, ctx)
-		const out = await s.router.turn({ siteId: site.id, session, utterance: String(body.utterance || ''), uiLang: body.uiLang, page: { url: String(body.page?.url || '') } }, ctx)
+		const out = await s.router.turn({ siteId: site.id, session, utterance: String(body.utterance || ''), uiLang: body.uiLang, page: { url: String(body.page?.url || '') }, hint: turnHint(body.hint) }, ctx)
 		await s.sessions.applyTurn({ siteId: site.id, sessionId, turn: out.turn, last: out.last, plan: out.plan }, ctx)
 		const ms = performance.now() - t0
 		metrics.inc(`turn.${out.plan.meta.route}`)
@@ -138,6 +158,42 @@ export function createGateway(opts: GatewayOptions) {
 			if (ev.name === 'sdk.first_motion') metrics.observe('first_motion', Number(ev.ms) || 0)
 		}
 		sendJson(res, 200, r)
+	})
+
+	// ---- Exploration Trail (SPEC-06): the page map, and approved anonymous counts (off by default) ----
+	router.on('GET', '/v1/experience', async (req, res, _p, url) => {
+		const site = siteFor(req, url)
+		if (!site.trail.enabled) throw new HttpError(404, 'the trail is not enabled for this site', 'trail_off')
+		const ctx = ctxFor(req, site, 'experience')
+		const map = await s.knowledge.experience({ siteId: site.id, url: String(url.searchParams.get('url') || '') }, ctx)
+		// Public knowledge only: the browser may reuse it for a couple of minutes.
+		sendJson(res, 200, map, { 'Cache-Control': 'private, max-age=120' })
+	})
+
+	router.on('POST', '/v1/experience/contributions', async (req, res, _p, url) => {
+		const site = siteFor(req, url)
+		if (!site.trail.enabled || !site.trail.aggregation.enabled || !platform.trailAggregation) throw new HttpError(404, 'aggregation is disabled', 'aggregation_off')
+		if (!contributionLimiter.take(`${site.id}:${clientIp(req)}`)) throw new HttpError(429, 'too many contributions', 'rate_limited')
+		const parsed = InterestContributionBatch.safeParse(await readJson(req, 4096))
+		if (!parsed.success) throw new HttpError(400, 'invalid contribution batch', 'bad_batch')
+		const b = parsed.data
+		const kb = await s.kb.get(site.id)
+		if (!kb || b.siteId !== site.id || b.kbVersionId !== kb.versionId) throw new HttpError(409, 'not the active knowledge version', 'stale_kb')
+		const today = new Date().toISOString().slice(0, 10)
+		const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+		if (b.dayBucket !== today && b.dayBucket !== yesterday) throw new HttpError(400, 'day bucket out of range', 'bad_day')
+		const seen = new Set<string>()
+		for (const c of b.contributions) {
+			const d = kb.dest.get(c.destinationId)
+			const page = d ? kb.pages.get(d.pageId) : undefined
+			if (!d || d.pageId !== c.pageId || !page || seen.has(d.id)) throw new HttpError(400, 'unknown or repeated destination', 'bad_destination')
+			if (['account', 'login', 'checkout'].includes(page.kind) || page.requiresAuth || d.commit) throw new HttpError(400, 'private destinations are not counted', 'private_destination')
+			seen.add(d.id)
+		}
+		// Counts only: no address, no session, no trace event with the payload.
+		await s.store.addInterestCounts(b.contributions.map((c) => ({ siteId: site.id, kbVersionId: b.kbVersionId, day: b.dayBucket, pageId: c.pageId, destinationId: c.destinationId, warm: c.interestBand === 'warm' ? 1 : 0, hot: c.interestBand === 'hot' ? 1 : 0, activated: c.activated ? 1 : 0 })))
+		metrics.inc('experience.contributions')
+		sendJson(res, 202, { accepted: b.contributions.length })
 	})
 
 	router.on('POST', '/v1/handoff', async (req, res, _p, url) => {

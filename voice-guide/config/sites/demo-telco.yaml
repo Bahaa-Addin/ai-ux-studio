@@ -60,3 +60,10 @@ agent:
 watch:
   enabled: true
   intervalSec: 15
+
+# Exploration Trail (SPEC-06, ADR-0035 to ADR-0039). Recording still needs each person's consent.
+# Anonymous aggregation stays off (ADR-0037 §6): it needs data-protection approval (D2).
+trail:
+  enabled: true
+  retentionHours: 24
+  aggregation: { enabled: false, minCohort: 20 }

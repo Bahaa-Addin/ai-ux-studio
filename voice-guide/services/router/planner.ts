@@ -33,7 +33,7 @@ export function buildPlan(input: PlanInput): PlanOutput {
 	const steps: PlanStep[] = []
 	const meta = (route: Plan['meta']['route'], destinationId?: string): Plan['meta'] => ({ intent: u.flowId ? `flow:${u.flowId}` : u.intent, route, destinationId, confidence: u.decision.confidence })
 	const out = (route: Plan['meta']['route'], sayText?: string, destinationId?: string, last?: Entity): PlanOutput => ({
-		plan: { v: 1, turnId: input.turnId, lang, say: sayText, steps, meta: meta(route, destinationId) },
+		plan: { v: 1, turnId: input.turnId, lang, say: sayText, steps: marked(steps, destinationId ? kb.dest.get(destinationId) : undefined), meta: meta(route, destinationId) },
 		last,
 	})
 
@@ -223,6 +223,15 @@ export function buildPlan(input: PlanInput): PlanOutput {
 	}
 	function pushReveal(dest: Destination) {
 		for (const r of dest.reveal || []) steps.push({ op: 'reveal', target: r, until: dest.target })
+		// After a page load the crawled default tab is open again; only on the page itself can it be closed.
+		if (dest.reveal?.length || !dest.target || !onPage(dest.pageId)) return
+		// A list in a tab panel that was open when the page was crawled has no reveal step, but the
+		// person may have opened another tab since (SPEC-06 §6: a trail question asked from there).
+		// On pages with tabs, open the list's own tab; the executor skips this when it is already visible.
+		const holder = dest.kind === 'collection' ? dest : dest.collectionId ? m.destinations.find((x) => x.kind === 'collection' && x.collectionId === dest.collectionId) : undefined
+		const panel = /^#([\w-]+)$/.exec(holder?.target?.css[0] || '')?.[1]
+		const tabs = !!panel && !holder?.reveal?.length && m.destinations.some((x) => x.pageId === dest.pageId && x.reveal?.some((r) => r.role === 'tab' || r.css.some((c) => c.includes('aria-controls'))))
+		if (panel && tabs) steps.push({ op: 'reveal', target: { css: [`[aria-controls="${panel}"]`], role: 'tab' }, until: dest.target })
 	}
 	function pageTitle(pageId: string): string {
 		const p = kb.pages.get(pageId)
@@ -279,3 +288,22 @@ function answerRead(d: Destination, lang: string): ReadSpec | undefined {
 	}
 	return { maxChars: 220 }
 }
+
+/**
+ * A page may mark its own element for a destination with `data-vg-destination` (a clone that
+ * re-renders the live page, SPEC-06 §4). The destination's own target gets that marker as its last
+ * locator, so the guide finds it where the crawled selectors do not exist; on the live site it is
+ * never reached.
+ */
+function marked(steps: PlanStep[], d: Destination | undefined): PlanStep[] {
+	if (!d?.target) return steps
+	const t = d.target
+	const withMarker = (x: Target): Target => (x === t ? { ...x, css: [...x.css, `[data-vg-destination="${d.id}"]`] } : x)
+	return steps.map((s) => {
+		if (!('target' in s)) return s
+		const out = { ...s, target: withMarker(s.target) } as PlanStep
+		if (out.op === 'reveal' && out.until) out.until = withMarker(out.until)
+		return out
+	})
+}
+

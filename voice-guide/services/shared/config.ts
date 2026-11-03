@@ -26,6 +26,9 @@ export interface PlatformConfig {
 	secret: string
 	sessionTtlMin: number
 	traceRetentionDays: number
+	/** Approved anonymous trail aggregation (ADR-0037 §6): off unless VG_TRAIL_AGGREGATION=on, and the site enables it too. */
+	trailAggregation: boolean
+	interestRetentionDays: number
 	rateLimit: { turnsPerMinute: number; burst: number }
 	jev: { baseUrl: string; apiKey?: string; model: string; timeoutMs: number }
 	laya: { baseUrl?: string; apiKey?: string; timeoutMs: number }
@@ -58,6 +61,8 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 		secret: env.VG_SECRET || 'dev-only-secret-change-me',
 		sessionTtlMin: num(env.VG_SESSION_TTL_MIN, 60),
 		traceRetentionDays: num(env.VG_TRACE_RETENTION_DAYS, 7),
+		trailAggregation: env.VG_TRAIL_AGGREGATION === 'on',
+		interestRetentionDays: num(env.VG_TRAIL_AGGREGATE_RETENTION_DAYS, 90),
 		rateLimit: { turnsPerMinute: num(env.VG_RATE_TURNS_PER_MIN, 30), burst: num(env.VG_RATE_BURST, 10) },
 		jev: {
 			baseUrl: env.JEV_BASE_URL || 'https://api.typesafe.ai',
@@ -188,6 +193,27 @@ export const SiteConfig = z.object({
 	watch: z
 		.object({ enabled: z.boolean().default(true), intervalSec: z.number().int().min(5).default(900) })
 		.default({ enabled: true, intervalSec: 900 }),
+	/**
+	 * Exploration Trail (SPEC-06, ADR-0035 to ADR-0039). Off unless enabled; recording still needs
+	 * each person's consent. Aggregation is a separate, approved channel and stays off (ADR-0037 §6).
+	 */
+	trail: z
+		.object({
+			enabled: z.boolean().default(false),
+			retentionHours: z.number().min(1).max(168).default(24),
+			/** Extra paths (regular expressions) never recorded, on top of the built-in sensitive patterns. */
+			excludePaths: z.array(z.string()).default([]),
+			/** Extra regions blocked from recordings (account widgets, personal banners). */
+			privateSelectors: z.array(z.string()).default([]),
+			/** Fixed distance from the top for the timeline, in px, when the header cannot be measured. */
+			topOffset: z.number().int().min(0).optional(),
+			/** The page that shows the journey (the Pocket on the Services clone, ADR-0040); other pages keep only the status pill. */
+			hostUrl: z.url().optional(),
+			aggregation: z
+				.object({ enabled: z.boolean().default(false), minCohort: z.number().int().min(5).default(20), windowDays: z.number().int().min(1).max(90).default(28) })
+				.default({ enabled: false, minCohort: 20, windowDays: 28 }),
+		})
+		.default({ enabled: false, retentionHours: 24, excludePaths: [], privateSelectors: [], aggregation: { enabled: false, minCohort: 20, windowDays: 28 } }),
 })
 export type SiteConfig = z.infer<typeof SiteConfig>
 
