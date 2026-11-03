@@ -16,7 +16,7 @@ test('VoiceTut parses heartbeat and a completed result split across network chun
 })
 test('VoiceTut surfaces quota errors instead of treating them as audio', async () => {
   await assert.rejects(readResult(stream(['event: error\ndata: "GPU quota exceeded"\n\n'])), /GPU quota exceeded/)
-  await assert.rejects(readResult(stream(['event: error\ndata: null\n\n'])), /busy or out of quota/)
+  await assert.rejects(readResult(stream(['event: error\ndata: null\n\n'])), /without details/)
 })
 test('VoiceTut reports an interrupted result stream', async () => {
   await assert.rejects(readResult(stream(['event: heartbeat\ndata: null\n\n'])), /before returning a result/)
