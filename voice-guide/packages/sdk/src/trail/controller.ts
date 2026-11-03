@@ -12,7 +12,7 @@ import { consentKey, notNow, readConsent, writeConsent } from './consent.ts'
 import { tt } from './i18n.ts'
 import { type CatalogEntry, selectTop } from './interest.ts'
 import { contributionBatch } from './aggregate.ts'
-import { canonicalPath, eligibility, privateFieldsOnPage, recorderOptions, type SitePolicy } from './policy.ts'
+import { canonicalPath, eligibility, optedOutPage, privateFieldsOnPage, recorderOptions, type SitePolicy } from './policy.ts'
 import type { Preview, PreviewOptions } from './replay.ts'
 import type { RecorderHandle } from './recorder.ts'
 import { Resolver } from './resolver.ts'
@@ -43,6 +43,8 @@ export interface TrailSettings {
 	topOffset?: number
 	/** Where the journey is shown when this page does not show it itself (the Pocket page, ADR-0040). */
 	hostUrl?: string
+	/** Same-origin folders a replay may copy files from despite a query or no extension (checked by type after fetching). */
+	replayAssetPaths?: string[]
 	aggregation: boolean
 }
 
@@ -173,7 +175,11 @@ export class TrailController {
 	}
 
 	#eligible(): boolean {
-		return eligibility({ url: location.href, siteOrigins: this.#siteOrigins(), kbPage: this.map?.page, hasPrivateFields: privateFieldsOnPage(), policy: this.policy }).ok
+		return this.#eligibility().ok
+	}
+
+	#eligibility() {
+		return eligibility({ url: location.href, siteOrigins: this.#siteOrigins(), kbPage: this.map?.page, hasPrivateFields: privateFieldsOnPage(), optedOut: optedOutPage(), policy: this.policy })
 	}
 
 	#mountView(): void {
@@ -618,11 +624,21 @@ export class TrailController {
 	async #nextStep(signal: RouteSignal, now: number, pending: (PendingTransition & { crossOrigin?: boolean; targetTitle?: I18n }) | null, navType?: string): Promise<void> {
 		const s = this.session
 		if (!s) return
-		const eligible = this.#eligible()
+		const why = this.#eligibility()
+		const eligible = why.ok
 		const path = canonicalPath(location.href, this.map?.keepQuery || [])
 		// The person left the origin and came back: show where the journey went in between.
 		if (pending?.crossOrigin && now - pending.at < 30 * 60_000) s.steps.push(this.#boundaryStep(s, 'cross-origin', pending.at, pending.targetPageId, pending.targetTitle))
 		const last = s.steps.at(-1)
+		if (!eligible && why.reason === 'opted-out') {
+			// A public page that is not part of journeys: browsed normally, named on the timeline, never saved.
+			if (last?.type !== 'boundary' || last.boundary !== 'unsaved' || last.canonicalPath !== path) s.steps.push({ ...this.#boundaryStep(s, 'unsaved', now, this.map?.page?.id, this.#pageTitle()), canonicalPath: path })
+			this.step = null
+			this.dispatch({ type: 'ROUTE', eligible: false })
+			this.#writeIndex(true)
+			if (this.state.consent === 'granted') this.view?.toast(tt('notHere', this.g.lang))
+			return
+		}
 		if (!eligible) {
 			// Stop before anything from this page is kept; leave only "a private page" on the timeline.
 			if (last?.type !== 'boundary' || last.boundary !== 'private') s.steps.push(this.#boundaryStep(s, 'private', now, this.map?.page && !this.map.page.eligible ? this.map.page.id : undefined))
@@ -679,7 +695,7 @@ export class TrailController {
 		else if (x.step.type === 'page') s.steps.push(x.step)
 	}
 
-	#boundaryStep(s: TrailSession, kind: 'private' | 'cross-origin', at: number, pageId?: string, title?: I18n): TrailStepSummary {
+	#boundaryStep(s: TrailSession, kind: 'private' | 'cross-origin' | 'unsaved', at: number, pageId?: string, title?: I18n): TrailStepSummary {
 		const known = pageId ? this.map?.pages.find((p) => p.id === pageId) : undefined
 		return { id: rid('stp'), sessionId: s.id, type: 'boundary', boundary: kind, pageId, title: title || known?.title || {}, enteredAt: at, durationMs: 0, navigationCause: { kind: 'destination' }, topDestinationIds: [], explored: [], replay: 'none' }
 	}
@@ -1025,6 +1041,7 @@ export class TrailController {
 				root: (this.hosted && this.#hostRoot) || this.view.frame,
 				events,
 				origin: location.origin,
+				assetPaths: this.settings.replayAssetPaths || [],
 				reducedMotion: this.reducedMotion,
 				label: tt('memory', this.g.lang, { title: this.#title(st.title) }),
 				onTime: (ms) => {

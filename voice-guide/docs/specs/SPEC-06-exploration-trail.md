@@ -18,6 +18,8 @@ The website remembers a person's journey **on their device** and turns it into t
 
 ## 2. Consent and controls (ADR-0037 §1)
 
+A page can opt out of journeys with `<meta name="vg-trail" content="off">`: it is browsed normally, nothing from it is saved, the timeline names it ("Went to Shokran Services", not selectable) and a small note under the pill says "This page is not saved" for a few seconds. In the demo, pages the replay does not have open from the internet and are recorded like the saved ones; `liveUnsaved` in `tools/demo-browser.ts` marks them opted out instead.
+
 | Control | Where | Effect |
 |---|---|---|
 | Remember my journey | Consent card from the trail button | Stores consent, creates the local database, loads the recorder on eligible pages |
@@ -62,7 +64,7 @@ On the Services clone (`../vodafone-services-clone`, mounted at `/en/services` i
 | Element | Where and how |
 |---|---|
 | "Your journey" | Beside "Back to Services" in the Pocket, the Pocket's button style, a red dot while saving |
-| Slider | Under the bar: one album dot per page, red thread behind you, "You are here" ringed; drag or touch to scrub, letting go plays on; arrows ±5 %, Page Up/Down a page, Home/End; Escape closes the journey before the Pocket |
+| Stepped tabs | Under the bar: one tab per page with its own thread; the selected page is a lifted white tab with the knob; "You are here" on the current page; drag or touch along a tab to scrub, letting go plays on; arrows ±5 %, Page Up/Down a page, Home/End; Escape closes the journey before the Pocket |
 | Layer | Lightly frosted, translucent, over the album in the same cell; never a dialog |
 | Entrance | Title row, memory, Play, "You explored", then each note, 70 ms apart; none under reduced motion |
 | Memory | A big sticker; the sandboxed replay renders into the Pocket's frame (`setPreviewRoot`) |

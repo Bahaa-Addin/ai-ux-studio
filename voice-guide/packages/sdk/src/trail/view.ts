@@ -75,6 +75,10 @@ export const TRAIL_CSS = `
 .tr-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tr-pill { position: fixed; z-index: 2147483400; top: var(--tr-top); inset-inline-end: calc(16px + env(safe-area-inset-right, 0px)); min-height: 44px; display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 12px; border: 1px solid rgba(0,0,0,.08); border-radius: 999px; background: var(--tr-surface); box-shadow: var(--tr-shadow); font-size: 14px; line-height: 20px; transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s; }
 .tr-pill:hover { box-shadow: 0 4px 14px rgba(0,0,0,.18); transform: translateY(-1px); }
+/* A short note under the pill, e.g. "This page is not saved"; it goes away by itself. */
+.tr-toast { position: fixed; z-index: 2147483400; top: calc(var(--tr-top) + 52px); inset-inline-end: calc(16px + env(safe-area-inset-right, 0px)); max-width: min(320px, calc(100vw - 32px)); margin: 0; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(20,20,30,.86); color: #fff; font-size: 13px; line-height: 18px; box-shadow: var(--tr-shadow); animation: tr-toast 4.2s ease both; pointer-events: none; }
+.tr-toast svg { width: 14px; height: 14px; flex: none; }
+@keyframes tr-toast { 0% { opacity: 0; transform: translateY(-4px); } 6%, 88% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 /* Scrolling down tucks the pill away so it never sits on the content being read; scrolling up or focusing it brings it back. */
 .tr-pill.tucked:not(:focus-visible) { transform: translateY(calc(-1 * var(--tr-top) - 56px)); box-shadow: none; pointer-events: none; }
 .tr-pill svg { width: 18px; height: 18px; color: var(--tr-accent); flex: none; }
@@ -212,6 +216,7 @@ export class TrailView {
 	#stepsKey = ''
 	#exploredKey = ''
 	#holdTimer = 0
+	#toastTimer = 0
 	#drag: { stepId: string; el: HTMLElement; how: 'pointer' | 'touch' } | null = null
 	#abort = new AbortController()
 
@@ -220,6 +225,7 @@ export class TrailView {
 		this.host = el('div', 'tr')
 		this.host.innerHTML = `
 			<div class="tr-sr" role="status" aria-live="polite"></div>
+			<p class="tr-toast" role="status" hidden>${ICON.lock}<span></span></p>
 			<button class="tr-pill" type="button" aria-expanded="false" aria-controls="tr-sheet">${ICON.journey}<span class="tr-label"></span><span class="tr-dot" aria-hidden="true"></span><span class="tr-ticks" aria-hidden="true"></span></button>
 			<section class="tr-card" role="dialog" aria-modal="false" aria-labelledby="tr-card-title" hidden>
 				<h2 id="tr-card-title"></h2><p class="tr-lead"></p>
@@ -418,6 +424,18 @@ export class TrailView {
 		if (open) (this.#els.menu.querySelector('button') as HTMLElement | null)?.focus()
 	}
 
+	/** A brief visible note under the pill (also announced); it hides itself after a few seconds. */
+	toast(text: string): void {
+		const t = this.host.querySelector('.tr-toast') as HTMLElement
+		t.querySelector('span')!.textContent = text
+		t.hidden = true
+		void t.offsetWidth
+		t.hidden = false
+		clearTimeout(this.#toastTimer)
+		this.#toastTimer = window.setTimeout(() => (t.hidden = true), 4300)
+		this.announce(text)
+	}
+
 	announce(text: string): void {
 		this.#els.sr.textContent = ''
 		requestAnimationFrame(() => (this.#els.sr.textContent = text))
@@ -519,6 +537,7 @@ export class TrailView {
 			if (s.type === 'page') li.style.flexGrow = String(weight(s))
 			const b = el('button', 'tr-seg') as HTMLButtonElement
 			b.type = 'button'
+			// A private page is never named; another site or a page that is not saved shows where you went.
 			const title = s.type === 'boundary' ? (s.boundary === 'private' ? tt('privatePage', L) : tt('otherSite', L, { title: pick(s.title, L) })) : pick(s.title, L)
 			const t = el('span', 'tr-t')
 			t.dir = 'auto'

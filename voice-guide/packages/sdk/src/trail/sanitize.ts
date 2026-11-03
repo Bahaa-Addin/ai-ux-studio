@@ -30,6 +30,8 @@ const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAAL
 export interface ResourceRules {
 	/** The page's own origin: the only one resources may come from. */
 	origin: string
+	/** Same-origin folders (`/documents/`) whose files are allowed even with a query or no extension. */
+	assetPaths?: readonly string[]
 	/** URL to its credential-free copy (a `blob:` URL), once fetched. */
 	resolved?: Map<string, string>
 	/** Called with every URL the policy allows, to fetch it. */
@@ -37,14 +39,17 @@ export interface ResourceRules {
 }
 
 /** Same origin, no query, no credentials, a static asset by extension. */
-export function allowedResource(url: string, origin: string): boolean {
+export function allowedResource(url: string, origin: string, assetPaths: readonly string[] = []): boolean {
 	let u: URL
 	try {
 		u = new URL(url)
 	} catch {
 		return false
 	}
-	if (u.origin !== origin || u.search || u.username || u.password || !/^https?:$/.test(u.protocol)) return false
+	if (u.origin !== origin || u.username || u.password || !/^https?:$/.test(u.protocol)) return false
+	// A site's declared asset folder: its files carry ids and cache-busting queries instead of extensions.
+	if (assetPaths.some((p) => u.pathname.startsWith(p) && !u.pathname.includes('..'))) return true
+	if (u.search) return false
 	const ext = /\.([a-z0-9]+)$/i.exec(u.pathname)?.[1]?.toLowerCase()
 	return !!ext && (TRAIL_CONFIG.replay.staticExtensions as readonly string[]).includes(ext)
 }
@@ -56,7 +61,7 @@ function rewriteUrl(raw: string, r: ResourceRules, image: boolean): string {
 	if (url.startsWith('#')) return url
 	if (ACTIVE_URL.test(url)) return image ? TRANSPARENT : ''
 	const clean = url.replace(/#.*$/, '')
-	if (!allowedResource(clean, r.origin)) return image ? TRANSPARENT : ''
+	if (!allowedResource(clean, r.origin, r.assetPaths)) return image ? TRANSPARENT : ''
 	r.collect?.(clean)
 	return r.resolved?.get(clean) ?? (image ? TRANSPARENT : '')
 }
@@ -263,8 +268,8 @@ export function sanitizeEvents(input: unknown[], r: ResourceRules): Sanitized {
 }
 
 /** Every resource URL the policy would allow in these events (to fetch before the real pass). */
-export function collectResources(events: unknown[], origin: string): string[] {
+export function collectResources(events: unknown[], origin: string, assetPaths: readonly string[] = []): string[] {
 	const found = new Set<string>()
-	sanitizeEvents(events, { origin, collect: (u) => found.add(u) })
+	sanitizeEvents(events, { origin, assetPaths, collect: (u) => found.add(u) })
 	return [...found]
 }

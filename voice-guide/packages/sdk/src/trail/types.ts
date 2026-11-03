@@ -45,7 +45,8 @@ export interface TrailStepSummary {
 	/** Stored replay bytes, kept here so the storage budget is checked without reading any chunk. */
 	bytes?: number
 	navigationCause: NavigationCause
-	boundary?: 'private' | 'cross-origin'
+	/** `unsaved`: a public page of the site that opts out of journeys (`<meta name="vg-trail" content="off">`), named but never saved. */
+	boundary?: 'private' | 'cross-origin' | 'unsaved'
 	topDestinationIds: string[]
 	explored: ExploredItem[]
 	/** Replay is gone (evicted for space, or corrupt): the step stays, without a preview. */

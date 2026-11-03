@@ -155,3 +155,19 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** rrweb's first full snapshot went into a compressed chunk whose write was still running when a link navigated; the browser dropped it, and only later events were stored.
 - **Fix:** activating a link, hiding or leaving the page writes every unfinished chunk at once as JSON and keeps a copy in sessionStorage; the next page in the tab finishes any write the unload cut off (`packages/sdk/src/trail/controller.ts`). The recorder's Meta and first snapshot now share a chunk.
 - **Test:** the touch scenario asserts the short first visit is saved and previews.
+
+## B-19 Pages missing from the replay showed a dead end, and live Vodafone pages wipe the trail's consent
+
+- **Found:** 2026-11-03, by Bahaà in the demo: following a link to Shokran Services showed "Not in this replay".
+- **Cause:** the demo browser served only saved pages. Opening missing pages live then showed a second problem: Vodafone's theme `scripts.js` calls `localStorage.clear()` on load, which forgot the person's consent.
+- **Fix:** a page the replay does not have opens from the internet with everything it loads, and the trail records it like the saved pages (by request; a page can still opt out with `<meta name="vg-trail" content="off">`, which shows "This page is not saved" under the pill). On those live pages the demo browser keeps the guide's own `vg-` keys through `clear()`. Offline, the old explanation page remains.
+- **Follow-up:** T-806: on the real site, consent must survive the site's own storage clean-up (a cookie or IndexedDB copy).
+- **Test:** `tests/unit/trail.test.ts` (opt-out eligibility); checked by hand against the live Shokran Services page.
+
+## B-20 Pictures were blank in memories of Vodafone pages
+
+- **Found:** 2026-11-03, by Bahaà: replays of Shokran Services showed empty boxes.
+- **Cause:** the replay copies only same-origin files with a static extension and no query (ADR-0037 §5). Vodafone's CMS serves pictures at `/documents/<ids>?t=…`, so every one became a transparent pixel. In the demo browser, files not in the replay were also refused instead of fetched.
+- **Fix:** `trail.replayAssetPaths` (Vodafone: `/documents/`) allows a site's asset folders; such a copy is still credential-free, GET, no redirects, and kept only if it is an image, font or stylesheet. The demo browser now fetches site files the replay does not have from the internet. Pictures the person never scrolled to stay empty, because the page never loaded them.
+- **Test:** `tests/unit/trail.test.ts` (asset folders, and `/api/logout?x=1` still refused); checked on the live Shokran Services page.
+

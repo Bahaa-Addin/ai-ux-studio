@@ -43,6 +43,8 @@ export interface DemoBrowserOptions {
 	 * Pocket is mounted at /en/services this way, so the whole demo stays on Vodafone pages.
 	 */
 	clone?: { path: string; dir: string }
+	/** Replay only: pages opened from the internet (not in the replay) are never saved by the trail. Default: recorded like the rest. */
+	liveUnsaved?: boolean
 	/** Replay only: add a stand-in of Vodafone's accessibility button (scripts are off in replay, so the real one is absent). */
 	accessibilityStandIn?: boolean
 	/** Chromium's fake microphone playing this WAV file (tests). */
@@ -158,7 +160,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 	for (const origin of origins) await context.grantPermissions(['microphone', 'notifications'], { origin })
 
 	// Routes are matched newest first: the replay catch-all goes in first, the gateway bridge last.
-	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone)
+	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone, o.liveUnsaved)
 
 	const forward = async (route: Route, target: string) => {
 		const req = route.request()
@@ -201,8 +203,8 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 	}
 }
 
-/** Serves the allowed origins from a crawl folder; nothing goes to the internet. */
-async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string }): Promise<void> {
+/** Serves the allowed origins from a crawl folder; a page the folder does not have opens from the internet, unsaved by the trail. */
+async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string }, liveUnsaved = false): Promise<void> {
 	const crawl = loadCrawl(dir)
 	const html = new Map<string, string>()
 	for (const p of crawl.pages) {
@@ -238,6 +240,33 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 		return page.replace(/<!--\s*Official Page Agent[\s\S]*?-->/, '').replace(/<script[^>]*page-agent[^>]*>\s*<\/script>/g, '')
 	}
 	if (clone) log(`replay: ${clone.path} is the clone in ${clone.dir}`)
+	// A page the replay does not have opens from the internet, as it is, and everything it loads
+	// comes from the internet too. The trail records it like any other public page; with
+	// `liveUnsaved` it carries <meta name="vg-trail" content="off"> instead and is never saved.
+	const live = new Set<string>()
+	const bare = (u: string) => u.split('#')[0]
+	const fromLivePage = (req: ReturnType<Route['request']>) => {
+		try {
+			for (let f: ReturnType<typeof req.frame> | null = req.frame(); f; f = f.parentFrame()) if (live.has(bare(f.url()))) return true
+		} catch {}
+		return false
+	}
+	const openLive = async (route: Route, url: URL) => {
+		try {
+			const res = await route.fetch({ timeout: 20_000 })
+			const headers = { ...res.headers() }
+			delete headers['content-length']
+			delete headers['content-encoding']
+			if (!/text\/html/.test(headers['content-type'] || '')) return route.fulfill({ response: res, headers })
+			const optOut = liveUnsaved ? '<meta name="vg-trail" content="off">' : ''
+			const body = (await res.text()).replace(/<head[^>]*>/i, (m) => `${m}${optOut}<script>${KEEP_GUIDE_STORAGE}</script>`)
+			live.add(bare(url.toString()))
+			log(`live: ${url.pathname} is not in the replay; opened from the internet${liveUnsaved ? ', not saved by the trail' : ''}`)
+			return route.fulfill({ response: res, headers, body })
+		} catch {
+			return route.fulfill({ status: 404, contentType: 'text/html; charset=utf-8', body: notInReplay(url.toString(), known.length) })
+		}
+	}
 	await context.route('**/*', async (route) => {
 		const req = route.request()
 		let url: URL
@@ -247,8 +276,9 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 			return route.abort()
 		}
 		if (url.protocol === 'data:' || url.protocol === 'blob:') return route.fallback()
-		if (!origins.includes(url.origin)) return req.resourceType() === 'image' ? route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 }) : route.abort()
 		if (url.pathname.startsWith('/__vg/') || url.pathname === '/vg-sw.js') return route.fallback()
+		if (req.resourceType() !== 'document' && fromLivePage(req)) return route.fallback()
+		if (!origins.includes(url.origin)) return req.resourceType() === 'image' ? route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 }) : route.abort()
 		const type = req.resourceType()
 		if (clone && url.origin === origins[0]) {
 			if (type === 'document' && url.pathname.replace(/\/$/, '') === clone.path) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: clonePage() })
@@ -257,16 +287,28 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 		}
 		if (type === 'document') {
 			const file = html.get(norm(url.toString()))
-			if (file) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: read(file) })
-			return route.fulfill({ status: 404, contentType: 'text/html; charset=utf-8', body: notInReplay(url.toString(), known.length) })
+			if (file) {
+				live.delete(bare(url.toString()))
+				return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: read(file) })
+			}
+			return openLive(route, url)
 		}
 		const asset = assetFile(decodeURIComponent(url.pathname).replace(/^\/+/, ''))
 		if (asset) {
 			const ext = path.extname(asset.replace(/\.gz$/, ''))
 			return route.fulfill({ status: 200, contentType: MIME[ext] || (type === 'stylesheet' ? 'text/css; charset=utf-8' : 'application/octet-stream'), body: read(asset) })
 		}
-		if (type === 'image') return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 })
-		return route.abort()
+		// Not saved (the replay keeps HTML and styles, not pictures): the site's own picture, font or
+		// style from the internet, so saved pages and the trail's memories show their real images.
+		// Never its scripts or API calls: saved pages stay script-free. Offline, a blank.
+		const looksLikeAsset = /\.(png|jpe?g|gif|webp|avif|svg|ico|css|woff2?|ttf|otf)$/i.test(url.pathname) || url.pathname.startsWith('/documents/')
+		if (!['image', 'stylesheet', 'font', 'media'].includes(type) && !(['fetch', 'xhr'].includes(type) && looksLikeAsset)) return route.abort()
+		try {
+			return await route.fulfill({ response: await route.fetch({ timeout: 10_000 }) })
+		} catch {
+			if (type === 'image') return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 }).catch(() => {})
+			return route.abort().catch(() => {})
+		}
 	})
 }
 
@@ -278,12 +320,20 @@ function norm(u: string): string {
 	}
 }
 
+/**
+ * Vodafone's live pages call localStorage.clear() on load (theme scripts.js, found 2026-11-03),
+ * which would also forget the person's trail consent and the guide's settings. On live pages
+ * opened from the demo browser, clear() keeps the guide's own `vg-` keys. Real-site follow-up:
+ * T-806 (consent must survive the site's own storage clean-up).
+ */
+const KEEP_GUIDE_STORAGE = `(() => { const P = Storage.prototype, clear = P.clear; P.clear = function () { if (this !== window.localStorage) return clear.call(this); const keep = []; for (let i = 0; i < this.length; i++) { const k = this.key(i); if (k && k.startsWith('vg-')) keep.push([k, this.getItem(k)]) } clear.call(this); for (const [k, v] of keep) this.setItem(k, v) } })()`
+
 function notInReplay(url: string, pages: number): string {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Not in this replay</title></head>
 <body style="font:16px/1.5 Arial,sans-serif;color:#333;background:#f4f4f4;margin:0;padding:48px 24px">
 <main style="max-width:640px;margin:auto;background:#fff;border-radius:6px;padding:24px;box-shadow:0 2px 4px rgba(0,0,0,.075)">
 <h1 style="font-size:24px;margin:0 0 8px">Not in this replay</h1>
-<p>This offline replay has the rendered HTML of a few key pages only. <code>${url.replace(/[<&>"]/g, '')}</code> is not one of them.</p>
-<p>Use the live mode on a machine with internet access, or go back.</p>
+<p>This replay has the rendered HTML of a few key pages only. <code>${url.replace(/[<&>"]/g, '')}</code> is not one of them, and it could not be opened from the internet either.</p>
+<p>Connect to the internet and try again, or go back.</p>
 <p><a href="javascript:history.back()">Back</a></p></main></body></html>`
 }

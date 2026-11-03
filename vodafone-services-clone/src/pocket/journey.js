@@ -3,8 +3,8 @@
  * (voice-guide ADR-0040), the journey is shown here, in the album's own design, instead of
  * in a sheet of the guide's:
  *
- *   1. "Your journey" sits beside "Back to Services", and a slim slider of the pages you
- *      visited runs under the bar: album dots on a stitched thread, red where you have been.
+ *   1. "Your journey" sits beside "Back to Services", and the pages you visited run under the
+ *      bar as stepped tabs, one per page, each with its own red thread to scrub along.
  *   2. Pressing either lays a lightly frosted layer over the album. The memory of a page
  *      (a sandboxed replay the trail renders into our frame), what you explored there and
  *      the questions you could ask float in one after another.
@@ -26,6 +26,7 @@ const KEY_STEP = 0.05 // arrow keys move 5% through a page
 const ICONS = {
   journey: ['M4 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0', 'M16 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0', 'M8 18h8a3 3 0 0 0 0-6H8a3 3 0 0 1 0-6h8'],
   play: ['M8 5.5v13l10.5-6.5z'],
+  next: ['M9.5 6 15.5 12l-6 6'],
   pause: ['M8.5 5.5v13M15.5 5.5v13'],
   close: ['M7 7l10 10M17 7 7 17'],
   ask: ['M5 6h14v9.5h-8L7 19v-3.5H5z', 'M9 10.75h6'],
@@ -62,7 +63,7 @@ export const initJourney = ({ pocket }) => {
   let pending = null // { stepId, fraction, how }: a position waiting for that page's memory to load
   let dragging = false
   let pages = []
-  let stopsKey = ''
+  let tabsKey = ''
   let notesKey = ''
   const t = (key, vars) => api?.t(key, vars) ?? ''
 
@@ -78,28 +79,11 @@ export const initJourney = ({ pocket }) => {
   barStart.append(cta)
 
   /* ------------------------------------------ the slim slider under the bar */
-  const stops = make('ol', { class: 'pocket-journey-rail__stops', 'aria-hidden': 'true' })
-  const tag = make('span', { class: 'pocket-journey-rail__tag', 'aria-hidden': 'true' })
-  const rail = make(
-    'div',
-    { class: 'pocket-journey-rail', role: 'slider', tabindex: '0', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' },
-    make('span', { class: 'pocket-journey-rail__thread', 'aria-hidden': 'true' }),
-    make('span', { class: 'pocket-journey-rail__fill', 'aria-hidden': 'true' }),
-    stops,
-    make('span', { class: 'pocket-journey-rail__knob', 'aria-hidden': 'true' }, tag),
-  )
-  const where = make('span', { class: 'pocket-journey__where', dir: 'auto' })
-  const savedText = make('span')
-  const band = make(
-    'div',
-    { class: 'pocket-journey', hidden: true, 'data-vg': '' },
-    make(
-      'div',
-      { class: 'container pocket-journey__inner' },
-      rail,
-      make('p', { class: 'pocket-journey__caption' }, where, make('span', { class: 'pocket-journey__saved' }, icon('lock', 'pocket-journey__saved-icon'), savedText)),
-    ),
-  )
+  // One tab per page: its title, "You are here" on the current one, and its own thread to scrub.
+  // The whole row is one slider for keyboards and screen readers; pointers press and drag on a tab.
+  const tabs = make('ol', { class: 'pocket-journey-steps', 'aria-hidden': 'true' })
+  const rail = make('div', { class: 'pocket-journey-rail', role: 'slider', tabindex: '0', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }, tabs)
+  const band = make('div', { class: 'pocket-journey', hidden: true, 'data-vg': '' }, make('div', { class: 'container pocket-journey__inner' }, rail))
   view.insertBefore(band, stage)
 
   /* -------------------------------------------------- the frosted layer */
@@ -176,15 +160,30 @@ export const initJourney = ({ pocket }) => {
     return here >= 0 ? here : pages.length - 1
   }
 
-  const renderStops = (s) => {
-    const key = pages.map((p) => p.id).join(' ') + `|${s.currentStepId}`
-    if (key === stopsKey) return
-    stopsKey = key
-    stops.replaceChildren(
-      ...pages.map((p, i) =>
-        make('li', { class: `pocket-journey-rail__stop${p.id === s.currentStepId ? ' is-here' : ''}`, 'data-step': p.id, style: { '--at': String(i / pages.length) } }),
-      ),
+  const renderTabs = (s) => {
+    const title = titleIn(s.lang)
+    const key = [s.lang, s.currentStepId, ...pages.map((p) => p.id)].join(' ')
+    if (key === tabsKey) return
+    tabsKey = key
+    tabs.replaceChildren(
+      ...pages.flatMap((p, i) => [
+        ...(i ? [make('li', { class: 'pocket-journey-steps__next' }, icon('next', 'pocket-journey-steps__next-icon'))] : []),
+        make(
+          'li',
+          { class: `pocket-journey-step${p.id === s.currentStepId ? ' is-here' : ''}`, 'data-step': p.id },
+          make('span', { class: 'pocket-journey-step__head' }, p.id === s.currentStepId ? make('span', { class: 'pocket-journey-step__here' }, t('here')) : null, make('span', { class: 'pocket-journey-step__title', dir: 'auto' }, title(p.title))),
+          make('span', { class: 'pocket-journey-step__track' }, make('span', { class: 'pocket-journey-step__fill' }), make('span', { class: 'pocket-journey-step__knob' })),
+        ),
+      ]),
     )
+  }
+
+  /** Keeps the selected tab in view when the row scrolls (phones). */
+  const revealTab = (tab) => {
+    if (!tab || rail.scrollWidth <= rail.clientWidth) return
+    const r = tab.getBoundingClientRect()
+    const box = rail.getBoundingClientRect()
+    if (r.left < box.left || r.right > box.right) rail.scrollBy({ left: r.left - box.left - (box.width - r.width) / 2, behavior: reducedMotion() ? 'auto' : 'smooth' })
   }
 
   const renderRail = (s) => {
@@ -193,17 +192,21 @@ export const initJourney = ({ pocket }) => {
     const i = selectedIndex(s)
     const fraction = s.selectedStepId ? s.position : i === n - 1 ? 1 : 0
     const at = n ? clamp((i + fraction) / n, 0, 1) : 0
-    rail.style.setProperty('--at', String(at))
-    for (const [k, stop] of [...stops.children].entries()) stop.classList.toggle('is-passed', k < i || (k === i && s.selectedStepId !== null))
+    const all = [...tabs.querySelectorAll('.pocket-journey-step')]
+    for (const [k, tab] of all.entries()) {
+      const selected = k === i && s.selectedStepId !== null
+      tab.style.setProperty('--f', String(k < i ? 1 : k === i ? fraction : 0))
+      tab.classList.toggle('is-passed', k < i)
+      if (tab.classList.contains('is-selected') !== selected) {
+        tab.classList.toggle('is-selected', selected)
+        if (selected) revealTab(tab)
+      }
+    }
     const page = pages[i]
-    const name = page ? (page.id === s.currentStepId ? t('here') : title(page.title)) : ''
-    tag.textContent = name
     const stepText = page ? t('step', { n: i + 1, total: n, title: title(page.title) }) : ''
-    where.textContent = stepText
     rail.setAttribute('aria-label', t('steps'))
     rail.setAttribute('aria-valuenow', String(Math.round(at * 100)))
     rail.setAttribute('aria-valuetext', page ? `${stepText}. ${t('positionValue', { pct: Math.round(fraction * 100), title: title(page.title) })}` : t('empty'))
-    savedText.textContent = s.consent === 'paused' || s.rec === 'paused' ? t('paused') : t('saved')
   }
 
   const noteFor = (item, k, s) => {
@@ -264,7 +267,7 @@ export const initJourney = ({ pocket }) => {
     ctaLabel.textContent = t('journey')
     cta.setAttribute('aria-label', open ? t('close') : t('open'))
     band.hidden = !granted(s) || pages.length === 0
-    renderStops(s)
+    renderTabs(s)
     renderRail(s)
 
     // The trail closed the journey itself (a question, clearing it, turning it off).
@@ -367,12 +370,21 @@ export const initJourney = ({ pocket }) => {
   /* ------------------------------------------------- slider interaction */
   const isRtl = () => getComputedStyle(rail).direction === 'rtl'
 
+  /** The tab under the pointer (the nearest one in a gap) and how far along its thread. */
   const locate = (clientX) => {
-    const box = rail.getBoundingClientRect()
-    let x = clamp((clientX - box.left) / Math.max(1, box.width), 0, 0.9999)
-    if (isRtl()) x = 0.9999 - x
-    const i = Math.floor(x * pages.length)
-    return { page: pages[i], fraction: clamp(x * pages.length - i, 0, 1) }
+    const all = [...tabs.querySelectorAll('.pocket-journey-step')]
+    let best = null
+    let gap = Infinity
+    for (const tab of all) {
+      const r = tab.getBoundingClientRect()
+      const d = clientX < r.left ? r.left - clientX : clientX > r.right ? clientX - r.right : 0
+      if (d < gap) [best, gap] = [tab, d]
+    }
+    if (!best) return { page: undefined, fraction: 0 }
+    const track = best.querySelector('.pocket-journey-step__track').getBoundingClientRect()
+    let fraction = clamp((clientX - track.left) / Math.max(1, track.width), 0, 1)
+    if (isRtl()) fraction = 1 - fraction
+    return { page: pages.find((p) => p.id === best.dataset.step), fraction }
   }
 
   const seek = async (page, fraction, how) => {

@@ -209,11 +209,17 @@ export const SiteConfig = z.object({
 			topOffset: z.number().int().min(0).optional(),
 			/** The page that shows the journey (the Pocket on the Services clone, ADR-0040); other pages keep only the status pill. */
 			hostUrl: z.url().optional(),
+			/**
+			 * Same-origin path prefixes whose files a replay may copy even without a file extension or with
+			 * a query (a CMS's images, e.g. /documents/). The copy is still credential-free, GET only, no
+			 * redirects, and kept only if it comes back as an image, font or stylesheet (ADR-0037 §5).
+			 */
+			replayAssetPaths: z.array(z.string().regex(/^\/[\w\-./]*\/$/)).max(10).default([]),
 			aggregation: z
 				.object({ enabled: z.boolean().default(false), minCohort: z.number().int().min(5).default(20), windowDays: z.number().int().min(1).max(90).default(28) })
 				.default({ enabled: false, minCohort: 20, windowDays: 28 }),
 		})
-		.default({ enabled: false, retentionHours: 24, excludePaths: [], privateSelectors: [], aggregation: { enabled: false, minCohort: 20, windowDays: 28 } }),
+		.default({ enabled: false, retentionHours: 24, excludePaths: [], privateSelectors: [], replayAssetPaths: [], aggregation: { enabled: false, minCohort: 20, windowDays: 28 } }),
 })
 export type SiteConfig = z.infer<typeof SiteConfig>
 
