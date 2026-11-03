@@ -161,7 +161,7 @@ export const initComposer = ({ adapter, regions }) => {
     h(
       'div',
       { class: 'aixc-settings__body' },
-      h('label', { class: 'aixc-field', for: 'aixc-key' }, h('span', null, 'API key'), keyInput),
+      h('label', { class: 'aixc-field', for: 'aixc-key' }, h('span', null, 'API key')),
       h('label', { class: 'aixc-field', for: 'aixc-model' }, h('span', null, 'Model'), modelInput),
       h('label', { class: 'aixc-check', for: 'aixc-remember' }, rememberInput, h('span', null, 'Remember the key in this browser')),
       h(
@@ -172,6 +172,13 @@ export const initComposer = ({ adapter, regions }) => {
       h('div', { class: 'aixc-settings__actions' }, saveKeyButton, forgetKeyButton, builtInButton),
     ),
   )
+  // The key field is in the page only while these settings are open: the Voice Guide's
+  // Exploration Trail never records a page that shows a password field.
+  const keyLabel = settingsPanel.querySelector('label[for="aixc-key"]')
+  settingsPanel.addEventListener('toggle', () => {
+    if (settingsPanel.open) keyLabel.append(keyInput)
+    else keyInput.remove()
+  })
 
   const closeButton = h('button', { type: 'button', class: 'aixc-icon-btn', 'aria-label': 'Close composer' }, pathIcon(ICON_CLOSE, 'aixc-icon'))
   const form = h(
