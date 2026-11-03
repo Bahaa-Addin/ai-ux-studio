@@ -28,9 +28,26 @@ for (const section of regions.sourceRoot.querySelectorAll('[data-aixc-section]')
   if (destination) section.dataset.vgDestination = destination
 }
 
+// A reimagined view hides these sections, so each card it draws takes the destination of the
+// section its service came from: the guide spotlights the card on screen, and the trail knows
+// what was explored.
+const itemDestinations = new Map()
+for (const item of regions.sourceRoot.querySelectorAll('[data-vg-destination] [data-aixc-item]')) {
+  itemDestinations.set(item.dataset.aixcItem, item.closest('[data-vg-destination]').dataset.vgDestination)
+}
+const markReimagined = () => {
+  for (const item of regions.outputRoot.querySelectorAll('[data-aixc-item]:not([data-vg-destination])')) {
+    const destination = itemDestinations.get(item.dataset.aixcItem)
+    if (destination) item.dataset.vgDestination = destination
+  }
+}
+new MutationObserver(markReimagined).observe(regions.outputRoot, { childList: true, subtree: true })
+
 // Reimagine this page: the AIXC composer, its launcher top-right (below the guide's journey pill
 // once the trail is on the page; aixc.css).
 const composer = initComposer({ adapter, regions })
+// The composer's own controls (prompt, Gemini key) are never part of a recorded journey.
+for (const node of document.querySelectorAll('.aixc-launcher, .aixc-composer')) node.dataset.vg = ''
 window.addEventListener('vg:trail-ready', () => {
   document.documentElement.dataset.vgTrail = 'on'
 })
