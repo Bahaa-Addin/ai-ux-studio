@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 150" data-asset="pocket-mascot" data-rig-version="2">
+  <!--
+    Pocket mascot decal sheet (rig v2). The body, arms, legs, feet and shadow are a 3D model
+    (src/pocket/actors/mascot-model.js) drawn as SVG every frame; this sheet holds the flat
+    artwork mapped onto it: the eye, the mouth shapes, the cheeks, the mitten hand, the apple and
+    the screen-aligned effects. Each [data-decal] is centred on its anchor (0, 0); the artwork
+    inside keeps its original coordinates and is shifted onto the anchor.
+    Hand-drawn from the IMG_2441 reference sheet; see manifest.json for what is still needed.
+  -->
+  <defs>
+    <radialGradient id="pocket-mascot-iris" cx="0.42" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#ff3b30"/>
+      <stop offset="1" stop-color="#b30000"/>
+    </radialGradient>
+    <clipPath id="pocket-mascot-eye-clip">
+      <circle cx="60" cy="68" r="17.4"/>
+    </clipPath>
+    <clipPath id="pocket-mascot-grin-clip">
+      <path d="M41 98.5C53 100.5 67 100.5 79 98.5C78.5 113 70.5 123 60 123C49.5 123 41.5 113 41 98.5Z"/>
+    </clipPath>
+    <clipPath id="pocket-mascot-yawn-clip">
+      <ellipse cx="60" cy="108" rx="11" ry="14"/>
+    </clipPath>
+  </defs>
+
+  <!-- Eye: sclera, iris (moved only by gaze), lid (blinks and moods), outline; brow; closed eye. Anchor: the eye centre. -->
+  <g data-decal="eye">
+    <g transform="translate(-60 -68)">
+        <g data-part="eye">
+          <circle cx="60" cy="68" r="18.6" fill="#fff"/>
+          <g clip-path="url(#pocket-mascot-eye-clip)">
+            <g data-part="iris">
+              <g data-part="iris-core">
+                <circle cx="60" cy="68" r="10.2" fill="url(#pocket-mascot-iris)" stroke="#8a0000" stroke-width="1.6"/>
+                <circle cx="60" cy="68" r="6.4" fill="#990000"/>
+                <circle cx="60" cy="68" r="4.4" fill="#14141e"/>
+                <circle cx="56.6" cy="64.4" r="2.5" fill="#fff"/>
+                <circle cx="63.4" cy="71" r="1.1" fill="#fff" fill-opacity="0.8"/>
+              </g>
+            </g>
+            <g data-part="lid">
+              <rect x="38" y="13" width="44" height="37.6" fill="#e20000"/>
+              <path d="M40 50.6H80" stroke="#5c0000" stroke-width="3" stroke-linecap="round"/>
+            </g>
+          </g>
+          <circle cx="60" cy="68" r="18.6" fill="none" stroke="#5c0000" stroke-width="3"/>
+        </g>
+        <!-- Closed, contented eye (eating, sleeping, beaming): a lash arc in place of the eye. -->
+        <path data-part="eye-closed" d="M46 69C51 61 69 61 74 69" fill="none" stroke="#5c0000" stroke-width="3.4" stroke-linecap="round"/>
+        <path data-part="brow" d="M48 43C55 39 65 39 72 43" fill="none" stroke="#5c0000" stroke-width="3.2" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- Mouth shapes. Anchor: the mouth centre. -->
+  <g data-decal="mouth">
+    <g transform="translate(-60 -108)">
+        <g data-part="mouth">
+          <path data-mouth-shape="smile" d="M45 103C52 112 68 112 75 103" fill="none" stroke="#5c0000" stroke-width="3.4" stroke-linecap="round"/>
+          <g data-mouth-shape="grin">
+            <path d="M41 98.5C53 100.5 67 100.5 79 98.5C78.5 113 70.5 123 60 123C49.5 123 41.5 113 41 98.5Z" fill="#4d0000"/>
+            <g clip-path="url(#pocket-mascot-grin-clip)">
+              <path d="M40 97H80V104.5C70 107.5 50 107.5 40 104.5Z" fill="#fff"/>
+              <ellipse cx="60" cy="122" rx="12" ry="7.5" fill="#f2737f"/>
+              <path d="M60 116.5V121" stroke="#c94a58" stroke-width="1.2" stroke-linecap="round"/>
+            </g>
+            <path d="M41 98.5C53 100.5 67 100.5 79 98.5C78.5 113 70.5 123 60 123C49.5 123 41.5 113 41 98.5Z" fill="none" stroke="#5c0000" stroke-width="3" stroke-linejoin="round"/>
+          </g>
+          <g data-mouth-shape="o">
+            <ellipse cx="60" cy="109" rx="6.6" ry="8.4" fill="#4d0000" stroke="#5c0000" stroke-width="2.8"/>
+            <ellipse cx="60" cy="113.4" rx="3.6" ry="2.2" fill="#f2737f"/>
+          </g>
+          <g data-mouth-shape="yawn">
+            <ellipse cx="60" cy="108" rx="11" ry="14" fill="#4d0000"/>
+            <g clip-path="url(#pocket-mascot-yawn-clip)">
+              <ellipse cx="60" cy="121" rx="10" ry="7" fill="#f2737f"/>
+            </g>
+            <ellipse cx="60" cy="108" rx="11" ry="14" fill="none" stroke="#5c0000" stroke-width="3"/>
+          </g>
+          <g data-mouth-shape="chew">
+            <path d="M47 105C51 101 55 101 60 105C65 109 69 109 73 105" fill="none" stroke="#5c0000" stroke-width="3.2" stroke-linecap="round"/>
+            <path d="M38 101C40 107 45 110 50 110" fill="none" stroke="#5c0000" stroke-opacity="0.55" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M82 101C80 107 75 110 70 110" fill="none" stroke="#5c0000" stroke-opacity="0.55" stroke-width="2.2" stroke-linecap="round"/>
+          </g>
+          <path data-mouth-shape="wobble" d="M48 107C51 104 54 104 57 107C60 110 63 110 66 107C69 104 71 104 73 106" fill="none" stroke="#5c0000" stroke-width="3" stroke-linecap="round"/>
+          <g data-mouth-shape="snore">
+            <ellipse cx="62" cy="108" rx="3.6" ry="2.8" fill="#4d0000" stroke="#5c0000" stroke-width="2.2"/>
+          </g>
+        </g>
+    </g>
+  </g>
+
+  <!-- One cheek (used twice). -->
+  <g data-decal="blush">
+    <ellipse data-part="blush" cx="0" cy="0" rx="6" ry="3.4" fill="#ff6f7d" fill-opacity="0.65"/>
+  </g>
+
+  <!-- Mitten hand. Anchor: the wrist; the fingers point up (-y). -->
+  <g data-decal="hand">
+    <g transform="translate(-110.5 -112)">
+        <path d="M107.2 112.6C105.6 109.6 106.6 106.4 109.4 106.2L110.2 102.4C110.6 100.6 113 100.8 112.8 102.8L112.6 105.6L114.4 103.2C115.6 101.8 117.4 103 116.6 104.8L115.4 107.6C117.6 108.4 117.8 111.4 116 114C113.8 117.2 108.8 116 107.2 112.6Z" fill="#e60000" stroke="#5c0000" stroke-width="2.2" stroke-linejoin="round"/>
+    </g>
+  </g>
+
+  <!-- Apple prop: whole, bitten, core. Anchor: its middle. -->
+  <g data-decal="apple">
+    <g transform="translate(-92 -110)">
+      <g data-part="apple">
+        <g data-apple-shape="whole">
+          <path d="M92 101C97 98 104 100 105 107C106.4 115 101 122 95 122C93.4 122 92.6 121.2 92 121.2C91.4 121.2 90.6 122 89 122C83 122 78 115 79 107C80 100 87 98 92 101Z" fill="#9bc53d" stroke="#3f6b12" stroke-width="2.2" stroke-linejoin="round"/>
+          <path d="M84 106C84 104 86 102.6 88 102.4" fill="none" stroke="#fff" stroke-opacity="0.7" stroke-width="1.6" stroke-linecap="round"/>
+        </g>
+        <g data-apple-shape="bitten">
+          <path d="M92 101C97 98 104 100 105 107C106.4 115 101 122 95 122C93.4 122 92.6 121.2 92 121.2C91.4 121.2 90.6 122 89 122C84 122 80 117 79.2 112C82 113 84 110.6 83.4 108C85.6 108.2 87.4 105.6 86.4 103.2C88.2 101.6 90 100.6 92 101Z" fill="#9bc53d" stroke="#3f6b12" stroke-width="2.2" stroke-linejoin="round"/>
+          <path d="M80.4 111.6C82.6 112 84.2 109.8 83.6 107.8C85.6 108 87.2 105.4 86.4 103.4" fill="none" stroke="#e9e4b0" stroke-width="2.2" stroke-linecap="round"/>
+        </g>
+        <g data-apple-shape="core">
+          <path d="M92 101C95 100 98 101 98 104C96.4 106 96.6 109 98.4 111C96.6 113.4 96.4 116.6 98 119C97 121.6 94 122.4 92 121.4C90 122.4 87 121.6 86 119C87.6 116.6 87.4 113.4 85.6 111C87.4 109 87.6 106 86 104C86 101 89 100 92 101Z" fill="#f4f1c9" stroke="#3f6b12" stroke-width="2" stroke-linejoin="round"/>
+        </g>
+        <path d="M92 101.6C92 98.4 92.6 96.4 94 94.6" fill="none" stroke="#6b3d1f" stroke-width="2" stroke-linecap="round"/>
+        <path d="M94.4 96.2C97.6 93 101.6 93.6 103 95C100.6 98 97 98.4 94.4 96.2Z" fill="#5a8f1f" stroke="#3f6b12" stroke-width="1.2" stroke-linejoin="round"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- Screen-aligned effects round the head: startle marks, sweat drop, sleep Zs. Anchor: the head. -->
+  <g data-decal="fx">
+    <g transform="translate(-60 -58)">
+      <g data-part="fx">
+        <!-- Startle marks around the head (reference pose 1). -->
+        <g data-part="marks" stroke="#14141e" stroke-opacity="0.55" stroke-width="2.2" stroke-linecap="round">
+          <path d="M10 46L4 41"/>
+          <path d="M12 56L4 55"/>
+          <path d="M104 36L111 30"/>
+          <path d="M108 46L116 44"/>
+        </g>
+        <g data-part="sweat">
+          <path d="M104 44C104 44 98.6 51 98.6 54.6C98.6 57.6 101 59.6 104 59.6C107 59.6 109.4 57.6 109.4 54.6C109.4 51 104 44 104 44Z" fill="#9fdcff" stroke="#3f8fc4" stroke-width="1.4"/>
+          <path d="M101.4 54.6C101.4 53.2 102 52 103 51" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+        </g>
+        <g data-part="zzz" fill="none" stroke="#990000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <path data-z="1" d="M96 34H106L96 44H106"/>
+          <path data-z="2" d="M107 19H115L107 27H115"/>
+          <path data-z="3" d="M115 5H121.5L115 11.5H121.5"/>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

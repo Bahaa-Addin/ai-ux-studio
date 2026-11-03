@@ -12,9 +12,13 @@
  * Every animation uses the one engine in ./curl.js. Content comes from the page's own
  * content model, so a pocketed sticker always shows the real title, copy and link.
  * Nothing here changes the protected header/footer; the pocket lives inside <main>.
+ *
+ * The mascot and drone (./pocket-actors.js) are told about each step through a few
+ * lifecycle calls; they are decoration and never hold up a save, an open or a close.
  */
 
 import { createCurl, cornerReach, fullTurn, tween, ease, lerp } from './curl.js'
+import { createPocketActors } from './pocket-actors.js'
 
 const STORE_KEY = 'aixc.pocket.v1'
 const RAD = Math.PI / 180
@@ -266,6 +270,14 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   main.append(pocketRoot)
   document.body.append(planeLayer, liftLayer, peekButton, live)
 
+  /** Mascot and drone. Optional: if they cannot start, the pocket works exactly as before. */
+  let actors = null
+  try {
+    actors = createPocketActors({ pocketRoot, peekButton, sheet: () => state.peek?.sheet ?? sheetRect(), reducedMotion })
+  } catch {
+    actors = null
+  }
+
   /* ----------------------------------------------------- page geometry */
   const sheetRect = () => {
     const top = Math.max(0, Math.round(header.getBoundingClientRect().bottom))
@@ -287,7 +299,8 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     }
   }
 
-  const albumUnder = (box) => box.append(make('div', { class: 'pocket-album pocket-album--under' }))
+  /** What the page-tip curl uncovers: the album's paper, and the mascot living under the page. */
+  const albumUnder = (box) => box.append(make('div', { class: 'pocket-album pocket-album--under' }), ...(actors ? [actors.underStage()] : []))
 
   /** A frozen copy of the page as it looks right now (or as `prepare` makes it look). */
   const snapshotPage = ({ scrollY, sheet, prepare = null }) => (box) => {
@@ -601,6 +614,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     }
     const landing = fly(peelAndFly(card, startX))
     openPeek()
+    actors?.itemPocketed({ phi: state.peek?.phi })
     await landing
     if (state.view === 'page') {
       updateCount()
@@ -783,6 +797,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   const openPocket = async () => {
     if (state.busy || state.view !== 'page' || (!state.ids.length && !openableEmpty())) return
     state.busy = true
+    actors?.openRequested()
     await Promise.allSettled([...state.flights])
     dropCorner({ immediate: true })
     if (!state.peek) buildPeek(peekX())
@@ -805,6 +820,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     window.scrollTo(0, 0)
     peek.rig.setUnder(null)
     setPeekButton(false)
+    actors?.openStart({ phi: peek.phi })
 
     const from = { x: peek.rig.state?.x ?? peekX(), phi: peek.phi, R: peek.R }
     const toR = pageRadius(sheet)
@@ -814,6 +830,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
         const phi = lerp(from.phi, TURNED_PHI, ease.inOutSine(t))
         const R = lerp(from.R, toR, ease.inOutSine(t))
         peek.rig.update({ x: lerp(from.x, fullTurn(sheet.width, sheet.height, phi, R) + 80, e), phi, R })
+        actors?.openProgress(t)
       },
       ease.inOutSine,
     ).promise
@@ -822,12 +839,14 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     announce(`Your pocket, ${countLabel(state.ids.length)}.`)
     state.busy = false
     viewChanged('pocket')
+    actors?.openComplete()
   }
 
   const closePocket = async () => {
     if (state.busy || state.view !== 'pocket') return
     state.busy = true
     viewChanged('closing')
+    actors?.closeStart()
     const saved = state.saved ?? { scrollY: 0, hidden: new Map() }
     const sheet = sheetRect()
     placeLayers(sheet)
@@ -869,6 +888,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     for (const [node, wasHidden] of saved.hidden) node.hidden = wasHidden
     state.view = 'page'
     delete document.body.dataset.pocketView
+    actors?.closeComplete()
     window.scrollTo(0, saved.scrollY)
     rig.setFront(null)
     if (composer?.state?.view === 'reimagined') composer.state.activeExperience?.mount?.()
@@ -921,5 +941,6 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     openWhenEmpty: (fn) => {
       openableEmpty = fn
     },
+    destroy: () => actors?.destroy(),
   }
 }

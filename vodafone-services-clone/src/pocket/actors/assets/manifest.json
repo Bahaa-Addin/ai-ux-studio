@@ -1,0 +1,188 @@
+{
+  "version": 2,
+  "format": "3D models drawn as SVG every frame, with flat SVG decal sheets",
+  "status": "temporary production asset: procedural 3D models and hand-drawn decals built from the supplied references, pending an illustrator-made model sheet or Rive file",
+  "references": {
+    "mascot": "IMG_2441.jpeg (six-pose character sheet)",
+    "drone": "IMG_2442.gif (UPLIFT quadcopter, 13 frames) and ScreenRecording_10-24-2026_17-35-25_1.mov (motion art direction)"
+  },
+  "assets": {
+    "mascot": {
+      "model": "src/pocket/actors/mascot-model.js",
+      "decals": "mascot.svg",
+      "viewBox": [
+        0,
+        0,
+        120,
+        150
+      ],
+      "ground": 147,
+      "modelParts": {
+        "body": "generalised cylinder: a spherical bulb rising into the curled flame tip; silhouette solved per pose",
+        "armL": "tapered capsule from a shoulder anchor; abduct/flex/reach",
+        "armR": "tapered capsule from a shoulder anchor; waves",
+        "legL": "tapered capsule from a hip anchor; swings",
+        "legR": "tapered capsule from a hip anchor; swings",
+        "footL": "ellipsoid",
+        "footR": "ellipsoid; taps from the heel",
+        "shadow": "disc on the ground"
+      },
+      "decalSheet": [
+        "eye",
+        "mouth",
+        "blush",
+        "hand",
+        "apple",
+        "fx"
+      ],
+      "decalParts": {
+        "eye": "sclera and outline (scales when startled)",
+        "iris": "pupil group moved only by the gaze loop (7 units of travel)",
+        "iris-core": "iris and pupil (constricts when startled)",
+        "lid": "eyelid: blink, half-closed, closed",
+        "eye-closed": "contented closed-eye lash arc",
+        "brow": "single brow (raised, lowered)",
+        "mouth": "mouth shapes: smile, grin, o, yawn, chew, wobble, snore",
+        "blush": "one cheek, used on both sides",
+        "apple": "green apple prop: whole, bitten, core",
+        "marks": "startle marks",
+        "sweat": "sweat drop",
+        "zzz": "sleep Zs"
+      },
+      "pose": [
+        "x",
+        "y",
+        "z",
+        "yaw",
+        "pitch",
+        "roll",
+        "sx",
+        "sy",
+        "bend",
+        "nod",
+        "armLa",
+        "armLf",
+        "armLr",
+        "armRa",
+        "armRf",
+        "armRr",
+        "handL",
+        "handR",
+        "legL",
+        "legR",
+        "footR",
+        "shadow"
+      ],
+      "expressions": {
+        "mouth": [
+          "smile",
+          "grin",
+          "o",
+          "yawn",
+          "chew",
+          "wobble",
+          "snore"
+        ],
+        "eye": [
+          "open",
+          "half",
+          "wide",
+          "closed"
+        ],
+        "brow": [
+          "none",
+          "up",
+          "down"
+        ],
+        "apple": [
+          "none",
+          "whole",
+          "bitten",
+          "core"
+        ],
+        "flags": [
+          "blush",
+          "sweat",
+          "marks",
+          "zzz"
+        ]
+      },
+      "clips": [
+        "rise",
+        "wave",
+        "duck",
+        "startle",
+        "run",
+        "recover",
+        "closeDuck",
+        "idle",
+        "untuck",
+        "tuck",
+        "glance",
+        "jump",
+        "beam",
+        "impatient",
+        "eat",
+        "yawn",
+        "sleep",
+        "wake",
+        "blink"
+      ]
+    },
+    "drone": {
+      "model": "src/pocket/actors/drone-model.js",
+      "decals": "drone.svg",
+      "viewBox": [
+        0,
+        0,
+        200,
+        140
+      ],
+      "modelParts": {
+        "hull": "ellipsoid, lit by a moving highlight",
+        "bucket": "camera bucket under the nose",
+        "arms": "four tapered capsules to the motor pods",
+        "pods": "four motor pods",
+        "guards": "four open rings, split into the halves behind and in front of each rotor",
+        "rotors": "two blades and a blur disc per rotor, spinning in the rotor plane, alternating direction"
+      },
+      "decalSheet": [
+        "details",
+        "lift-lines"
+      ],
+      "decalParts": {
+        "sensor": "white sensor ring",
+        "lens": "white lens",
+        "seam": "white seam above the bucket",
+        "lift-lines": "hover lift lines"
+      },
+      "pose": [
+        "yaw",
+        "pitch",
+        "roll",
+        "y",
+        "spin"
+      ],
+      "capabilities": [
+        "rotor loop",
+        "heading (yaw) into the direction of travel",
+        "banking (roll) and climb/dive (pitch)",
+        "heart-path flight",
+        "home hover with a slow look round",
+        "startled hop with a pirouette",
+        "drag attitude",
+        "return-home spring"
+      ]
+    }
+  },
+  "runtime": "No libraries: a small 3D kit (src/pocket/actors/space.js) projects the models with perspective; one requestAnimationFrame loop per actor rewrites the SVG attributes; Web Animations only for travel across the floor and decal details (eyelid, Zs, the tossed apple).",
+  "illustratorRequests": [
+    "A model sheet for the mascot: front, three-quarter, side, back and top views with the flame curl's exact profile, so the procedural body can be matched precisely (or a 3D/Rive source).",
+    "The small spur on the upper-left of the flame and the notch under the tip, which the procedural body does not reproduce yet.",
+    "Mouth shapes for the full set drawn to the reference style (tongue, teeth, lip line), plus a three-quarter mouth for turned views.",
+    "Hands in three states (open palm for waving, fist, holding) and a proper apple-in-hand drawing.",
+    "Eye artwork for three-quarter and profile views (currently the front eye is foreshortened on the surface).",
+    "Drone: the UPLIFT hull's exact proportions from more angles, the rotor blade shape and a vector brush for the hand-drawn heart trail.",
+    "Ideally a Rive file per actor whose state machine exposes yaw/pitch/roll, gaze x/y, expression and the clips listed above."
+  ]
+}

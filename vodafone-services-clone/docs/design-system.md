@@ -123,3 +123,20 @@ The clone is local-first and self-contained:
 - Vodafone fonts are mirrored into `public/assets/fonts`
 - page images are mirrored into `public/assets/images`
 - the icon sprite used by the page header/footer/app-store area is inlined in `src/main.js`
+
+## Pocket actors
+
+The Pocket mascot and drone (`src/pocket/pocket-actors.css`, [pocket-actors.md](pocket-actors.md))
+stay inside this system:
+
+- Colour: body and drone `#e60000`, shading toward `#990000`/`#ad0000`, outlines deep maroon
+  `#5c0000`, pupil ink `#14141e`. The only off-palette accents come from the reference art:
+  the apple green, blush pink and sweat-drop blue.
+- Scale: mascot `clamp(58px, 4vw + 42px, 100px)` tall, drone `clamp(52px, 4.2vw + 36px, 100px)`
+  wide (44 px minimum tap target).
+- Placement: never over the header, controls, title, lead or cards; drone in the upper right
+  of the album, mascot in the corner opposite the page curl.
+- Motion: the actors are 3D models redrawn as SVG from their pose each frame, plus transforms
+  and opacity; nothing animates layout. Short holds between beats, one strong beat at a time.
+  Reduced motion shows still poses.
+- Selectors: everything is prefixed `.pocket-actor-`, `.pocket-mascot-` or `.pocket-drone-`.
