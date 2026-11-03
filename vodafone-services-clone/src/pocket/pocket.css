@@ -1,0 +1,695 @@
+/*
+ * Pocket: "Pocket it" chips, the sticker liner left behind, the peeking corner and its
+ * button, and the pocket album revealed by the page turn.
+ *
+ * Vodafone tokens only (docs/design-system.md): red #e60000 / #990000, neutrals
+ * #333 #666 #999 #ccc #ebebeb #f4f4f4, ink #14141e, Vodafone Regular/Bold/Light,
+ * 6px buttons, 8px cards, the site's card and button shadows.
+ * Every selector is .pocket- or .curl- prefixed so nothing leaks into the shell.
+ */
+
+/* ------------------------------------------------------------- the engine */
+
+.curl-host {
+  position: absolute;
+  pointer-events: none;
+}
+
+.curl-host--inside {
+  z-index: 2;
+}
+
+.curl-host--flying {
+  position: fixed;
+  z-index: 7;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+
+.curl-host--flying.is-airborne {
+  filter: drop-shadow(0 14px 16px rgba(20, 20, 30, 0.28));
+}
+
+.pocket-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.pocket-layer--plane {
+  z-index: 6;
+}
+
+.pocket-layer--lift {
+  z-index: 8;
+}
+
+/* ------------------------------------------------------- "Pocket it" chip */
+
+.pocket-host {
+  position: relative;
+}
+
+.pocket-cta {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 0.82rem;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease-in-out,
+    color 0.15s ease-in-out,
+    box-shadow 0.15s ease-in-out;
+}
+
+.pocket-cta:hover {
+  background: #e60000;
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(153, 0, 0, 0.35);
+}
+
+/* On the red Stay In Control cards the hover state needs the darker red to stand out. */
+.action-card .pocket-cta:hover {
+  background: #990000;
+}
+
+.pocket-cta:focus-visible {
+  outline: 3px solid #333;
+  outline-offset: 2px;
+}
+
+.pocket-cta__icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+/* The Vodafone Cash strip is a row, not a card: the chip sits on its top edge. */
+.cash-intro > .pocket-cta {
+  top: -14px;
+  right: 0;
+}
+
+/* ------------------------------------------- the liner left on the page */
+
+.pocket-liner {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  place-items: center;
+  padding: 8px;
+  border: 2px dashed #c6c6c6;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(135deg, rgba(20, 20, 30, 0.035) 0 8px, rgba(20, 20, 30, 0) 8px 16px),
+    #f4f4f4;
+  color: #333;
+  text-align: center;
+}
+
+.cash-intro > .pocket-liner {
+  border-radius: 8px;
+}
+
+.pocket-host.is-pocketed > .pocket-liner,
+.pocket-host.is-peeling > .pocket-liner,
+.pocket-host.is-returning > .pocket-liner {
+  display: grid;
+}
+
+.pocket-liner__content {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.pocket-host.is-peeling .pocket-liner__content,
+.pocket-host.is-returning .pocket-liner__content {
+  visibility: hidden;
+}
+
+.pocket-liner__icon {
+  width: 26px;
+  height: 26px;
+  color: #e60000;
+}
+
+.pocket-liner__text {
+  margin: 2px 0 0;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.pocket-liner__undo {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #e60000;
+  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-size: 0.88rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.pocket-liner__undo:hover {
+  color: #990000;
+}
+
+/* While peeled (or lifting), the card's own surface and content give way to the liner. */
+.pocket-host.is-pocketed,
+.pocket-host.is-peeling,
+.pocket-host.is-returning {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.pocket-host.is-pocketed > :not(.pocket-liner):not(.curl-host),
+.pocket-host.is-returning > :not(.pocket-liner):not(.curl-host),
+.pocket-host.is-peeling > :not(.pocket-liner):not(.curl-host):not(.pocket-cta) {
+  visibility: hidden;
+}
+
+.pocket-host.is-pocketed > .pocket-cta,
+.pocket-host.is-returning > .pocket-cta {
+  display: none;
+}
+
+/* -------------------------------------------------- the peeking corner */
+
+.pocket-peek {
+  position: fixed;
+  right: max(22px, env(safe-area-inset-right));
+  bottom: max(22px, env(safe-area-inset-bottom));
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+  box-shadow:
+    0 8px 18px rgba(20, 20, 30, 0.3),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 0.15s ease;
+}
+
+.pocket-peek[data-state='hidden'] {
+  opacity: 0;
+  transform: scale(0.4);
+  pointer-events: none;
+}
+
+.pocket-peek:hover {
+  background: #990000;
+}
+
+.pocket-peek:focus-visible {
+  outline: 3px solid #333;
+  outline-offset: 3px;
+}
+
+.pocket-peek__icon {
+  width: 28px;
+  height: 28px;
+}
+
+.pocket-peek__count[hidden] {
+  display: none;
+}
+
+.pocket-peek__count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 12px;
+  background: #fff;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 0.8rem;
+  line-height: 24px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+
+.pocket-peek__tip {
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #fff;
+  color: #333;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translate(6px, -50%);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+}
+
+.pocket-peek:hover .pocket-peek__tip,
+.pocket-peek:focus-visible .pocket-peek__tip {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.pocket-peek.is-bump {
+  animation: pocket-bump 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes pocket-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+body[data-pocket-view='open'] .aixc-launcher,
+body[data-pocket-view='open'] .aixc-composer {
+  display: none !important;
+}
+
+/* ------------------------------------------------------ the pocket album */
+
+.pocket-output[hidden],
+.pocket-output [hidden] {
+  display: none !important;
+}
+
+.pocket-album {
+  background-color: #ebebeb;
+  background-image: radial-gradient(rgba(20, 20, 30, 0.12) 1px, rgba(20, 20, 30, 0) 1.6px);
+  background-size: 20px 20px;
+}
+
+.pocket-album--under {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 60px rgba(20, 20, 30, 0.08);
+}
+
+.pocket-view {
+  min-height: calc(100vh - var(--aixc-header-h, 104px));
+  padding: 28px 0 88px;
+  color: #333;
+  font-family: vodafone-regular-en, vf-regular, sans-serif;
+}
+
+.pocket-view__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.pocket-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 46px;
+  padding: 0 20px 0 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 1rem;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease-in-out,
+    box-shadow 0.15s ease-in-out;
+}
+
+.pocket-back:hover {
+  border-color: #333;
+  box-shadow: none;
+}
+
+.pocket-back--solid {
+  padding: 0 22px;
+  border-color: #e60000;
+  background: #e60000;
+  color: #fff;
+}
+
+.pocket-back--solid:hover {
+  border-color: #990000;
+  background: #990000;
+}
+
+.pocket-back__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.pocket-clear {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #666;
+  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-size: 0.95rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.pocket-clear:hover {
+  color: #e60000;
+}
+
+.pocket-view__head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 44px;
+}
+
+.pocket-view__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(153, 0, 0, 0.28);
+}
+
+.pocket-view__mark-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.pocket-view__title {
+  margin: 0;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 2.442rem;
+  font-weight: normal;
+  line-height: 1.08;
+}
+
+.pocket-view__title:focus {
+  outline: none;
+}
+
+.pocket-view__title:focus-visible {
+  outline: 3px solid #333;
+  outline-offset: 4px;
+}
+
+.pocket-view__lead {
+  margin: 6px 0 0;
+  color: #666;
+  font-family: vodafone-light-en, vf-light, sans-serif;
+  font-size: 1.16rem;
+  line-height: 1.4;
+}
+
+.pocket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  align-items: start;
+  gap: 40px 30px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each kept service is a die-cut sticker: white rim, rounded, a little hand-placed tilt. */
+.pocket-sticker {
+  position: relative;
+  padding: 8px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    0 1px 0 rgba(20, 20, 30, 0.06),
+    0 12px 24px -8px rgba(20, 20, 30, 0.32);
+  transform: rotate(var(--tilt, 0deg));
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.pocket-sticker:hover,
+.pocket-sticker:focus-within {
+  transform: rotate(0deg) translateY(-3px);
+  box-shadow:
+    0 1px 0 rgba(20, 20, 30, 0.06),
+    0 18px 30px -10px rgba(20, 20, 30, 0.38);
+}
+
+.pocket-sticker__media {
+  position: relative;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f4f4f4;
+}
+
+.pocket-sticker__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pocket-sticker__media img.is-contain {
+  padding: 14px;
+  object-fit: contain;
+}
+
+.pocket-sticker--cash .pocket-sticker__media {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px #ebebeb;
+}
+
+.pocket-sticker--red .pocket-sticker__media::after,
+.pocket-sticker--dark .pocket-sticker__media::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.pocket-sticker--red .pocket-sticker__media::after {
+  background: rgba(230, 0, 0, 0.62);
+}
+
+.pocket-sticker--dark .pocket-sticker__media::after {
+  background:
+    linear-gradient(to top, rgba(20, 20, 30, 0.72), rgba(20, 20, 30, 0.08)),
+    rgba(0, 0, 0, 0.12);
+}
+
+.pocket-sticker__body {
+  padding: 14px 8px 4px;
+}
+
+.pocket-sticker__from {
+  margin: 0 0 6px;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pocket-sticker__title {
+  margin: 0 0 6px;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 1.3rem;
+  font-weight: normal;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.pocket-sticker__desc {
+  margin: 0;
+  color: #666;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.pocket-sticker__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed #d6d6d6;
+}
+
+.pocket-sticker__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 0.95rem;
+}
+
+.pocket-sticker__cta:hover {
+  color: #990000;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.pocket-sticker__cta-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.pocket-sticker__remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #666;
+  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.pocket-sticker__remove:hover {
+  background: #f4f4f4;
+  color: #e60000;
+}
+
+.pocket-sticker__remove-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.pocket-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  max-width: 420px;
+  margin: 40px auto 0;
+  padding: 40px 28px;
+  border: 2px dashed #c6c6c6;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+
+.pocket-empty__icon {
+  width: 44px;
+  height: 44px;
+  color: #e60000;
+}
+
+.pocket-empty__title {
+  margin: 4px 0 0;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 1.45rem;
+}
+
+.pocket-empty__text {
+  margin: 0 0 12px;
+  color: #666;
+  line-height: 1.5;
+}
+
+@media (max-width: 767px) {
+  .pocket-view {
+    padding-top: 20px;
+  }
+
+  .pocket-view__head {
+    margin-bottom: 32px;
+  }
+
+  .pocket-view__title {
+    font-size: 2rem;
+  }
+
+  .pocket-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 28px 20px;
+  }
+}
+
+@media (max-width: 639px) {
+  .pocket-peek {
+    width: 52px;
+    height: 52px;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .pocket-peek__icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .pocket-cta {
+    top: 8px;
+    right: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pocket-peek,
+  .pocket-peek__tip,
+  .pocket-sticker,
+  .pocket-cta {
+    transition: none;
+  }
+
+  .pocket-peek.is-bump {
+    animation: none;
+  }
+}
