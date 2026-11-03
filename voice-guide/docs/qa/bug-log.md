@@ -173,3 +173,10 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** `trail.replayAssetPaths` (Vodafone: `/documents/`) allows a site's asset folders; such a copy is still credential-free, GET, no redirects, and kept only if it is an image, font or stylesheet. The demo browser now fetches site files the replay does not have from the internet. Pictures the person never scrolled to stay empty, because the page never loaded them.
 - **Test:** `tests/unit/trail.test.ts` (asset folders, and `/api/logout?x=1` still refused); checked on the live Shokran Services page.
 
+
+## B-21 The trail browser tests sometimes never exit
+
+- **Found:** 2026-11-03, while merging the demos: `tests/e2e/trail.e2e.test.ts` passed all 8 tests and then hung in about half the runs, which would hit CI's 10-minute timeout.
+- **Cause:** the X-ray stream (`/v1/events`) listened for the client leaving only after reading the backlog. A page that closed during that read left a 20-second ping interval running for good, holding the process open (and, on a long-running gateway, leaking one interval per such client).
+- **Fix:** the close listener is set before the backlog read, and a stream that already ended starts no ping (`services/gateway/server.ts`).
+- **Test:** `tests/integration/gateway.test.ts`, "an X-ray client that leaves while the backlog loads leaves no ping running" (fails without the fix).

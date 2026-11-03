@@ -133,6 +133,39 @@ test('a live event that arrives while the X-ray backlog loads does not drop the 
 	}
 })
 
+test('an X-ray client that leaves while the backlog loads leaves no ping running', async () => {
+	const s = await newSession('en', `${ORIGIN}/en/index.html`)
+	const ac = new AbortController()
+	let release!: () => void
+	const held = new Promise<void>((r) => (release = r))
+	const listTrace = p.store.listTrace.bind(p.store)
+	p.store.listTrace = async (sessionId: string, since?: number) => {
+		await held
+		return listTrace(sessionId, since)
+	}
+	const setIntervalBefore = globalThis.setInterval
+	const pings: ReturnType<typeof setInterval>[] = []
+	globalThis.setInterval = ((fn: () => void, ms?: number) => {
+		const t = setIntervalBefore(fn, ms)
+		if (ms === 20_000) pings.push(t)
+		return t
+	}) as typeof setInterval
+	try {
+		const res = fetch(`${p.url}/v1/events?session=${s.sessionId}&k=${KEY}`, { headers: { Origin: ORIGIN }, signal: ac.signal }).catch(() => null)
+		await new Promise((r) => setTimeout(r, 200))
+		ac.abort()
+		await res
+		await new Promise((r) => setTimeout(r, 100))
+		release()
+		await new Promise((r) => setTimeout(r, 200))
+		assert.equal(pings.length, 0, 'no ping is started for a stream that already ended')
+	} finally {
+		globalThis.setInterval = setIntervalBefore
+		for (const t of pings) clearInterval(t)
+		p.store.listTrace = listTrace
+	}
+})
+
 test('the edge rejects unknown site keys, foreign origins and floods', async () => {
 	assert.equal((await call('/v1/session', { lang: 'ar' }, { key: 'pk_nope' })).status, 401)
 	const foreign = await call('/v1/session', { lang: 'ar' }, { origin: 'https://evil.example' })

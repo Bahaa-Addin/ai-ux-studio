@@ -239,17 +239,23 @@ export function createGateway(opts: GatewayOptions) {
 		const set = listeners.get(sessionId) || new Set()
 		set.add(listener)
 		listeners.set(sessionId, set)
-		// Backlog: everything since `since` (only the latest turns when starting fresh).
-		const backlog = await s.store.listTrace(sessionId, since)
-		for (const ev of since ? backlog : recentTurns(backlog)) write(ev)
-		for (const ev of pending.sort((a, b) => (a.seq || 0) - (b.seq || 0))) write(ev)
-		pending = null
-		const ping = setInterval(() => res.write(': ping\n\n'), 20_000)
+		// Listen for the end before reading the backlog: a client that leaves during the read
+		// would otherwise leave its ping running forever (and keep the process alive).
+		let closed = false
+		let ping: ReturnType<typeof setInterval> | undefined
 		req.on('close', () => {
+			closed = true
 			clearInterval(ping)
 			set.delete(listener)
 			if (!set.size) listeners.delete(sessionId)
 		})
+		// Backlog: everything since `since` (only the latest turns when starting fresh).
+		const backlog = await s.store.listTrace(sessionId, since)
+		if (closed) return
+		for (const ev of since ? backlog : recentTurns(backlog)) write(ev)
+		for (const ev of pending.sort((a, b) => (a.seq || 0) - (b.seq || 0))) write(ev)
+		pending = null
+		ping = setInterval(() => res.write(': ping\n\n'), 20_000)
 	})
 
 	// ---- live events by long polling, for clients that cannot hold a stream open (ADR-0031) ----
