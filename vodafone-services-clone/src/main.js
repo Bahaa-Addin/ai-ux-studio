@@ -4,6 +4,7 @@
  */
 import { renderShell } from './shell.js'
 import { getPageAdapter } from './aixc/page-adapters.js'
+import { initComposer } from './aixc/controller.js'
 import { initPocket } from './pocket/pocket.js'
 import { initJourney } from './pocket/journey.js'
 
@@ -27,8 +28,9 @@ for (const section of regions.sourceRoot.querySelectorAll('[data-aixc-section]')
   if (destination) section.dataset.vgDestination = destination
 }
 
-// Raw experiment: leave the original page visible without the AIXC launcher.
-// Pocket: peel services off like stickers, keep them, turn the page to see them (no composer here).
-const pocket = initPocket({ adapter, regions })
+// Reimagine this page: the AIXC composer, its launcher top-right.
+const composer = initComposer({ adapter, regions })
+// Pocket: peel services off like stickers, keep them, turn the page to see them.
+const pocket = initPocket({ adapter, regions, composer })
 // Your journey: when the Voice Guide trail runs on this page, the journey lives in the pocket.
 if (pocket) initJourney({ pocket })
