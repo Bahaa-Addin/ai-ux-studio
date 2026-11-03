@@ -2,7 +2,7 @@
 
 Branch: `experiment/page-agent`. Based on `fc52fe2` of `Bahaa-Addin/ai-ux-studio`.
 
-This builds on the [official one-line quick start](https://github.com/alibaba/page-agent#-quick-start), pinned to the documented `page-agent@1.12.4` demo script. No API key, package installation, or backend is needed. The script uses `autoInit=false` so a small local adapter can configure language. The existing AIXC launcher is disabled for this experiment; the original Services page and carousels remain intact.
+This builds on the [official one-line quick start](https://github.com/alibaba/page-agent#-quick-start), pinned to the documented `page-agent@1.12.4` demo script. No API key, package installation, or backend is needed. The script uses `autoInit=false` so a small local adapter can configure language. On the integrated branch the demo is off by default: `src/page-agent-loader.js` loads it only with `?demo=page-agent` or `?agentLang=ar`, because it sends page content to the upstream testing LLM and its controls cover the "Reimagine this page" launcher.
 
 ## Run
 
@@ -13,7 +13,7 @@ cd vodafone-services-clone
 node scripts/serve.mjs --port 5182
 ```
 
-Open http://127.0.0.1:5182/ for English, or http://127.0.0.1:5182/?agentLang=ar for Arabic. The language selector reloads the page and starts a fresh session.
+Open http://127.0.0.1:5182/?demo=page-agent for English, or http://127.0.0.1:5182/?agentLang=ar for Arabic. The language selector reloads the page and starts a fresh session.
 
 English uses the native upstream panel. Version 1.12.4 has no Arabic UI locale, so Arabic mode uses a small local RTL form with Run/Stop controls and Arabic response instructions, backed by the same PageAgent engine. The Vodafone page content is not translated.
 
