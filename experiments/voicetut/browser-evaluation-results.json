@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-25",
+  "evaluation_type": "upstream browser UI smoke test plus runtime feasibility review",
+  "model": "Supertone/supertonic-3",
+  "space_url": "https://huggingface.co/spaces/Supertone/supertonic-3",
+  "space_revision": "4402acca094e2ff2b3dff446e0bf915f3fccc462",
+  "runtime": "onnxruntime-web",
+  "runtime_version": "1.23.0",
+  "browser": "Codex in-app browser",
+  "host": "Apple M1 Mac with 16 GiB RAM",
+  "webgpu_requested": true,
+  "whole_model_wasm_fallback_observed": false,
+  "cpu_node_assignment_warnings_observed": true,
+  "voice": "Robert / M3",
+  "steps": 8,
+  "speed": 1.0,
+  "core_onnx_asset_bytes": 398075273,
+  "timing_source": "upstream UI displayed processing time after model loading and warm-up",
+  "cold_download_seconds": null,
+  "peak_browser_memory_bytes": null,
+  "quality_scored": false,
+  "measurements": [
+    {
+      "case": "mixed",
+      "language_mode": "ar",
+      "text": "ممكن تعمل update للباقة من Ana Vodafone، وتراجع الـ balance قبل ما تعمل subscribe.",
+      "displayed_processing_seconds": 1.44,
+      "audio_duration_display": "0:06.64",
+      "displayed_rtf": 0.217
+    },
+    {
+      "case": "mixed_repeat",
+      "language_mode": "ar",
+      "text": "ممكن تعمل update للباقة من Ana Vodafone، وتراجع الـ balance قبل ما تعمل subscribe.",
+      "displayed_processing_seconds": 2.04,
+      "audio_duration_display": "0:06.64",
+      "displayed_rtf": 0.307
+    },
+    {
+      "case": "arabic",
+      "language_mode": "ar",
+      "text": "مع فودافون كاش، تقدر تحوّل فلوس وتدفع فواتيرك بسهولة من موبايلك.",
+      "displayed_processing_seconds": 1.37,
+      "audio_duration_display": "0:05",
+      "displayed_rtf": 0.240
+    },
+    {
+      "case": "english",
+      "language_mode": "en",
+      "text": "Explore Vodafone services and manage your account with the Ana Vodafone app.",
+      "displayed_processing_seconds": 1.39,
+      "audio_duration_display": "0:04",
+      "displayed_rtf": 0.308
+    }
+  ],
+  "limitations": [
+    "Different model, architecture, voice and quality setting from the VoiceTut CPU benchmark; no controlled runtime speedup claim.",
+    "Browser timings, mobile support, audio quality and WASM fallback require further controlled evaluation.",
+    "The official Supertonic repository is archived.",
+    "No local WAV export was captured from the upstream demo."
+  ],
+  "screenshot": ".local-voice/browser-evaluation/supertonic-mixed-browser.jpg"
+}

@@ -3,7 +3,7 @@
 .voicetut-demo form { padding:0 18px 18px; }
 .voicetut-demo p { margin:0 0 12px; color:#555; }
 .voicetut-demo label { display:block; font-weight:600; }
-.voicetut-demo textarea,.voicetut-demo select { box-sizing:border-box; width:100%; padding:8px; border:1px solid #aaa; border-radius:8px; font:inherit; color:#222; background:#fff; }
+.voicetut-demo textarea,.voicetut-demo select,.voicetut-demo input[type="url"] { box-sizing:border-box; width:100%; padding:8px; border:1px solid #aaa; border-radius:8px; font:inherit; color:#222; background:#fff; }
 .voicetut-demo textarea { resize:vertical; min-height:100px; }
 .voicetut-demo .vt-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0; }
 .voicetut-demo .vt-presets,.voicetut-demo .vt-actions { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; }
@@ -17,3 +17,11 @@
 .voicetut-demo a { color:#a00000; text-decoration:underline; }
 .voicetut-demo [hidden] { display:none; }
 .voicetut-demo :focus-visible { outline:3px solid #0070ad; outline-offset:2px; }
+.vt-section-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:16px; }
+.section-heading--center .vt-section-controls { justify-content:center; }
+.vt-section-read { min-height:44px; padding:9px 14px; border:1px solid #a00000; border-radius:8px; background:#fff; color:#a00000; font:600 14px/1.4 system-ui,sans-serif; cursor:pointer; }
+.vt-section-read:hover:not(:disabled) { background:#fff0f0; }
+.vt-section-read:focus-visible { outline:3px solid #0070ad; outline-offset:3px; }
+.vt-section-read:disabled { opacity:.55; cursor:wait; }
+.vt-section-status { max-width:55ch; color:#555; font:14px/1.5 system-ui,sans-serif; overflow-wrap:anywhere; }
+.vt-section-status:empty { display:none; }

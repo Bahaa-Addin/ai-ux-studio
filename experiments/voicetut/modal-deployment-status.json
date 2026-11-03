@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-26",
+  "workspace": "elbalashonyb-vodafone",
+  "app_id": "ap-grJ0BcFBd1mqXwBomoUfwp",
+  "model_image_id": "im-jbvk9m7ediLD54NGkWlQmE",
+  "status": "blocked_payment_method_required",
+  "gpu_running": false,
+  "live_inference_verified": false,
+  "expected_endpoint": "https://elbalashonyb-vodafone--vodafone-voicetut.modal.run",
+  "observed_credits_usd": 1,
+  "observed_usage_limit_usd": 1,
+  "required_before_retry": "Add payment method, recheck credits, enforce zero out-of-pocket spending limit"
+}
