@@ -9,6 +9,8 @@
       content="A local recreation of the Vodafone Egypt services page with AI Experience Composer: pick a ready-made experience or describe one, and the same content is recomposed."
     />
     <title>Services | Vodafone Egypt Clone</title>
+    <!-- Voice Guide: this page shows the journey itself, in the pocket (voice-guide ADR-0040) -->
+    <meta name="vg-trail-host" content="pocket" />
     <!-- Roboto 900 for the streaming wordmark (as in the original pen); falls back to a system sans offline -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -34,6 +36,7 @@
     <link rel="stylesheet" href="/src/aixc/experiences/coverflow.css" />
     <!-- Pocket: sticker peel, peeking corner and page turn (all .pocket- / .curl- prefixed) -->
     <link rel="stylesheet" href="/src/pocket/pocket.css" />
+    <link rel="stylesheet" href="/src/pocket/journey.css" />
   </head>
   <body data-page="vodafone-services">
     <div id="app"></div>

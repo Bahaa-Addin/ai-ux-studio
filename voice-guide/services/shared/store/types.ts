@@ -3,7 +3,7 @@
  * pilot and memory for tests and quick local runs. Services never share
  * process memory; anything shared goes through this interface.
  */
-import type { Manifest, PlanStep, Target } from '#kb'
+import type { Manifest, PlanStep, SiteExperienceProfile, Target } from '#kb'
 
 export interface Turn {
 	id: string
@@ -120,6 +120,19 @@ export interface WatchChange {
 	after: string
 }
 
+/** Approved anonymous attention counts for one destination on one day (ADR-0037 §6). */
+export interface InterestCount {
+	siteId: string
+	kbVersionId: string
+	/** UTC day, YYYY-MM-DD. */
+	day: string
+	pageId: string
+	destinationId: string
+	warm: number
+	hot: number
+	activated: number
+}
+
 export interface Store {
 	readonly kind: 'postgres' | 'memory'
 
@@ -163,6 +176,14 @@ export interface Store {
 	/** Adds to a counter (e.g. tokens per site per day) and returns the new total. */
 	addUsage(scope: string, amount: number): Promise<number>
 
-	purgeExpired(now: Date, traceRetentionDays: number): Promise<{ sessions: number; handoffs: number; traces: number }>
+	// ---- site experience profiles (ADR-0036) and approved aggregates (ADR-0037 §6) ----
+	putExperienceProfile(siteId: string, profile: SiteExperienceProfile): Promise<void>
+	activateExperienceProfile(siteId: string, profileId: string): Promise<void>
+	getActiveExperienceProfile(siteId: string): Promise<SiteExperienceProfile | null>
+	/** Adds to the day's counts (one row per destination). */
+	addInterestCounts(rows: InterestCount[]): Promise<void>
+	listInterestCounts(siteId: string, kbVersionId: string, fromDay: string, toDay: string): Promise<InterestCount[]>
+
+	purgeExpired(now: Date, traceRetentionDays: number, interestRetentionDays?: number): Promise<{ sessions: number; handoffs: number; traces: number; interest?: number }>
 	close(): Promise<void>
 }

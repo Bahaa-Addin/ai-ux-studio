@@ -212,6 +212,20 @@ Postgres must be running for the first two (§1).
 | `npm run eval:router -- --manifest config/kb/vodafone-eg.manifest.json --cases tests/fixtures/vodafone-utterances.yaml` | 33/33 |
 | `npm run eval:router -- --manifest config/kb/vodafone-eg.manifest.json --cases tests/fixtures/vodafone-utterances-heldout.yaml` | 14/18 fully right, destination 17/18 (2026-10-23); a floor, not a target |
 
+## 7a. Exploration Trail (SPEC-06): demo only
+
+The trail is **off** for `vodafone-eg` (D2). To show it:
+
+| Where | Command | Then |
+|---|---|---|
+| Saved Vodafone pages, no Postgres | `npm run demo:trail` | Opens `/en/home` in the demo browser. Press the pill, **Remember my journey**, visit a few pages (Cash, Internet Bundles), then **Services** (the clone with Pocket at `/en/services`). Rest on Vodafone Cash for a few seconds, then press the pill: the page turns to the Pocket and the journey floats in. Drag the slider, try a question chip. Questions come from `config/experience/vodafone-eg.profile.json` (knowledge version `20261023-122606-5b2080`) |
+| The same, any start page | `npm run demo:live -- --replay --trail [--start <url>]` | `--clone off` serves the saved Services page instead of the clone (the journey then has no host and the pill only goes to `/en/services`) |
+| After a knowledge refresh | `npm run experience -- --site vodafone-eg --activate` | A profile for the new version; the old one is never served for a different version |
+
+Reset the trail in the demo browser: **Your journey → Clear journey** in the Pocket, or clear the site's data in Chrome.
+
+Expected in the X-ray for a chip: `router.hint` with `agree` (or `override`), then a `replay` plan. `ignored` means the profile and the knowledge version do not match: rebuild the profile.
+
 ## 8. Troubleshooting
 
 | Symptom | Likely cause | Do |

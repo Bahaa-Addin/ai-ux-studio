@@ -2,8 +2,8 @@
 
 > Keep this file current. Every agent or engineer updates §2, §3, §5, §6 and appends to §8 at the end of each task (AGENTS.md §5.7).
 
-- Last updated: 2026-10-23
-- Branch: `feature/voice-guide-vodafone` (from `feature/aixc-phase1`) in `Bahaa-Addin/ai-ux-studio`
+- Last updated: 2026-11-03 (Exploration Trail prototype)
+- Branch: `experiment/page-agent` (worktree `experiments/page-agent`) in `Bahaa-Addin/ai-ux-studio`; the Exploration Trail work is uncommitted there
 - Directory: `voice-guide/`
 - Owner: Bahaà Addin Balashoni
 - Operating it: [`docs/ops/runbook.md`](../ops/runbook.md)
@@ -12,6 +12,8 @@
 ## 1. In one paragraph
 
 The voice guide runs on **Vodafone Egypt's real pages**, voice first, in Vodafone's design language. `npm run demo:live` starts the gateway, loads a knowledge base built from a **public-only crawl of the live site** (2026-10-23), and opens Google Chrome on `web.vodafone.com.eg` with the guide added to every page. A red microphone sits above Vodafone's accessibility button; pressing it shows the words one by one in a black bar with a live waveform. The guide finds the cheapest bundle on another page and reads it live, shows where to subscribe and stops (no sign-in), reads the text inside a banner, says what is on the current page, follows into the `/spa/` app in English with the conversation kept, and stops on request. All of this passes end to end on 14 Vodafone pages saved for replay. **Scheduled crawling is paused**; refreshes run on demand and are gated. The live site and real speech recognition still need a check on the demo Mac (the build machine cannot reach the site and has no speech service).
+
+**Exploration Trail (2026-11-03, prototype, SPEC-06):** with consent, the guide records a person's public-page journey privately in their browser (rrweb, masked, IndexedDB, 24 h), shows it as a scrubbable timeline under the site's header, picks out the knowledge destinations they explored, and offers router-verified questions that become ordinary guide turns (navigate, reveal, spotlight, answer; no chat window). Nothing recorded leaves the browser; anonymous aggregation is built but off. Customers need D2 first. `npm run demo:trail` shows it on the saved Vodafone pages; the journey opens in the Pocket of the Services clone (mounted at `/en/services`), in the Pocket's own design (ADR-0040).
 
 ## 2. State
 
@@ -39,6 +41,8 @@ The voice guide runs on **Vodafone Egypt's real pages**, voice first, in Vodafon
 - CI has not run (T-501); no lockfile (T-502).
 
 ## 3. Verified numbers
+
+Exploration Trail (2026-11-03, this Mac): typecheck ok; `npm test` 146/146 (108 before + 38 new); `npm run test:e2e` 27/39: all 8 trail scenarios pass, the 12 failures are the Vodafone replay suite's fake-microphone tests, failing before this work too (headless Chromium's `getUserMedia` hangs here). Bundles (gzip -9): `guide.js` 20,445 B (+69 B gate, budget 20,480), `trail.js` ~25 KB, `trail-record.js` ~23.5 KB, `trail-replay.js` ~68 KB, all on demand. `npm run measure:trail -- --minutes 10` (2026-11-03, fixture site, Chromium 141, 1280×800, one machine, memory store, 13 page visits): recorder start p50 8 ms / p95 13 ms; storage 131 KB of compressed chunks for 13 steps (about 13 KB a minute; fixture pages are small, real Vodafone pages will be larger: T-806); preview build after its chunks are read p50 5 ms / p95 6 ms (first open also fetches `trail-replay.js`); scrub p95 2.7 ms, max 4.2 ms; 2 long tasks in 10 minutes (max 125 ms, not attributed); JS heap +2.3 MB after 20 preview open/close cycles (+0.3 MB in a 2-minute run): watch for retention before a pilot.
 
 | Measure | Value | How, when |
 |---|---|---|
@@ -112,3 +116,4 @@ The voice guide runs on **Vodafone Egypt's real pages**, voice first, in Vodafon
 - 2026-10-23: Live phase built. Public-only crawl of the live site from a browser tab (ADR-0032); knowledge base built and curated; voice-first UI; Vodafone theme; demo browser with the gateway behind the page origin and long polling (ADR-0031); replay of 14 real pages; SPA route follower; Back stops a plan (bug found and fixed).
 - 2026-10-23: On-demand sync and `kb` commands with the gate; schedule refused in code while paused; aliases for redirects and second spellings (the gate's first run found them); Google Chrome for speech and a plain message without it; agent saves sent in order (a finished agent task could come back); X-ray backlog by whole turns; spoken requests no longer open the panel over the answer; commit spotlight in Vodafone colours. Runbook written. 92 + 24 tests green.
 - 2026-10-23: Demo-run fixes (ADR-0034, bug log B-10 to B-13): no agent routing without a configured model (the 503s), zod 4.6.5 (the `openapi-3.0` warning), page-wrapper sections dropped from the builder and the committed knowledge base, buy verbs, typed answers to "A or B?", "A or B?" only between full matches, alt-only pictures read their card. 105 + 30 tests green; router evaluation unchanged.
+- 2026-11-03: Exploration Trail prototype (SPEC-06, ADR-0035 to ADR-0039): consent, local rrweb recording in IndexedDB, timeline with scrubbing, explored destinations, router-verified questions (`npm run experience`), chips through `/v1/turn` with a verified hint, aggregation built but off. Bugs B-17 (hidden-tab spotlight) and B-18 (writes cut off by navigation) found and fixed. Not committed. Measurements recorded in §3. `feature/pocket-peel` merged into `experiment/page-agent` (121a388). Open: T-805, T-806, T-807; heap growth across preview cycles.

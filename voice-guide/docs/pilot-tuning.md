@@ -110,6 +110,29 @@ select attrs->>'mode' as mode, attrs->>'onDevice' as on_device, count(*),
 from trace_events where name = 'sdk.listen' and attrs->>'source' = 'voice' and at > now() - interval '1 day' group by 1, 2 order by 3 desc;
 ```
 
+### Exploration Trail (ADR-0035 to ADR-0039, SPEC-06)
+
+| Knob | Where | Default | Change when |
+|---|---|---|---|
+| `trail.enabled` | site config | `false` (`true` for demo-telco) | On for a site only with D2 and confirmed consent wording. |
+| `trail.retentionHours` | site config | 24 | D2 sets it; shorter for shared-device audiences. |
+| `trail.excludePaths`, `trail.privateSelectors` | site config | none (built-in lists apply) | Add any path or region found in a replay that should not be there, with a test. |
+| `trail.topOffset` | site config | measured | Set when a site's header cannot be measured (the pill would sit on it). |
+| `trail.aggregation.enabled`, `minCohort`, `windowDays` | site config | `false`, 20, 28 | Only after D2; also needs `VG_TRAIL_AGGREGATION=on` on the platform. |
+| `VG_TRAIL_AGGREGATION`, `VG_TRAIL_AGGREGATE_RETENTION_DAYS` | environment | off, 90 | As above; retention per D2. |
+| `TRAIL_CONFIG.attention.*` (dwell 600 ms, focus 400 ms, pass-through 300 ms, return gap 1.5 s, visible 50%, weights, caps, diversity 0.5, min score 0.5) | `packages/sdk/src/trail/config.ts` | as listed | When explored items feel accidental (raise dwell, min score) or miss obvious interest (lower them); check with the unit tests and a recorded walkthrough. |
+| `TRAIL_CONFIG.storage.*` (3 journeys, 20 steps, 30 min, 20 MB, 256 KB / 10 s chunks, 2 s flush) | same | as listed | If measured growth (HANDOFF §3) approaches the budget on real pages. |
+| `TRAIL_CONFIG.recorder.sampling`, `checkoutEveryNms` | same | mouse 50 ms, scroll 150 ms, snapshot every 2 min | Coarser sampling if storage grows fast; shorter snapshot interval if seeking long pages is slow. |
+| `TRAIL_CONFIG.replay.maxResources`, `maxResourceBytes` | same | 60, 5 MB | If previews look bare on image-heavy pages. |
+| Question templates and wordings | `jobs/experience/questions.ts` | 7 intents, several wordings each | Add a wording when the report shows a good question in `needs-review`; rebuild with `npm run experience`. |
+
+Chip turns and how the router used their hint:
+
+```sql
+select attrs->>'outcome' as outcome, attrs->>'reason' as reason, count(*)
+from trace_events where name = 'router.hint' and at > now() - interval '7 days' group by 1, 2 order by 3 desc;
+```
+
 ## Queries for the pilot
 
 Run against the Postgres database (`psql $DATABASE_URL`).

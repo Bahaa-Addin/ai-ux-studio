@@ -37,6 +37,12 @@ export interface DemoBrowserOptions {
 	xray?: 'off' | 'button' | 'open'
 	/** Serve the site's origins from this crawl folder instead of the internet. */
 	replayDir?: string
+	/**
+	 * Replay only: serve a cloned page (a folder with an index.html, `src/` and `public/`) at this
+	 * path of the site's first origin, in place of the saved page. The Vodafone Services clone with
+	 * Pocket is mounted at /en/services this way, so the whole demo stays on Vodafone pages.
+	 */
+	clone?: { path: string; dir: string }
 	/** Replay only: add a stand-in of Vodafone's accessibility button (scripts are off in replay, so the real one is absent). */
 	accessibilityStandIn?: boolean
 	/** Chromium's fake microphone playing this WAV file (tests). */
@@ -108,6 +114,13 @@ const MIME: Record<string, string> = {
 	'.woff2': 'font/woff2',
 	'.ttf': 'font/ttf',
 	'.svg': 'image/svg+xml',
+	'.js': 'text/javascript; charset=utf-8',
+	'.mjs': 'text/javascript; charset=utf-8',
+	'.png': 'image/png',
+	'.jpg': 'image/jpeg',
+	'.jpeg': 'image/jpeg',
+	'.webp': 'image/webp',
+	'.json': 'application/json; charset=utf-8',
 }
 
 export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrowser> {
@@ -145,7 +158,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 	for (const origin of origins) await context.grantPermissions(['microphone', 'notifications'], { origin })
 
 	// Routes are matched newest first: the replay catch-all goes in first, the gateway bridge last.
-	if (o.replayDir) await installReplay(context, o.replayDir, origins, log)
+	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone)
 
 	const forward = async (route: Route, target: string) => {
 		const req = route.request()
@@ -189,7 +202,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 }
 
 /** Serves the allowed origins from a crawl folder; nothing goes to the internet. */
-async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void): Promise<void> {
+async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string }): Promise<void> {
 	const crawl = loadCrawl(dir)
 	const html = new Map<string, string>()
 	for (const p of crawl.pages) {
@@ -208,6 +221,23 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 	}
 	const known = crawl.pages.map((p) => p.url)
 	log(`replay: ${html.size} pages with rendered HTML from ${dir}`)
+	// The clone's own files: its page, its modules under /src and its public assets.
+	const cloneFile = (pathname: string) => {
+		if (!clone) return undefined
+		const rel = decodeURIComponent(pathname).replace(/^\/+/, '')
+		for (const base of [clone.dir, path.join(clone.dir, 'public')]) {
+			const f = path.join(base, rel)
+			if (!f.startsWith(base) || (base === clone.dir && !rel.startsWith('src/'))) continue
+			if (fs.existsSync(f) && fs.statSync(f).isFile()) return f
+		}
+		return undefined
+	}
+	const clonePage = () => {
+		// The page-agent quick-start demo belongs to the page-agent experiment, not to this demo.
+		const page = fs.readFileSync(path.join(clone!.dir, 'index.html'), 'utf8')
+		return page.replace(/<!--\s*Official Page Agent[\s\S]*?-->/, '').replace(/<script[^>]*page-agent[^>]*>\s*<\/script>/g, '')
+	}
+	if (clone) log(`replay: ${clone.path} is the clone in ${clone.dir}`)
 	await context.route('**/*', async (route) => {
 		const req = route.request()
 		let url: URL
@@ -220,6 +250,11 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 		if (!origins.includes(url.origin)) return req.resourceType() === 'image' ? route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 }) : route.abort()
 		if (url.pathname.startsWith('/__vg/') || url.pathname === '/vg-sw.js') return route.fallback()
 		const type = req.resourceType()
+		if (clone && url.origin === origins[0]) {
+			if (type === 'document' && url.pathname.replace(/\/$/, '') === clone.path) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: clonePage() })
+			const own = type === 'document' ? undefined : cloneFile(url.pathname)
+			if (own) return route.fulfill({ status: 200, contentType: MIME[path.extname(own)] || 'application/octet-stream', body: fs.readFileSync(own) })
+		}
 		if (type === 'document') {
 			const file = html.get(norm(url.toString()))
 			if (file) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: read(file) })

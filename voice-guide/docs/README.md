@@ -7,8 +7,8 @@ Start with [`../AGENTS.md`](../AGENTS.md) and the [handoff](handoff/HANDOFF.md).
 | [`prompts/`](prompts/) | [Vodafone live demo build prompt](prompts/vodafone-live-demo.prompt.md) | Starting an agent session on this phase |
 | [`handoff/`](handoff/) | [HANDOFF](handoff/HANDOFF.md): state, verified numbers, start here, blockers, gotchas, log | Every session, first |
 | [`product/`](product/) | [PRD](product/PRD.md) · [JTBD](product/JTBD.md) · [Demo script](product/demo-script.md) | Deciding what to build and why |
-| [`specs/`](specs/) | [SPEC-01 Design language](specs/SPEC-01-vodafone-design-language.md) · [SPEC-02 Voice-first UI](specs/SPEC-02-voice-first-ui.md) · [SPEC-03 Live site integration](specs/SPEC-03-live-site-integration.md) · [SPEC-04 Live knowledge sync](specs/SPEC-04-live-knowledge-sync.md) · [SPEC-05 Continuity and memory](specs/SPEC-05-continuity-and-memory.md) | Building a task |
-| [`adr/`](adr/README.md) | ADR-0006 to ADR-0030 | Before changing how something works |
+| [`specs/`](specs/) | [SPEC-01 Design language](specs/SPEC-01-vodafone-design-language.md) · [SPEC-02 Voice-first UI](specs/SPEC-02-voice-first-ui.md) · [SPEC-03 Live site integration](specs/SPEC-03-live-site-integration.md) · [SPEC-04 Live knowledge sync](specs/SPEC-04-live-knowledge-sync.md) · [SPEC-05 Continuity and memory](specs/SPEC-05-continuity-and-memory.md) · [SPEC-06 Exploration Trail](specs/SPEC-06-exploration-trail.md) | Building a task |
+| [`adr/`](adr/README.md) | ADR-0006 to ADR-0039 | Before changing how something works |
 | [`diagrams/`](diagrams/README.md) | Context, containers, voice request, continuity, sync, UI states, data model, deployment, demo journey | Understanding the system quickly |
 | [`tasks/`](tasks/TASKS.md) | Epics E0–E7, tasks with acceptance criteria and dependencies | Picking the next piece of work |
 | [`qa/`](qa/) | [Test plan](qa/test-plan.md) · [Acceptance checklist](qa/acceptance-checklist.md) · [Risk register](qa/risk-register.md) | Testing, go/no-go, weekly review |

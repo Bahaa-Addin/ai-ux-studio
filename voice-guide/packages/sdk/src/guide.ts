@@ -40,6 +40,8 @@ interface SessionResponse {
 		ui: { accent?: string; xray: string; theme?: 'page' | 'vodafone'; voiceFirst?: boolean }
 		agent: { enabled: boolean; maxSteps: number; timeoutSec: number }
 		watch: { enabled: boolean }
+		/** Exploration Trail (SPEC-06): only `enabled` is read here; the rest is for the trail chunk. */
+		trail?: { enabled: boolean; [k: string]: unknown }
 	}
 	push: { publicKey: string } | null
 }
@@ -159,6 +161,8 @@ export class Guide {
 		this.executor = new Executor(this.#host())
 		;(window as any).voiceGuide = this
 		this.#followRoutes()
+		// The Exploration Trail is a separate chunk, fetched after start-up only where the site enables it (ADR-0035).
+		if (this.session.site.trail?.enabled) setTimeout(() => this.#chunk('trail').then((m) => m.start(this)).catch((e) => console.warn('[voice-guide] trail', e)), 600)
 
 		let wasOpen = false
 		try {
@@ -250,7 +254,8 @@ export class Guide {
 
 	// ---- requests ----
 
-	async request(utterance: string, source: 'voice' | 'typed' | 'chip', shown?: string, listenMs?: number, confidence?: number): Promise<void> {
+	/** `hint`: a trail chip's destination and question, checked by the server before it is used (ADR-0038). */
+	async request(utterance: string, source: 'voice' | 'typed' | 'chip', shown?: string, listenMs?: number, confidence?: number, hint?: Record<string, string | undefined>): Promise<void> {
 		this.stopAll({ keepUi: true })
 		// Voice first (SPEC-02 §1): a spoken request does not open the panel on the next page, where
 		// it would cover what the guide points at. Typed requests, and an open panel, stay open.
@@ -263,7 +268,7 @@ export class Guide {
 		this.#motionReported = false
 		this.#busy = true
 		try {
-			const res = await this.api.post<{ turnId: string; plan: Plan }>('/v1/turn', { sessionId: this.session.sessionId, utterance, uiLang: this.lang, page: { url: location.href } })
+			const res = await this.api.post<{ turnId: string; plan: Plan }>('/v1/turn', { sessionId: this.session.sessionId, utterance, uiLang: this.lang, page: { url: location.href }, hint })
 			const plan = res.plan
 			this.#lastTurnId = plan.turnId
 			void this.#report(plan.turnId, [{ name: 'sdk.listen', attrs: { source, text: shown || utterance, confidence, ...(source === 'voice' ? this.#listenMeta : {}) }, ms: listenMs }])
@@ -554,17 +559,24 @@ export class Guide {
 		if (this.#trace.length > 600) this.#trace.splice(0, this.#trace.length - 600)
 	}
 
+	/** One of the SDK's on-demand chunks (agent, X-ray, watch, trail): `name.js`, defining `window.__vg<Name>`. */
+	async #chunk(name: string): Promise<any> {
+		const w = window as any
+		const k = `__vg${name[0].toUpperCase()}${name.slice(1)}`
+		if (!w[k]) await loadScript(`${this.o.gateway}/sdk/${name}.js`)
+		return w[k]
+	}
+
 	/** Loads the X-ray chunk (demo tool): its model gets every event seen so far. */
 	async loadXray(): Promise<XrayModel | null> {
 		if (this.xray) return this.xray
-		const w = window as any
 		try {
-			if (!w.__vgXray) await loadScript(`${this.o.gateway}/sdk/xray.js`)
+			const m = await this.#chunk('xray')
 			if (this.xray) return this.xray
-			const x = new w.__vgXray.XrayModel() as XrayModel
+			const x = new m.XrayModel() as XrayModel
 			x.kbVersion = this.#kbVersion
 			for (const ev of this.#trace) x.add(ev)
-			this.ui.installXray(w.__vgXray.XRAY_CSS, w.__vgXray.renderXray)
+			this.ui.installXray(m.XRAY_CSS, m.renderXray)
 			this.xray = x
 			return x
 		} catch (e) {
@@ -573,10 +585,8 @@ export class Guide {
 		}
 	}
 
-	async #loadAgent(): Promise<{ runForGuide: (...a: any[]) => Promise<void> }> {
-		const w = window as any
-		if (!w.__vgAgent) await loadScript(`${this.o.gateway}/sdk/agent.js`)
-		return w.__vgAgent
+	#loadAgent(): Promise<{ runForGuide: (...a: any[]) => Promise<void> }> {
+		return this.#chunk('agent')
 	}
 
 	async #runAgent(step: Extract<PlanStep, { op: 'agent' }>, turnId: string, signal: AbortSignal, previous?: { lines: string[]; steps: number; startedAt?: string }): Promise<void> {
@@ -620,10 +630,8 @@ export class Guide {
 
 	// ---- page watch ----
 
-	async #watchChunk(): Promise<any> {
-		const w = window as any
-		if (!w.__vgWatch) await loadScript(`${this.o.gateway}/sdk/watch.js`)
-		return w.__vgWatch
+	#watchChunk(): Promise<any> {
+		return this.#chunk('watch')
 	}
 
 	async #toast(title: string, body: string): Promise<void> {

@@ -140,3 +140,18 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Likely cause (not reproduced on the demo machine yet):** the guide hands its own microphone track to recognition (`start(track)`, ADR-0027). A browser can accept the track and then hear nothing, ending with no result and no error, which the guide treated as a quiet stop. Separately, the on-device check (`SpeechRecognition.available`) was awaited with no time limit before `start()`.
 - **Fix:** an empty end the guide did not ask for, or `no-speech`, now shows "مسمعتكش كويس، جرّب تاني" and logs `[voice-guide] speech: no-speech`; after an empty end with the shared track, the next press lets recognition open the microphone itself. The on-device check gives up after 800 ms. `guide.js` is exactly at its 20 KB budget after this change.
 - **Test:** `tests/e2e/live-replay.e2e.test.ts`, "recognition that takes the shared track and hears nothing" (fails without the fix).
+
+## B-17 A chip about a card in the closed tab spotlit nothing
+
+- **Seen:** Exploration Trail walkthrough (2026-11-03): with the Home internet tab open, the chip "What does Mega 25 include?" read the card's text but the spotlight sat in the top-left corner.
+- **Cause:** the crawler saw the Mobile internet tab open by default, so its cards had no reveal step. Once the person opened another tab, nothing reopened theirs.
+- **Fix:** on the same page, a list in a tab panel (`#id` target, page with tab reveals) gets a reveal of `[aria-controls="<id>"]` with the card as `until`; the executor skips it when the card is already visible (`services/router/planner.ts`). After a page load the default tab is open, so no step is added there.
+- **Test:** `tests/unit/router.test.ts`, "a card in a tab panel the crawler saw open is revealed again …" (fails without the fix); `tests/e2e/trail.e2e.test.ts`, the journey (chip asked with the Home tab open). Two flow assertions now expect the leading reveal.
+- **Decision:** SPEC-06 §1, ADR-0038.
+
+## B-18 The first page of a journey had no preview when the person left it quickly
+
+- **Seen:** `tests/e2e/trail.e2e.test.ts`, touch scenario, only when run after other tests: "nothing to replay" for the first step.
+- **Cause:** rrweb's first full snapshot went into a compressed chunk whose write was still running when a link navigated; the browser dropped it, and only later events were stored.
+- **Fix:** activating a link, hiding or leaving the page writes every unfinished chunk at once as JSON and keeps a copy in sessionStorage; the next page in the tab finishes any write the unload cut off (`packages/sdk/src/trail/controller.ts`). The recorder's Meta and first snapshot now share a chunk.
+- **Test:** the touch scenario asserts the short first visit is saved and previews.

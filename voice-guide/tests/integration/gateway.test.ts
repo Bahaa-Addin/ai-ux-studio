@@ -91,9 +91,11 @@ test('progress carries the picked item into the next request ("subscribe to it")
 	await call('/v1/progress', { sessionId: s.sessionId, turnId: t1.turnId, cursor: 3, done: true })
 	assert.equal((await p.store.getSession(s.sessionId))?.plan, null)
 	const t2 = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'أشترك فيها إزاي؟', page: { url: `${ORIGIN}/ar/bundles.html` } })).body
-	assert.deepEqual(t2.plan.steps[0], {
+	// On the bundles page the card's tab is opened first if it was closed (SPEC-06 §6).
+	assert.equal(t2.plan.steps[0].op, 'reveal')
+	assert.deepEqual(t2.plan.steps[1], {
 		op: 'pickItem',
-		collection: t2.plan.steps[0].collection,
+		collection: t2.plan.steps[1].collection,
 		select: { by: 'key', key: 'mi-10' },
 	})
 	assert.equal(t2.plan.steps.at(-1).op, 'confirm')

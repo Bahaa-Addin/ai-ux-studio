@@ -301,6 +301,24 @@ anything a clone cannot reproduce (a playing video, a canvas) would freeze in th
 Pocketing is local to the browser; a real version would link each sticker to a product ID and
 an account so the pocket follows the customer across devices.
 
+### Your journey (with the Voice Guide)
+
+When the Voice Guide's Exploration Trail runs on this page (`npm run demo:trail` in
+`../voice-guide`, which mounts this clone at `/en/services` among the saved Vodafone pages), the
+person's journey lives in the Pocket (voice-guide ADR-0040). `index.html` declares the page a host
+(`<meta name="vg-trail-host" content="pocket">`) and `src/pocket/journey.js` draws it:
+
+- **Your journey** beside *Back to Services*, and a slim slider under the bar: one album dot per
+  page visited, a red thread behind you. Dragging, touch and keys scrub the memory.
+- Pressing either lays a lightly frosted layer over the album (stickers stay visible under it).
+  The memory of the page, *You explored* and the question chips float in one after another
+  (nothing moves under reduced motion). A chip turns the page back and asks the guide.
+- `src/main.js` marks each section with the knowledge-base destination it recreates
+  (`data-vg-destination`), so the guide can explore, spotlight and answer on this copy.
+
+The trail does the recording, storage, sandboxed replay and wording; this file only draws and
+forwards intents. Without the guide on the page, nothing of the journey appears.
+
 ---
 
 ## Known limitations and source notes

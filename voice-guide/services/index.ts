@@ -9,6 +9,7 @@ import { createRouter } from './router/handlers.ts'
 import { createSessions } from './sessions/handlers.ts'
 import type { PlatformConfig, SiteConfig } from './shared/config.ts'
 import { loadSites } from './shared/config.ts'
+import { ExperienceCache } from './shared/experience.ts'
 import { KbCache } from './shared/kb-index.ts'
 import { type Client, httpClient, localClient } from './shared/rpc.ts'
 import { openStore, type Store } from './shared/store/index.ts'
@@ -29,12 +30,13 @@ export async function createServices(opts: PlatformOptions) {
 	const store = opts.store || (await openStore(platform))
 	const sites = opts.sites || loadSites(platform.sitesDir)
 	const kb = new KbCache(store)
+	const experience = new ExperienceCache(store)
 	const tracer = (name: string) => new Tracer(store, name)
 
 	const local = {
-		router: createRouter({ platform, sites, kb, tracer: tracer('router'), deciderFor: opts.deciderFor }),
+		router: createRouter({ platform, sites, kb, experience, tracer: tracer('router'), deciderFor: opts.deciderFor }),
 		sessions: createSessions({ platform, store, tracer: tracer('sessions') }),
-		knowledge: createKnowledge({ store, kb, sites }),
+		knowledge: createKnowledge({ store, kb, sites, experience }),
 		agent: createAgentProxy({ platform, store, sites, tracer: tracer('agent'), fetchImpl: opts.fetchImpl }),
 		watch: createWatchService({ platform, store, sites, tracer: tracer('watch'), checker: opts.watchChecker, fetchImpl: opts.fetchImpl }),
 	}
@@ -49,6 +51,7 @@ export async function createServices(opts: PlatformOptions) {
 		store,
 		sites,
 		kb,
+		experience,
 		tracer,
 		local,
 		router: bind('router'),

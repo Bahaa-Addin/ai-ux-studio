@@ -1,10 +1,10 @@
 /** In-memory store: tests and single-process local runs (VG_STORE=memory). */
 import { EventEmitter } from 'node:events'
 
-import type { Manifest } from '#kb'
+import type { Manifest, SiteExperienceProfile } from '#kb'
 
 import { newId } from '../ids.ts'
-import type { KbVersionInfo, PushSubscriptionRow, SessionState, Store, TraceEvent, Watch, WatchChange } from './types.ts'
+import type { InterestCount, KbVersionInfo, PushSubscriptionRow, SessionState, Store, TraceEvent, Watch, WatchChange } from './types.ts'
 
 const clone = <T>(v: T): T => structuredClone(v)
 
@@ -22,6 +22,9 @@ export class MemoryStore implements Store {
 	#changes: WatchChange[] = []
 	#cache = new Map<string, unknown>()
 	#usage = new Map<string, number>()
+	#profiles = new Map<string, Map<string, SiteExperienceProfile>>()
+	#activeProfile = new Map<string, string>()
+	#interest = new Map<string, InterestCount>()
 
 	async putKbVersion(siteId: string, manifest: Manifest) {
 		const versions = this.#kb.get(siteId) || new Map()
@@ -173,7 +176,33 @@ export class MemoryStore implements Store {
 		return total
 	}
 
-	async purgeExpired(now: Date, traceRetentionDays: number) {
+	async putExperienceProfile(siteId: string, profile: SiteExperienceProfile) {
+		const all = this.#profiles.get(siteId) || new Map()
+		if (all.has(profile.id)) throw new Error(`experience profile ${profile.id} already exists`)
+		all.set(profile.id, clone(profile))
+		this.#profiles.set(siteId, all)
+	}
+	async activateExperienceProfile(siteId: string, profileId: string) {
+		if (!this.#profiles.get(siteId)?.has(profileId)) throw new Error(`Unknown experience profile ${profileId}`)
+		this.#activeProfile.set(siteId, profileId)
+	}
+	async getActiveExperienceProfile(siteId: string) {
+		const id = this.#activeProfile.get(siteId)
+		const p = id ? this.#profiles.get(siteId)?.get(id) : undefined
+		return p ? clone(p) : null
+	}
+	async addInterestCounts(rows: InterestCount[]) {
+		for (const r of rows) {
+			const k = [r.siteId, r.kbVersionId, r.day, r.pageId, r.destinationId].join('\u0000')
+			const cur = this.#interest.get(k) || { ...r, warm: 0, hot: 0, activated: 0 }
+			this.#interest.set(k, { ...cur, warm: cur.warm + r.warm, hot: cur.hot + r.hot, activated: cur.activated + r.activated })
+		}
+	}
+	async listInterestCounts(siteId: string, kbVersionId: string, fromDay: string, toDay: string) {
+		return [...this.#interest.values()].filter((r) => r.siteId === siteId && r.kbVersionId === kbVersionId && r.day >= fromDay && r.day <= toDay).map(clone)
+	}
+
+	async purgeExpired(now: Date, traceRetentionDays: number, interestRetentionDays = 90) {
 		let sessions = 0
 		let handoffs = 0
 		for (const [id, s] of this.#sessions) if (s.expiresAt < now.getTime()) (this.#sessions.delete(id), sessions++)
@@ -181,7 +210,10 @@ export class MemoryStore implements Store {
 		const cutoff = now.getTime() - traceRetentionDays * 86_400_000
 		const before = this.#traces.length
 		this.#traces = this.#traces.filter((t) => new Date(t.at).getTime() >= cutoff)
-		return { sessions, handoffs, traces: before - this.#traces.length }
+		const oldest = new Date(now.getTime() - interestRetentionDays * 86_400_000).toISOString().slice(0, 10)
+		let interest = 0
+		for (const [k, r] of this.#interest) if (r.day < oldest) (this.#interest.delete(k), interest++)
+		return { sessions, handoffs, traces: before - this.#traces.length, interest }
 	}
 	async close() {
 		this.#bus.removeAllListeners()

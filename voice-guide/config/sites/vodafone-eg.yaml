@@ -148,3 +148,13 @@ agent:
 watch:
   enabled: true
   intervalSec: 900
+
+# Exploration Trail (SPEC-06). Off for the live site until D2 (data protection) approves the consent
+# wording and retention; `npm run demo:live -- --trail` turns it on for one demo session.
+# Aggregation stays off (ADR-0037 §6).
+trail:
+  enabled: false
+  retentionHours: 24
+  # The journey is shown in the Pocket of the Services clone (ADR-0040), mounted at /en/services in the demo.
+  hostUrl: https://web.vodafone.com.eg/en/services#journey
+  aggregation: { enabled: false, minCohort: 20 }

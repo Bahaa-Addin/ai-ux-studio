@@ -42,7 +42,7 @@ const smoothstep = (from, to, value) => {
 }
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-const make = (tag, props = {}, ...children) => {
+export const make = (tag, props = {}, ...children) => {
   const node = document.createElement(tag)
   for (const [key, value] of Object.entries(props ?? {})) {
     if (value === null || value === undefined || value === false) continue
@@ -239,22 +239,30 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     make('p', { class: 'pocket-empty__text' }, 'Peel services off the page with “Pocket it” and they wait here for later.'),
     emptyBack,
   )
-  const pocketRoot = make(
+  // The bar's start group and the stage are where a companion (the journey, ./journey.js) docks:
+  // a button beside "Back to Services", and a layer that floats over the album in the same cell.
+  const barStart = make('div', { class: 'pocket-view__start' }, backButton)
+  const stage = make(
     'div',
-    { id: 'pocket-output', class: 'pocket-output pocket-album', hidden: true },
+    { class: 'pocket-stage' },
     make(
-      'section',
-      { class: 'pocket-view', 'aria-labelledby': 'pocket-title' },
-      make(
-        'div',
-        { class: 'container pocket-view__inner' },
-        make('div', { class: 'pocket-view__bar' }, backButton, clearButton),
-        make('header', { class: 'pocket-view__head' }, make('span', { class: 'pocket-view__mark' }, icon('pocket', 'pocket-view__mark-icon')), make('div', null, pocketTitle, pocketLead)),
-        grid,
-        empty,
-      ),
+      'div',
+      { class: 'pocket-stage__album container' },
+      make('header', { class: 'pocket-view__head' }, make('span', { class: 'pocket-view__mark' }, icon('pocket', 'pocket-view__mark-icon')), make('div', null, pocketTitle, pocketLead)),
+      grid,
+      empty,
     ),
   )
+  const pocketView = make(
+    'section',
+    { class: 'pocket-view', 'aria-labelledby': 'pocket-title' },
+    make('div', { class: 'container pocket-view__inner' }, make('div', { class: 'pocket-view__bar' }, barStart, clearButton)),
+    stage,
+  )
+  const pocketRoot = make('div', { id: 'pocket-output', class: 'pocket-output pocket-album', hidden: true }, pocketView)
+  /** The page turns to the pocket even with no stickers while this says so (a saved journey). */
+  let openableEmpty = () => false
+  const viewChanged = (view) => pocketRoot.dispatchEvent(new CustomEvent('pocket:view', { detail: view }))
   main.append(pocketRoot)
   document.body.append(planeLayer, liftLayer, peekButton, live)
 
@@ -773,7 +781,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   }
 
   const openPocket = async () => {
-    if (state.busy || state.view !== 'page' || !state.ids.length) return
+    if (state.busy || state.view !== 'page' || (!state.ids.length && !openableEmpty())) return
     state.busy = true
     await Promise.allSettled([...state.flights])
     dropCorner({ immediate: true })
@@ -813,11 +821,13 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     pocketTitle.focus({ preventScroll: true })
     announce(`Your pocket, ${countLabel(state.ids.length)}.`)
     state.busy = false
+    viewChanged('pocket')
   }
 
   const closePocket = async () => {
     if (state.busy || state.view !== 'pocket') return
     state.busy = true
+    viewChanged('closing')
     const saved = state.saved ?? { scrollY: 0, hidden: new Map() }
     const sheet = sheetRect()
     placeLayers(sheet)
@@ -864,6 +874,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     if (composer?.state?.view === 'reimagined') composer.state.activeExperience?.mount?.()
     state.saved = null
     state.busy = false
+    viewChanged('page')
     if (state.ids.length) {
       setPeekButton(true)
       peekButton.focus({ preventScroll: true })
@@ -906,5 +917,9 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     putBack,
     open: openPocket,
     close: closePocket,
+    dock: { root: pocketRoot, view: pocketView, barStart, stage },
+    openWhenEmpty: (fn) => {
+      openableEmpty = fn
+    },
   }
 }

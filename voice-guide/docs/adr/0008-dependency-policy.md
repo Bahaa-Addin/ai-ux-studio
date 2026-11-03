@@ -1,6 +1,6 @@
 # ADR-0008: A small, pinned set of dependencies; everything else on Node built-ins
 
-- Status: Accepted (demo slice); zod pin amended by ADR-0034 (zod 4.6.5)
+- Status: Accepted (demo slice); zod pin amended by ADR-0034 (zod 4.6.5); `@rrweb/record` and `@rrweb/replay` 2.2.0 added by ADR-0035 (SDK chunks, pinned with overrides, a `package-lock.json` now exists in the working tree, T-502)
 - Date: 2026-10-22
 - Area: Dependencies
 - Related: ADR-0003 (zero runtime dependencies for the page watch prototype)

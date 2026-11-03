@@ -29,11 +29,14 @@ test('plans never click a commit point; flows end in a confirm step', async () =
 	const session = { ...emptySession('ar'), last: { kind: 'item' as const, destinationId: 'web.bundles.mobile-internet.mi-10', collectionId: 'web.bundles.mobile-internet', key: 'mi-10' } }
 	const u = await understand({ utterance: 'أشترك فيها إزاي؟', pageId: 'web.bundles', session, kb, settings })
 	const { plan } = buildPlan({ u, utterance: 'x', session, kb, page: { url: 'http://localhost:4401/ar/bundles.html' }, turnId: 't', agent: { enabled: true, maxSteps: 12 } })
+	// On the bundles page the person may have opened the other tab: the card's own tab is opened
+	// first, and the executor skips that step when the card is already visible (SPEC-06 §6).
 	assert.deepEqual(
 		plan.steps.map((s) => s.op),
-		['pickItem', 'click', 'waitForPage', 'spotlight', 'confirm'],
+		['reveal', 'pickItem', 'click', 'waitForPage', 'spotlight', 'confirm'],
 	)
-	assert.deepEqual((plan.steps[0] as any).select, { by: 'key', key: 'mi-10' })
+	assert.equal((plan.steps[0] as any).target.css[0], '[aria-controls="mobile-internet"]')
+	assert.deepEqual((plan.steps[1] as any).select, { by: 'key', key: 'mi-10' })
 	const commitCss = new Set(kb.manifest.destinations.filter((d) => d.commit).flatMap((d) => d.target?.css || []))
 	for (const s of plan.steps) if (s.op === 'click') for (const c of s.target.css) assert.ok(!commitCss.has(c), `click on commit target ${c}`)
 	assert.equal(plan.steps.at(-1)?.op, 'confirm')
@@ -51,6 +54,20 @@ test('hidden content is revealed before it is picked; Arabic answers use Arabic 
 	assert.equal((plan.steps[1] as any).target.css[0], '#tab-home')
 	assert.match((plan.steps[3] as any).read.template, /أرخص واحدة/)
 	assert.equal(last?.collectionId, 'web.bundles.home-internet')
+})
+
+test('a card in a tab panel the crawler saw open is revealed again when asked from the same page (SPEC-06 §6)', async () => {
+	// Bug: with the Home internet tab open, "What does Mega 25 include?" spotlit a hidden card.
+	const session = emptySession('en')
+	const u = await understand({ utterance: 'What does Mega 25 include?', pageId: 'web.bundles', session, kb, settings })
+	const { plan } = buildPlan({ u, utterance: 'x', session, kb, page: { url: 'http://localhost:4401/en/bundles.html' }, turnId: 't', agent: { enabled: true, maxSteps: 12 } })
+	assert.deepEqual(plan.steps.map((s) => s.op), ['reveal', 'pickItem', 'spotlight'])
+	const reveal = plan.steps[0] as any
+	assert.equal(reveal.target.css[0], '[aria-controls="mobile-internet"]')
+	assert.match(reveal.until.css[0], /mi-25/, 'skipped when the card is already visible')
+	// From another page the next page load opens the default tab: no extra step.
+	const away = buildPlan({ u, utterance: 'x', session, kb, page: { url: 'http://localhost:4401/en/index.html' }, turnId: 't', agent: { enabled: true, maxSteps: 12 } }).plan
+	assert.deepEqual(away.steps.map((s) => s.op), ['navigate', 'pickItem', 'spotlight'])
 })
 
 test('crossing to the web app origin asks for a session handoff', async () => {
