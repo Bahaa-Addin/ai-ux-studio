@@ -163,8 +163,10 @@ test('on the Services clone, the pill opens the journey inside the Pocket: frost
 		// The slider: one stop per page visited, the person is on the last one.
 		const steps = (await snapshot(page)).steps.filter((s: any) => s.type === 'page')
 		assert.deepEqual(steps.map((s: any) => s.pageId), ['web.home', 'web.vodafone-cash', 'web.mobile-internet-bundles', 'web.services'])
-		assert.equal(await page.locator('.pocket-journey-rail__stop').count(), 4)
-		assert.equal(await page.locator('.pocket-journey-rail__stop.is-here').getAttribute('data-step'), steps[3].id)
+		assert.equal(await page.locator('.pocket-journey-step').count(), 4, 'one stepped tab per page')
+		assert.equal(await page.locator('.pocket-journey-step.is-here').getAttribute('data-step'), steps[3].id)
+		assert.match(await page.locator('.pocket-journey-step.is-here').innerText(), /You are here\s*Services/)
+		assert.equal(await page.locator('.pocket-journey-step.is-selected').getAttribute('data-step'), steps[2].id, 'the selected page is the lifted tab')
 		assert.match((await page.locator('.pocket-journey-rail').getAttribute('aria-valuetext'))!, /^Page 3 of 4: Internet Bundles/, 'it opens on where you were before the Pocket')
 
 		// The memory renders in the Pocket's own frame, still sandboxed.
@@ -242,6 +244,7 @@ test('keyboard and reduced motion: slider keys, Escape closes the journey before
 		await until(page, `/20% through Home/.test(document.querySelector('.pocket-journey-rail').getAttribute('aria-valuetext'))`)
 		await page.keyboard.press('PageUp')
 		await until(page, `/^Page 2 of 4: Cash/.test(document.querySelector('.pocket-journey-rail').getAttribute('aria-valuetext'))`)
+		assert.match(await page.locator('.pocket-journey-step.is-selected').innerText(), /Cash/)
 		await page.waitForTimeout(1500)
 		assert.equal((await snapshot(page)).preview === 'playing', false, 'nothing plays by itself under reduced motion')
 		assert.equal(await page.locator('.replayer-mouse-tail').count(), 0, 'no animated cursor trail')
@@ -273,9 +276,11 @@ test('phone: one column, the slider scrubs by touch, the page underneath is unto
 		const scroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
 		assert.ok(scroll, 'no sideways scrolling')
 		const rail = page.locator('.pocket-journey-rail')
-		const box = (await rail.boundingBox())!
+		// On a phone the tabs scroll sideways; bring the first page's tab into view and drag along it.
+		await rail.evaluate((el) => el.scrollTo({ left: 0 }))
+		const box = (await page.locator('.pocket-journey-step').first().boundingBox())!
 		const before = Number(await rail.getAttribute('aria-valuenow'))
-		for (const [type, f] of [['pointerdown', 0.05], ['pointermove', 0.12], ['pointermove', 0.2], ['pointerup', 0.2]] as const)
+		for (const [type, f] of [['pointerdown', 0.2], ['pointermove', 0.4], ['pointermove', 0.6], ['pointerup', 0.6]] as const)
 			await rail.dispatchEvent(type, { pointerType: 'touch', pointerId: 3, isPrimary: true, button: 0, clientX: box.x + box.width * f, clientY: box.y + box.height / 2, bubbles: true })
 		await until(page, `/^Page 1 of 4: Home/.test(document.querySelector('.pocket-journey-rail').getAttribute('aria-valuetext'))`)
 		assert.notEqual(Number(await rail.getAttribute('aria-valuenow')), before, 'dragging moved the slider')

@@ -18,6 +18,8 @@ export interface PreviewOptions {
 	events: unknown[]
 	/** The page's origin: the only one resources may come from. */
 	origin: string
+	/** Same-origin asset folders allowed despite a query or no extension (site setting `trail.replayAssetPaths`). */
+	assetPaths?: string[]
 	reducedMotion: boolean
 	label: string
 	onTime?(ms: number): void
@@ -46,6 +48,8 @@ async function fetchResources(urls: string[]): Promise<Map<string, string>> {
 				// No cookies, no redirects, no referrer: the copy is fetched the way a stranger would see it.
 				const res = await fetch(u, { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', cache: 'force-cache', signal: ctl.signal })
 				if (!res.ok) return
+				// Only what a page shows: an image, a font or a stylesheet, whatever the address looked like.
+				if (!/^(image\/(png|gif|jpeg|webp|avif|svg\+xml|x-icon|vnd\.microsoft\.icon)|font\/|text\/css|application\/(font|x-font|vnd\.ms-fontobject))/i.test(res.headers.get('content-type') || '')) return
 				const blob = await res.blob()
 				if (blob.size > budget) return
 				budget -= blob.size
@@ -60,9 +64,9 @@ async function fetchResources(urls: string[]): Promise<Map<string, string>> {
 }
 
 export async function createPreview(o: PreviewOptions): Promise<Preview> {
-	const urls = collectResources(o.events, o.origin)
+	const urls = collectResources(o.events, o.origin, o.assetPaths)
 	const resources = await fetchResources(urls)
-	const { events, dropped } = sanitizeEvents(o.events, { origin: o.origin, resolved: resources })
+	const { events, dropped } = sanitizeEvents(o.events, { origin: o.origin, assetPaths: o.assetPaths, resolved: resources })
 	if (events.length < 2) {
 		for (const b of resources.values()) URL.revokeObjectURL(b)
 		throw new Error('nothing to replay')

@@ -245,6 +245,7 @@ Offline-first: E1, E4 and T-302 are built and tested on fixtures before anything
 ### T-806 Real-site validation · M · 🌐 · needs D2 · [ ]
 - Turn the trail on for `vodafone-eg` in the demo browser only; walk the demo pages; add private selectors and paths found; measure storage growth and preview time on real pages; record in HANDOFF §3.
 - **Acceptance**: no private region in any replay of the demo pages; numbers recorded.
+- **Known (B-19)**: Vodafone's live pages call `localStorage.clear()` on load; consent must survive it before the trail can run on the real site.
 
 ### T-808 The journey in the Pocket, on Vodafone pages only · M · Owner: Claude · [x]
 - **Status 2026-11-03**: host mode (`<meta name="vg-trail-host">`, `TrailHostApi`, `trail.hostUrl`); the Services clone's Pocket draws "Your journey", a slim album-style slider and a lightly frosted layer with a staggered entrance (`vodafone-services-clone/src/pocket/journey.js`); clone sections marked with `data-vg-destination`; `npm run demo:trail` runs the saved Vodafone pages with the clone at `/en/services` (ADR-0040). The old fixture demo script is gone.

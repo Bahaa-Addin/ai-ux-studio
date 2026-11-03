@@ -72,14 +72,14 @@ export function sensitivePath(url: string, policy: Pick<SitePolicy, 'excludePath
 
 export interface Eligibility {
 	ok: boolean
-	reason?: 'not-public' | 'sensitive-path' | 'private-fields' | 'other-origin' | 'not-http'
+	reason?: 'not-public' | 'sensitive-path' | 'private-fields' | 'other-origin' | 'not-http' | 'opted-out'
 }
 
 /**
  * A page may be recorded only when it is on the site's own origin, over HTTP(S), its path is not
  * sensitive, the knowledge base does not mark it private, and it shows no private fields.
  */
-export function eligibility(input: { url: string; siteOrigins: string[]; kbPage?: { eligible: boolean } | null; hasPrivateFields?: boolean; policy?: SitePolicy }): Eligibility {
+export function eligibility(input: { url: string; siteOrigins: string[]; kbPage?: { eligible: boolean } | null; hasPrivateFields?: boolean; optedOut?: boolean; policy?: SitePolicy }): Eligibility {
 	let u: URL
 	try {
 		u = new URL(input.url)
@@ -91,7 +91,13 @@ export function eligibility(input: { url: string; siteOrigins: string[]; kbPage?
 	if (input.kbPage && !input.kbPage.eligible) return { ok: false, reason: 'not-public' }
 	if (sensitivePath(input.url, input.policy)) return { ok: false, reason: 'sensitive-path' }
 	if (input.hasPrivateFields) return { ok: false, reason: 'private-fields' }
+	if (input.optedOut) return { ok: false, reason: 'opted-out' }
 	return { ok: true }
+}
+
+/** A page that says it is not part of journeys (`<meta name="vg-trail" content="off">`): browsed normally, never saved. */
+export function optedOutPage(doc: Document = document): boolean {
+	return !!doc.querySelector('meta[name="vg-trail"][content="off" i]')
 }
 
 export function privateFieldsOnPage(doc: Document = document): boolean {
