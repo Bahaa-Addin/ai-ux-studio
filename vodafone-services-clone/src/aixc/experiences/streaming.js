@@ -401,9 +401,13 @@ export const renderStreaming = (schema, index) => {
 
   let introPlayed = false
   let introAnimations = []
+  let skipRequested = false
   let stopScroll = null
 
+  // "Skip intro" shows while the intro still waits for the wordmark font; a press then is kept
+  // and ends the intro as soon as it starts.
   const endIntro = () => {
+    skipRequested = true
     introAnimations.forEach((animation) => animation.finish())
   }
 
@@ -496,6 +500,7 @@ export const renderStreaming = (schema, index) => {
       skip.animate([{ offset: 0, opacity: 0 }, { offset: 0.1, opacity: 1 }, { offset: 0.8, opacity: 1 }, { offset: 1, opacity: 0 }], timing),
       ...revealContent(INTRO_MS * 0.66),
     ]
+    if (skipRequested) endIntro()
     await introAnimations[0].finished.catch(() => {})
     await Promise.all(introAnimations.map((animation) => animation.finished.catch(() => {})))
     cleanupIntro()
