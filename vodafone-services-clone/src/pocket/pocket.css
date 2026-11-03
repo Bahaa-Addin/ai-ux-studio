@@ -233,6 +233,32 @@
   background: #990000;
 }
 
+/* While the corner peeks, it owns the bottom-right: Vodafone's accessibility button and the
+   Voice Guide's microphone (--vg-lift, voice-guide launcher.ts) move up the same column, clear
+   of the curl (also when it lifts further on hover) and the mascot that pops up under it. */
+body:has(.pocket-peek[data-state='shown']) {
+  --pocket-corner-lift: 230px;
+}
+
+@media (max-width: 767px) {
+  body:has(.pocket-peek[data-state='shown']) {
+    --pocket-corner-lift: 150px;
+  }
+}
+
+body:has(.pocket-peek[data-state='shown']) vg-guide {
+  --vg-lift: var(--pocket-corner-lift);
+}
+
+#vodafone-aw-icon {
+  transition: bottom 0.28s ease;
+}
+
+body:has(.pocket-peek[data-state='shown']) #vodafone-aw-icon {
+  bottom: calc(20px + var(--pocket-corner-lift)) !important;
+  z-index: 10 !important; /* above the curl's shadow */
+}
+
 .pocket-peek:focus-visible {
   outline: 3px solid #333;
   outline-offset: 3px;

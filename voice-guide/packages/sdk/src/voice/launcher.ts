@@ -2,7 +2,9 @@
  * Voice-first launcher (ADR-0027, SPEC-02): the floating microphone, its audio-reactive halo, a
  * keyboard button that opens the existing panel, and the small black transcript bar with the
  * live waveform and the words as they are heard. Lives in the guide's shadow root; positions are
- * physical (bottom-right, stacked above Vodafone's accessibility button) and do not mirror.
+ * physical (bottom-right, stacked above Vodafone's accessibility button) and do not mirror. A host
+ * page that needs that corner (the Pocket on the Services clone) lifts the stack with `--vg-lift`
+ * on the vg-guide element.
  */
 import { t } from '../i18n.ts'
 import type { Sample } from './audio.ts'
@@ -29,7 +31,7 @@ const GLYPHS: Record<string, string> = {
 
 /** Styles for the launcher (SPEC-02 §2–§4), on top of the theme's CSS. */
 export const LAUNCHER_CSS = `
-.vg-mic { position: fixed; z-index: 2147483000; right: calc(15.5px + env(safe-area-inset-right, 0px)); bottom: calc(91px + env(safe-area-inset-bottom, 0px)); width: 64px; height: 64px; border-radius: 50%; border: 5px solid #fff; background: var(--vf-red, #e60000); color: #fff; box-shadow: 0 6px 20px rgba(230,0,0,.35); display: grid; place-items: center; padding: 0; transition: transform .14s cubic-bezier(.2,.8,.2,1), box-shadow .14s; }
+.vg-mic { position: fixed; z-index: 2147483000; right: calc(15.5px + env(safe-area-inset-right, 0px)); bottom: calc(91px + var(--vg-lift, 0px) + env(safe-area-inset-bottom, 0px)); width: 64px; height: 64px; border-radius: 50%; border: 5px solid #fff; background: var(--vf-red, #e60000); color: #fff; box-shadow: 0 6px 20px rgba(230,0,0,.35); display: grid; place-items: center; padding: 0; transition: transform .14s cubic-bezier(.2,.8,.2,1), box-shadow .14s; }
 .vg-mic:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(230,0,0,.45); }
 .vg-mic:active { transform: scale(.96); }
 .vg-mic:focus-visible { outline: 3px solid #00b0ca; outline-offset: 3px; }
@@ -44,11 +46,11 @@ export const LAUNCHER_CSS = `
 @keyframes vgpulse { from { transform: scale(1); opacity: .35; } to { transform: scale(1.5); opacity: 0; } }
 @keyframes vgring { from { transform: scale(.92); opacity: .9; } to { transform: scale(1.18); opacity: 0; } }
 @keyframes vgdot { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-.vg-kbd { position: fixed; z-index: 2147483000; right: calc(91.5px + env(safe-area-inset-right, 0px)); bottom: calc(103px + env(safe-area-inset-bottom, 0px)); width: 40px; height: 40px; border-radius: 50%; border: 0; background: #fff; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,.16); display: grid; place-items: center; padding: 0; opacity: 0; transform: scale(.85); pointer-events: none; transition: opacity .14s, transform .14s; }
+.vg-kbd { position: fixed; z-index: 2147483000; right: calc(91.5px + env(safe-area-inset-right, 0px)); bottom: calc(103px + var(--vg-lift, 0px) + env(safe-area-inset-bottom, 0px)); width: 40px; height: 40px; border-radius: 50%; border: 0; background: #fff; color: #333; box-shadow: 0 2px 8px rgba(0,0,0,.16); display: grid; place-items: center; padding: 0; opacity: 0; transform: scale(.85); pointer-events: none; transition: opacity .14s, transform .14s; }
 .vg-kbd svg { width: 20px; height: 20px; }
 .vg-kbd:focus-visible, .vg-kbd.show { opacity: 1; transform: none; pointer-events: auto; }
 .vg-kbd:focus-visible { outline: 3px solid #00b0ca; outline-offset: 2px; }
-.vg-bar { position: fixed; z-index: 2147483000; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(167px + env(safe-area-inset-bottom, 0px)); min-width: 220px; max-width: min(440px, calc(100vw - 32px)); min-height: 48px; padding: 10px 14px; border-radius: 6px; background: rgba(0,0,0,.9); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.16); display: flex; align-items: center; gap: 12px; transform-origin: bottom right; transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .18s; }
+.vg-bar { position: fixed; z-index: 2147483000; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(167px + var(--vg-lift, 0px) + env(safe-area-inset-bottom, 0px)); min-width: 220px; max-width: min(440px, calc(100vw - 32px)); min-height: 48px; padding: 10px 14px; border-radius: 6px; background: rgba(0,0,0,.9); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.16); display: flex; align-items: center; gap: 12px; transform-origin: bottom right; transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .18s; }
 @supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) { .vg-bar { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); } }
 .vg-bar.hidden { opacity: 0; transform: scaleY(.6) translateY(8px); pointer-events: none; }
 .vg-bar canvas { flex: none; width: 72px; height: 28px; display: block; }
