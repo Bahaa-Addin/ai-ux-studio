@@ -28,8 +28,12 @@ for (const section of regions.sourceRoot.querySelectorAll('[data-aixc-section]')
   if (destination) section.dataset.vgDestination = destination
 }
 
-// Reimagine this page: the AIXC composer, its launcher top-right.
+// Reimagine this page: the AIXC composer, its launcher top-right (below the guide's journey pill
+// once the trail is on the page; aixc.css).
 const composer = initComposer({ adapter, regions })
+window.addEventListener('vg:trail-ready', () => {
+  document.documentElement.dataset.vgTrail = 'on'
+})
 // Pocket: peel services off like stickers, keep them, turn the page to see them.
 const pocket = initPocket({ adapter, regions, composer })
 // Your journey: when the Voice Guide trail runs on this page, the journey lives in the pocket.

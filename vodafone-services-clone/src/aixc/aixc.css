@@ -47,10 +47,16 @@
 
 /* ------------------------------------------------------------------ launcher */
 
-/* Top-right, just under the sticky header: the bottom-right corner belongs to the pocket. */
+/* Top-right, just under the sticky header: the bottom-right corner belongs to the pocket.
+   With the Voice Guide's trail on the page, its "Your journey" pill takes that spot and the
+   launcher sits right below it (main.js sets data-vg-trail). */
+:root[data-vg-trail] {
+  --aixc-guide-pill-h: 52px; /* the pill's 8px offset under the header + its 44px height */
+}
+
 .aixc-launcher {
   position: fixed;
-  top: calc(var(--aixc-header-h) + 16px);
+  top: calc(var(--aixc-header-h) + var(--aixc-guide-pill-h, 0px) + 16px);
   right: max(16px, env(safe-area-inset-right));
   z-index: 40;
   display: inline-flex;
@@ -87,11 +93,11 @@
 /* Opens where the launcher sits, under the header (and under the view bar once it shows). */
 .aixc-composer {
   position: fixed;
-  top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h) + 12px);
+  top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h) + var(--aixc-guide-pill-h, 0px) + 12px);
   right: max(16px, env(safe-area-inset-right));
   z-index: 41;
   width: min(480px, calc(100vw - 32px));
-  max-height: calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - 28px);
+  max-height: calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - var(--aixc-guide-pill-h, 0px) - 28px);
   overflow-y: auto;
   padding: 20px 20px 16px;
   border-radius: var(--aixc-radius);
@@ -632,7 +638,7 @@
 
 @media (max-width: 767px) {
   .aixc-launcher {
-    top: calc(var(--aixc-header-h) + 12px);
+    top: calc(var(--aixc-header-h) + var(--aixc-guide-pill-h, 0px) + 12px);
     right: max(12px, env(safe-area-inset-right));
     min-height: 48px;
     padding: 0 18px 0 14px;
@@ -641,11 +647,11 @@
 
   /* Sheet that drops from under the header, leaving the header and navigation visible. */
   .aixc-composer {
-    top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h));
+    top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h) + var(--aixc-guide-pill-h, 0px));
     right: 0;
     left: 0;
     width: 100%;
-    max-height: min(78vh, calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - 8px));
+    max-height: min(78vh, calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - var(--aixc-guide-pill-h, 0px) - 8px));
     border-radius: 0 0 var(--aixc-radius) var(--aixc-radius);
   }
 
