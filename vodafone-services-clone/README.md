@@ -364,6 +364,8 @@ Off unless the URL asks for it. With `?demo=voicetut`, each service section gets
 
 ## Known limitations and source notes
 
+- **The Pocket corner and the reimagined views (voice-guide O20).** While the Pocket peeks, its corner covers the bottom-right next/previous buttons of the ring, tunnel and spotlight experiences (and flipbook and gallery on phones). Arrow keys and dragging still work. Needs a design decision: a safe area for experiences, or a corner that tucks in.
+- **The view bar and the guide's pill.** With the Voice Guide's trail on the page, the view bar keeps its end free for the "Your journey" pill (`aixc.css`, voice-guide B-23).
 - **Gemini has not been called live from this build.** The request format, headers and response
   parsing were tested against a mocked endpoint (292 browser checks). Verify with a real key before
   a demo; if the chosen model rejects `responseSchema`, the client retries once in plain JSON mode.

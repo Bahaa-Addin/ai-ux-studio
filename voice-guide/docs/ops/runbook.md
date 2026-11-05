@@ -192,6 +192,38 @@ The five public app pages (store locator, Flex, FAQ, network coverage, contact) 
 
 `node tools/live-crawl/make-replay.ts --site vodafone-eg data/crawls/<crawl folder>` rewrites `fixtures/replay/vodafone-eg/` from a crawl that kept rendered HTML (`--capture` when bundling). These are Vodafone's pages, stylesheets and fonts: keep them in the private repository only. Run `npm run test:e2e` afterwards; the replay tests name specific cards and texts.
 
+## 5a. The end-to-end demo walkthrough (as run on 2026-11-05)
+
+`node tools/demo-walkthrough.ts <out-dir> --lang en|ar [--phone] [--reduced] [--video]` runs the walkthrough of the 2026-11-05 handoff (phase C) on the saved Vodafone pages, with the Services clone at `/en/services` and `/ar/services`: trail consent; two spoken questions (bundles, Vodafone Cash) through the test speech stand-in; the clone where the four demos meet, with every floating control measured for overlaps on load, with the Pocket peeking and in the reimagined view; two stickers into the Pocket, the mascot and drone, "Your journey", a question chip; Reimagine (magazine, then tunnel), the Pocket from the reimagined view, and a spoken question there. It writes numbered screenshots, `checks.json`, `controls.json`, `xray-turn.json` and, with `--video`, a recording. Headless Chromium, memory store, no agent model. It records failures and carries on.
+
+Run on 2026-11-05 (Ubuntu 22.04 arm64 VM on the owner's Mac, Node 22.23.4, Chromium 141), after the B-23 fix:
+
+| Run | Checks | Failing (see open issues) |
+|---|---|---|
+| English, 1366×900, with video | 21/25 | O19 ×2, O20 (tunnel next under the Pocket corner), O21 (drone over the journey) |
+| English, 375×812 | 22/25 | O19 ×2, O20 |
+| Arabic, 1366×900 | 23/25 | O19 ×2 |
+| Arabic, 375×812 | 23/25 | O19 ×2 |
+| English, 1366×900, reduced motion | 22/25 | O19 ×2, O21 |
+
+Floating controls, measured (x,y w×h); none overlap in any run:
+
+| Page | When | Microphone | Accessibility | Pocket corner | Reimagine | Your journey |
+|---|---|---|---|---|---|---|
+| English 1366×900 | on load | 1287,743 64×64 | 1291,825 55×55 | — | 1143,172 207×52 | 1114,112 236×44 |
+| | Pocket peeking | 1287,515 | 1291,595 | 1286,820 58×58 | 1143,172 | 1114,112 |
+| | reimagined | 1287,515 | 1291,595 | 1286,820 | (view bar) | 1080,112 270×44 |
+| English 375×812 | on load | 296,655 64×64 | 300,737 55×55 | — | 172,148 191×48 | 297,92 62×44 |
+| | Pocket peeking | 296,507 | 300,587 | 307,744 52×52 | 172,148 | 297,92 |
+| Arabic 1366×900 | on load | 1287,743 | 1291,825 | — | 16,172 205×52 | 16,112 190×44 |
+| | Pocket peeking | 1287,515 | 1291,595 | 1286,820 | 16,172 | 16,112 |
+| Arabic 375×812 | on load | 296,655 | 300,737 | — | 12,148 189×48 | 16,92 62×44 |
+| | Pocket peeking | 296,507 | 300,587 | 307,744 | 12,148 | 16,92 |
+
+Verified there: consent and local recording (IndexedDB) with Pause and Clear; spoken questions navigate and spotlight (bundles) in both languages; the X-ray has the turn and its "listen" row (`xray-turn.json`: received, routed 12 ms, planned 13 ms, listen, step, first motion 73 ms); the clone is the journey host; two stickers, the mascot, the drone in the open Pocket, stepped page tabs; a chip turns the page back to Services; magazine and tunnel apply; the view bar is clear of the pill (B-23); the composer is never recorded; the Pocket opens from the reimagined view; no page errors.
+
+**Not verified there, do it on the Mac by hand:** Google Chrome, the microphone and real speech recognition (server recognition is allowed for the owner's demos, O15; check the X-ray "listen" row says whether it ran on-device); the Arabic system voice; the live site. Then the same walkthrough by voice, in English and Arabic, at both sizes. Moments 5–6 (shop crawl) and moment 7's notification (`config/sites/vodafone-clone.yaml`, O3, O4, O6) are not in this build.
+
 ## 6. Scheduled crawling (paused)
 
 The schedule stays off until Vodafone approves scheduled crawling of its production site in writing (PRD decision D3). While `sync.schedule.enabled` is `false`:
