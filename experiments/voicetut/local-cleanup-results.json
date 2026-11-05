@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-26",
+  "removed": [
+    {
+      "path": ".local-voice/hf",
+      "allocated_bytes": 3277991936
+    },
+    {
+      "path": ".local-voice/venv",
+      "allocated_bytes": 1265979392
+    },
+    {
+      "path": ".local-voice/q8-benchmark/model",
+      "allocated_bytes": 1350279168
+    },
+    {
+      "path": ".local-voice/q8-benchmark/runtime",
+      "allocated_bytes": 84979712
+    },
+    {
+      "path": ".local-voice/q8-benchmark/audio-v0.9.2-drama3-base-small-bin-macos-arm64-metal.tar.gz",
+      "allocated_bytes": 32710656
+    },
+    {
+      "path": ".local-voice/local_generate.py",
+      "allocated_bytes": 4096
+    },
+    {
+      "path": ".local-voice/local_load_debug.py",
+      "allocated_bytes": 4096
+    },
+    {
+      "path": ".local-voice/local_smoke.py",
+      "allocated_bytes": 4096
+    }
+  ],
+  "allocated_bytes_released": 6011953152,
+  "kept": "Source code, benchmark reports, raw logs, generated WAV samples and browser evaluation evidence. Modal client and expiring credential remain in /private/tmp."
+}

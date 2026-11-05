@@ -345,6 +345,10 @@ forwards intents. Without the guide on the page, nothing of the journey appears.
 
 ---
 
+## VoiceTut experiment (`?demo=voicetut`)
+
+Off unless the URL asks for it. With `?demo=voicetut`, each service section gets a **Read this section** button and a small **VoiceTut** tab sits bottom-left; it reads text aloud in Egyptian Arabic and English with a hosted speech model. Only text a person submits is sent. On 2026-11-05 neither backend was live (the public Space was paused; Modal not activated), so the panel says it could not connect. Details, licences (CC-BY-NC weights) and benchmarks: [`../experiments/voicetut/README.md`](../experiments/voicetut/README.md). Checks: `tests/voicetut*.test.mjs`.
+
 ## Known limitations and source notes
 
 - **Gemini has not been called live from this build.** The request format, headers and response

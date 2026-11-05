@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-25",
+  "hardware": {
+    "chip": "Apple M1",
+    "physical_cores": 8,
+    "performance_cores": 4,
+    "efficiency_cores": 4,
+    "ram_gib": 16,
+    "platform": "macOS-27.0.1-arm64-arm-64bit"
+  },
+  "backend": "cpu",
+  "threads": 2,
+  "model": {
+    "model_id": "mohammedaly22/VoiceTut-TTS-GGUF",
+    "model_revision": "615457bb2e9043f468e012c159146b28fa8f5959",
+    "model_sha256": "995a1fc8973cf376b490231aa107bd22ab1f5da003e89d11ada48f6d5058f67a"
+  },
+  "model_file_bytes": 1350264224,
+  "runtime": {
+    "runtime_release": "v0.9.2-drama3-base-small",
+    "runtime_asset": "audio-v0.9.2-drama3-base-small-bin-macos-arm64-metal.tar.gz",
+    "runtime_sha256": "1281998c1acd170a7d92139853fe6ce6ab920e211d2ad3359775d43ad9ba616d"
+  },
+  "speaker": "Mohammed",
+  "reference_sha256": "eb34272def6285cd7ed6cb112af39a7146f0cacf366a5e8bf9ae5c406d986f9b",
+  "language": "arz",
+  "normalization": false,
+  "guidance_scale": 2.0,
+  "speed": 1.0,
+  "scope": "One warm-up and one completed measured request per setting on a non-isolated Mac desktop. Not a cloud VM benchmark or a statistically stable median.",
+  "runs": [
+    {
+      "startup_seconds": 11.014,
+      "peak_rss_bytes": 1759150080,
+      "peak_rss_gib": 1.638,
+      "measurements": [
+        {
+          "sample": "mixed",
+          "text": "ممكن تعمل update للباقة من Ana Vodafone، وتراجع الـ balance قبل ما تعمل subscribe.",
+          "steps": 16,
+          "warmup": true,
+          "repeat": 0,
+          "seed": 42,
+          "wall_seconds": 116.752,
+          "audio_seconds": 5.88,
+          "rtf": 19.856,
+          "sampling_rate": 24000,
+          "wav_bytes": 282284,
+          "rms": 0.10423149913549423,
+          "wav": ".local-voice/q8-benchmark/20261025T171406Z-cpu2/mixed-16steps-warmup.wav"
+        },
+        {
+          "sample": "mixed",
+          "text": "ممكن تعمل update للباقة من Ana Vodafone، وتراجع الـ balance قبل ما تعمل subscribe.",
+          "steps": 16,
+          "warmup": false,
+          "repeat": 1,
+          "seed": 43,
+          "wall_seconds": 158.119,
+          "audio_seconds": 5.88,
+          "rtf": 26.891,
+          "sampling_rate": 24000,
+          "wav_bytes": 282284,
+          "rms": 0.16372358798980713,
+          "wav": ".local-voice/q8-benchmark/20261025T171406Z-cpu2/mixed-16steps-1.wav"
+        }
+      ]
+    },
+    {
+      "startup_seconds": 19.859,
+      "peak_rss_bytes": 1207238656,
+      "peak_rss_gib": 1.124,
+      "measurements": [
+        {
+          "sample": "mixed",
+          "text": "ممكن تعمل update للباقة من Ana Vodafone، وتراجع الـ balance قبل ما تعمل subscribe.",
+          "steps": 32,
+          "warmup": true,
+          "repeat": 0,
+          "seed": 42,
+          "wall_seconds": 188.972,
+          "audio_seconds": 5.82,
+          "rtf": 32.469,
+          "sampling_rate": 24000,
+          "wav_bytes": 279404,
+          "rms": 0.1624060422182083,
+          "wav": ".local-voice/q8-benchmark/20261025T171946Z-cpu2/mixed-32steps-warmup.wav"
+        },
+        {
+          "sample": "mixed",
+          "text": "ممكن تعمل update للباقة من Ana Vodafone، وتراجع الـ balance قبل ما تعمل subscribe.",
+          "steps": 32,
+          "warmup": false,
+          "repeat": 1,
+          "seed": 43,
+          "wall_seconds": 175.345,
+          "audio_seconds": 5.88,
+          "rtf": 29.821,
+          "sampling_rate": 24000,
+          "wav_bytes": 282284,
+          "rms": 0.06897947192192078,
+          "wav": ".local-voice/q8-benchmark/20261025T171946Z-cpu2/mixed-32steps-1.wav"
+        }
+      ]
+    }
+  ]
+}
