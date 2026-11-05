@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url'
 import YAML from 'yaml'
 import * as z from 'zod/v4'
 
+import { type LlmPreset, llmPreset } from './llm-presets.ts'
+
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 const num = (v: string | undefined, d: number) => (v === undefined || v === '' ? d : Number(v))
@@ -32,7 +34,7 @@ export interface PlatformConfig {
 	rateLimit: { turnsPerMinute: number; burst: number }
 	jev: { baseUrl: string; apiKey?: string; model: string; timeoutMs: number }
 	laya: { baseUrl?: string; apiKey?: string; timeoutMs: number }
-	llm: { baseUrl?: string; apiKey?: string; model?: string; fallbackBaseUrl?: string; fallbackApiKey?: string; fallbackModel?: string; timeoutMs: number }
+	llm: { baseUrl?: string; apiKey?: string; model?: string; fallbackBaseUrl?: string; fallbackApiKey?: string; fallbackModel?: string; timeoutMs: number; preset?: string; body?: Record<string, unknown>; sendOrigin?: boolean }
 	vision: { baseUrl?: string; apiKey?: string; model?: string }
 	agentQuota: { stepsPerSession: number; tokensPerSession: number; tokensPerSiteDay: number }
 	vapid: { subject: string; keyFile: string }
@@ -72,9 +74,9 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 		},
 		laya: { baseUrl: env.LAYA_BASE_URL, apiKey: env.LAYA_API_KEY, timeoutMs: num(env.LAYA_TIMEOUT_MS, 1500) },
 		llm: {
-			baseUrl: env.VG_LLM_BASE_URL,
-			apiKey: env.VG_LLM_API_KEY,
-			model: env.VG_LLM_MODEL,
+			// A preset fills the primary model only when none is configured (ADR-0042).
+			...(env.VG_LLM_BASE_URL ? {} : presetModel(llmPreset(env.VG_LLM_PRESET), env.VG_LLM_PRESET)),
+			...(env.VG_LLM_BASE_URL ? { baseUrl: env.VG_LLM_BASE_URL, apiKey: env.VG_LLM_API_KEY, model: env.VG_LLM_MODEL } : {}),
 			fallbackBaseUrl: env.VG_LLM_FALLBACK_BASE_URL,
 			fallbackApiKey: env.VG_LLM_FALLBACK_API_KEY,
 			fallbackModel: env.VG_LLM_FALLBACK_MODEL,
@@ -224,6 +226,10 @@ export const SiteConfig = z.object({
 export type SiteConfig = z.infer<typeof SiteConfig>
 
 /** Whether the agent proxy has a model to call (ADR-0018). Without one, nothing is routed to the agent. */
+function presetModel(p: LlmPreset | undefined, name: string | undefined): Partial<PlatformConfig['llm']> {
+	return p ? { baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model, preset: name, body: p.body, sendOrigin: p.sendOrigin } : {}
+}
+
 export function agentModelConfigured(p: PlatformConfig): boolean {
 	return !!((p.llm.baseUrl && p.llm.model) || (p.llm.fallbackBaseUrl && p.llm.fallbackModel))
 }

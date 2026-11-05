@@ -8,6 +8,7 @@
  *   npm run demo:live -- --browser chromium             # Playwright's Chromium (no speech service; typing only)
  *   npm run demo:live -- --replay --trail               # with the Exploration Trail (SPEC-06; demo only, consent still asked)
  *   npm run demo:trail                                  # the same, starting on /en/home (the journey opens in the Pocket)
+ *   npm run demo:live -- --agent off                    # no fallback agent (default: VG_LLM_*, else page-agent's testing API, ADR-0042)
  *
  * In replay, /en/services is the Vodafone Services clone with Pocket (../vodafone-services-clone),
  * so every page of the demo is a Vodafone page: saved ones, and the clone where the Pocket lives
@@ -33,6 +34,7 @@ import { buildSdk } from '../packages/sdk/build.ts'
 import { createGateway } from '../services/gateway/server.ts'
 import { createServices } from '../services/index.ts'
 import { loadPlatformConfig, loadSiteConfig, ROOT } from '../services/shared/config.ts'
+import { llmPreset } from '../services/shared/llm-presets.ts'
 import { startScheduler } from '../services/watch/handlers.ts'
 import { launchDemoBrowser } from './demo-browser.ts'
 
@@ -51,6 +53,7 @@ const { values } = parseArgs({
 		browser: { type: 'string', default: 'chrome' },
 		trail: { type: 'boolean', default: false },
 		clone: { type: 'string' },
+		agent: { type: 'string' },
 	},
 	allowNegative: false,
 	strict: true,
@@ -58,7 +61,10 @@ const { values } = parseArgs({
 })
 
 const port = Number(values.port)
-const platform = loadPlatformConfig({ ...process.env, VG_STORE: values.store, VG_PORT: String(port), VG_PUBLIC_URL: `http://127.0.0.1:${port}` })
+// The fallback agent's model (ADR-0042): VG_LLM_* if set; otherwise a preset, page-agent's testing
+// API unless --agent names another preset or --agent off.
+const agentPreset = process.env.VG_LLM_BASE_URL ? undefined : values.agent === 'off' ? '' : values.agent || process.env.VG_LLM_PRESET || 'page-agent-testing'
+const platform = loadPlatformConfig({ ...process.env, VG_LLM_PRESET: agentPreset, VG_STORE: values.store, VG_PORT: String(port), VG_PUBLIC_URL: `http://127.0.0.1:${port}` })
 const site = loadSiteConfig(path.join(platform.sitesDir, `${values.site}.yaml`))
 const replayDir = values.replay ? (values.replay === 'default' ? defaultReplayDir(site.id) : path.resolve(values.replay)) : undefined
 const start = values.start || site.crawl.start[0]
@@ -95,6 +101,8 @@ const gateway = createGateway({ services, adminToken: process.env.VG_ADMIN_TOKEN
 await gateway.listen(port)
 const stopWatches = startScheduler(services.local.watch, 5000)
 console.log(`Gateway: http://127.0.0.1:${port} (store: ${services.store.kind}, agent: ${services.local.agent.status().available ? 'on' : 'no model configured'})`)
+const preset = llmPreset(platform.llm.preset)
+if (preset) console.log(`Agent model: ${preset.model} via ${preset.label}: ${preset.notice}\n  Use your own model with VG_LLM_BASE_URL and VG_LLM_MODEL, or turn the agent off with --agent off.`)
 console.log(replayDir ? `Replay: ${path.relative(ROOT, replayDir)} (offline)${clone ? `, ${clone.path} is the Services clone with Pocket` : ''}` : 'Live: real Vodafone pages')
 
 const browser = await launchDemoBrowser({

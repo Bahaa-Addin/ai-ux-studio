@@ -25,6 +25,9 @@ interface Provider {
 	baseUrl: string
 	apiKey?: string
 	model: string
+	/** From an LLM preset (ADR-0042): fields added to every request, and whether to send the page's origin. */
+	body?: Record<string, unknown>
+	sendOrigin?: boolean
 }
 
 /**
@@ -42,7 +45,7 @@ export function createAgentProxy(deps: AgentDeps) {
 	const providers = (): Provider[] => {
 		const l = deps.platform.llm
 		const out: Provider[] = []
-		if (l.baseUrl && l.model) out.push({ name: 'primary', baseUrl: l.baseUrl, apiKey: l.apiKey, model: l.model })
+		if (l.baseUrl && l.model) out.push({ name: 'primary', baseUrl: l.baseUrl, apiKey: l.apiKey, model: l.model, body: l.body, sendOrigin: l.sendOrigin })
 		if (l.fallbackBaseUrl && l.fallbackModel) out.push({ name: 'fallback', baseUrl: l.fallbackBaseUrl, apiKey: l.fallbackApiKey, model: l.fallbackModel })
 		return out
 	}
@@ -91,8 +94,8 @@ export function createAgentProxy(deps: AgentDeps) {
 				try {
 					const res = await doFetch(`${p.baseUrl.replace(/\/$/, '')}/chat/completions`, {
 						method: 'POST',
-						headers: { 'Content-Type': 'application/json', ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}) },
-						body: JSON.stringify({ ...body, model: p.model }),
+						headers: { 'Content-Type': 'application/json', ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}), ...(p.sendOrigin ? { Origin: new URL(site.origins[0].url).origin } : {}) },
+						body: JSON.stringify({ ...body, ...p.body, model: p.model }),
 						signal: AbortSignal.timeout(deps.platform.llm.timeoutMs),
 					})
 					const text = await res.text()

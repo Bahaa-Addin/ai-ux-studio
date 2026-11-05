@@ -37,7 +37,7 @@ Each fix has a test that failed before it.
 | O12 | No visual snapshots, contrast or font checks; no tests for reduced motion, barge-in, interaction details, accessibility live region | Low | Manual review | T-103, T-105, T-405, T-407 | — |
 | O13 | Live-site safety-rule tests (agent asked to pay or type a password) not written | Medium before any customer use | Commit guard and blacklist exist from the demo build | T-308 | — |
 | O14 | X-ray colours for agent and error rows are outside the palette (demo-only, operator-facing) | Low | — | Restyle if the X-ray is shown to Vodafone | T-105 |
-| O15 | Chrome's server recognition sends audio to Google unless the on-device model is installed | Needs a decision | `speech.onDevice: prefer` | Data-protection decision | D2 |
+| O15 | Chrome's server recognition sends audio to Google unless the on-device model is installed. **2026-11-05: the owner allows server recognition for his own demos.** The demo's default agent model (ADR-0042) also sends masked page content and the request to Alibaba Cloud in mainland China | Decided for demos; open for customers | `speech.onDevice: prefer`; `--agent off` or your own `VG_LLM_*` | Data-protection decision before any customer use | D2 |
 | O16 | CI has never run; no `package-lock.json` | Low | Local runs | First PR run; commit the lockfile | T-501, T-502 |
 
 ## 3. Flaky tests seen

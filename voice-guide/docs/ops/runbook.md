@@ -55,7 +55,8 @@ It builds the SDK, starts the gateway on `127.0.0.1:4400` (all services in one p
 ```
 Building the SDK...
 Knowledge base: 20261023-122606-5b2080 from config/kb/vodafone-eg.manifest.json
-Gateway: http://127.0.0.1:4400 (store: memory, agent: no model configured)
+Gateway: http://127.0.0.1:4400 (store: memory, agent: on)
+Agent model: qwen3.5-plus via page-agent's free testing API: for technical evaluation only, ...
 Live: real Vodafone pages
 Browser: Google Chrome
 Demo browser open on https://web.vodafone.com.eg/ar/home. Press the red microphone and ask. Close the window to stop.
@@ -75,6 +76,7 @@ First run only: answer the cookie banner yourself (reject non-essential cookies)
 | `--store postgres` | Use the Postgres store and its active knowledge version |
 | `--browser chromium` | Playwright's Chromium instead of Chrome: typing works, speech does not (ADR-0033) |
 | `--port <n>` | Another port if 4400 is taken |
+| `--agent <preset>` / `--agent off` | The fallback agent's model when `VG_LLM_*` is not set. Default `page-agent-testing`: page-agent's free testing API (`qwen3.5-plus`, Alibaba Cloud, mainland China; evaluation only, never for customers, ADR-0042). `off`: no agent |
 
 Stop: close the browser window, or press Ctrl+C in the terminal.
 
