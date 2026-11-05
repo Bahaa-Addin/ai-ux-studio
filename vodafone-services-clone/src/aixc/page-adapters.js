@@ -20,9 +20,9 @@
  * (adapter), then register it below. Experiences and the Gemini client need no change.
  */
 
-import { vodafoneServicesAdapter } from '../adapters/vodafone-services.js'
+import { vodafoneServicesAdapter, vodafoneServicesArAdapter } from '../adapters/vodafone-services.js'
 
-const adapters = new Map([[vodafoneServicesAdapter.pageId, vodafoneServicesAdapter]])
+const adapters = new Map([vodafoneServicesAdapter, vodafoneServicesArAdapter].map((adapter) => [adapter.pageId, adapter]))
 
 export const getPageAdapter = (pageId) => adapters.get(pageId) ?? vodafoneServicesAdapter
 

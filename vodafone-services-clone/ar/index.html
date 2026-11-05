@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- The Arabic Services page: same app as ../index.html, Arabic content (src/content/vodafone-services-ar.js). -->
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A local recreation of the Arabic Vodafone Egypt services page (captured 2026-11-05) with AI Experience Composer and the Pocket."
+    />
+    <title>خدمات | ڤودافون مصر</title>
+    <!-- Voice Guide: this page shows the journey itself, in the pocket (voice-guide ADR-0040) -->
+    <meta name="vg-trail-host" content="pocket" />
+    <!-- Roboto 900 for the streaming wordmark (as in the original pen); falls back to a system sans offline -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@900&display=swap" />
+    <!-- Original page styles (protected shell + original view) -->
+    <link rel="stylesheet" href="/src/style.css" />
+    <!-- AIXC: composer UI, and the magazine experience (scoped under .aixc-magazine) -->
+    <link rel="stylesheet" href="/src/aixc/aixc.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/magazine.css" />
+    <!-- Ready-made template experiences (each scoped under .aixc-vx--<name>) -->
+    <link rel="stylesheet" href="/src/aixc/experiences/vodafone.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/spotlight.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/journey.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/gallery.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/flipbook.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/cube.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/streaming.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/split.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/fan.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/ring.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/tunnel.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/canvas.css" />
+    <link rel="stylesheet" href="/src/aixc/experiences/coverflow.css" />
+    <!-- Pocket: sticker peel, peeking corner and page turn (all .pocket- / .curl- prefixed) -->
+    <link rel="stylesheet" href="/src/pocket/pocket.css" />
+    <link rel="stylesheet" href="/src/pocket/journey.css" />
+    <!-- Pocket actors: the mascot under the curl and the drone over the album (.pocket-actor-/-mascot-/-drone-) -->
+    <link rel="stylesheet" href="/src/pocket/pocket-actors.css" />
+    <!-- Arabic page: Vodafone's Arabic faces (split by unicode-range) and right-to-left fixes -->
+    <link rel="stylesheet" href="/src/rtl.css" />
+  </head>
+  <body data-page="vodafone-services-ar">
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+    <!-- Official Page Agent quick-start demo, only with ?demo=page-agent or ?agentLang=ar.
+         Prompts and page content are processed by the upstream testing LLM. -->
+    <script type="module" src="/src/page-agent-loader.js"></script>
+    <!-- VoiceTut experiment (read a section aloud), only with ?demo=voicetut. -->
+    <script type="module" src="/src/voicetut-loader.js"></script>
+  </body>
+</html>

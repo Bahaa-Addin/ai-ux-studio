@@ -345,6 +345,19 @@ forwards intents. Without the guide on the page, nothing of the journey appears.
 
 ---
 
+## The Arabic page (`/ar/`)
+
+`ar/index.html` is the [Arabic Services page](https://web.vodafone.com.eg/ar/services), captured on 2026-11-05: the same app, sections, items, ids and pictures as the English page, with Vodafone's Arabic copy and links (`src/content/vodafone-services-ar.js`), right to left. Open http://127.0.0.1:5173/ar/ (`npm run dev` or `node scripts/serve.mjs`). In the voice-guide demo it is mounted at `/ar/services`, and after Arabic pages the journey opens in its Pocket (voice-guide ADR-0043).
+
+- **Same pictures.** Every picture on the Arabic page was compared with the English clone's file and is pixel-identical, so they are shared.
+- **Vodafone's Arabic faces.** `src/rtl.css` registers `vodafone-*-ar.woff` (GE SS Two) under the English family names with an Arabic `unicode-range`, as the live site splits its fonts.
+- **The clone's own copy** (Pocket, Reimagine, carousel labels) is in `src/i18n.js`, keyed by the English text, so the English page does not change.
+- **Kept as published:** source typos ("معلوات", "ڤودافو", "تسمتع", "الدوليتواصل"), mixed spellings, "VF Play" and "Scan QR CODE & Download" in Latin. The Shokran carousel keeps the Arabic order (عالنوتة before كلمنى).
+- **Normalised links:** "خدمة الميني كول" links to /spa/roaming on the live page (→ /ar/mini-call); "عالم ماما" links to a vf-live URL with unfilled placeholders (→ the Ana Vodafone flow, as in English).
+- **Not translated yet:** each experience's own microcopy (15–45 words each: screen-reader labels such as "Next", and a few visible hints such as "Scroll" or "Skip intro"), and Gemini's error texts.
+- **As on the English page:** on the small red "اتحكم في حسابك" cards the Pocket button sits over part of the title, and the hero banner has no title.
+- Checks: `tests/content-ar.test.mjs`, `tests/e2e/arabic_e2e.py` (71 checks).
+
 ## VoiceTut experiment (`?demo=voicetut`)
 
 Off unless the URL asks for it. With `?demo=voicetut`, each service section gets a **Read this section** button and a small **VoiceTut** tab sits bottom-left; it reads text aloud in Egyptian Arabic and English with a hosted speech model. Only text a person submits is sent. On 2026-11-05 neither backend was live (the public Space was paused; Modal not activated), so the panel says it could not connect. Details, licences (CC-BY-NC weights) and benchmarks: [`../experiments/voicetut/README.md`](../experiments/voicetut/README.md). Checks: `tests/voicetut*.test.mjs`.

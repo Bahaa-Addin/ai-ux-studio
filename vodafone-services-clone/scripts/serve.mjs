@@ -60,7 +60,7 @@ const isFile = async (path) => {
 const server = createServer(async (request, response) => {
   try {
     const { pathname } = new URL(request.url, 'http://localhost')
-    const urlPath = decodeURIComponent(pathname === '/' ? '/index.html' : pathname)
+    const urlPath = decodeURIComponent(pathname.endsWith('/') ? `${pathname}index.html` : pathname)
 
     if (urlPath.split('/').some((segment) => blockedSegments.has(segment) || segment.startsWith('.'))) {
       response.writeHead(404).end('Not found')

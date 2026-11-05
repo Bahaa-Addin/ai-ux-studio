@@ -19,6 +19,7 @@
 
 import { createCurl, cornerReach, fullTurn, tween, ease, lerp } from './curl.js'
 import { createPocketActors } from './pocket-actors.js'
+import { countItems, t } from '../i18n.js'
 
 const STORE_KEY = 'aixc.pocket.v1'
 const RAD = Math.PI / 180
@@ -212,7 +213,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     live.textContent = ''
     window.setTimeout(() => (live.textContent = text), 60)
   }
-  const countLabel = (n) => `${n} ${n === 1 ? 'item' : 'items'}`
+  const countLabel = countItems
 
   /* ------------------------------------------------------- fixed layers */
   // plane (z 6): what lies flat; flying stickers (z 7) pass between; lift (z 8): the curl.
@@ -222,25 +223,25 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   const peekCount = make('span', { class: 'pocket-peek__count', 'aria-hidden': 'true' }, '0')
   const peekButton = make(
     'button',
-    { type: 'button', class: 'pocket-peek', 'data-state': 'hidden', 'aria-label': 'Open your pocket', inert: true },
+    { type: 'button', class: 'pocket-peek', 'data-state': 'hidden', 'aria-label': t('Open your pocket'), inert: true },
     icon('pocket', 'pocket-peek__icon'),
     peekCount,
-    make('span', { class: 'pocket-peek__tip', 'aria-hidden': 'true' }, 'Your pocket'),
+    make('span', { class: 'pocket-peek__tip', 'aria-hidden': 'true' }, t('Your pocket')),
   )
 
   /* ------------------------------------------------------- pocket view */
-  const pocketTitle = make('h1', { class: 'pocket-view__title', id: 'pocket-title', tabindex: '-1' }, 'Your pocket')
+  const pocketTitle = make('h1', { class: 'pocket-view__title', id: 'pocket-title', tabindex: '-1' }, t('Your pocket'))
   const pocketLead = make('p', { class: 'pocket-view__lead' })
   const grid = make('ul', { class: 'pocket-grid', role: 'list' })
-  const backButton = make('button', { type: 'button', class: 'pocket-back' }, icon('back', 'pocket-back__icon'), 'Back to Services')
-  const clearButton = make('button', { type: 'button', class: 'pocket-clear' }, 'Empty pocket')
-  const emptyBack = make('button', { type: 'button', class: 'pocket-back pocket-back--solid' }, 'Back to Services')
+  const backButton = make('button', { type: 'button', class: 'pocket-back' }, icon('back', 'pocket-back__icon'), t('Back to Services'))
+  const clearButton = make('button', { type: 'button', class: 'pocket-clear' }, t('Empty pocket'))
+  const emptyBack = make('button', { type: 'button', class: 'pocket-back pocket-back--solid' }, t('Back to Services'))
   const empty = make(
     'div',
     { class: 'pocket-empty', hidden: true },
     icon('pocket', 'pocket-empty__icon'),
-    make('p', { class: 'pocket-empty__title' }, 'Your pocket is empty'),
-    make('p', { class: 'pocket-empty__text' }, 'Peel services off the page with “Pocket it” and they wait here for later.'),
+    make('p', { class: 'pocket-empty__title' }, t('Your pocket is empty')),
+    make('p', { class: 'pocket-empty__text' }, t('Peel services off the page with “Pocket it” and they wait here for later.')),
     emptyBack,
   )
   // The bar's start group and the stage are where a companion (the journey, ./journey.js) docks:
@@ -335,7 +336,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   const updateCount = (n = state.ids.length) => {
     peekCount.textContent = String(n)
     peekCount.hidden = n === 0
-    peekButton.setAttribute('aria-label', `Open your pocket, ${countLabel(n)}`)
+    peekButton.setAttribute('aria-label', t('Open your pocket, {count}', { count: countLabel(n) }))
   }
 
   const destroyPeek = () => {
@@ -649,19 +650,19 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     card.classList.add('pocket-host')
     const cta = make(
       'button',
-      { type: 'button', class: 'pocket-cta', 'aria-label': `Pocket it: ${item.title}` },
+      { type: 'button', class: 'pocket-cta', 'aria-label': t('Pocket it: {title}', { title: item.title }) },
       icon('pocketAdd', 'pocket-cta__icon'),
-      make('span', { class: 'pocket-cta__label' }, 'Pocket it'),
+      make('span', { class: 'pocket-cta__label' }, t('Pocket it')),
     )
     cta.addEventListener('pointerenter', (event) => event.pointerType !== 'touch' && liftCorner(card, id))
     cta.addEventListener('pointerleave', () => hover?.card === card && dropCorner())
     cta.addEventListener('click', () => pocketItem(id))
-    const undo = make('button', { type: 'button', class: 'pocket-liner__undo', 'aria-label': `Put back ${item.title}` }, 'Put back')
+    const undo = make('button', { type: 'button', class: 'pocket-liner__undo', 'aria-label': t('Put back {title}', { title: item.title }) }, t('Put back'))
     undo.addEventListener('click', () => putBack(id))
     const liner = make(
       'div',
       { class: 'pocket-liner' },
-      make('div', { class: 'pocket-liner__content' }, icon('pocket', 'pocket-liner__icon'), make('p', { class: 'pocket-liner__text' }, 'In your pocket'), undo),
+      make('div', { class: 'pocket-liner__content' }, icon('pocket', 'pocket-liner__icon'), make('p', { class: 'pocket-liner__text' }, t('In your pocket')), undo),
     )
     card.append(liner, cta)
     if (isPocketed(id)) card.classList.add('is-pocketed')
@@ -678,8 +679,8 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     const { item, section } = catalog.get(id)
     const tone = TONES[section.id] ?? 'light'
     const titleId = `pocket-sticker-${id}`
-    const link = item.cta?.href ? { href: item.cta.href, label: item.cta.label || 'View more' } : section.cta?.href ? { href: section.cta.href, label: section.cta.label } : null
-    const remove = make('button', { type: 'button', class: 'pocket-sticker__remove', 'aria-label': `Remove ${item.title} from your pocket` }, icon('remove', 'pocket-sticker__remove-icon'), make('span', null, 'Remove'))
+    const link = item.cta?.href ? { href: item.cta.href, label: item.cta.label || t('View more') } : section.cta?.href ? { href: section.cta.href, label: section.cta.label } : null
+    const remove = make('button', { type: 'button', class: 'pocket-sticker__remove', 'aria-label': t('Remove {title} from your pocket', { title: item.title }) }, icon('remove', 'pocket-sticker__remove-icon'), make('span', null, t('Remove')))
     const sticker = make(
       'article',
       { class: `pocket-sticker pocket-sticker--${tone}`, 'aria-labelledby': titleId, style: { '--tilt': `${tiltFor(id)}deg` } },
@@ -709,7 +710,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     const n = state.ids.length
     pocketLead.textContent = n
       ? `${n} ${n === 1 ? 'service' : 'services'} you peeled off the Services page, kept here for later.`
-      : 'Nothing here yet.'
+      : t('Nothing here yet.')
     grid.hidden = n === 0
     empty.hidden = n > 0
     clearButton.hidden = n === 0
@@ -784,7 +785,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     updateCount()
     grid.replaceChildren()
     renderLead()
-    announce('Your pocket is empty.')
+    announce(t('Your pocket is empty.'))
     emptyBack.focus({ preventScroll: true })
   })
 
@@ -836,7 +837,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     ).promise
     destroyPeek()
     pocketTitle.focus({ preventScroll: true })
-    announce(`Your pocket, ${countLabel(state.ids.length)}.`)
+    announce(t('Your pocket, {count}.', { count: countLabel(state.ids.length) }))
     state.busy = false
     viewChanged('pocket')
     actors?.openComplete()

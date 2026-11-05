@@ -12,13 +12,15 @@
  */
 
 import { vodafoneServicesPage } from '../content/vodafone-services.js'
+import { vodafoneServicesPageAr } from '../content/vodafone-services-ar.js'
 import { normalizeContentModel } from '../aixc/content-index.js'
 import { svgUse } from '../shell.js'
+import { t } from '../i18n.js'
 
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
 
-const newTab = (label) => `<span class="visually-hidden">${label ? ` – ${esc(label)}` : ''} (opens in a new tab)</span>`
+const newTab = (label) => `<span class="visually-hidden">${label ? ` – ${esc(label)}` : ''} ${t('(opens in a new tab)')}</span>`
 
 const externalAttrs = (href) => `href="${esc(href)}" target="_blank" rel="noopener noreferrer"`
 
@@ -176,11 +178,11 @@ const renderCarousel = (section, { tightTop = false } = {}) => `
     <div class="container">
       ${sectionHeading(section)}
       <div class="carousel-frame" data-carousel>
-        <button class="carousel-frame__arrow" type="button" data-carousel-prev aria-label="Previous ${esc(section.title)}">‹</button>
+        <button class="carousel-frame__arrow" type="button" data-carousel-prev aria-label="${esc(t('Previous {title}', { title: section.title }))}">‹</button>
         <div class="carousel-track" data-carousel-track tabindex="0" role="region" aria-label="${esc(section.title)}">
           ${section.items.map(renderSubscriptionCard).join('')}
         </div>
-        <button class="carousel-frame__arrow" type="button" data-carousel-next aria-label="Next ${esc(section.title)}">›</button>
+        <button class="carousel-frame__arrow" type="button" data-carousel-next aria-label="${esc(t('Next {title}', { title: section.title }))}">›</button>
       </div>
       <div class="carousel-dots" data-carousel-dots aria-hidden="true"></div>
     </div>
@@ -200,7 +202,7 @@ const renderClosing = (promo) => `
             ${promo.stores
               .map(
                 (store) =>
-                  `<a ${externalAttrs(store.href)} aria-label="${esc(store.label)} (opens in a new tab)">${svgUse(store.icon, 'store-icon')}</a>`,
+                  `<a ${externalAttrs(store.href)} aria-label="${esc(store.label)} ${t('(opens in a new tab)')}">${svgUse(store.icon, 'store-icon')}</a>`,
               )
               .join('')}
           </div>
@@ -254,17 +256,21 @@ const enhanceCarousels = (root) => {
     const dots = frame.parentElement.querySelector('[data-carousel-dots]')
     const smooth = () => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth')
 
+    // Right to left (the Arabic page), scrollLeft runs from 0 down to -max and "next" is leftwards.
+    const sign = () => (getComputedStyle(track).direction === 'rtl' ? -1 : 1)
+
     const sync = () => {
       const max = track.scrollWidth - track.clientWidth
-      prev.disabled = track.scrollLeft <= 2
-      next.disabled = track.scrollLeft >= max - 2
+      const at = Math.abs(track.scrollLeft)
+      prev.disabled = at <= 2
+      next.disabled = at >= max - 2
       const pages = Math.max(1, Math.ceil(track.scrollWidth / Math.max(track.clientWidth, 1) - 0.05))
-      const current = max <= 0 ? 0 : Math.round((track.scrollLeft / max) * (pages - 1))
+      const current = max <= 0 ? 0 : Math.round((at / max) * (pages - 1))
       if (dots.childElementCount !== pages) dots.replaceChildren(...Array.from({ length: pages }, () => document.createElement('span')))
       ;[...dots.children].forEach((dot, at) => dot.classList.toggle('is-active', at === current))
     }
-    prev.addEventListener('click', () => track.scrollBy({ left: -track.clientWidth, behavior: smooth() }))
-    next.addEventListener('click', () => track.scrollBy({ left: track.clientWidth, behavior: smooth() }))
+    prev.addEventListener('click', () => track.scrollBy({ left: -sign() * track.clientWidth, behavior: smooth() }))
+    next.addEventListener('click', () => track.scrollBy({ left: sign() * track.clientWidth, behavior: smooth() }))
     track.addEventListener('scroll', sync, { passive: true })
     if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(track)
     sync()
@@ -273,13 +279,14 @@ const enhanceCarousels = (root) => {
 
 /* ------------------------------------------------------------------ adapter */
 
-export const vodafoneServicesAdapter = {
-  pageId: vodafoneServicesPage.pageId,
-  label: 'Vodafone Services',
+/** One adapter per language of the Services page; the Arabic page shares the English layout. */
+const createServicesAdapter = (page, label) => ({
+  pageId: page.pageId,
+  label,
 
   /** Renders the captured original presentation into the source root. */
   renderOriginal(sourceRoot) {
-    const { model } = normalizeContentModel(vodafoneServicesPage)
+    const { model } = normalizeContentModel(page)
     renderOriginal(sourceRoot, model)
   },
 
@@ -288,7 +295,7 @@ export const vodafoneServicesAdapter = {
    * capture; the rendered DOM is cross-checked so drift between the two is visible.
    */
   extractContent(sourceRoot) {
-    const { model, problems } = normalizeContentModel(vodafoneServicesPage)
+    const { model, problems } = normalizeContentModel(page)
     if (!model) return { model: null, problems }
     const rendered = new Set([...sourceRoot.querySelectorAll('[data-aixc-item]')].map((node) => node.dataset.aixcItem))
     const expected = [...model.sections.flatMap((section) => section.items.map((item) => item.id)), model.closingPromotion?.id].filter(Boolean)
@@ -297,4 +304,7 @@ export const vodafoneServicesAdapter = {
     }
     return { model, problems }
   },
-}
+})
+
+export const vodafoneServicesAdapter = createServicesAdapter(vodafoneServicesPage, 'Vodafone Services')
+export const vodafoneServicesArAdapter = createServicesAdapter(vodafoneServicesPageAr, 'خدمات ڤودافون')

@@ -27,6 +27,7 @@ import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, BLINK, createPoseAnimator } from './
 import { createMascotView, createDroneView } from './actors/renderer.js'
 import { restDronePose } from './actors/drone-model.js'
 import { createScope } from './actors/scope.js'
+import { t } from '../i18n.js'
 import {
   clamp,
   lerp,
@@ -127,7 +128,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   const trailReveal = trail.querySelector('.pocket-drone-trail__reveal')
   const trailLine = trail.querySelector('.pocket-drone-trail__line')
   const trailMask = trail.querySelector('mask')
-  const drone = el('button', 'pocket-drone', { type: 'button', 'aria-label': 'Play with the Pocket drone', 'data-drone-state': 'hidden', hidden: true })
+  const drone = el('button', 'pocket-drone', { type: 'button', 'aria-label': t('Play with the Pocket drone'), 'data-drone-state': 'hidden', hidden: true })
   const droneTilt = el('span', 'pocket-drone__tilt', { 'aria-hidden': 'true' })
   const droneBob = el('span', 'pocket-drone__bob')
   droneTilt.append(droneBob)

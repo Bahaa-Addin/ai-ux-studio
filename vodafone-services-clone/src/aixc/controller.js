@@ -16,6 +16,7 @@ import { buildFallbackSchema } from './fallback-schema.js'
 import { DEFAULT_MODEL, GeminiError, requestComposition } from './gemini-client.js'
 import { experienceLabel, renderExperience } from './experience-renderer.js'
 import { TEMPLATES, buildTemplateSchema, matchTemplate } from './templates.js'
+import { lang, t } from '../i18n.js'
 
 const ICON_SPARKLE = 'M11 2.5 13.1 9 19.5 11l-6.4 2.1L11 19.5 8.9 13.1 2.5 11 8.9 9zM19 2l.9 2.6 2.6.9-2.6.9L19 9l-.9-2.6-2.6-.9 2.6-.9z'
 const ICON_CLOSE = 'M18.3 7.1 16.9 5.7 12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z'
@@ -102,7 +103,7 @@ export const initComposer = ({ adapter, regions }) => {
     'button',
     { type: 'button', class: 'aixc-launcher', 'aria-expanded': 'false', 'aria-controls': 'aixc-composer' },
     pathIcon(ICON_SPARKLE, 'aixc-launcher__icon'),
-    h('span', null, 'Reimagine this page'),
+    h('span', null, t('Reimagine this page')),
   )
 
   /* -------------------------------------------------------------- composer */
@@ -110,18 +111,18 @@ export const initComposer = ({ adapter, regions }) => {
     id: 'aixc-prompt',
     class: 'aixc-prompt',
     rows: '3',
-    placeholder: 'Describe how you’d like to experience this page…',
+    placeholder: t('Describe how you’d like to experience this page…'),
     autocomplete: 'off',
     spellcheck: 'true',
     'aria-describedby': 'aixc-prompt-hint',
   })
-  const submitButton = h('button', { type: 'submit', class: 'aixc-btn aixc-btn--primary' }, 'Reimagine')
-  const cancelButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--ghost', hidden: true }, 'Cancel')
+  const submitButton = h('button', { type: 'submit', class: 'aixc-btn aixc-btn--primary' }, t('Reimagine'))
+  const cancelButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--ghost', hidden: true }, t('Cancel'))
   const progress = h(
     'div',
     { class: 'aixc-progress', hidden: true },
     h('span', { class: 'aixc-progress__bar', 'aria-hidden': 'true' }),
-    h('span', { class: 'aixc-progress__label' }, 'Composing your page…'),
+    h('span', { class: 'aixc-progress__label' }, t('Composing your page…')),
   )
   const message = h('p', { class: 'aixc-message', hidden: true })
 
@@ -132,7 +133,7 @@ export const initComposer = ({ adapter, regions }) => {
       'button',
       { type: 'button', class: 'aixc-template', 'data-template': template.id, 'aria-pressed': 'false' },
       icon,
-      h('span', { class: 'aixc-template__text' }, h('span', { class: 'aixc-template__name' }, template.name), h('span', { class: 'aixc-template__prompt' }, template.prompt)),
+      h('span', { class: 'aixc-template__text' }, h('span', { class: 'aixc-template__name' }, t(template.name)), h('span', { class: 'aixc-template__prompt' }, t(template.prompt))),
     )
     button.addEventListener('click', () => applyTemplate(template))
     return button
@@ -140,34 +141,34 @@ export const initComposer = ({ adapter, regions }) => {
   const templatesPanel = h(
     'section',
     { class: 'aixc-templates', 'aria-labelledby': 'aixc-templates-title' },
-    h('h3', { class: 'aixc-templates__title', id: 'aixc-templates-title' }, 'Ready-made experiences'),
-    h('p', { class: 'aixc-templates__hint' }, 'One click, no API key. Each keeps every service, description and link.'),
+    h('h3', { class: 'aixc-templates__title', id: 'aixc-templates-title' }, t('Ready-made experiences')),
+    h('p', { class: 'aixc-templates__hint' }, t('One click, no API key. Each keeps every service, description and link.')),
     h('ul', { class: 'aixc-templates__list' }, templateButtons.map((button) => h('li', null, button))),
   )
 
-  const keyInput = h('input', { id: 'aixc-key', class: 'aixc-input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: 'Paste a Gemini API key' })
+  const keyInput = h('input', { id: 'aixc-key', class: 'aixc-input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: t('Paste a Gemini API key') })
   const modelInput = h('input', { id: 'aixc-model', class: 'aixc-input', type: 'text', autocomplete: 'off', spellcheck: 'false', value: settings.model })
   const rememberInput = h('input', { id: 'aixc-remember', type: 'checkbox' })
   rememberInput.checked = settings.remember
   const keyStatus = h('span', { class: 'aixc-settings__status' })
-  const saveKeyButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--small' }, 'Save settings')
-  const forgetKeyButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--small aixc-btn--ghost' }, 'Remove key')
-  const builtInButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--small aixc-btn--ghost' }, 'Use built-in layout')
+  const saveKeyButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--small' }, t('Save settings'))
+  const forgetKeyButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--small aixc-btn--ghost' }, t('Remove key'))
+  const builtInButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--small aixc-btn--ghost' }, t('Use built-in layout'))
 
   const settingsPanel = h(
     'details',
     { class: 'aixc-settings' },
-    h('summary', null, 'Gemini settings', keyStatus),
+    h('summary', null, t('Gemini settings'), keyStatus),
     h(
       'div',
       { class: 'aixc-settings__body' },
       h('label', { class: 'aixc-field', for: 'aixc-key' }, h('span', null, 'API key')),
-      h('label', { class: 'aixc-field', for: 'aixc-model' }, h('span', null, 'Model'), modelInput),
-      h('label', { class: 'aixc-check', for: 'aixc-remember' }, rememberInput, h('span', null, 'Remember the key in this browser')),
+      h('label', { class: 'aixc-field', for: 'aixc-model' }, h('span', null, t('Model')), modelInput),
+      h('label', { class: 'aixc-check', for: 'aixc-remember' }, rememberInput, h('span', null, t('Remember the key in this browser'))),
       h(
         'p',
         { class: 'aixc-warning' },
-        'This prototype calls Gemini straight from your browser, so the key is readable by anyone using this page. Use a restricted test key, and never deploy this publicly without a server-side proxy.',
+        t('This prototype calls Gemini straight from your browser, so the key is readable by anyone using this page. Use a restricted test key, and never deploy this publicly without a server-side proxy.'),
       ),
       h('div', { class: 'aixc-settings__actions' }, saveKeyButton, forgetKeyButton, builtInButton),
     ),
@@ -180,11 +181,11 @@ export const initComposer = ({ adapter, regions }) => {
     else keyInput.remove()
   })
 
-  const closeButton = h('button', { type: 'button', class: 'aixc-icon-btn', 'aria-label': 'Close composer' }, pathIcon(ICON_CLOSE, 'aixc-icon'))
+  const closeButton = h('button', { type: 'button', class: 'aixc-icon-btn', 'aria-label': t('Close composer') }, pathIcon(ICON_CLOSE, 'aixc-icon'))
   const form = h(
     'form',
     { class: 'aixc-composer__form', novalidate: null },
-    h('label', { class: 'aixc-form-label', for: 'aixc-prompt' }, 'Or describe your own'),
+    h('label', { class: 'aixc-form-label', for: 'aixc-prompt' }, t('Or describe your own')),
     promptInput,
     h('div', { class: 'aixc-composer__actions' }, submitButton, cancelButton, progress),
     message,
@@ -192,11 +193,11 @@ export const initComposer = ({ adapter, regions }) => {
   const composer = h(
     'section',
     { id: 'aixc-composer', class: 'aixc-composer', 'aria-labelledby': 'aixc-composer-title', hidden: true },
-    h('header', { class: 'aixc-composer__head' }, h('h2', { id: 'aixc-composer-title', class: 'aixc-composer__title' }, 'Reimagine this page'), closeButton),
+    h('header', { class: 'aixc-composer__head' }, h('h2', { id: 'aixc-composer-title', class: 'aixc-composer__title' }, t('Reimagine this page')), closeButton),
     h(
       'p',
       { class: 'aixc-composer__hint', id: 'aixc-prompt-hint' },
-      'Pick an experience or describe one. The same Vodafone services, descriptions and links are recomposed; nothing is added.',
+      t('Pick an experience or describe one. The same Vodafone services, descriptions and links are recomposed; nothing is added.'),
     ),
     templatesPanel,
     form,
@@ -204,25 +205,25 @@ export const initComposer = ({ adapter, regions }) => {
   )
 
   /* --------------------------------------------------------------- viewbar */
-  const originalButton = h('button', { type: 'button', class: 'aixc-seg', 'aria-pressed': 'true' }, 'Original')
-  const reimaginedButton = h('button', { type: 'button', class: 'aixc-seg', 'aria-pressed': 'false' }, 'Reimagined')
+  const originalButton = h('button', { type: 'button', class: 'aixc-seg', 'aria-pressed': 'true' }, t('Original'))
+  const reimaginedButton = h('button', { type: 'button', class: 'aixc-seg', 'aria-pressed': 'false' }, t('Reimagined'))
   const metaLabel = h('span', { class: 'aixc-viewbar__label' })
   const metaSource = h('span', { class: 'aixc-viewbar__source' })
-  const editButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--text' }, 'Change', h('span', { class: 'aixc-wide-only' }, '\u00a0experience'))
-  const resetButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--text' }, 'Reset')
+  const editButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--text' }, t('Change'), h('span', { class: 'aixc-wide-only' }, lang === 'ar' ? '' : '\u00a0experience'))
+  const resetButton = h('button', { type: 'button', class: 'aixc-btn aixc-btn--text' }, t('Reset'))
   const viewNote = h('p', { class: 'aixc-viewnote', hidden: true })
   viewbar.append(
     h(
       'div',
       { class: 'aixc-viewbar__inner' },
-      h('div', { class: 'aixc-segmented', role: 'group', 'aria-label': 'Page view' }, originalButton, reimaginedButton),
+      h('div', { class: 'aixc-segmented', role: 'group', 'aria-label': t('Page view') }, originalButton, reimaginedButton),
       h('p', { class: 'aixc-viewbar__meta' }, metaLabel, metaSource),
       h('div', { class: 'aixc-viewbar__actions' }, editButton, resetButton),
     ),
   )
   // The note scrolls with the page instead of living in the sticky bar.
   viewbar.after(viewNote)
-  viewbar.setAttribute('aria-label', 'Page view controls')
+  viewbar.setAttribute('aria-label', t('Page view controls'))
   viewbar.setAttribute('role', 'region')
 
   document.body.append(launcher, composer, liveRegion)
@@ -242,7 +243,7 @@ export const initComposer = ({ adapter, regions }) => {
   }
 
   const updateKeyStatus = () => {
-    keyStatus.textContent = settings.apiKey ? (settings.fromEnv ? 'Key from .env.local' : 'Key added') : 'Not configured'
+    keyStatus.textContent = settings.apiKey ? (settings.fromEnv ? t('Key from .env.local') : t('Key added')) : t('Not configured')
     keyStatus.dataset.state = settings.apiKey ? 'ok' : 'missing'
     forgetKeyButton.hidden = !settings.apiKey || settings.fromEnv
   }
@@ -282,7 +283,7 @@ export const initComposer = ({ adapter, regions }) => {
     launcher.setAttribute('aria-expanded', 'true')
     syncLauncher()
     if (!hasContent) {
-      showMessage('This page has no content that can be recomposed.', 'error')
+      showMessage(t('This page has no content that can be recomposed.'), 'error')
       submitButton.disabled = true
       templateButtons.forEach((button) => (button.disabled = true))
     }
@@ -328,9 +329,9 @@ export const initComposer = ({ adapter, regions }) => {
   }
 
   const describeSource = (meta) => {
-    if (meta.source === 'template') return 'Ready-made template, no AI call'
-    if (meta.source === 'built-in') return 'Built-in layout, not AI-generated'
-    return `Composed by Gemini (${meta.model})`
+    if (meta.source === 'template') return t('Ready-made template, no AI call')
+    if (meta.source === 'built-in') return t('Built-in layout, not AI-generated')
+    return t('Composed by Gemini ({model})', { model: meta.model })
   }
 
   const renderSchema = (result, meta) => {
@@ -349,12 +350,12 @@ export const initComposer = ({ adapter, regions }) => {
     syncHeaderOffset()
     syncLauncher()
     templateButtons.forEach((button) => button.setAttribute('aria-pressed', String(meta.source === 'template' && button.dataset.template === meta.template?.id)))
-    metaLabel.textContent = experienceLabel(result.schema.experience)
+    metaLabel.textContent = t(experienceLabel(result.schema.experience))
     metaSource.textContent = describeSource(meta)
 
     const notes = []
     if (result.schema.scope === 'filtered') {
-      notes.push(`Filtered view: ${result.stats.placedItems} of ${result.stats.totalItems} items shown, as requested. Original shows everything.`)
+      notes.push(t('Filtered view: {placed} of {total} items shown, as requested. Original shows everything.', { placed: result.stats.placedItems, total: result.stats.totalItems }))
     }
     if (result.stats.restoredItems > 0 && meta.source !== 'built-in') {
       notes.push(`${result.stats.restoredItems} ${result.stats.restoredItems === 1 ? 'item' : 'items'} left out by the layout ${result.stats.restoredItems === 1 ? 'was' : 'were'} added back so nothing is lost.`)
@@ -376,16 +377,16 @@ export const initComposer = ({ adapter, regions }) => {
     const stayOnOriginal = state.userPickedOriginalWhileGenerating
     state.userPickedOriginalWhileGenerating = false
     if (stayOnOriginal) {
-      announce('Your reimagined layout is ready. Choose Reimagined to see it.')
-      showMessage('Your reimagined layout is ready. Choose Reimagined to see it.', 'info')
+      announce(t('Your reimagined layout is ready. Choose Reimagined to see it.'))
+      showMessage(t('Your reimagined layout is ready. Choose Reimagined to see it.'), 'info')
       return
     }
     if (state.isComposerOpen) closeComposer({ restoreFocus: false })
     showView('reimagined', { focusContent: true })
     const extra = result.schema.unsupportedRequest
-      ? ` That exact experience isn't available yet, so your request was applied as ${experienceLabel(result.schema.experience).toLowerCase()}.`
+      ? ` ${t("That exact experience isn't available yet, so your request was applied as {name}.", { name: lang === 'ar' ? t(experienceLabel(result.schema.experience)) : experienceLabel(result.schema.experience).toLowerCase() })}`
       : ''
-    announce(`${experienceLabel(result.schema.experience)} ready. ${describeSource(meta)}.${extra}`)
+    announce(`${t('{name} ready.', { name: t(experienceLabel(result.schema.experience)) })} ${describeSource(meta)}.${extra}`)
     if (extra) {
       viewNote.textContent = `${viewNote.textContent} ${extra.trim()}`.trim()
       viewNote.hidden = false
@@ -420,18 +421,18 @@ export const initComposer = ({ adapter, regions }) => {
 
   const failureText = (error) => {
     if (error instanceof GeminiError) return error.message
-    return 'Gemini returned a layout that could not be used.'
+    return t('Gemini returned a layout that could not be used.')
   }
 
   /* ---------------------------------------------------------------- submit */
   const submit = async (rawPrompt, { forceBuiltIn = false } = {}) => {
     const prompt = rawPrompt.trim()
     if (!hasContent) {
-      showMessage('This page has no content that can be recomposed.', 'error')
+      showMessage(t('This page has no content that can be recomposed.'), 'error')
       return
     }
     if (!prompt && !forceBuiltIn) {
-      showMessage('Describe the presentation you want, or pick a suggestion.', 'error')
+      showMessage(t('Describe the presentation you want, or pick a suggestion.'), 'error')
       promptInput.focus()
       return
     }
@@ -445,7 +446,7 @@ export const initComposer = ({ adapter, regions }) => {
     if (matched) {
       applyTemplate(matched, {
         prompt,
-        note: `Gemini is not configured, so your prompt was matched to the ready-made ${matched.name.toLowerCase()} experience.`,
+        note: t('Gemini is not configured, so your prompt was matched to the ready-made {name} experience.', { name: lang === 'ar' ? t(matched.name) : matched.name.toLowerCase() }),
       })
       return
     }
@@ -453,8 +454,8 @@ export const initComposer = ({ adapter, regions }) => {
     if (forceBuiltIn || !settings.apiKey) {
       apply(builtInResult(prompt), { source: 'built-in', prompt })
       if (!forceBuiltIn) {
-        showMessage('Showing the built-in layout. Add a Gemini API key in Gemini settings to compose from your prompt.', 'info')
-        viewNote.textContent = 'Gemini is not configured, so the built-in magazine layout is shown. Add a key in Gemini settings to compose from your prompt.'
+        showMessage(t('Showing the built-in layout. Add a Gemini API key in Gemini settings to compose from your prompt.'), 'info')
+        viewNote.textContent = t('Gemini is not configured, so the built-in magazine layout is shown. Add a key in Gemini settings to compose from your prompt.')
         viewNote.hidden = false
       }
       return
@@ -470,7 +471,7 @@ export const initComposer = ({ adapter, regions }) => {
     state.abortController = new AbortController()
     state.userPickedOriginalWhileGenerating = false
     setGenerating(true)
-    announce('Composing your page.')
+    announce(t('Composing your page.'))
 
     try {
       const raw = await requestComposition({
@@ -494,7 +495,7 @@ export const initComposer = ({ adapter, regions }) => {
     } catch (error) {
       if (seq !== state.requestSeq) return
       if (error instanceof GeminiError && error.code === 'aborted') {
-        showMessage('Request cancelled. Your current view is unchanged.', 'info')
+        showMessage(t('Request cancelled. Your current view is unchanged.'), 'info')
         return
       }
       state.lastError = error
@@ -507,7 +508,7 @@ export const initComposer = ({ adapter, regions }) => {
       } else {
         apply(builtInResult(prompt), { source: 'built-in', prompt })
         const note = unsupported
-          ? 'That experience is not available yet, so the built-in magazine layout is shown.'
+          ? t('That experience is not available yet, so the built-in magazine layout is shown.')
           : `${reason} Showing the built-in magazine layout instead.`
         viewNote.textContent = note
         viewNote.hidden = false
@@ -546,7 +547,7 @@ export const initComposer = ({ adapter, regions }) => {
     viewNote.hidden = true
     showMessage('')
     syncLauncher()
-    announce('Page reset to the original view.')
+    announce(t('Page reset to the original view.'))
     launcher.focus()
   }
 
@@ -583,7 +584,7 @@ export const initComposer = ({ adapter, regions }) => {
     persistSettings(settings)
     keyInput.value = ''
     updateKeyStatus()
-    showMessage(settings.apiKey ? 'Gemini settings saved.' : 'Model saved. Add an API key to use Gemini.', 'info')
+    showMessage(settings.apiKey ? t('Gemini settings saved.') : t('Model saved. Add an API key to use Gemini.'), 'info')
   })
   forgetKeyButton.addEventListener('click', () => {
     settings.apiKey = envValue('VITE_GEMINI_API_KEY')
