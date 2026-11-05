@@ -98,6 +98,33 @@ test('an unchanged clone publishes nothing and the vision cache is reused', asyn
 	assert.equal(report.describe.cacheHits, 8)
 })
 
+// B-22: one element screenshot that timed out (a loaded machine) made an unchanged site publish a new
+// version without that picture's description; the full test run failed the test above now and then.
+test('a screenshot that times out once is retried, so an unchanged clone still publishes nothing', async () => {
+	const probe = await browser.newPage()
+	const proto = Object.getPrototypeOf(probe.locator('body'))
+	await probe.close()
+	const shot = proto.screenshot
+	let fail = 1
+	proto.screenshot = async function (this: unknown, ...a: unknown[]) {
+		if (fail > 0) {
+			fail--
+			throw new Error('locator.screenshot: Timeout 5000ms exceeded (test)')
+		}
+		return shot.apply(this, a)
+	}
+	try {
+		const calls = vision.calls.length
+		const report = await runIngest({ site, platform: platform(), store, browser, activate: true })
+		assert.equal(fail, 0, 'the injected timeout was hit')
+		assert.equal(report.unchanged, true)
+		assert.equal(report.published, false)
+		assert.equal(vision.calls.length, calls)
+	} finally {
+		proto.screenshot = shot
+	}
+})
+
 test('editing a clone produces a new version with a diff', async () => {
 	const file = path.join(ROOT, 'fixtures/sites/demo-telco/web/en/offers.html')
 	const original = fs.readFileSync(file, 'utf8')

@@ -131,7 +131,10 @@ export async function crawlSite(site: SiteConfig, opts: CrawlOptions): Promise<C
 				for (const v of snap.visuals) {
 					if (v.hidden || v.width * v.height > 4096 * 4096) continue
 					try {
-						const png = await page.locator(v.css[0]).first().screenshot({ timeout: 5000, animations: 'disabled' })
+						// Retried once with more time: a missed screenshot drops the picture's description and
+						// changes the manifest, so an unchanged site would publish a new version (B-22).
+						const shoot = (timeout: number) => page.locator(v.css[0]).first().screenshot({ timeout, animations: 'disabled' })
+						const png = await shoot(5000).catch(() => shoot(15_000))
 						const sha256 = createHash('sha256').update(png).digest('hex')
 						const file = `visuals/${key}-${v.index}.png`
 						fs.writeFileSync(path.join(dir, file), png)
