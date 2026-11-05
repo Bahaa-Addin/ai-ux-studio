@@ -1,8 +1,10 @@
 # VoiceTut × Vodafone Services
 
-**Migration status (2026-10-26):** Modal image built successfully, but GPU deployment is blocked until a payment method is added. The page is configured for the intended Modal URL; that API is not live or verified yet. Local model downloads and the inference environment have been removed at the user's request; benchmark evidence and recordings are retained. Before retrying deployment, verify credits and set a $0 out-of-pocket spending limit.
+**Status (2026-11-05):** ported onto `integration/main` behind a flag. The Services clone loads it only with `?demo=voicetut` (`vodafone-services-clone/src/voicetut-loader.js`); without the flag the page is unchanged. **Neither backend is live today:** the author's public Hugging Face Space answers "The space is paused" (HTTP 503), and the Modal deployment was never activated (blocked on billing since 2026-10-26; its URL answers "invalid function call"). The panel says "Could not connect" until one of them runs. Local model downloads were removed on 2026-10-26; benchmark evidence and recordings are kept.
 
-Runs on `experiment/text-to-speech` alongside the earlier unchanged Chrome extension. No extension is needed for this new panel.
+Owner's choices for the port (2026-11-05): the public Space is the default backend (blank endpoint field), and the earlier GPL-3.0 Chrome extension stays in `experiments/text-to-speech/extension/` (not loaded by any page).
+
+**Licences to clear before any use beyond the owner's demo:** VoiceTut's card declares Apache-2.0, but it is fine-tuned from OmniVoice, whose pretrained weights are **CC-BY-NC** (non-commercial). The Chrome extension is **GPL-3.0**.
 
 ## Try it
 
@@ -11,9 +13,7 @@ cd vodafone-services-clone
 node scripts/serve.mjs --port 5181
 ```
 
-Open http://127.0.0.1:5181/. The **VoiceTut · تجربة الصوت** panel is configured to connect to the Modal service by default (activation pending; see status above). No local speech model is required. The first connection after inactivity can take a few minutes while the GPU and model start.
-
-The endpoint is `https://elbalashonyb-vodafone--vodafone-voicetut.modal.run`. Clear the field and select **Reconnect** only if you want to use the author's official hosted demo instead.
+Open http://127.0.0.1:5181/?demo=voicetut. In the voice-guide demo (`npm run demo:trail`), open https://web.vodafone.com.eg/en/services?demo=voicetut. The **VoiceTut · تجربة الصوت** tab sits in the bottom-left corner, clear of the guide's microphone, the accessibility button and the Pocket; press it to open the panel. It connects to the public Space by default; paste the Modal URL (`https://elbalashonyb-vodafone--vodafone-voicetut.modal.run`) or a loopback endpoint and select **Reconnect** to use another. The first connection after inactivity can take a few minutes. The panel and its typed text are never recorded in the Exploration Trail (`data-vg`).
 
 1. Start with **Mohammed**, **Egyptian / mixed**, 32 steps, 1× speed.
 2. Use the mixed sample: `ممكن تعمل update للباقة من Ana Vodafone، وتراجع الـ balance قبل ما تعمل subscribe.`
@@ -35,10 +35,11 @@ Use the native audio controls for playback, pause and scrubbing. **Cancel wait**
 ## Integration
 
 - Engine: [VoiceTut-TTS](https://huggingface.co/mohammedaly22/VoiceTut-TTS), fine-tuned from OmniVoice. VoiceTut's card declares Apache-2.0, while the [OmniVoice card](https://huggingface.co/k2-fsa/OmniVoice) says its pretrained weights are CC-BY-NC; clarify those upstream terms before commercial use. The earlier unrelated Chrome extension retains GPL-3.0.
-- Backend: the Modal Gradio API by default, the author's [official Space](https://huggingface.co/spaces/mohammedaly22/VoiceTut-TTS) when the endpoint is blank, or the temporary Kaggle Gradio endpoint, through `/info` and `/synthesize`. No custom voice cloning or uploaded reference recordings.
+- Backend: the author's [official Space](https://huggingface.co/spaces/mohammedaly22/VoiceTut-TTS) by default (blank endpoint), the Modal Gradio API when its URL is entered, or the temporary Kaggle Gradio endpoint, through `/info` and `/synthesize`. No custom voice cloning or uploaded reference recordings.
 - Frontend: native browser fetch + streaming result parser, no added packages or secrets. HTTP is accepted only for loopback hostnames; hosted endpoints still require HTTPS.
 - `src/voicetut/client.js`: API calls, streamed job events, errors, endpoint validation, and same-endpoint audio URL validation.
-- `src/voicetut/demo.js` / `demo.css`: panel, voices, test presets, selected-text capture, playback, timeouts and request cancellation.
+- `src/voicetut-loader.js`: loads the experiment only with `?demo=voicetut`; a failed start is caught.
+- `src/voicetut/demo.js` / `demo.css`: panel (closed tab bottom-left, Vodafone tokens and faces), voices, test presets, selected-text capture, playback, timeouts and request cancellation.
 - `src/voicetut/sections.js`: section-only speech text and accessible reading controls, mounted onto the existing service sections.
 - The client verifies the service is not in mock mode and reads its live speaker list. Public hosting can change or disappear; this is not a pinned model deployment.
 - Info timeout: 60 seconds. Generation timeout: 4 minutes. Public GPU queues and quotas apply. Errors remain visible; there is no fallback to browser voices or simulated audio.

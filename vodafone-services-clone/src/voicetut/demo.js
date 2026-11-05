@@ -1,4 +1,4 @@
-import { callVoiceTut, audioURL, SPACE, MODAL_ENDPOINT, voiceTutBase, isVoiceTutLoopback } from './client.js'
+import { callVoiceTut, audioURL, SPACE, voiceTutBase, isVoiceTutLoopback } from './client.js'
 import { vodafoneServicesPage } from '../content/vodafone-services.js'
 import { mountSectionReaders } from './sections.js'
 
@@ -10,10 +10,13 @@ const samples = {
 
 const panel = document.createElement('details')
 panel.className = 'voicetut-demo'
-panel.open = true
+// Starts as a small tab in the bottom-left corner, clear of the guide and the Pocket (2026-11-05).
+panel.open = false
+// Typed text and controls are never part of a recorded journey (Exploration Trail, ADR-0037).
+panel.dataset.vg = ''
 panel.innerHTML = `<summary>VoiceTut · تجربة الصوت</summary>
   <form>
-    <p>Egyptian Arabic + English, powered by VoiceTut on Modal.</p>
+    <p>Egyptian Arabic + English, powered by VoiceTut: the public Hugging Face demo, or the endpoint you enter.</p>
     <label for="vt-endpoint">VoiceTut endpoint / عنوان الخدمة</label>
     <input id="vt-endpoint" type="url" inputmode="url" autocomplete="url" placeholder="VoiceTut service URL">
     <small>The cloud voice starts when needed. The first connection after inactivity can take a few minutes. Monthly usage limits apply.</small>
@@ -57,7 +60,9 @@ const cancel = find('#vt-cancel')
 const reconnect = find('#vt-connect')
 const status = find('#vt-status')
 const endpoint = find('#vt-endpoint')
-endpoint.value = MODAL_ENDPOINT
+// Blank means the author's public Hugging Face Space (owner's choice, 2026-11-05: the Modal
+// deployment is not live). Paste the Modal URL here once it is.
+endpoint.value = ''
 const player = find('audio')
 const link = find('#vt-open-audio')
 let active = null
