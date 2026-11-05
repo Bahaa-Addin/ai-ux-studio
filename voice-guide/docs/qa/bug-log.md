@@ -188,3 +188,11 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** a failed element screenshot is retried once with a 15-second timeout before it is logged and skipped (`jobs/crawler/crawl.ts`).
 - **Test:** `tests/integration/ingest.test.ts`, "a screenshot that times out once is retried, so an unchanged clone still publishes nothing" (fails without the fix, at `report.unchanged`). Then three full `npm test` runs in a row: 148/148 each (2026-11-05, Node 22.23.4, Postgres 16.15, Ubuntu 22.04 arm64 VM).
 - **Not proven:** that this is the only cause of the original container failure; its log was not kept.
+
+## B-23 In the reimagined view the journey pill covered "Change experience" and "Reset"
+
+- **Found:** 2026-11-05, by the demo walkthrough (`tools/demo-walkthrough.ts`) on the Services clone with the guide: after choosing a ready-made experience the view bar's "Change experience" (1103–1242 × 112–152 at 1366×900) and "Reset" were under the guide's fixed "Your journey" pill; a click on them landed on the guide. Same in Arabic (both mirror to the left) and on phones ("Reset" at 303 × 92).
+- **Cause:** the view bar is sticky right under the header, which is exactly where the pill floats (top right; top left in Arabic). The launcher was moved below the pill, but the view bar that replaces it was not. In Arabic the launcher also stayed top right while the pill moved left.
+- **Fix:** with the trail on the page (`data-vg-trail`), the view bar keeps its inline end free for the pill (290px; 76px under 768px) (`vodafone-services-clone/src/aixc/aixc.css`); in Arabic the launcher sits top left, under the pill (`src/rtl.css`).
+- **Test:** `tests/e2e/pocket-journey.e2e.test.ts`, "Reimagine: the view bar and its launcher stay clear of the journey pill, in English and Arabic" (fails without the fix: "Change experience", "Reset").
+

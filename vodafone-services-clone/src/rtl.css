@@ -39,3 +39,16 @@
 
 /* Carousel arrows point the way they move. */
 [dir='rtl'] .carousel-frame__arrow { transform: scaleX(-1); }
+
+/* "Reimagine this page" sits right below the guide's "Your journey" pill, which is top left in
+   Arabic (aixc.css places both top right for English). */
+[dir='rtl'] .aixc-launcher {
+  right: auto;
+  left: max(16px, env(safe-area-inset-left));
+}
+
+@media (max-width: 767px) {
+  [dir='rtl'] .aixc-launcher {
+    left: max(12px, env(safe-area-inset-left));
+  }
+}

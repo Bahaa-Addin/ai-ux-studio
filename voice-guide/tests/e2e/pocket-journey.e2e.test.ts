@@ -250,6 +250,39 @@ test('Arabic: the pill on an Arabic page opens the journey in the Arabic Pocket,
 	}
 })
 
+test('Reimagine: the view bar and its launcher stay clear of the journey pill, in English and Arabic (B-23)', async () => {
+	const { b, page } = await launch({ consented: true })
+	try {
+		for (const lang of ['en', 'ar']) {
+			await page.goto(`${V}/${lang}/services`, { waitUntil: 'domcontentloaded' })
+			await recording(page)
+			await page.waitForFunction(() => document.documentElement.dataset.vgTrail === 'on')
+			const pill = (await tr(page, '.tr-pill').boundingBox())!
+			const launcher = (await page.locator('.aixc-launcher').boundingBox())!
+			assert.ok(launcher.y >= pill.y + pill.height, `${lang}: the launcher sits below the pill`)
+			assert.ok(Math.abs(launcher.x + (lang === 'ar' ? 0 : launcher.width) - (pill.x + (lang === 'ar' ? 0 : pill.width))) <= 2, `${lang}: on the pill's side`)
+			await page.locator('.aixc-launcher').click()
+			await page.locator('.aixc-template[data-template=magazine]').click()
+			await page.waitForSelector('#experience-output .aixc-magazine')
+			await page.waitForTimeout(400)
+			// Every button of the view bar is what you press at its centre, not the guide's pill.
+			const covered = await page.evaluate(() =>
+				[...document.querySelectorAll('.aixc-viewbar button')]
+					.filter((el) => (el as HTMLElement).offsetParent)
+					.filter((el) => {
+						const r = el.getBoundingClientRect()
+						const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+						return !(top === el || el.contains(top))
+					})
+					.map((el) => el.textContent!.trim()),
+			)
+			assert.deepEqual(covered, [], `${lang}: view bar buttons under the pill`)
+		}
+	} finally {
+		await b.close()
+	}
+})
+
 test('keyboard and reduced motion: slider keys, Escape closes the journey before the Pocket, nothing animates', async () => {
 	const { b, page } = await launch({ consented: true, reducedMotion: true })
 	try {

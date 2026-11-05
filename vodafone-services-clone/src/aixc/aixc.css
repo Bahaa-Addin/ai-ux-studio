@@ -603,6 +603,19 @@
   margin-inline-start: auto;
 }
 
+/* With the Voice Guide's trail on the page, its "Your journey" pill floats over the end of this
+   bar (top right; top left in Arabic) and covered "Change experience" and "Reset" (B-24): the
+   bar keeps that end free. The pill is up to 270px wide with its dots, 62px on phones. */
+:root[data-vg-trail] .aixc-viewbar__inner {
+  padding-inline-end: 290px;
+}
+
+@media (max-width: 767px) {
+  :root[data-vg-trail] .aixc-viewbar__inner {
+    padding-inline-end: 76px;
+  }
+}
+
 /* Notes about the current layout (filtered, restored items, built-in). Not sticky. */
 .aixc-viewnote {
   margin: 0;
