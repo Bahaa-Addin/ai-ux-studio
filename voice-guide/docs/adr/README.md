@@ -43,6 +43,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0038](0038-trail-timeline-inside-the-guide-and-chips-through-the-turn-pipeline.md) | The timeline lives in the guide's shadow root with an explicit state machine; question chips are ordinary turns with a hint the router verifies | UI, understanding | Accepted for the prototype |
 | [0039](0039-trail-across-origins-boundaries-not-uploads.md) | Across origins the trail shows boundaries; replays are never uploaded to join them | Session continuity, privacy | Accepted for the prototype |
 | [0040](0040-trail-journey-hosted-in-the-pocket.md) | On Vodafone the journey is shown in the Services clone's Pocket, in its own design; the demo runs on Vodafone pages only | UI, demo | Accepted for the prototype |
+| [0041](0041-page-watch-announcements-in-the-watch-chunk.md) | Page-watch announcements load with the watch chunk, not with guide.js (size budget) | SDK size, page watch | Accepted |
 
 ## Changes to the demo plan these decisions made
 

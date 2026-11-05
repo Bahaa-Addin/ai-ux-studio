@@ -1,7 +1,7 @@
 /**
- * Page watch from the guide (ADR-0023), loaded only when the person accepts a watch offer (size
- * budget, T-504): Web Push where the browser can subscribe, live delivery otherwise; and the
- * toast that shows a change.
+ * Page watch from the guide (ADR-0023), loaded only when the person accepts a watch offer or a
+ * watched section changes (size budget, T-504, ADR-0041): Web Push where the browser can
+ * subscribe, live delivery otherwise; and the announcement and toast that show a change.
  * Defines window.__vgWatch.
  */
 
@@ -67,4 +67,29 @@ export function toast(root: ShadowRoot, el: HTMLElement, title: string, body: st
 	toastTimer = window.setTimeout(() => el.classList.remove('on'), 9000)
 }
 
-;(window as any).__vgWatch = { createWatch, toast }
+/**
+ * Announces one page-watch change from the guide's event stream (ADR-0023), once: the stream
+ * replays its backlog on every page load. Toast, spoken line, and a system notification for live
+ * watches (push watches are shown by the service worker). Lives here, not in guide.js (ADR-0041).
+ */
+export function notify(siteKey: string, root: ShadowRoot, el: HTMLElement, say: (text: string) => void, ev: { at: string; seq?: number; attrs: Record<string, any> }): void {
+	const key = `vg:${siteKey}:notified`
+	let seen = 0
+	try {
+		seen = JSON.parse(sessionStorage.getItem(key) || '0')
+	} catch {}
+	if ((ev.seq ?? 0) <= seen || Date.now() - Date.parse(ev.at) > 5 * 60_000) return
+	try {
+		sessionStorage.setItem(key, JSON.stringify(ev.seq ?? 0))
+	} catch {}
+	const a = ev.attrs
+	toast(root, el, a.title, a.body)
+	say(`${a.title}. ${a.body}`)
+	if ('Notification' in window && Notification.permission === 'granted' && a.channel !== 'push') {
+		try {
+			new Notification(a.title, { body: a.body, lang: a.lang, dir: a.lang === 'ar' ? 'rtl' : 'ltr', tag: a.watchId })
+		} catch {}
+	}
+}
+
+;(window as any).__vgWatch = { createWatch, toast, notify }

@@ -49,7 +49,6 @@ interface SessionResponse {
 const STORE_KEY = (siteKey: string) => `vg:${siteKey}:session`
 const OPEN_KEY = (siteKey: string) => `vg:${siteKey}:open`
 const LOG_KEY = (siteKey: string) => `vg:${siteKey}:log`
-const NOTIFIED_KEY = (siteKey: string) => `vg:${siteKey}:notified`
 
 function readStore<T>(key: string, fallback: T): T {
 	try {
@@ -634,14 +633,6 @@ export class Guide {
 		return this.#chunk('watch')
 	}
 
-	async #toast(title: string, body: string): Promise<void> {
-		try {
-			;(await this.#watchChunk()).toast(this.ui.root, this.ui.toastEl, title, body)
-		} catch (e) {
-			console.warn('[voice-guide] toast', e)
-		}
-	}
-
 	async #createWatch(): Promise<void> {
 		const pw = this.#pendingWatch
 		if (!pw) return
@@ -674,20 +665,10 @@ export class Guide {
 					return
 				}
 				this.#keep(ev)
-				// The stream replays its backlog on every page load; announce each change once.
-				const seen = readStore<number>(NOTIFIED_KEY(this.o.siteKey), 0)
-				const stale = Date.now() - Date.parse(ev.at) > 5 * 60_000
-				if ((ev.seq ?? 0) <= seen || stale) return
-				writeStore(NOTIFIED_KEY(this.o.siteKey), ev.seq ?? 0)
-				const a = ev.attrs
-				void this.#toast(a.title, a.body)
-				void this.#say(`${a.title}. ${a.body}`)
-				// Push watches are shown by the service worker; live ones by the page.
-				if ('Notification' in window && Notification.permission === 'granted' && a.channel !== 'push') {
-					try {
-						new Notification(a.title, { body: a.body, lang: a.lang, dir: a.lang === 'ar' ? 'rtl' : 'ltr', tag: a.watchId })
-					} catch {}
-				}
+				// A page-watch change: announced by the watch chunk (ADR-0041).
+				this.#watchChunk()
+					.then((m) => m.notify(this.o.siteKey, this.ui.root, this.ui.toastEl, (s: string) => void this.#say(s), ev))
+					.catch((e) => console.warn('[voice-guide] notify', e))
 			},
 			this.o.events || 'auto',
 		)
