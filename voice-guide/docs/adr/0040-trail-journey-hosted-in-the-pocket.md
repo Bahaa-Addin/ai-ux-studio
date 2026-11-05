@@ -1,6 +1,6 @@
 # ADR-0040: On Vodafone, the journey is shown in the Services clone's Pocket, in its own design; the demo runs on Vodafone pages only
 
-- Status: Accepted for the prototype (2026-11-03)
+- Status: Accepted for the prototype (2026-11-03); amended by [ADR-0043](0043-arabic-services-clone-and-journey-host-by-language.md) (2026-11-05): an Arabic clone at /ar/services, host chosen by language
 - Date: 2026-11-03
 - Area: UI, demo; amends ADR-0038 (where the timeline lives) for sites that host the journey
 - Spec: [SPEC-06](../specs/SPEC-06-exploration-trail.md) §3a

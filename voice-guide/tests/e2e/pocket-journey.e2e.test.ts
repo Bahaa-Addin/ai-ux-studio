@@ -66,7 +66,7 @@ async function launch(o: { consented?: boolean; phone?: boolean; reducedMotion?:
 		channel: 'chromium',
 		xray: 'off',
 		replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'),
-		clone: { path: '/en/services', dir: CLONE },
+		clone: { path: '/en/services', dir: CLONE, pages: { '/ar/services': 'ar/index.html' } },
 		initScripts: [SPEECH_STUB, ...(o.consented ? [CONSENTED] : [])],
 		viewport: o.phone ? { width: 390, height: 844 } : { width: 1366, height: 860 },
 	})
@@ -220,6 +220,31 @@ test('the pill on any other Vodafone page takes you to the Pocket and opens the 
 		assert.equal(await page.evaluate(() => document.body.dataset.pocketView), 'open')
 		assert.equal(await tr(page, '.tr-sheet:not([hidden])').count(), 0)
 		assert.match((await page.locator('.pocket-journey-rail').getAttribute('aria-valuetext'))!, /^Page 2 of 3: Cash/)
+	} finally {
+		await b.close()
+	}
+})
+
+test('Arabic: the pill on an Arabic page opens the journey in the Arabic Pocket, right to left (ADR-0043)', async () => {
+	const { b, page } = await launch({ consented: true })
+	try {
+		await page.goto(`${V}/ar/home`, { waitUntil: 'domcontentloaded' })
+		await recording(page)
+		await page.waitForTimeout(1500)
+		await page.goto(`${V}/ar/vodafone-cash`, { waitUntil: 'domcontentloaded' })
+		await recording(page)
+		await page.waitForTimeout(1500)
+		await tr(page, '.tr-pill').click()
+		await page.waitForURL(`${V}/ar/services#journey`)
+		await layerOpen(page)
+		assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl')
+		assert.equal(await page.evaluate(() => document.body.dataset.pocketView), 'open')
+		assert.equal(await tr(page, '.tr-sheet:not([hidden])').count(), 0)
+		assert.match((await page.locator('.pocket-back').first().textContent())!, /ارجع للخدمات/)
+		const value = (await page.locator('.pocket-journey-rail').getAttribute('aria-valuetext'))!
+		assert.match(value, /[\u0600-\u06FF]/, `the journey speaks Arabic: ${value}`)
+		// The clone's sections still carry the destinations they recreate, in Arabic too.
+		assert.equal(await page.locator('[data-vg-destination="web.services.vodafone-cash"]').count(), 1)
 	} finally {
 		await b.close()
 	}

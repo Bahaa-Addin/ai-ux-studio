@@ -220,8 +220,9 @@ The trail is **off** for `vodafone-eg` (D2). To show it:
 
 | Where | Command | Then |
 |---|---|---|
-| Saved Vodafone pages, no Postgres | `npm run demo:trail` | Opens `/en/home` in the demo browser. Press the pill, **Remember my journey**, visit a few pages (Cash, Internet Bundles), then **Services** (the clone with Pocket at `/en/services`). Rest on Vodafone Cash for a few seconds, then press the pill: the page turns to the Pocket and the journey floats in. Drag the slider, try a question chip. Questions come from `config/experience/vodafone-eg.profile.json` (knowledge version `20261023-122606-5b2080`) |
-| The same, any start page | `npm run demo:live -- --replay --trail [--start <url>]` | `--clone off` serves the saved Services page instead of the clone (the journey then has no host and the pill only goes to `/en/services`) |
+| Saved Vodafone pages, no Postgres | `npm run demo:trail` | Opens `/en/home` in the demo browser. Press the pill, **Remember my journey**, visit a few pages (Cash, Internet Bundles), then **Services** (the clone with Pocket at `/en/services`; its Arabic page is `/ar/services`, ADR-0043). Rest on Vodafone Cash for a few seconds, then press the pill: the page turns to the Pocket and the journey floats in. Drag the slider, try a question chip. Questions come from `config/experience/vodafone-eg.profile.json` (knowledge version `20261023-122606-5b2080`) |
+| The same, any start page | `npm run demo:live -- --replay --trail [--start <url>]` | `--clone off` serves the saved Services page instead of the clone (the journey then has no host and the pill only goes to `/en/services` or `/ar/services`) |
+| The same, in Arabic | `npm run demo:live -- --replay --trail --start https://web.vodafone.com.eg/ar/home` | After Arabic pages the pill opens the journey in the Arabic Pocket at `/ar/services`, right to left, in Arabic |
 | After a knowledge refresh | `npm run experience -- --site vodafone-eg --activate` | A profile for the new version; the old one is never served for a different version |
 
 Reset the trail in the demo browser: **Your journey → Clear journey** in the Pocket, or clear the site's data in Chrome.

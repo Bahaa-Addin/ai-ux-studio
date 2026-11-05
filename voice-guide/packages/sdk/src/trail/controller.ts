@@ -367,7 +367,8 @@ export class TrailController {
 				if (this.settings.hostUrl) {
 					ssSet(SS(this.siteKey, 'open'), true)
 					this.#flush(true)
-					return location.assign(this.settings.hostUrl)
+					// `{lang}` picks the host page in the page's language (ADR-0043).
+					return location.assign(this.settings.hostUrl.replace('{lang}', this.g.lang.slice(0, 2)))
 				}
 				this.dispatch({ type: s.view === 'expanded' ? 'COLLAPSE' : 'EXPAND' })
 			},

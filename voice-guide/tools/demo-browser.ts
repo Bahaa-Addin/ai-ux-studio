@@ -41,8 +41,9 @@ export interface DemoBrowserOptions {
 	 * Replay only: serve a cloned page (a folder with an index.html, `src/` and `public/`) at this
 	 * path of the site's first origin, in place of the saved page. The Vodafone Services clone with
 	 * Pocket is mounted at /en/services this way, so the whole demo stays on Vodafone pages.
+	 * `pages` maps more paths to pages of the same clone (the Arabic one: /ar/services → ar/index.html).
 	 */
-	clone?: { path: string; dir: string }
+	clone?: { path: string; dir: string; pages?: Record<string, string> }
 	/** Replay only: pages opened from the internet (not in the replay) are never saved by the trail. Default: recorded like the rest. */
 	liveUnsaved?: boolean
 	/** Replay only: add a stand-in of Vodafone's accessibility button (scripts are off in replay, so the real one is absent). */
@@ -204,7 +205,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 }
 
 /** Serves the allowed origins from a crawl folder; a page the folder does not have opens from the internet, unsaved by the trail. */
-async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string }, liveUnsaved = false): Promise<void> {
+async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string; pages?: Record<string, string> }, liveUnsaved = false): Promise<void> {
 	const crawl = loadCrawl(dir)
 	const html = new Map<string, string>()
 	for (const p of crawl.pages) {
@@ -234,12 +235,13 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 		}
 		return undefined
 	}
-	const clonePage = () => {
+	const clonePages: Record<string, string> = clone ? { [clone.path]: 'index.html', ...clone.pages } : {}
+	const clonePage = (file: string) => {
 		// The page-agent quick-start demo belongs to the page-agent experiment, not to this demo.
-		const page = fs.readFileSync(path.join(clone!.dir, 'index.html'), 'utf8')
+		const page = fs.readFileSync(path.join(clone!.dir, file), 'utf8')
 		return page.replace(/<!--\s*Official Page Agent[\s\S]*?-->/, '').replace(/<script[^>]*page-agent[^>]*>\s*<\/script>/g, '')
 	}
-	if (clone) log(`replay: ${clone.path} is the clone in ${clone.dir}`)
+	if (clone) log(`replay: ${Object.keys(clonePages).join(' and ')} ${Object.keys(clonePages).length > 1 ? 'are' : 'is'} the clone in ${clone.dir}`)
 	// A page the replay does not have opens from the internet, as it is, and everything it loads
 	// comes from the internet too. The trail records it like any other public page; with
 	// `liveUnsaved` it carries <meta name="vg-trail" content="off"> instead and is never saved.
@@ -281,7 +283,8 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 		if (!origins.includes(url.origin)) return req.resourceType() === 'image' ? route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 }) : route.abort()
 		const type = req.resourceType()
 		if (clone && url.origin === origins[0]) {
-			if (type === 'document' && url.pathname.replace(/\/$/, '') === clone.path) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: clonePage() })
+			const clonedPage = type === 'document' ? clonePages[url.pathname.replace(/\/$/, '')] : undefined
+			if (clonedPage) return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: clonePage(clonedPage) })
 			const own = type === 'document' ? undefined : cloneFile(url.pathname)
 			if (own) return route.fulfill({ status: 200, contentType: MIME[path.extname(own)] || 'application/octet-stream', body: fs.readFileSync(own) })
 		}

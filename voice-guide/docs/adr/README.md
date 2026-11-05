@@ -45,6 +45,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0040](0040-trail-journey-hosted-in-the-pocket.md) | On Vodafone the journey is shown in the Services clone's Pocket, in its own design; the demo runs on Vodafone pages only | UI, demo | Accepted for the prototype |
 | [0041](0041-page-watch-announcements-in-the-watch-chunk.md) | Page-watch announcements load with the watch chunk, not with guide.js (size budget) | SDK size, page watch | Accepted |
 | [0042](0042-page-agent-testing-api-as-the-demo-agent-model.md) | page-agent's testing API is the demo's default agent model, as a replaceable preset; never for customers | Agent, privacy, demo | Accepted for demos |
+| [0043](0043-arabic-services-clone-and-journey-host-by-language.md) | An Arabic Services clone at /ar/services; the journey's host page follows the page's language (`{lang}` in `hostUrl`) | UI, demo | Accepted for the prototype; amends 0040 |
 
 ## Changes to the demo plan these decisions made
 

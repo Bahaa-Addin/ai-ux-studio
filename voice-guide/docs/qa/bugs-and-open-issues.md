@@ -39,9 +39,12 @@ Each fix has a test that failed before it.
 | O14 | X-ray colours for agent and error rows are outside the palette (demo-only, operator-facing) | Low | — | Restyle if the X-ray is shown to Vodafone | T-105 |
 | O15 | Chrome's server recognition sends audio to Google unless the on-device model is installed. **2026-11-05: the owner allows server recognition for his own demos.** The demo's default agent model (ADR-0042) also sends masked page content and the request to Alibaba Cloud in mainland China | Decided for demos; open for customers | `speech.onDevice: prefer`; `--agent off` or your own `VG_LLM_*` | Data-protection decision before any customer use | D2 |
 | O16 | CI has never run; no `package-lock.json` | Low | Local runs | First PR run; commit the lockfile | T-501, T-502 |
+| O17 | Arabic Services clone (ADR-0043): the 13 experiences keep their own English microcopy (15–45 words each, mostly screen-reader labels, a few visible hints such as "Scroll", "Skip intro") | Low for the demo; must fix before Arabic users | Content, composer, Pocket and shell are Arabic | Move each renderer's strings into `vodafone-services-clone/src/i18n.js` | — |
+| O18 | VoiceTut backends down on 2026-11-05: the Hugging Face Space is paused, Modal never activated; `?demo=voicetut` says it cannot connect. OmniVoice weights are CC-BY-NC | Low (experiment, behind a flag) | — | Restart the Space or fund Modal; clear the licence before any use beyond the owner's demo | Owner |
 
 ## 3. Flaky tests seen
 
 B3 and B4 were the causes of the flaky failures seen on 2026-10-23. After the fixes, `tests/e2e/guide.e2e.test.ts` passed 4 runs in a row and the full suite passed twice. Report any new flake here with the run log.
 
 - **2026-11-05, `tests/integration/ingest.test.ts`, "an unchanged clone publishes nothing…"**: failed in a full run at c2b1a12 (Linux container, Node 22, Postgres 16), passed alone. Cause: a timed-out element screenshot changed the manifest (B-22). Fixed by retrying the screenshot; regression test added. After the fix: 3 full runs in a row, 148/148 each (Ubuntu 22.04 arm64 VM, Node 22.23.4, Postgres 16.15).
+- **2026-11-05, `tests/e2e/trail.e2e.test.ts`, "the journey: consent, private recording…"**: failed once at "the recorded cursor moves as the replay scrubs" (line 217) in 5 runs of the file that day; passed alone twice and in the next full run. Timing of rrweb's mouse movement in the replay. Not fixed; watch it.

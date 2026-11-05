@@ -10,7 +10,7 @@
  *   npm run demo:trail                                  # the same, starting on /en/home (the journey opens in the Pocket)
  *   npm run demo:live -- --agent off                    # no fallback agent (default: VG_LLM_*, else page-agent's testing API, ADR-0042)
  *
- * In replay, /en/services is the Vodafone Services clone with Pocket (../vodafone-services-clone),
+ * In replay, /en/services (and /ar/services, its Arabic page) is the Vodafone Services clone with Pocket (../vodafone-services-clone),
  * so every page of the demo is a Vodafone page: saved ones, and the clone where the Pocket lives
  * (ADR-0040). --clone <dir> picks another clone folder, --clone off serves the saved page instead.
  *
@@ -103,7 +103,7 @@ const stopWatches = startScheduler(services.local.watch, 5000)
 console.log(`Gateway: http://127.0.0.1:${port} (store: ${services.store.kind}, agent: ${services.local.agent.status().available ? 'on' : 'no model configured'})`)
 const preset = llmPreset(platform.llm.preset)
 if (preset) console.log(`Agent model: ${preset.model} via ${preset.label}: ${preset.notice}\n  Use your own model with VG_LLM_BASE_URL and VG_LLM_MODEL, or turn the agent off with --agent off.`)
-console.log(replayDir ? `Replay: ${path.relative(ROOT, replayDir)} (offline)${clone ? `, ${clone.path} is the Services clone with Pocket` : ''}` : 'Live: real Vodafone pages')
+console.log(replayDir ? `Replay: ${path.relative(ROOT, replayDir)} (offline)${clone ? `, ${[clone.path, ...Object.keys(clone.pages)].join(' and ')} ${Object.keys(clone.pages).length ? 'are' : 'is'} the Services clone with Pocket` : ''}` : 'Live: real Vodafone pages')
 
 const browser = await launchDemoBrowser({
 	site,
@@ -157,11 +157,11 @@ function defaultReplayDir(siteId: string): string {
 	return crawl
 }
 
-/** The Services clone with Pocket, mounted over the saved /en/services page (Vodafone only). */
-function cloneMount(option: string | undefined): { path: string; dir: string } | undefined {
+/** The Services clone with Pocket, mounted over the saved /en/services and /ar/services pages (Vodafone only). */
+function cloneMount(option: string | undefined): { path: string; dir: string; pages: Record<string, string> } | undefined {
 	if (option === 'off' || site.id !== 'vodafone-eg') return undefined
 	const dir = path.resolve(option || path.join(ROOT, '../vodafone-services-clone'))
-	if (fs.existsSync(path.join(dir, 'index.html'))) return { path: '/en/services', dir }
+	if (fs.existsSync(path.join(dir, 'index.html'))) return { path: '/en/services', dir, pages: fs.existsSync(path.join(dir, 'ar/index.html')) ? { '/ar/services': 'ar/index.html' } : {} }
 	if (option) throw new Error(`No clone in ${dir} (index.html missing)`)
 	console.log(`Clone: ${path.relative(ROOT, dir)} not found, /en/services is the saved page`)
 	return undefined

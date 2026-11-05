@@ -155,8 +155,9 @@ watch:
 trail:
   enabled: false
   retentionHours: 24
-  # The journey is shown in the Pocket of the Services clone (ADR-0040), mounted at /en/services in the demo.
-  hostUrl: https://web.vodafone.com.eg/en/services#journey
+  # The journey is shown in the Pocket of the Services clone (ADR-0040), mounted at /en/services and
+  # /ar/services in the demo; {lang} is the page's language (ADR-0043).
+  hostUrl: https://web.vodafone.com.eg/{lang}/services#journey
   # Vodafone's CMS serves pictures from /documents/<ids>?t=… (no extension): let memories show them.
   replayAssetPaths: [/documents/]
   aggregation: { enabled: false, minCohort: 20 }
