@@ -312,6 +312,9 @@ await step('reimagine', async () => {
 			.filter(Boolean),
 	)
 	check('tunnel: every control on screen can be pressed (none under a floating control)', covered.length === 0, covered)
+	// The Pocket's curl has pointer-events: none, so it must also not be drawn here (O20: the corner tucks in).
+	const curl = await page.evaluate(() => [...document.querySelectorAll('.pocket-layer')].map((l) => getComputedStyle(l).opacity))
+	check('reimagined: the Pocket corner is tucked in (no curl drawn)', curl.every((o) => o === '0'), curl)
 	check('the composer is never recorded (data-vg)', await page.evaluate(() => [...document.querySelectorAll('.aixc-launcher, .aixc-composer')].every((el) => el.hasAttribute('data-vg'))))
 	await page.locator('.pocket-peek').click()
 	await page.waitForFunction(() => document.body.dataset.pocketView === 'open', null, { timeout: 10_000 })

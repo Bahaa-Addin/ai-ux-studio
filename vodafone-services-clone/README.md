@@ -364,7 +364,7 @@ Off unless the URL asks for it. With `?demo=voicetut`, each service section gets
 
 ## Known limitations and source notes
 
-- **The Pocket corner and the reimagined views (voice-guide O20).** While the Pocket peeks, its corner covers the bottom-right next/previous buttons of the ring, tunnel and spotlight experiences (and flipbook and gallery on phones). Arrow keys and dragging still work. Needs a design decision: a safe area for experiences, or a corner that tucks in.
+- **The Pocket corner tucks in during the Reimagine view (voice-guide ADR-0044).** The bottom-right corner belongs to the experience there: no curl or mascot, and the Pocket button sits in the right-hand column under the accessibility button, which stays lifted with the microphone even when nothing is pocketed. Back on the original view the corner peeks as before.
 - **The view bar and the guide's pill.** With the Voice Guide's trail on the page, the view bar keeps its end free for the "Your journey" pill (`aixc.css`, voice-guide B-23).
 - **Gemini has not been called live from this build.** The request format, headers and response
   parsing were tested against a mocked endpoint (292 browser checks). Verify with a real key before

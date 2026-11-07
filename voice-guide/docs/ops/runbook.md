@@ -196,6 +196,8 @@ The five public app pages (store locator, Flex, FAQ, network coverage, contact) 
 
 `node tools/demo-walkthrough.ts <out-dir> --lang en|ar [--phone] [--reduced] [--video]` runs the walkthrough of the 2026-11-05 handoff (phase C) on the saved Vodafone pages, with the Services clone at `/en/services` and `/ar/services`: trail consent; two spoken questions (bundles, Vodafone Cash) through the test speech stand-in; the clone where the four demos meet, with every floating control measured for overlaps on load, with the Pocket peeking and in the reimagined view; two stickers into the Pocket, the mascot and drone, "Your journey", a question chip; Reimagine (magazine, then tunnel), the Pocket from the reimagined view, and a spoken question there. It writes numbered screenshots, `checks.json`, `controls.json`, `xray-turn.json` and, with `--video`, a recording. Headless Chromium, memory store, no agent model. It records failures and carries on.
 
+Run again on 2026-11-07 after ADR-0044 (the corner tucks in during the Reimagine view; a new check that no curl is drawn): English 1366×900 with video 23/26 (O19 ×2, O21), English 375×812 24/26, Arabic 1366×900 24/26, Arabic 375×812 24/26 (O19 ×2 each). In the reimagined view at 1366×900: microphone 1287,515; accessibility 1291,595; Pocket button 1286,666 58×58; the experience's own controls are all clear. Evidence in `output/walkthrough-2026-11-07/`.
+
 Run on 2026-11-05 (Ubuntu 22.04 arm64 VM on the owner's Mac, Node 22.23.4, Chromium 141), after the B-23 fix:
 
 | Run | Checks | Failing (see open issues) |

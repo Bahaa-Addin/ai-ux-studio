@@ -220,6 +220,7 @@
   transition:
     opacity 0.28s ease,
     transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    bottom 0.28s ease,
     background-color 0.15s ease;
 }
 
@@ -246,7 +247,40 @@ body:has(.pocket-peek[data-state='shown']) {
   }
 }
 
-body:has(.pocket-peek[data-state='shown']) vg-guide {
+/* In the reimagined view the bottom-right corner belongs to the experience (its next, previous
+   and pause buttons sit there), so the corner tucks in (O20): no curl and no mascot, and the
+   Pocket button takes the foot of the right-hand column, under the accessibility button. The
+   microphone and the accessibility button keep their lifted places even with nothing pocketed:
+   at their usual place the accessibility button covered the tunnel's "Next service". Opening the
+   Pocket from here turns the page as usual (data-pocket-view is set before the turn is drawn). */
+body:not([data-pocket-view]):has(#experience-output:not([hidden])) {
+  --pocket-corner-lift: 230px;
+}
+
+@media (max-width: 767px) {
+  body:not([data-pocket-view]):has(#experience-output:not([hidden])) {
+    --pocket-corner-lift: 150px;
+  }
+}
+
+/* Opacity, not visibility: the curl's parts set their own visibility. */
+body:not([data-pocket-view]):has(#experience-output:not([hidden])) :is(.pocket-layer--plane, .pocket-layer--lift) {
+  opacity: 0;
+}
+
+/* 16px under the accessibility button, whose foot is 20px + the lift above the bottom. */
+body:not([data-pocket-view]):has(#experience-output:not([hidden])) .pocket-peek {
+  bottom: calc(20px + var(--pocket-corner-lift) - 16px - 58px);
+}
+
+@media (max-width: 639px) {
+  body:not([data-pocket-view]):has(#experience-output:not([hidden])) .pocket-peek {
+    bottom: calc(20px + var(--pocket-corner-lift) - 16px - 52px);
+  }
+}
+
+body:has(.pocket-peek[data-state='shown']) vg-guide,
+body:not([data-pocket-view]):has(#experience-output:not([hidden])) vg-guide {
   --vg-lift: var(--pocket-corner-lift);
 }
 
@@ -254,7 +288,8 @@ body:has(.pocket-peek[data-state='shown']) vg-guide {
   transition: bottom 0.28s ease;
 }
 
-body:has(.pocket-peek[data-state='shown']) #vodafone-aw-icon {
+body:has(.pocket-peek[data-state='shown']) #vodafone-aw-icon,
+body:not([data-pocket-view]):has(#experience-output:not([hidden])) #vodafone-aw-icon {
   bottom: calc(20px + var(--pocket-corner-lift)) !important;
   z-index: 10 !important; /* above the curl's shadow */
 }
