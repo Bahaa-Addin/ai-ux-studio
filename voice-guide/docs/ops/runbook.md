@@ -109,7 +109,7 @@ Not in this build: the shop (`eshop.vodafone.com.eg`) was not crawled, so moment
 2. Press the microphone and say "تجربة واحد اتنين تلاتة". Words must appear one at a time and the wave must move with your voice. Press again to finish.
 3. In the X-ray, the "listen" row shows the audio mode (`shared-track` is best), whether recognition ran on the device, and the time to the first word.
 4. If the bar says "Speech recognition is not available here right now. You can type instead.", Chrome's speech service is not reachable: check the internet connection, then Chrome's version. Typing in the panel still works.
-5. Ask "إيه أرخص باقة نت" on the live site. If the spotlight lands on the wrong element or nothing happens, Vodafone may have changed the page: run a sync (§5) and read its report.
+5. On a first visit, Vodafone's cookie banner covers the page, the microphone included; answer it yourself (the guide never does). Then ask "إيه أرخص باقة نت" on the live site. If the spotlight lands on the wrong element or nothing happens, Vodafone may have changed the page: run a sync (§5) and read its report.
 
 ## 4. Knowledge base
 
@@ -197,6 +197,10 @@ The five public app pages (store locator, Flex, FAQ, network coverage, contact) 
 `node tools/demo-walkthrough.ts <out-dir> --lang en|ar [--phone] [--reduced] [--video]` runs the walkthrough of the 2026-11-05 handoff (phase C) on the saved Vodafone pages, with the Services clone at `/en/services` and `/ar/services`: trail consent; two spoken questions (bundles, Vodafone Cash) through the test speech stand-in; the clone where the four demos meet, with every floating control measured for overlaps on load, with the Pocket peeking and in the reimagined view; two stickers into the Pocket, the mascot and drone, "Your journey", a question chip; Reimagine (magazine, then tunnel), the Pocket from the reimagined view, and a spoken question there. It writes numbered screenshots, `checks.json`, `controls.json`, `xray-turn.json` and, with `--video`, a recording. Headless Chromium, memory store, no agent model. It records failures and carries on.
 
 Run again on 2026-11-07 after ADR-0044 (the corner tucks in during the Reimagine view; a new check that no curl is drawn): English 1366×900 with video 23/26 (O19 ×2, O21), English 375×812 24/26, Arabic 1366×900 24/26, Arabic 375×812 24/26 (O19 ×2 each). In the reimagined view at 1366×900: microphone 1287,515; accessibility 1291,595; Pocket button 1286,666 58×58; the experience's own controls are all clear. Evidence in `output/walkthrough-2026-11-07/`.
+
+Recorded smoke test on 2026-11-07 at 4b87d4c (`--video` on all four runs): the same 23/26 and 24/26 ×3, MP4 recordings in `output/smoke-2026-11-07/walkthrough-*.mp4`.
+
+**On the live site:** `VG_LIVE=1 [VG_LIVE_VIDEO=<dir>] node --test --test-timeout=150000 tests/live/vodafone-live.live.test.ts` opens `web.vodafone.com.eg/{ar,en}/home` in the demo browser (headless Chromium, test speech stand-in, memory store) and stops on an error status or a bot check. It checks that the guide loads and that the microphone is clear of Vodafone's accessibility button, then asks for the cheapest internet bundle. On 2026-11-07 the guide loaded in both languages and the microphone (1287,745) sat clear of the accessibility button (1291,825). The question was skipped in both: on a first visit Vodafone's cookie consent covers the page (the English dialog's full-page filter, and in Arabic the dialog itself sits over the microphone), and the tests never answer it (§0). Ask the question on the Mac after answering the banner once in that Chrome profile (§3). Recording: `output/smoke-2026-11-07/live-vodafone-smoke.mp4`.
 
 Run on 2026-11-05 (Ubuntu 22.04 arm64 VM on the owner's Mac, Node 22.23.4, Chromium 141), after the B-23 fix:
 
