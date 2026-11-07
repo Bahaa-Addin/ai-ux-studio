@@ -38,6 +38,22 @@ after(async () => {
 
 const platform = () => ({ ...loadPlatformConfig({ VG_DATA_DIR: dataDir } as NodeJS.ProcessEnv), vision: { baseUrl: vision.url, model: 'mock-vision' } })
 
+// When a re-crawl of the unchanged fixture comes out "changed", say what changed: the paths where the
+// new manifest differs from the active one (version fields aside). CI hits this now and then (B-22).
+async function whyChanged(report: Awaited<ReturnType<typeof runIngest>>): Promise<string> {
+	if (report.unchanged) return ''
+	const active = await store.getActiveKb(site.id)
+	const out: string[] = []
+	const walk = (a: unknown, b: unknown, at: string) => {
+		if (out.length >= 12 || at === '.version') return
+		if (a && b && typeof a === 'object' && typeof b === 'object') {
+			for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) walk((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], `${at}.${k}`)
+		} else if (JSON.stringify(a) !== JSON.stringify(b)) out.push(`${at}: ${JSON.stringify(a)?.slice(0, 120)} -> ${JSON.stringify(b)?.slice(0, 120)}`)
+	}
+	walk(active, report.manifest, '')
+	return `the re-crawl changed: ${out.join('; ') || '(no difference outside .version)'}; crawl errors ${JSON.stringify(report.crawl.errors)}`
+}
+
 test('the fixture site crawls into a valid, activated manifest', async () => {
 	const report = await runIngest({ site, platform: platform(), store, browser, activate: true })
 	assert.equal(report.issues.filter((i) => i.level === 'error').length, 0, JSON.stringify(report.issues))
@@ -92,7 +108,7 @@ test('the fixture site crawls into a valid, activated manifest', async () => {
 test('an unchanged clone publishes nothing and the vision cache is reused', async () => {
 	const calls = vision.calls.length
 	const report = await runIngest({ site, platform: platform(), store, browser, activate: true })
-	assert.equal(report.unchanged, true)
+	assert.equal(report.unchanged, true, await whyChanged(report))
 	assert.equal(report.published, false)
 	assert.equal(vision.calls.length, calls, 'no new vision calls: every image hash was cached')
 	assert.equal(report.describe.cacheHits, 8)
@@ -117,7 +133,7 @@ test('a screenshot that times out once is retried, so an unchanged clone still p
 		const calls = vision.calls.length
 		const report = await runIngest({ site, platform: platform(), store, browser, activate: true })
 		assert.equal(fail, 0, 'the injected timeout was hit')
-		assert.equal(report.unchanged, true)
+		assert.equal(report.unchanged, true, await whyChanged(report))
 		assert.equal(report.published, false)
 		assert.equal(vision.calls.length, calls)
 	} finally {
