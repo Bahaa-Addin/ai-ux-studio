@@ -194,12 +194,12 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Found:** 2026-11-05, by the demo walkthrough (`tools/demo-walkthrough.ts`) on the Services clone with the guide: after choosing a ready-made experience the view bar's "Change experience" (1103–1242 × 112–152 at 1366×900) and "Reset" were under the guide's fixed "Your journey" pill; a click on them landed on the guide. Same in Arabic (both mirror to the left) and on phones ("Reset" at 303 × 92).
 - **Cause:** the view bar is sticky right under the header, which is exactly where the pill floats (top right; top left in Arabic). The launcher was moved below the pill, but the view bar that replaces it was not. In Arabic the launcher also stayed top right while the pill moved left.
 - **Fix:** with the trail on the page (`data-vg-trail`), the view bar keeps its inline end free for the pill (290px; 76px under 768px) (`vodafone-services-clone/src/aixc/aixc.css`); in Arabic the launcher sits top left, under the pill (`src/rtl.css`).
-- **Test:** `tests/e2e/pocket-journey.e2e.test.ts`, "Reimagine: the view bar and its launcher stay clear of the journey pill, in English and Arabic" (fails without the fix: "Change experience", "Reset").
+- **Test:** `tests/e2e/reimagine-floating.e2e.test.ts`, "Reimagine: the view bar and its launcher stay clear of the journey pill, in English and Arabic" (fails without the fix: "Change experience", "Reset").
 
 ## B-24 With nothing pocketed, the accessibility button covered the tunnel's "Next service"
 
 - **Found:** 2026-11-07, by the test written for O20 (before any change): in the reimagined tunnel with an empty Pocket, Vodafone's accessibility button (1291–1346 × 825–880 at 1366×860) sat on the tunnel's "Next service"; a click there landed on the accessibility button.
 - **Cause:** the right-hand column only rose while the Pocket corner peeked; with nothing pocketed it sat at its usual place, which is where several experiences put their next, previous and pause buttons.
 - **Fix:** in the reimagined view the column stays lifted whether or not anything is pocketed, and the corner tucks in (ADR-0044, `vodafone-services-clone/src/pocket/pocket.css`).
-- **Test:** `tests/e2e/pocket-journey.e2e.test.ts`, "Reimagine: the Pocket corner tucks in and nothing covers the experience controls, empty or not, desktop and phone" (failed before: "Next service under accessibility").
+- **Test:** `tests/e2e/reimagine-floating.e2e.test.ts`, "Reimagine: the Pocket corner tucks in and nothing covers the experience controls, empty or not, desktop and phone" (failed before: "Next service under accessibility").
 

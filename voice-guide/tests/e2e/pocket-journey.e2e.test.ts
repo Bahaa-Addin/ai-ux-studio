@@ -6,85 +6,13 @@
  * real; speech synthesis is recorded at the browser boundary (ADR-0024). No microphone is used.
  */
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
-import { after, before, test } from 'node:test'
+import { test } from 'node:test'
 
 import type { Page } from 'playwright'
 
-import type { Manifest } from '#kb'
-import { ensureExperienceProfile } from '#jobs/experience/build.ts'
-import { loadPlatformConfig, loadSiteConfig, ROOT } from '#shared/config.ts'
+import { layerOpen, rec, recording, snapshot, tr, until, V, vodafonePocket } from './vodafone-pocket.ts'
 
-import { buildSdk } from '../../packages/sdk/build.ts'
-import { createGateway } from '../../services/gateway/server.ts'
-import { createServices } from '../../services/index.ts'
-import { type DemoBrowser, launchDemoBrowser } from '../../tools/demo-browser.ts'
-import { SPEECH_STUB } from './browser.ts'
-
-const PORT = 4472
-const V = 'https://web.vodafone.com.eg'
-const CLONE = path.join(ROOT, '../vodafone-services-clone')
-const platform = loadPlatformConfig({ ...process.env, VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}`, VG_RATE_TURNS_PER_MIN: '600', VG_RATE_BURST: '60' })
-const site = loadSiteConfig(path.join(platform.sitesDir, 'vodafone-eg.yaml'))
-const CONSENTED = `try { if (location.origin === '${V}' && !localStorage.getItem('vg-trail:${site.siteKey}:consent')) localStorage.setItem('vg-trail:${site.siteKey}:consent', JSON.stringify({ v: 1, state: 'granted', at: 1, retentionHours: 24 })) } catch {}`
-
-let services: Awaited<ReturnType<typeof createServices>>
-let gateway: ReturnType<typeof createGateway>
-
-before(async () => {
-	await buildSdk({ minify: true })
-	services = await createServices({ platform })
-	const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/kb/vodafone-eg.manifest.json'), 'utf8')) as Manifest
-	await services.store.putKbVersion(site.id, m)
-	await services.store.activateKb(site.id, m.version.id)
-	const live = services.sites.get(site.id)!
-	live.trail.enabled = true
-	const committed = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/experience/vodafone-eg.profile.json'), 'utf8'))
-	await ensureExperienceProfile(services.store, live, m, committed, () => {})
-	gateway = createGateway({ services })
-	await gateway.listen(PORT)
-})
-
-after(async () => {
-	await gateway?.close()
-	await services?.close()
-})
-
-interface Run {
-	b: DemoBrowser
-	page: Page
-	requests: { url: string; body: string }[]
-}
-
-async function launch(o: { consented?: boolean; phone?: boolean; reducedMotion?: boolean; noGuide?: boolean } = {}): Promise<Run> {
-	const b = await launchDemoBrowser({
-		site,
-		gatewayUrl: `http://127.0.0.1:${PORT}`,
-		start: 'about:blank',
-		headless: true,
-		channel: 'chromium',
-		xray: 'off',
-		replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'),
-		clone: { path: '/en/services', dir: CLONE, pages: { '/ar/services': 'ar/index.html' } },
-		initScripts: [SPEECH_STUB, ...(o.consented ? [CONSENTED] : [])],
-		viewport: o.phone ? { width: 390, height: 844 } : { width: 1366, height: 860 },
-	})
-	const { page } = b
-	if (o.reducedMotion) await page.emulateMedia({ reducedMotion: 'reduce' })
-	if (o.noGuide) await b.context.route('**/__vg/**', (route) => route.abort())
-	const requests: Run['requests'] = []
-	b.context.on('request', (r) => requests.push({ url: r.url(), body: r.postData() || '' }))
-	page.on('pageerror', (e) => console.log('[pageerror]', e.message))
-	return { b, page, requests }
-}
-
-const tr = (page: Page, sel: string) => page.locator('vg-guide').locator(sel)
-const until = (page: Page, fn: string, timeout = 15_000) => page.waitForFunction(fn, null, { timeout })
-const rec = (page: Page) => page.evaluate(() => (document.querySelector('vg-guide')?.shadowRoot?.querySelector('.tr') as HTMLElement | null)?.dataset.rec)
-const recording = (page: Page) => until(page, `document.querySelector('vg-guide')?.shadowRoot?.querySelector('.tr')?.dataset.rec === 'recording'`, 30_000)
-const layerOpen = (page: Page) => page.waitForSelector('.pocket-journey-layer:not([hidden])', { timeout: 15_000 })
-const snapshot = (page: Page) => page.evaluate(() => (window as any).voiceGuide.trailHost.snapshot())
+const { launch } = vodafonePocket(4472)
 
 /** Rests the pointer on an element for a while, as someone reading it would. */
 async function dwell(page: Page, selector: string, ms: number) {
@@ -247,107 +175,6 @@ test('Arabic: the pill on an Arabic page opens the journey in the Arabic Pocket,
 		assert.equal(await page.locator('[data-vg-destination="web.services.vodafone-cash"]').count(), 1)
 	} finally {
 		await b.close()
-	}
-})
-
-test('Reimagine: the view bar and its launcher stay clear of the journey pill, in English and Arabic (B-23)', async () => {
-	const { b, page } = await launch({ consented: true })
-	try {
-		for (const lang of ['en', 'ar']) {
-			await page.goto(`${V}/${lang}/services`, { waitUntil: 'domcontentloaded' })
-			await recording(page)
-			await page.waitForFunction(() => document.documentElement.dataset.vgTrail === 'on')
-			const pill = (await tr(page, '.tr-pill').boundingBox())!
-			const launcher = (await page.locator('.aixc-launcher').boundingBox())!
-			assert.ok(launcher.y >= pill.y + pill.height, `${lang}: the launcher sits below the pill`)
-			assert.ok(Math.abs(launcher.x + (lang === 'ar' ? 0 : launcher.width) - (pill.x + (lang === 'ar' ? 0 : pill.width))) <= 2, `${lang}: on the pill's side`)
-			await page.locator('.aixc-launcher').click()
-			await page.locator('.aixc-template[data-template=magazine]').click()
-			await page.waitForSelector('#experience-output .aixc-magazine')
-			await page.waitForTimeout(400)
-			// Every button of the view bar is what you press at its centre, not the guide's pill.
-			const covered = await page.evaluate(() =>
-				[...document.querySelectorAll('.aixc-viewbar button')]
-					.filter((el) => (el as HTMLElement).offsetParent)
-					.filter((el) => {
-						const r = el.getBoundingClientRect()
-						const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
-						return !(top === el || el.contains(top))
-					})
-					.map((el) => el.textContent!.trim()),
-			)
-			assert.deepEqual(covered, [], `${lang}: view bar buttons under the pill`)
-		}
-	} finally {
-		await b.close()
-	}
-})
-
-/** The reimagined view's controls on screen that something else covers where you would press them. */
-const coveredControls = (page: Page) =>
-	page.evaluate(() =>
-		[...document.querySelectorAll('#experience-output button, .aixc-viewbar button')]
-			.filter((el) => (el as HTMLElement).offsetParent)
-			.map((el) => {
-				const r = el.getBoundingClientRect()
-				if (!r.width || r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) return null
-				const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
-				if (!top || top === el || el.contains(top) || !top.closest('vg-guide, #vodafone-aw-icon, .pocket-peek, .pocket-layer')) return null
-				return `${el.getAttribute('aria-label') || el.textContent!.trim()} under ${top.closest('vg-guide') ? 'the guide' : top.closest('#vodafone-aw-icon') ? 'accessibility' : 'the Pocket'}`
-			})
-			.filter(Boolean),
-	)
-
-/** The floating controls' boxes: microphone, accessibility, the Pocket button. */
-const floating = (page: Page) =>
-	page.evaluate(() => {
-		const box = (el: Element | null | undefined) => {
-			const r = el?.getBoundingClientRect()
-			return r && r.width && getComputedStyle(el!).opacity !== '0' ? { x: r.x, y: r.y, w: r.width, h: r.height } : null
-		}
-		return {
-			mic: box(document.querySelector('vg-guide')?.shadowRoot?.querySelector('.vg-mic')),
-			accessibility: box(document.getElementById('vodafone-aw-icon')),
-			pocket: box(document.querySelector('.pocket-peek:not([data-state="hidden"])')),
-		}
-	})
-
-test('Reimagine: the Pocket corner tucks in and nothing covers the experience controls, empty or not, desktop and phone (O20)', async () => {
-	for (const phone of [false, true]) {
-		const { b, page } = await launch({ consented: true, phone })
-		try {
-			await page.goto(`${V}/en/services`, { waitUntil: 'domcontentloaded' })
-			await recording(page)
-			for (const pocketed of [0, 2]) {
-				for (const id of ['vodafone-cash', 'roaming'].slice(0, pocketed)) {
-					// "Pocket it" is on the original page: switch back to it first.
-					if (await page.locator('.aixc-seg').first().isVisible()) await page.locator('.aixc-seg').first().click()
-					await page.locator(`[data-aixc-item="${id}"] .pocket-cta`).scrollIntoViewIfNeeded()
-					await page.locator(`[data-aixc-item="${id}"] .pocket-cta`).click()
-					await page.waitForTimeout(1600)
-				}
-				for (const template of ['tunnel', 'spotlight']) {
-					if (await page.locator('.aixc-launcher').isVisible()) await page.locator('.aixc-launcher').click()
-					else await page.locator('.aixc-viewbar__actions button').first().click()
-					await page.locator(`.aixc-template[data-template=${template}]`).click()
-					await page.waitForSelector(`#experience-output [data-experience=${template}]`)
-					await page.waitForTimeout(900)
-					const where = `${phone ? 'phone' : 'desktop'}, ${pocketed} in the Pocket, ${template}`
-					assert.deepEqual(await coveredControls(page), [], where)
-					const f = await floating(page)
-					const boxes = Object.entries(f).filter(([, v]) => v) as [string, { x: number; y: number; w: number; h: number }][]
-					for (const [n, a] of boxes) for (const [m, c] of boxes) if (n < m) assert.ok(!(a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h), `${where}: ${n} and ${m} overlap`)
-					assert.equal(!!f.pocket, pocketed > 0, `${where}: the Pocket button shows only with something in it`)
-					// The curl is drawn with pointer-events: none, so the click checks above cannot see it.
-					assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.pocket-layer')].map((l) => getComputedStyle(l).opacity)), ['0', '0'], `${where}: no curl`)
-				}
-			}
-			// The tucked button still opens the Pocket, with the page turn.
-			await page.locator('.pocket-peek').click()
-			await page.waitForFunction(() => document.body.dataset.pocketView === 'open')
-		} finally {
-			await b.close()
-		}
 	}
 })
 

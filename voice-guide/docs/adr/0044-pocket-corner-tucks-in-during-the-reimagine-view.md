@@ -40,7 +40,7 @@ Back on the original view, or with the Pocket open, everything is as before.
 
 Tests:
 
-- `voice-guide/tests/e2e/pocket-journey.e2e.test.ts`, "Reimagine: the Pocket corner tucks in and nothing covers the experience controls". It covers tunnel and spotlight, empty and with two stickers, on desktop and phone, and that the button opens the Pocket. It fails without the change ("Next service under accessibility").
+- `voice-guide/tests/e2e/reimagine-floating.e2e.test.ts`, "Reimagine: the Pocket corner tucks in and nothing covers the experience controls". It covers tunnel and spotlight, empty and with two stickers, on desktop and phone, and that the button opens the Pocket. It fails without the change ("Next service under accessibility").
 - `tools/demo-walkthrough.ts` checks that no curl is drawn.
 
 ## Pilot knobs
