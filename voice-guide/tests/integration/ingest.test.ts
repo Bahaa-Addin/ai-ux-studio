@@ -40,9 +40,9 @@ const platform = () => ({ ...loadPlatformConfig({ VG_DATA_DIR: dataDir } as Node
 
 // When a re-crawl of the unchanged fixture comes out "changed", say what changed: the paths where the
 // new manifest differs from the active one (version fields aside). CI hits this now and then (B-22).
-async function whyChanged(report: Awaited<ReturnType<typeof runIngest>>): Promise<string> {
+// `active` is the manifest that was active before the re-crawl (a changed re-crawl activates its own).
+function whyChanged(active: unknown, report: Awaited<ReturnType<typeof runIngest>>): string {
 	if (report.unchanged) return ''
-	const active = await store.getActiveKb(site.id)
 	const out: string[] = []
 	const walk = (a: unknown, b: unknown, at: string) => {
 		if (out.length >= 12 || at === '.version') return
@@ -107,8 +107,9 @@ test('the fixture site crawls into a valid, activated manifest', async () => {
 
 test('an unchanged clone publishes nothing and the vision cache is reused', async () => {
 	const calls = vision.calls.length
+	const active = await store.getActiveKb(site.id)
 	const report = await runIngest({ site, platform: platform(), store, browser, activate: true })
-	assert.equal(report.unchanged, true, await whyChanged(report))
+	assert.equal(report.unchanged, true, whyChanged(active, report))
 	assert.equal(report.published, false)
 	assert.equal(vision.calls.length, calls, 'no new vision calls: every image hash was cached')
 	assert.equal(report.describe.cacheHits, 8)
@@ -131,9 +132,10 @@ test('a screenshot that times out once is retried, so an unchanged clone still p
 	}
 	try {
 		const calls = vision.calls.length
+		const active = await store.getActiveKb(site.id)
 		const report = await runIngest({ site, platform: platform(), store, browser, activate: true })
 		assert.equal(fail, 0, 'the injected timeout was hit')
-		assert.equal(report.unchanged, true, await whyChanged(report))
+		assert.equal(report.unchanged, true, whyChanged(active, report))
 		assert.equal(report.published, false)
 		assert.equal(vision.calls.length, calls)
 	} finally {
