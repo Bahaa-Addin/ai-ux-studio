@@ -203,3 +203,10 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** in the reimagined view the column stays lifted whether or not anything is pocketed, and the corner tucks in (ADR-0044, `vodafone-services-clone/src/pocket/pocket.css`).
 - **Test:** `tests/e2e/reimagine-floating.e2e.test.ts`, "Reimagine: the Pocket corner tucks in and nothing covers the experience controls, empty or not, desktop and phone" (failed before: "Next service under accessibility").
 
+## B-25 An unchanged site still published a new knowledge-base version now and then (the ingest flake, second cause)
+
+- **Found:** 2026-11-07, on CI after B-22's fix: both ingest "unchanged" tests failed in some runs (4e6d0b2, 43498ae). The test now says what changed (22a556f, 330614f), and CI showed it: `.destinations.0.labels.ar` held the same three anchor texts in another order.
+- **Cause:** the builder collected the anchor texts that label a page in the order the pages finished crawling, which varies from run to run; the order of a page's labels is part of the manifest hash, so an unchanged site hashed differently and published a new version. B-22 (a timed-out screenshot) was a real cause too, but not the only one.
+- **Fix:** anchor texts are collected from the pages in URL order (`jobs/kb-builder/build.ts`). Labels already on the page (title, h1) still come first.
+- **Test:** `tests/unit/vodafone-kb.test.ts`, "builder: the same pages crawled in another order build the same manifest hash" (failed before: `0b3871806a3c29ba` against `0647a5a01212e611`). Full unit and integration run after the fix: 154/154 (2026-11-07, Ubuntu 22.04 arm64 VM, Node 22.23.4, Postgres 16).
+

@@ -98,6 +98,14 @@ test('builder: redirects into the /spa/ app and second URLs of a page become ali
 	assert.equal(m.pages.filter((p) => p.id.startsWith('web.mobile-internet-bundles')).length, 1, 'one page, not two')
 })
 
+// B-25: pages finish crawling in any order; the anchor texts that label a page were collected in that
+// order, so an unchanged site could hash differently and publish a new version (seen on CI).
+test('builder: the same pages crawled in another order build the same manifest hash', () => {
+	const c = crawl()
+	const reversed = { ...c, pages: [...c.pages].reverse() }
+	assert.equal(build(reversed).manifest!.version.hash, build(c).manifest!.version.hash)
+})
+
 test('alt texts: HTML, layout words and file names are cleaned away', () => {
 	assert.equal(cleanAlt('<p>Vodafone&nbsp;Plus &amp; more</p>'), 'Vodafone Plus & more')
 	assert.equal(cleanAlt('Red offers main desktop banner'), 'Red offers')

@@ -257,7 +257,8 @@ export function buildManifest(input: BuildInput): BuildOutput {
 
 	// ---- page destinations, labelled by titles, h1 and the anchor texts that point at them ----
 	const anchorLabels = new Map<string, I18nList>()
-	for (const p of crawl.pages) {
+	// In URL order: pages finish crawling in any order, and the labels' order is part of the hash (B-25).
+	for (const p of [...crawl.pages].sort((a, b) => a.url.localeCompare(b.url))) {
 		for (const l of p.links) {
 			const u = resolve(l.href)
 			const target = u ? pageIdByUrl.get(u) : undefined
