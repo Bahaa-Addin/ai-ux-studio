@@ -2,7 +2,7 @@
  * Spotlight cards — adapted from "Timed Cards Opening" (codepen.io/dilums/full/NWodZMd).
  *
  * One service fills the stage; the next services wait as cards at the bottom
- * right. Advancing expands the next card into the stage (a clip-path reveal),
+ * end corner (right in English, left in Arabic, where the queue runs leftward). Advancing expands the next card into the stage (a clip-path reveal),
  * slides the queue along, and animates the details panel in. A red timer bar
  * auto-advances; it pauses on hover, focus, the pause button, a hidden tab, and is
  * off by default under reduced motion. Arrow keys, prev/next and category jumps
@@ -11,8 +11,8 @@
 
 import { h, pathIcon } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PAUSE, ICON_PLAY, ICON_PREV, closingBand, ctaFor, experienceRoot, flatItems, groupsOf, media, pad2,
-  pageHeading, promotionOf, reducedMotion,
+  ICON_NEXT, ICON_PAUSE, ICON_PLAY, ICON_PREV, arrowKeys, closingBand, ctaFor, experienceRoot, flatItems, groupsOf, media, pad2,
+  pageHeading, promotionOf, reducedMotion, t,
 } from './shared.js'
 
 const DWELL_MS = 6500
@@ -48,8 +48,8 @@ export const renderSpotlight = (schema, index) => {
         class: 'sp-slide',
         'data-aixc-item': item.id,
         role: 'group',
-        'aria-roledescription': 'slide',
-        'aria-label': `${at + 1} of ${total}: ${item.title}`,
+        'aria-roledescription': t('slide'),
+        'aria-label': t('{n} of {total}: {title}', { n: at + 1, total, title: item.title }),
         hidden: at !== 0,
       },
       h('p', { class: 'sp-slide__place' }, group.title),
@@ -64,18 +64,18 @@ export const renderSpotlight = (schema, index) => {
   const cards = entries.map(({ item, group }, at) => {
     const card = h(
       'button',
-      { type: 'button', class: 'sp-card', 'aria-label': `Show ${item.title}`, 'data-index': String(at) },
+      { type: 'button', class: 'sp-card', 'aria-label': t('Show {title}', { title: item.title }), 'data-index': String(at) },
       media(item, { className: 'sp-card__media' }),
       h('span', { class: 'sp-card__text', 'aria-hidden': 'true' }, h('span', { class: 'sp-card__place' }, group.title), h('span', { class: 'sp-card__title' }, item.title)),
     )
     card.addEventListener('click', () => goTo(at, { from: card }))
     return card
   })
-  const queue = h('div', { class: 'sp-queue', role: 'group', 'aria-label': 'Up next' }, cards)
+  const queue = h('div', { class: 'sp-queue', role: 'group', 'aria-label': t('Up next') }, cards)
 
   /* -------------------------------------------------------------- controls */
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Previous service' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Next service' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_NEXT, ''))
   const playButton = h('button', { type: 'button', class: 'vx-round vx-on-dark sp-play', 'aria-pressed': 'false' })
   const progressFill = h('span', { class: 'sp-progress__fill' })
   const counter = h('span', { class: 'sp-counter__now' }, '01')
@@ -100,11 +100,11 @@ export const renderSpotlight = (schema, index) => {
     button.addEventListener('click', () => goTo(firstIndexOf.get(group.id)))
     return button
   })
-  const jumps = h('nav', { class: 'sp-jumps', 'aria-label': 'Jump to a category' }, h('ul', null, jumpButtons.map((button) => h('li', null, button))))
+  const jumps = h('nav', { class: 'sp-jumps', 'aria-label': t('Jump to a category') }, h('ul', null, jumpButtons.map((button) => h('li', null, button))))
 
   const stage = h(
     'section',
-    { class: 'sp-stage vx-dark', 'aria-roledescription': 'carousel', 'aria-label': 'Vodafone services spotlight' },
+    { class: 'sp-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services spotlight') },
     backdrops,
     timer,
     jumps,
@@ -142,7 +142,7 @@ export const renderSpotlight = (schema, index) => {
       else button.removeAttribute('aria-current')
     })
     playButton.replaceChildren(pathIcon(state.playing ? ICON_PAUSE : ICON_PLAY, ''))
-    playButton.setAttribute('aria-label', state.playing ? 'Pause automatic rotation' : 'Start automatic rotation')
+    playButton.setAttribute('aria-label', state.playing ? t('Pause automatic rotation') : t('Start automatic rotation'))
     playButton.setAttribute('aria-pressed', String(!state.playing))
     slideList.setAttribute('aria-live', state.playing ? 'off' : 'polite')
   }
@@ -226,15 +226,8 @@ export const renderSpotlight = (schema, index) => {
   stage.addEventListener('focusout', (event) => {
     if (!stage.contains(event.relatedTarget)) state.focused = false
   })
-  stage.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      goTo(state.active + 1)
-    } else if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      goTo(state.active - 1)
-    }
-  })
+  // Left/right follow the reading line (ArrowLeft advances in Arabic).
+  arrowKeys(stage, { step: (direction) => goTo(state.active + direction), first: () => goTo(0), last: () => goTo(total - 1), axis: 'x' })
   const onResize = () => layoutQueue()
 
   layoutQueue()

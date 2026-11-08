@@ -10,7 +10,7 @@
  */
 
 import { h, svgIcon } from '../dom.js'
-import { closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, onScrollFrame, promotionOf, serviceCard, clamp } from './shared.js'
+import { closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, onScrollFrame, promotionOf, serviceCard, clamp, t } from './shared.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -124,7 +124,7 @@ export const renderJourney = (schema, index) => {
     { class: 'jr-intro' },
     h('h1', { class: 'jr-intro__title', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' }, index.model.title),
     index.model.intro ? h('p', { class: 'jr-intro__text' }, index.model.intro) : null,
-    h('p', { class: 'jr-intro__hint', 'aria-hidden': 'true' }, h('span', null, 'Scroll to begin')),
+    h('p', { class: 'jr-intro__hint', 'aria-hidden': 'true' }, h('span', null, t('Scroll to begin'))),
   )
 
   const scene = buildScene()

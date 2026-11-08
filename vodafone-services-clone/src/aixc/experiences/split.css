@@ -1,12 +1,18 @@
 /* Split slideshow — scoped to .aixc-vx--split. Tokens from vodafone.css. */
 
 .aixc-vx--split {
-  /* The reference's easing and timings: right half 1000 ms, left 950 ms, text 900 ms. */
+  /* The reference's easing and timings: end (right) half 1000 ms, start (left) 950 ms, text 900 ms. */
   --ss-ease: cubic-bezier(0.7, 0, 0.3, 1);
-  --ss-right: 1s;
-  --ss-left: 0.95s;
+  --ss-end: 1s;
+  --ss-start: 0.95s;
   --ss-text: 0.9s;
+  /* +1 in English, -1 in Arabic: for horizontal nudges that follow the reading line. */
+  --ss-inline: 1;
   background: var(--vx-ink);
+}
+
+[dir='rtl'] .aixc-vx--split {
+  --ss-inline: -1;
 }
 
 .aixc-vx--split .ss-track {
@@ -48,23 +54,25 @@
   overflow: hidden;
 }
 
-.aixc-vx--split .ss-half--left {
-  left: 0;
+/* Start/end, not left/right: in Arabic the halves trade places, so the pair's
+   motion (and the slower start half) mirrors with the reading line. */
+.aixc-vx--split .ss-half--start {
+  inset-inline-start: 0;
 }
 
-.aixc-vx--split .ss-half--right {
-  right: 0;
+.aixc-vx--split .ss-half--end {
+  inset-inline-end: 0;
 }
 
 .aixc-vx--split .ss-pane {
   position: absolute;
   inset: 0;
   visibility: hidden;
-  transition: transform var(--ss-right) var(--ss-ease), visibility 0s linear var(--ss-right);
+  transition: transform var(--ss-end) var(--ss-ease), visibility 0s linear var(--ss-end);
 }
 
-.aixc-vx--split .ss-half--left .ss-pane {
-  transition: transform var(--ss-left) var(--ss-ease), visibility 0s linear var(--ss-left);
+.aixc-vx--split .ss-half--start .ss-pane {
+  transition: transform var(--ss-start) var(--ss-ease), visibility 0s linear var(--ss-start);
 }
 
 .aixc-vx--split .ss-pane[data-pos='0'] {
@@ -72,14 +80,14 @@
   transition-delay: 0s;
 }
 
-/* Right half moves up as you advance; the left half (reverse order) moves down. */
-.aixc-vx--split .ss-half--right .ss-pane[data-pos='1'],
-.aixc-vx--split .ss-half--left .ss-pane[data-pos='-1'] {
+/* End half moves up as you advance; the start half (reverse order) moves down. */
+.aixc-vx--split .ss-half--end .ss-pane[data-pos='1'],
+.aixc-vx--split .ss-half--start .ss-pane[data-pos='-1'] {
   transform: translateY(100%);
 }
 
-.aixc-vx--split .ss-half--right .ss-pane[data-pos='-1'],
-.aixc-vx--split .ss-half--left .ss-pane[data-pos='1'] {
+.aixc-vx--split .ss-half--end .ss-pane[data-pos='-1'],
+.aixc-vx--split .ss-half--start .ss-pane[data-pos='1'] {
   transform: translateY(-100%);
 }
 
@@ -88,7 +96,8 @@
   transition: none !important;
 }
 
-/* Each half shows its side of one stage-wide picture, so at rest the image is whole. */
+/* Each half shows its side of one stage-wide picture, so at rest the image is whole.
+   The picture itself is never mirrored; only which half carries which side swaps. */
 .aixc-vx--split .ss-art {
   position: absolute;
   top: 0;
@@ -97,12 +106,12 @@
   background: var(--vx-ink);
 }
 
-.aixc-vx--split .ss-half--left .ss-art {
-  left: 0;
+.aixc-vx--split .ss-half--start .ss-art {
+  inset-inline-start: 0;
 }
 
-.aixc-vx--split .ss-half--right .ss-art {
-  right: 0;
+.aixc-vx--split .ss-half--end .ss-art {
+  inset-inline-end: 0;
 }
 
 .aixc-vx--split .ss-art img {
@@ -139,7 +148,7 @@
   background:
     radial-gradient(62% 56% at 50% 55%, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 72%),
     linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 24%, rgba(0, 0, 0, 0) 68%, rgba(0, 0, 0, 0.6) 100%);
-  transition: opacity var(--ss-right) var(--ss-ease);
+  transition: opacity var(--ss-end) var(--ss-ease);
 }
 
 .aixc-vx--split .ss-stage[data-tone='mark'] .ss-scrim {
@@ -208,7 +217,8 @@
   display: inline-block;
   width: 28px;
   height: 2px;
-  margin: 0 0 0.3em 12px;
+  margin: 0 0 0.3em;
+  margin-inline-start: 12px;
   vertical-align: middle;
   background: var(--vx-red);
 }
@@ -226,7 +236,7 @@
   letter-spacing: 0.18em;
   text-transform: uppercase;
   /* Trailing tracking would push the centred word off centre. */
-  margin-right: -0.18em;
+  margin-inline-end: -0.18em;
 }
 
 .aixc-vx--split .ss-title__mask {
@@ -312,7 +322,7 @@
 .aixc-vx--split .ss-head {
   position: absolute;
   top: clamp(16px, 3.4vh, 30px);
-  left: var(--vx-gutter);
+  inset-inline-start: var(--vx-gutter);
   z-index: 3;
   display: grid;
   gap: 4px;
@@ -334,7 +344,7 @@
 .aixc-vx--split .ss-rail {
   position: absolute;
   top: 50%;
-  right: 0;
+  inset-inline-end: 0;
   z-index: 3;
   transform: translateY(-50%);
 }
@@ -350,7 +360,8 @@
   align-items: center;
   gap: 14px;
   min-height: 24px;
-  padding: 5px var(--vx-gutter) 5px 12px;
+  padding-block: 5px;
+  padding-inline: 12px var(--vx-gutter);
   border: 0;
   background: transparent;
   color: var(--vx-white);
@@ -391,7 +402,8 @@
   font-size: 0.8125rem;
   white-space: nowrap;
   opacity: 0;
-  transform: translateX(8px);
+  /* Slides in from the screen edge the rail hugs (right in English, left in Arabic). */
+  transform: translateX(calc(8px * var(--ss-inline)));
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -410,7 +422,7 @@
 .aixc-vx--split .ss-controls {
   position: absolute;
   bottom: clamp(16px, 4vh, 36px);
-  left: var(--vx-gutter);
+  inset-inline-start: var(--vx-gutter);
   z-index: 3;
   display: flex;
   align-items: center;
@@ -421,7 +433,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-right: 8px;
+  margin-inline-end: 8px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -440,11 +452,44 @@
   color: var(--vx-white);
 }
 
+/* ------------------------------------------------------------------ arabic */
+
+/* Joined Arabic script must never be tracked or case-mapped: the reference's
+   widely spaced capitals apply to Latin only. The light Arabic face also needs
+   more line height than 0.95, or the mask clips its ascenders and descenders. */
+.aixc-vx--split .ss-title:lang(ar),
+.aixc-vx--split .ss-place:lang(ar),
+.aixc-vx--split .ss-brand:lang(ar) {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* The size comes from a character count, and Arabic words are short in characters
+   but wide on the page: without a lower cap the title takes the full 6rem and,
+   with its taller lines, pushes the label above it up into the slide's logo. */
+.aixc-vx--split .ss-title:lang(ar) {
+  margin-inline-end: 0;
+  font-size: clamp(1.75rem, calc(80cqi / var(--cpl)), 4.25rem);
+  line-height: 1.2;
+}
+
+.aixc-vx--split .ss-title:lang(ar) .ss-title__mask {
+  padding: 0.08em 0 0.12em;
+}
+
+/* On a logo slide the mark is pinned to the top of the art (7% down, 25% tall).
+   Keep the label row below its band in any language and at any height. */
+.aixc-vx--split .ss-stage[data-tone='mark'] .ss-text {
+  grid-template-rows: minmax(calc(max(var(--vx-vh), 520px) * 0.32 - 64px + 3.25rem), 1fr) auto minmax(0, 1fr);
+}
+
 /* -------------------------------------------------------------- responsive */
 
 @media (max-width: 719px) {
   .aixc-vx--split .ss-text {
-    inset: 56px 48px 92px 16px;
+    /* The extra room is on the rail's side: the end edge. */
+    inset-block: 56px 92px;
+    inset-inline: 16px 48px;
     /* A little more room under the title for the description and actions. */
     grid-template-rows: minmax(0, 0.72fr) auto minmax(0, 1.28fr);
   }
@@ -459,10 +504,15 @@
     height: 18%;
   }
 
+  /* The phone's smaller mark (4% down, 18% tall) and the text's 56px inset. */
+  .aixc-vx--split .ss-stage[data-tone='mark'] .ss-text {
+    grid-template-rows: minmax(calc(max(var(--vx-vh), 520px) * 0.22 - 56px + 3rem), 0.72fr) auto minmax(0, 1.28fr);
+  }
+
   .aixc-vx--split .ss-title {
     font-size: clamp(1.5rem, calc(118cqi / var(--cpl)), 3rem);
     letter-spacing: 0.08em;
-    margin-right: -0.08em;
+    margin-inline-end: -0.08em;
   }
 
   .aixc-vx--split .ss-desc {
@@ -478,7 +528,7 @@
   }
 
   .aixc-vx--split .ss-rail__group {
-    padding-right: 12px;
+    padding-inline-end: 12px;
   }
 
   .aixc-vx--split .ss-rail__ticks {

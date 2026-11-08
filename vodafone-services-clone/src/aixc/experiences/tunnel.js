@@ -12,12 +12,17 @@
  * depth and position. The camera eases after the scroll (the reference used
  * Lenis) and settles on each title or card. Under reduced motion the tunnel is
  * laid out flat instead.
+ *
+ * Right to left (the Arabic page): the spiral and the cards' tilts are mirrored,
+ * card text and corners follow the reading line, the Latin "VF-01" IDs keep their
+ * order, and Arabic category words are filled faintly instead of outlined (a
+ * stroke shows seams where the joined letters overlap).
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PREV, arrowKeys, chromeOffset, clamp, closingBand, ctaFor, experienceRoot, groupExtras, groupsOf, liveStatus,
-  media, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper,
+  ICON_NEXT, ICON_PREV, arrowKeys, chromeOffset, clamp, closingBand, ctaFor, experienceRoot, groupExtras, groupsOf, inlineSign,
+  liveStatus, media, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, t,
 } from './shared.js'
 
 const STEP_PX = 320 // page scroll per tunnel slot
@@ -65,8 +70,9 @@ export const renderTunnel = (schema, index) => {
       const extras = group.items[0] === item ? groupExtras(group, { onDark: true }) : null
       const card = h(
         'article',
-        { class: 'tn-card', 'data-aixc-item': item.id, 'aria-label': `${number} of ${total}: ${item.title}` },
-        h('div', { class: 'tn-card__head' }, h('span', { class: 'tn-card__id' }, `VF-${pad2(number)}`), h('span', { class: 'tn-card__group' }, group.title), h('span', { class: 'tn-card__square', 'aria-hidden': 'true' })),
+        { class: 'tn-card', 'data-aixc-item': item.id, 'aria-label': t('{n} of {total}: {title}', { n: number, total, title: item.title }) },
+        // The ID is a Latin code: dir="ltr" keeps "VF-01" from reordering to "01-VF".
+        h('div', { class: 'tn-card__head' }, h('span', { class: 'tn-card__id', dir: 'ltr' }, `VF-${pad2(number)}`), h('span', { class: 'tn-card__group' }, group.title), h('span', { class: 'tn-card__square', 'aria-hidden': 'true' })),
         media(item, { className: 'tn-card__media' }),
         h('h3', { class: 'tn-card__title' }, item.title),
         item.description ? h('p', { class: 'tn-card__desc' }, item.description) : null,
@@ -74,22 +80,24 @@ export const renderTunnel = (schema, index) => {
         h(
           'div',
           { class: 'tn-card__foot', 'aria-hidden': 'true' },
-          h('span', null, `CAT: ${pad2(groupIndex + 1)}/${pad2(groups.length)}`),
-          h('span', null, domain ? `LINK: ${domain}` : 'LINK: IN THE APP'),
+          h('span', null, t('CAT: {n}/{total}', { n: pad2(groupIndex + 1), total: pad2(groups.length) })),
+          h('span', null, domain ? t('LINK: {domain}', { domain }) : t('LINK: IN THE APP')),
         ),
         h('span', { class: 'tn-card__big', 'aria-hidden': 'true' }, pad2(number)),
       )
       const wrapper = h('div', { class: 'tn-item tn-item--card' }, card)
-      slots.push({ el: wrapper, card, type: 'card', group, item, number, rot: (random() - 0.5) * 16, phase: random() * Math.PI * 2 })
+      // Tilts mirror with the page, like the spiral.
+      slots.push({ el: wrapper, card, type: 'card', group, item, number, rot: (random() - 0.5) * 16 * inlineSign, phase: random() * Math.PI * 2 })
     })
   })
   const count = slots.length
   slots.forEach((slot, at) => {
     slot.at = at
     if (slot.type === 'card') {
-      // The reference's spiral: three turns over the whole run.
+      // The reference's spiral: three turns over the whole run. It starts on the
+      // reading line's end side and its handedness mirrors in right to left.
       const angle = (at / count) * Math.PI * 6
-      slot.ax = Math.cos(angle)
+      slot.ax = Math.cos(angle) * inlineSign
       slot.ay = Math.sin(angle)
     } else {
       slot.ax = 0
@@ -114,17 +122,17 @@ export const renderTunnel = (schema, index) => {
   const velOut = h('strong', null, '0.00')
   const depthOut = h('strong', null, '000000')
   const placeOut = h('strong', null, '')
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Previous service' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Next service' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_NEXT, ''))
   const hud = h(
     'div',
     { class: 'tn-hud' },
-    h('div', { class: 'tn-hud__row', 'aria-hidden': 'true' }, h('span', null, index.model.title), h('span', { class: 'tn-hud__line' }), h('span', null, 'Speed ', speedOut)),
-    h('p', { class: 'tn-hud__side', 'aria-hidden': 'true' }, 'Scroll velocity // ', velOut),
+    h('div', { class: 'tn-hud__row', 'aria-hidden': 'true' }, h('span', null, index.model.title), h('span', { class: 'tn-hud__line' }), h('span', null, `${t('Speed')} `, speedOut)),
+    h('p', { class: 'tn-hud__side', 'aria-hidden': 'true' }, `${t('Scroll velocity')} // `, velOut),
     h(
       'div',
       { class: 'tn-hud__row' },
-      h('span', { 'aria-hidden': 'true' }, 'Depth ', depthOut),
+      h('span', { 'aria-hidden': 'true' }, `${t('Depth')} `, depthOut),
       h('span', { class: 'tn-hud__line', 'aria-hidden': 'true' }),
       h('span', { class: 'tn-hud__place', 'aria-hidden': 'true' }, placeOut),
       h('span', { class: 'tn-hud__nav' }, prevButton, nextButton),
@@ -134,13 +142,13 @@ export const renderTunnel = (schema, index) => {
 
   const stage = h(
     'section',
-    { class: 'tn-stage vx-dark', 'aria-label': 'Vodafone services, hyper tunnel' },
+    { class: 'tn-stage vx-dark', 'aria-label': t('Vodafone services, hyper tunnel') },
     viewport,
     h('div', { class: 'tn-fx tn-fx--scanlines', 'aria-hidden': 'true' }),
     h('div', { class: 'tn-fx tn-fx--vignette', 'aria-hidden': 'true' }),
     h('div', { class: 'tn-fx tn-fx--noise', 'aria-hidden': 'true' }),
     hud,
-    h('p', { class: 'tn-hint', 'aria-hidden': 'true' }, 'Scroll to fly through'),
+    h('p', { class: 'tn-hint', 'aria-hidden': 'true' }, t('Scroll to fly through')),
     status,
   )
   const track = h('div', { class: 'tn-track' }, stage)
@@ -178,7 +186,10 @@ export const renderTunnel = (schema, index) => {
   const slotNear = (at) => slots[clamp(Math.round(at), 0, count - 1)]
 
   const announce = (slot) => {
-    const label = slot.type === 'card' ? `${slot.number} of ${total}: ${slot.item.title}, ${slot.group.title}` : `${slot.group.title}, category`
+    const label =
+      slot.type === 'card'
+        ? t('{n} of {total}: {title}, {group}', { n: slot.number, total, title: slot.item.title, group: slot.group.title })
+        : t('{group}, category', { group: slot.group.title })
     status.textContent = label
     placeOut.textContent = slot.type === 'card' ? `${pad2(slot.number)} / ${pad2(total)} · ${slot.group.title}` : slot.group.title
     const firstCard = cardSlots[0]
@@ -203,7 +214,7 @@ export const renderTunnel = (schema, index) => {
     const camX = (lower.x + (upper.x - lower.x) * fraction) * 0.85
     const camY = (lower.y + (upper.y - lower.y) * fraction) * 0.85
     const speed = Math.abs(velocity)
-    const t = now / 1000
+    const seconds = now / 1000
 
     // Each item carries its own camera: perspective (narrowed by speed, the
     // reference's warp) and the pointer tilt. No shared 3D scene means the
@@ -233,7 +244,7 @@ export const renderTunnel = (schema, index) => {
       }
       slot.parked = false
       let transform = `${lens} translate3d(${(slot.x - camX).toFixed(1)}px, ${(slot.y - camY).toFixed(1)}px, ${z.toFixed(1)}px)`
-      if (slot.type === 'card') transform += ` rotateZ(${slot.rot.toFixed(2)}deg) rotateY(${(Math.sin(t + slot.phase) * 6).toFixed(2)}deg)`
+      if (slot.type === 'card') transform += ` rotateZ(${slot.rot.toFixed(2)}deg) rotateY(${(Math.sin(seconds + slot.phase) * 6).toFixed(2)}deg)`
       slot.el.style.transform = transform
       slot.el.style.zIndex = String(4000 + Math.round(z))
       if (slot.type === 'word') {

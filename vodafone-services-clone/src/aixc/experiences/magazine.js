@@ -13,10 +13,12 @@
 
 import { h, pathIcon, slug, svgIcon, visuallyHidden } from '../dom.js'
 import { describeImageShape, PROMOTION_KIND } from '../content-index.js'
+// Direction-aware chevrons, the reading direction and the page's UI copy.
+import { ICON_NEXT, ICON_PREV, inlineSign, isRTL, t } from './shared.js'
 
 const ICON_EXTERNAL = 'M14 3h7v7h-2V6.4l-9.3 9.3-1.4-1.4L17.6 5H14V3zM5 5h6v2H7v10h10v-4h2v6H5V5z'
-const ICON_PREV = 'M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'
-const ICON_NEXT = 'M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'
+/** List separator for source names: the Arabic comma on the Arabic page. */
+const listJoin = (names) => names.join(isRTL ? '، ' : ', ')
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
@@ -30,7 +32,7 @@ const externalLink = (href, className, ...children) =>
     'a',
     { class: className, href, target: '_blank', rel: 'noopener noreferrer' },
     ...children,
-    visuallyHidden(' (opens in a new tab)'),
+    visuallyHidden(` ${t('(opens in a new tab)')}`),
     pathIcon(ICON_EXTERNAL, 'mag-ext'),
   )
 
@@ -52,7 +54,7 @@ const titleContent = (item) => {
       'a',
       { class: 'mag-story-link', href, target: '_blank', rel: 'noopener noreferrer' },
       item.title,
-      visuallyHidden(' (opens in a new tab)'),
+      visuallyHidden(` ${t('(opens in a new tab)')}`),
     )
   }
   return item.title
@@ -116,8 +118,8 @@ const naming = (section, ctx) => {
   const authored = Boolean(section.title) && !sourceTitles.includes(section.title)
   const title = section.title ?? sourceTitles[0] ?? null
   let kicker = null
-  if (authored && sourceTitles.length) kicker = `From ${sourceTitles.join(', ')}`
-  else if (!authored && sourceTitles.length > 1) kicker = sourceTitles.slice(1).join(', ')
+  if (authored && sourceTitles.length) kicker = t('From {sources}', { sources: listJoin(sourceTitles) })
+  else if (!authored && sourceTitles.length > 1) kicker = listJoin(sourceTitles.slice(1))
   return { title, authored, kicker, sources }
 }
 
@@ -232,13 +234,13 @@ const hero = (section, ctx) => {
       contents.length
         ? h(
             'nav',
-            { class: 'mag-cover__contents', 'aria-label': 'Sections in this view' },
-            h('h2', { class: 'mag-cover__contents-title' }, 'Inside'),
+            { class: 'mag-cover__contents', 'aria-label': t('Sections in this view') },
+            h('h2', { class: 'mag-cover__contents-title' }, t('Inside')),
             h(
               'ul',
               null,
               contents.map((other) => {
-                const label = naming(other, ctx).title ?? 'More services'
+                const label = naming(other, ctx).title ?? t('More services')
                 return h('li', null, h('a', { href: `#${sectionDomId(other)}` }, label))
               }),
             ),
@@ -336,10 +338,10 @@ const splitSpread = (section, ctx) => {
 
 const shelf = (section, ctx) => {
   const names = naming(section, ctx)
-  const label = names.title ?? 'Services'
+  const label = names.title ?? t('Services')
   const track = h(
     'div',
-    { class: 'mag-shelf__track', role: 'region', 'aria-label': `${label}, scrollable list`, tabindex: '0' },
+    { class: 'mag-shelf__track', role: 'region', 'aria-label': t('{label}, scrollable list', { label }), tabindex: '0' },
     items(section, ctx).map((item) =>
       h(
         'article',
@@ -349,16 +351,19 @@ const shelf = (section, ctx) => {
       ),
     ),
   )
-  const prev = h('button', { type: 'button', class: 'mag-shelf__button', 'aria-label': `Scroll ${label} back` }, pathIcon(ICON_PREV, 'mag-shelf__icon'))
-  const next = h('button', { type: 'button', class: 'mag-shelf__button', 'aria-label': `Scroll ${label} forward` }, pathIcon(ICON_NEXT, 'mag-shelf__icon'))
+  const prev = h('button', { type: 'button', class: 'mag-shelf__button', 'aria-label': t('Scroll {label} back', { label }) }, pathIcon(ICON_PREV, 'mag-shelf__icon'))
+  const next = h('button', { type: 'button', class: 'mag-shelf__button', 'aria-label': t('Scroll {label} forward', { label }) }, pathIcon(ICON_NEXT, 'mag-shelf__icon'))
+  // Forward runs along the reading line: toward the left on the Arabic page.
   const scrollByPage = (direction) =>
-    track.scrollBy({ left: direction * track.clientWidth * 0.85, behavior: reducedMotion() ? 'auto' : 'smooth' })
+    track.scrollBy({ left: direction * inlineSign * track.clientWidth * 0.85, behavior: reducedMotion() ? 'auto' : 'smooth' })
   prev.addEventListener('click', () => scrollByPage(-1))
   next.addEventListener('click', () => scrollByPage(1))
   const sync = () => {
     const max = track.scrollWidth - track.clientWidth - 2
-    prev.disabled = track.scrollLeft <= 2
-    next.disabled = track.scrollLeft >= max
+    // In RTL scrollLeft is 0 at the start and grows negative going forward.
+    const at = track.scrollLeft * inlineSign
+    prev.disabled = at <= 2
+    next.disabled = at >= max
   }
   track.addEventListener('scroll', sync, { passive: true })
   ctx.afterMount.push(() => {
@@ -452,7 +457,7 @@ const closingPromotion = (section, ctx) => {
                   null,
                   h(
                     'a',
-                    { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} (opens in a new tab)` },
+                    { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} ${t('(opens in a new tab)')}` },
                     svgIcon(store.icon, 'mag-closing__store-icon'),
                   ),
                 ),
@@ -465,7 +470,7 @@ const closingPromotion = (section, ctx) => {
       ? h(
           'figure',
           { class: 'mag-closing__qr' },
-          h('img', { src: promo.qr.image.src, alt: 'QR code to download the Ana Vodafone app', width: 330, height: 330, loading: 'lazy', decoding: 'async' }),
+          h('img', { src: promo.qr.image.src, alt: t('QR code to download the Ana Vodafone app'), width: 330, height: 330, loading: 'lazy', decoding: 'async' }),
           promo.qr.title ? h('figcaption', null, promo.qr.title) : null,
         )
       : null,

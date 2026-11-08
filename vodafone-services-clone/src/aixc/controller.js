@@ -16,7 +16,7 @@ import { buildFallbackSchema } from './fallback-schema.js'
 import { DEFAULT_MODEL, GeminiError, requestComposition } from './gemini-client.js'
 import { experienceLabel, renderExperience } from './experience-renderer.js'
 import { TEMPLATES, buildTemplateSchema, matchTemplate } from './templates.js'
-import { lang, t } from '../i18n.js'
+import { countItems, lang, t } from '../i18n.js'
 
 const ICON_SPARKLE = 'M11 2.5 13.1 9 19.5 11l-6.4 2.1L11 19.5 8.9 13.1 2.5 11 8.9 9zM19 2l.9 2.6 2.6.9-2.6.9L19 9l-.9-2.6-2.6-.9 2.6-.9z'
 const ICON_CLOSE = 'M18.3 7.1 16.9 5.7 12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z'
@@ -138,12 +138,34 @@ export const initComposer = ({ adapter, regions }) => {
     button.addEventListener('click', () => applyTemplate(template))
     return button
   })
+  // The CodePen each template is adapted from (a sibling of the button: a link can't sit inside one).
+  // Pen titles and authors are Latin: isolate them (FSI…PDI) so they stay whole runs in Arabic text.
+  const isolate = (text) => `\u2068${text}\u2069`
+  const creditText = ({ title, author }) => t('Inspired by {title} by {author}', { title: isolate(title), author: isolate(author) })
+  const templateCredit = ({ reference }) =>
+    reference &&
+    h(
+      'a',
+      {
+        class: 'aixc-template__credit',
+        href: reference.url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        title: reference.url,
+        'aria-label': `${creditText(reference)} ${t('(opens in a new tab)')}`,
+      },
+      creditText(reference),
+    )
   const templatesPanel = h(
     'section',
     { class: 'aixc-templates', 'aria-labelledby': 'aixc-templates-title' },
     h('h3', { class: 'aixc-templates__title', id: 'aixc-templates-title' }, t('Ready-made experiences')),
     h('p', { class: 'aixc-templates__hint' }, t('One click, no API key. Each keeps every service, description and link.')),
-    h('ul', { class: 'aixc-templates__list' }, templateButtons.map((button) => h('li', null, button))),
+    h(
+      'ul',
+      { class: 'aixc-templates__list' },
+      templateButtons.map((button, i) => h('li', { class: 'aixc-templates__item' }, button, templateCredit(TEMPLATES[i]))),
+    ),
   )
 
   const keyInput = h('input', { id: 'aixc-key', class: 'aixc-input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: t('Paste a Gemini API key') })
@@ -358,7 +380,12 @@ export const initComposer = ({ adapter, regions }) => {
       notes.push(t('Filtered view: {placed} of {total} items shown, as requested. Original shows everything.', { placed: result.stats.placedItems, total: result.stats.totalItems }))
     }
     if (result.stats.restoredItems > 0 && meta.source !== 'built-in') {
-      notes.push(`${result.stats.restoredItems} ${result.stats.restoredItems === 1 ? 'item' : 'items'} left out by the layout ${result.stats.restoredItems === 1 ? 'was' : 'were'} added back so nothing is lost.`)
+      const restored = result.stats.restoredItems
+      notes.push(
+        t(restored === 1 ? '{count} left out by the layout was added back so nothing is lost.' : '{count} left out by the layout were added back so nothing is lost.', {
+          count: countItems(restored),
+        }),
+      )
     }
     viewNote.textContent = notes.join(' ')
     viewNote.hidden = notes.length === 0
@@ -503,13 +530,13 @@ export const initComposer = ({ adapter, regions }) => {
       const reason = failureText(error)
       const unsupported = error.validation?.errors?.some((text) => /not available/.test(text))
       if (state.lastValidSchema) {
-        showMessage(`${reason} Your current view is unchanged.`, 'error')
-        announce(`${reason} Your current view is unchanged.`)
+        showMessage(`${reason} ${t('Your current view is unchanged.')}`, 'error')
+        announce(`${reason} ${t('Your current view is unchanged.')}`)
       } else {
         apply(builtInResult(prompt), { source: 'built-in', prompt })
         const note = unsupported
           ? t('That experience is not available yet, so the built-in magazine layout is shown.')
-          : `${reason} Showing the built-in magazine layout instead.`
+          : `${reason} ${t('Showing the built-in magazine layout instead.')}`
         viewNote.textContent = note
         viewNote.hidden = false
         showMessage(note, 'error')
@@ -593,7 +620,7 @@ export const initComposer = ({ adapter, regions }) => {
     rememberInput.checked = false
     persistSettings(settings)
     updateKeyStatus()
-    showMessage('API key removed from this browser.', 'info')
+    showMessage(t('API key removed from this browser.'), 'info')
   })
   builtInButton.addEventListener('click', () => submit(promptInput.value, { forceBuiltIn: true }))
 

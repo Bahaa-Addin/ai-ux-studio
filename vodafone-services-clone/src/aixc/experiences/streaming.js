@@ -16,8 +16,8 @@
 
 import { h, pathIcon, svgIcon, visuallyHidden } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PREV, chromeOffset, clamp, experienceRoot, externalLink, groupsOf, media, onScrollFrame, pageHeading,
-  promotionOf, reducedMotion, scrollToY,
+  ICON_NEXT, ICON_PREV, chromeOffset, clamp, experienceRoot, externalLink, groupsOf, inlineSign, media, onScrollFrame, pageHeading,
+  promotionOf, reducedMotion, scrollToY, t,
 } from './shared.js'
 
 const WORD = 'VODAFONE'
@@ -25,7 +25,7 @@ const INTRO_MS = 3200
 const ICON_PLAY = 'M8 5.14v13.72L19 12z'
 const ICON_INFO = 'M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z'
 const ICON_CLOSE = 'M18.3 7.1 16.9 5.7 12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z'
-const ICON_CHEVRON = 'M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'
+const NEW_TAB = () => ` ${t('(opens in a new tab)')}`
 
 const domainOf = (href) => {
   try {
@@ -81,9 +81,11 @@ const markSvg = ({ extruded = false } = {}) => {
 /**
  * The lockup: Vodafone mark + VODAFONE, always built and animated as one element.
  * Letters grow toward the edges, the bowed streaming-logo silhouette.
+ * The lockup is a Latin wordmark: it stays left to right on the Arabic page too
+ * (its letters are separate flex items, which a right-to-left flex row would reverse).
  */
 const wordmark = (className, { extruded = false } = {}) => {
-  const lockup = h('span', { class: `st-word ${className}`, 'aria-hidden': 'true' }, markSvg({ extruded }))
+  const lockup = h('span', { class: `st-word vx-ltr ${className}`, dir: 'ltr', 'aria-hidden': 'true' }, markSvg({ extruded }))
   const letters = h('span', { class: 'st-word__letters' })
   const middle = (WORD.length - 1) / 2
   ;[...WORD].forEach((char, at) => {
@@ -99,7 +101,7 @@ const circleButton = (icon, label, extraClass = '') =>
   h('button', { type: 'button', class: `st-circle ${extraClass}`.trim(), 'aria-label': label }, pathIcon(icon, ''))
 
 const circleLink = (href, icon, label) =>
-  h('a', { class: 'st-circle st-circle--primary', href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${label} (opens in a new tab)` }, pathIcon(icon, ''))
+  h('a', { class: 'st-circle st-circle--primary', href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${label}${NEW_TAB()}` }, pathIcon(icon, ''))
 
 export const renderStreaming = (schema, index) => {
   const groups = groupsOf(schema, index)
@@ -114,7 +116,7 @@ export const renderStreaming = (schema, index) => {
 
   /* ---------------------------------------------------------------- modal */
   const modalBody = h('div', { class: 'st-modal__content' })
-  const modalClose = h('button', { type: 'button', class: 'st-modal__close', 'aria-label': 'Close' }, pathIcon(ICON_CLOSE, ''))
+  const modalClose = h('button', { type: 'button', class: 'st-modal__close', 'aria-label': t('Close') }, pathIcon(ICON_CLOSE, ''))
   const modal = h('dialog', { class: 'st-modal', 'aria-labelledby': 'st-modal-title' }, modalClose, modalBody)
   modalClose.addEventListener('click', () => modal.close())
   modal.addEventListener('click', (event) => {
@@ -126,7 +128,7 @@ export const renderStreaming = (schema, index) => {
   const smallCard = (item) => {
     const button = h(
       'button',
-      { type: 'button', class: 'st-more__card', 'aria-label': `More info: ${item.title}` },
+      { type: 'button', class: 'st-more__card', 'aria-label': t('More info: {title}', { title: item.title }) },
       media(item, { className: 'st-more__media' }),
       h('span', { class: 'st-more__title' }, item.title),
       item.description ? h('span', { class: 'st-more__desc' }, item.description) : null,
@@ -137,14 +139,14 @@ export const renderStreaming = (schema, index) => {
 
   const primaryAction = (item, { large = false } = {}) => {
     const { label, href } = item.cta ?? {}
-    const text = label ?? 'View service'
+    const text = label ?? t('View service')
     if (href) {
       return h(
         'a',
         { class: `st-btn st-btn--play${large ? ' st-btn--large' : ''}`, href, target: '_blank', rel: 'noopener noreferrer' },
         pathIcon(ICON_PLAY, 'st-btn__icon'),
         h('span', null, text),
-        visuallyHidden(' (opens in a new tab)'),
+        visuallyHidden(NEW_TAB()),
       )
     }
     // The source shows this label without a destination; show it as information.
@@ -169,12 +171,12 @@ export const renderStreaming = (schema, index) => {
         h(
           'dl',
           { class: 'st-modal__meta' },
-          group ? h('div', null, h('dt', null, 'Category'), h('dd', null, group.title)) : null,
-          h('div', null, h('dt', null, 'Link'), h('dd', null, domain ?? 'None on the source page')),
+          group ? h('div', null, h('dt', null, t('Category')), h('dd', null, group.title)) : null,
+          h('div', null, h('dt', null, t('Link')), h('dd', null, domain ? h('bdi', null, domain) : t('None on the source page'))),
         ),
       ),
       siblings.length
-        ? h('section', { class: 'st-more', 'aria-labelledby': 'st-more-title' }, h('h3', { class: 'st-more__heading', id: 'st-more-title' }, `More in ${group.title}`), h('div', { class: 'st-more__grid' }, siblings.map(smallCard)))
+        ? h('section', { class: 'st-more', 'aria-labelledby': 'st-more-title' }, h('h3', { class: 'st-more__heading', id: 'st-more-title' }, t('More in {category}', { category: group.title })), h('div', { class: 'st-more__grid' }, siblings.map(smallCard)))
         : null,
     )
     if (!modal.open) modal.showModal()
@@ -199,7 +201,7 @@ export const renderStreaming = (schema, index) => {
   }
 
   /* ------------------------------------------------------------ top bar */
-  const brand = h('a', { class: 'st-brand', href: '#st-top', 'aria-label': 'Vodafone, back to the top' }, wordmark('st-brand__word'))
+  const brand = h('a', { class: 'st-brand', href: '#st-top', 'aria-label': t('Vodafone, back to the top') }, wordmark('st-brand__word'))
   const navLinks = rows.map((row) => {
     const link = h('a', { class: 'st-nav__link', href: `#st-row-${row.group.id}` }, row.group.title)
     link.addEventListener('click', (event) => {
@@ -210,14 +212,14 @@ export const renderStreaming = (schema, index) => {
     })
     return link
   })
-  const homeLink = h('a', { class: 'st-nav__link is-current', href: '#st-top', 'aria-current': 'page' }, 'Home')
+  const homeLink = h('a', { class: 'st-nav__link is-current', href: '#st-top', 'aria-current': 'page' }, t('Home'))
   const backToTop = (event) => {
     event.preventDefault()
     scrollToY(root.getBoundingClientRect().top + window.scrollY - chromeOffset())
   }
   homeLink.addEventListener('click', backToTop)
   brand.addEventListener('click', backToTop)
-  const navBar = h('nav', { class: 'st-nav', 'aria-label': 'Streaming showcase' }, brand, h('ul', { class: 'st-nav__links' }, [homeLink, ...navLinks].map((link) => h('li', null, link))))
+  const navBar = h('nav', { class: 'st-nav', 'aria-label': t('Streaming showcase') }, brand, h('ul', { class: 'st-nav__links' }, [homeLink, ...navLinks].map((link) => h('li', null, link))))
 
   /* ------------------------------------------------------------ billboard */
   let billboard = null
@@ -225,7 +227,7 @@ export const renderStreaming = (schema, index) => {
     const titleArt = featured.image?.fit === 'contain' && featured.image?.src
       ? h('img', { class: 'st-billboard__art', src: featured.image.src, alt: '', width: featured.image.width, height: featured.image.height })
       : null
-    const moreInfo = h('button', { type: 'button', class: 'st-btn st-btn--info' }, pathIcon(ICON_INFO, 'st-btn__icon'), h('span', null, 'More info'))
+    const moreInfo = h('button', { type: 'button', class: 'st-btn st-btn--info' }, pathIcon(ICON_INFO, 'st-btn__icon'), h('span', null, t('More info')))
     moreInfo.addEventListener('click', () => openItem(featured))
     billboard = h(
       'section',
@@ -251,20 +253,20 @@ export const renderStreaming = (schema, index) => {
   const sliders = []
   const rowEls = rows.map((row) => {
     const titleId = `st-row-title-${row.group.id}`
-    const exploreButton = h('button', { type: 'button', class: 'st-row__explore' }, h('span', null, 'Explore all'), pathIcon(ICON_CHEVRON, ''))
+    const exploreButton = h('button', { type: 'button', class: 'st-row__explore' }, h('span', null, t('Explore all')), pathIcon(ICON_NEXT, ''))
     exploreButton.addEventListener('click', () => openGroup(row.group))
 
     const cards = row.items.map((item) => {
       const open = h(
         'button',
-        { type: 'button', class: 'st-card__open', 'aria-label': `More info: ${item.title}` },
+        { type: 'button', class: 'st-card__open', 'aria-label': t('More info: {title}', { title: item.title }) },
         media(item, { className: 'st-card__media' }),
         h('span', { class: 'st-card__label', 'aria-hidden': 'true' }, item.title),
       )
       open.addEventListener('click', () => openItem(item))
-      const info = circleButton(ICON_INFO, `More info: ${item.title}`, 'st-circle--ghost')
+      const info = circleButton(ICON_INFO, t('More info: {title}', { title: item.title }), 'st-circle--ghost')
       info.addEventListener('click', () => openItem(item))
-      const action = item.cta?.href ? circleLink(item.cta.href, ICON_PLAY, item.cta.label ?? `View ${item.title}`) : null
+      const action = item.cta?.href ? circleLink(item.cta.href, ICON_PLAY, item.cta.label ?? t('View {title}', { title: item.title })) : null
       return h(
         'li',
         { class: 'st-card', 'data-aixc-item': item.id },
@@ -286,8 +288,8 @@ export const renderStreaming = (schema, index) => {
 
     const track = h('ul', { class: 'st-row__track' }, cards)
     const viewport = h('div', { class: 'st-row__viewport' }, track)
-    const prev = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--prev', 'aria-label': `Previous ${row.group.title}` }, pathIcon(ICON_PREV, ''))
-    const next = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--next', 'aria-label': `Next ${row.group.title}` }, pathIcon(ICON_NEXT, ''))
+    const prev = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--prev', 'aria-label': t('Previous {title}', { title: row.group.title }) }, pathIcon(ICON_PREV, ''))
+    const next = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--next', 'aria-label': t('Next {title}', { title: row.group.title }) }, pathIcon(ICON_NEXT, ''))
     const pager = h('ol', { class: 'st-row__pages', 'aria-hidden': 'true' })
 
     const slider = { page: 0, pages: 1, per: 1 }
@@ -362,12 +364,12 @@ export const renderStreaming = (schema, index) => {
                 'div',
                 { class: 'st-closing__stores' },
                 promo.storesLabel ? h('p', null, promo.storesLabel) : null,
-                h('ul', null, promo.stores.map((store) => h('li', null, h('a', { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} (opens in a new tab)` }, svgIcon(store.icon, 'st-closing__store'))))),
+                h('ul', null, promo.stores.map((store) => h('li', null, h('a', { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label}${NEW_TAB()}` }, svgIcon(store.icon, 'st-closing__store'))))),
               )
             : null,
         ),
         promo.qr?.image?.src
-          ? h('figure', { class: 'st-closing__qr' }, h('img', { src: promo.qr.image.src, alt: 'QR code to download the Ana Vodafone app', width: 330, height: 330, loading: 'lazy', decoding: 'async' }), promo.qr.title ? h('figcaption', null, promo.qr.title) : null)
+          ? h('figure', { class: 'st-closing__qr' }, h('img', { src: promo.qr.image.src, alt: t('QR code to download the Ana Vodafone app'), width: 330, height: 330, loading: 'lazy', decoding: 'async' }), promo.qr.title ? h('figcaption', null, promo.qr.title) : null)
           : null,
       )
     : null
@@ -383,7 +385,7 @@ export const renderStreaming = (schema, index) => {
   )
   const curtain = h('div', { class: 'st-intro__curtain' })
   const intro = h('div', { class: 'st-intro', 'aria-hidden': 'true' }, curtain, introLogo)
-  const skip = h('button', { type: 'button', class: 'st-skip' }, 'Skip intro')
+  const skip = h('button', { type: 'button', class: 'st-skip' }, t('Skip intro'))
 
   const root = experienceRoot(
     'streaming',
@@ -460,10 +462,11 @@ export const renderStreaming = (schema, index) => {
     const timing = { duration: INTRO_MS, fill: 'both' }
 
     introAnimations = [
-      // Slide in from the right, settle, push toward the camera, then fly to the bar.
+      // Slide in from the end of the reading line (the right in LTR, the left in RTL), settle,
+      // push toward the camera, then fly to the bar (measured, so it lands wherever the brand sits).
       introLogo.animate(
         [
-          { offset: 0, transform: 'translate3d(9%, 0, 0) scale(0.84)', easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+          { offset: 0, transform: `translate3d(${9 * inlineSign}%, 0, 0) scale(0.84)`, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
           { offset: 0.16, transform: 'translate3d(0, 0, 0) scale(0.94)', easing: 'ease-in-out' },
           { offset: 0.44, transform: 'translate3d(0, 0, 0) scale(1)', easing: 'cubic-bezier(0.3, 0, 0.2, 1)' },
           { offset: 0.56, transform: 'translate3d(0, 0, 0) scale(1.16)', easing: 'ease-out' },

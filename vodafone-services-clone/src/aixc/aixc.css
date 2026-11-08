@@ -57,13 +57,15 @@
 .aixc-launcher {
   position: fixed;
   top: calc(var(--aixc-header-h) + var(--aixc-guide-pill-h, 0px) + 16px);
-  right: max(16px, env(safe-area-inset-right));
+  /* Under the guide's journey pill: top right in English, top left in Arabic. */
+  inset-inline-end: max(16px, env(safe-area-inset-right));
   z-index: 40;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   min-height: 52px;
-  padding: 0 22px 0 18px;
+  padding-block: 0;
+  padding-inline: 18px 22px;
   border: 0;
   border-radius: 999px;
   background: var(--aixc-accent);
@@ -94,7 +96,7 @@
 .aixc-composer {
   position: fixed;
   top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h) + var(--aixc-guide-pill-h, 0px) + 12px);
-  right: max(16px, env(safe-area-inset-right));
+  inset-inline-end: max(16px, env(safe-area-inset-right));
   z-index: 41;
   width: min(480px, calc(100vw - 32px));
   max-height: calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - var(--aixc-guide-pill-h, 0px) - 28px);
@@ -191,7 +193,7 @@
   font: inherit;
   font-size: 0.875rem;
   line-height: 1.3;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -304,6 +306,10 @@
   animation: aixc-indeterminate 1.1s ease-in-out infinite;
 }
 
+[dir='rtl'] .aixc-progress__bar::after {
+  animation-direction: reverse;
+}
+
 @keyframes aixc-indeterminate {
   from {
     transform: translateX(-100%);
@@ -400,7 +406,7 @@
 .aixc-warning {
   margin: 0;
   padding: 10px 12px;
-  border-left: 3px solid var(--aixc-red);
+  border-inline-start: 3px solid var(--aixc-red);
   background: #fff6f6;
   color: var(--aixc-text);
   font-size: 0.8125rem;
@@ -443,6 +449,43 @@
   list-style: none;
 }
 
+.aixc-templates__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.aixc-templates__item > .aixc-template {
+  flex: 1;
+}
+
+.aixc-template__credit {
+  overflow: hidden;
+  /* A little height for a finger, and room for tall Arabic letters under overflow: hidden. */
+  padding: 4px;
+  color: var(--aixc-muted);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.aixc-template__credit:lang(ar) {
+  line-height: 1.6;
+}
+
+.aixc-template__credit:hover {
+  color: var(--aixc-accent);
+  text-decoration: underline;
+}
+
+.aixc-template__credit:focus-visible {
+  outline: 2px solid var(--aixc-focus);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 .aixc-template {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
@@ -456,7 +499,7 @@
   background: var(--aixc-paper);
   color: var(--aixc-text);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -649,13 +692,29 @@
   }
 }
 
+/* Arabic: the end edge is the left, so the left safe-area inset applies. */
+[dir='rtl'] .aixc-launcher {
+  inset-inline-end: max(16px, env(safe-area-inset-left));
+}
+
+/* Wide screens only: on phones the composer is a full-width sheet (left: 0; right: 0). */
+@media (min-width: 768px) {
+  [dir='rtl'] .aixc-composer {
+    inset-inline-end: max(16px, env(safe-area-inset-left));
+  }
+}
+
 @media (max-width: 767px) {
   .aixc-launcher {
     top: calc(var(--aixc-header-h) + var(--aixc-guide-pill-h, 0px) + 12px);
-    right: max(12px, env(safe-area-inset-right));
+    inset-inline-end: max(12px, env(safe-area-inset-right));
     min-height: 48px;
-    padding: 0 18px 0 14px;
+    padding-inline: 14px 18px;
     font-size: 0.9375rem;
+  }
+
+  [dir='rtl'] .aixc-launcher {
+    inset-inline-end: max(12px, env(safe-area-inset-left));
   }
 
   /* Sheet that drops from under the header, leaving the header and navigation visible. */

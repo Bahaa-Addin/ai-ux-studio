@@ -2,7 +2,34 @@
 
 .aixc-vx--flipbook {
   --fb-turn: 0.95s;
+  /*
+   * Reading direction. LTR: the spine is in the middle, unread leaves lie on the
+   * right half hinged at their left edge and turn right-to-left. RTL (an Arabic
+   * book bound on the right): unread leaves lie on the left half hinged at their
+   * right edge and turn from the left over to the right.
+   */
+  --fb-sign: 1; /* +1 LTR, -1 RTL, like inlineSign */
+  --fb-hinge: 0%; /* x of a leaf's spine edge */
+  --fb-start: 0%; /* background-position x of the inline-start edge */
+  --fb-end: 100%;
+  --fb-spine-front: 90deg; /* spine shading fades away from the spine */
+  --fb-spine-back: 270deg;
+  --fb-corner-next: 315deg; /* folded corner on the outer bottom edge */
+  --fb-corner-prev: 45deg;
+  --fb-wipe-from: inset(0 100% 0 0); /* clip-path wipe runs along the reading line */
   background: var(--vx-grey-200);
+}
+
+[dir='rtl'] .aixc-vx--flipbook {
+  --fb-sign: -1;
+  --fb-hinge: 100%;
+  --fb-start: 100%;
+  --fb-end: 0%;
+  --fb-spine-front: 270deg;
+  --fb-spine-back: 90deg;
+  --fb-corner-next: 45deg;
+  --fb-corner-prev: 315deg;
+  --fb-wipe-from: inset(0 0 0 100%);
 }
 
 .aixc-vx--flipbook .fb-stage {
@@ -30,22 +57,22 @@
   transition: transform var(--fb-turn) var(--vx-ease);
 }
 
-/* Closed, the book sits centred like a real one. */
+/* Closed, the book sits centred like a real one (shifted toward its unused half). */
 .aixc-vx--flipbook .fb-book.is-spread.is-closed-front {
-  transform: translateX(-25%);
+  transform: translateX(calc(-25% * var(--fb-sign)));
 }
 
 .aixc-vx--flipbook .fb-book.is-spread.is-closed-back {
-  transform: translateX(25%);
+  transform: translateX(calc(25% * var(--fb-sign)));
 }
 
 .aixc-vx--flipbook .fb-leaf {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
+  inset-inline-start: 50%;
   width: 50%;
-  transform-origin: 0 50%;
+  transform-origin: var(--fb-hinge) 50%;
   transform-style: preserve-3d;
   transition:
     transform var(--fb-turn) var(--vx-ease),
@@ -53,11 +80,11 @@
 }
 
 .aixc-vx--flipbook .fb-leaf.is-turned {
-  transform: rotateY(-180deg);
+  transform: rotateY(calc(-180deg * var(--fb-sign)));
 }
 
 .aixc-vx--flipbook .fb-book.is-single .fb-leaf {
-  left: 0;
+  inset-inline-start: 0;
   width: 100%;
   transition:
     transform var(--fb-turn) var(--vx-ease),
@@ -96,7 +123,8 @@
   box-shadow: 0 18px 40px rgba(20, 20, 30, 0.16);
 }
 
-/* Spine shading: right-hand pages darken at their left edge, left-hand at their right. */
+/* Spine shading: unread (front) pages darken at their spine edge, read (back) pages at theirs.
+   LTR: right-hand pages at their left edge, left-hand at their right; mirrored in RTL. */
 .aixc-vx--flipbook .fb-face--front .fb-page::before,
 .aixc-vx--flipbook .fb-face--back .fb-page::before {
   content: '';
@@ -109,13 +137,13 @@
 }
 
 .aixc-vx--flipbook .fb-face--front .fb-page::before {
-  left: 0;
-  background: linear-gradient(90deg, rgba(20, 20, 30, 0.12), rgba(20, 20, 30, 0));
+  inset-inline-start: 0;
+  background: linear-gradient(var(--fb-spine-front), rgba(20, 20, 30, 0.12), rgba(20, 20, 30, 0));
 }
 
 .aixc-vx--flipbook .fb-face--back .fb-page::before {
-  right: 0;
-  background: linear-gradient(270deg, rgba(20, 20, 30, 0.12), rgba(20, 20, 30, 0));
+  inset-inline-end: 0;
+  background: linear-gradient(var(--fb-spine-back), rgba(20, 20, 30, 0.12), rgba(20, 20, 30, 0));
 }
 
 .aixc-vx--flipbook .fb-book.is-single .fb-page::before {
@@ -135,26 +163,26 @@
 .aixc-vx--flipbook .fb-folio {
   position: absolute;
   bottom: 22px;
-  left: 52px;
+  inset-inline-start: 52px;
   color: var(--vx-grey-900);
   font-family: var(--vx-font-bold);
   font-size: 0.875rem;
 }
 
 .aixc-vx--flipbook .fb-face--back .fb-folio {
-  right: 52px;
-  left: auto;
+  inset-inline-end: 52px;
+  inset-inline-start: auto;
 }
 
 .aixc-vx--flipbook .fb-folio span {
   display: inline-block;
   padding-bottom: 5px;
-  background: linear-gradient(var(--vx-red), var(--vx-red)) no-repeat 0 100% / 0 2px;
+  background: linear-gradient(var(--vx-red), var(--vx-red)) no-repeat var(--fb-start) 100% / 0 2px;
   transition: background-size 0.8s var(--vx-ease) 0.6s;
 }
 
 .aixc-vx--flipbook .fb-face--back .fb-folio span {
-  background-position: 100% 100%;
+  background-position: var(--fb-end) 100%;
 }
 
 /* The folio underline grows as the page opens. */
@@ -164,7 +192,7 @@
 
 /* Clip-path wipe for lead images, as in the reference. */
 .aixc-vx--flipbook .fb-reveal {
-  clip-path: inset(0 100% 0 0);
+  clip-path: var(--fb-wipe-from);
   transition: clip-path 0.8s var(--vx-ease) 0.5s;
 }
 
@@ -196,6 +224,11 @@
   transform: none;
 }
 
+/* Arabic titles fly in word by word (fb-char--word): letters must stay joined. */
+.aixc-vx--flipbook .fb-char--word {
+  white-space: nowrap;
+}
+
 /* Corner turns: a folded page corner. */
 .aixc-vx--flipbook .fb-corner {
   position: absolute;
@@ -210,13 +243,13 @@
 }
 
 .aixc-vx--flipbook .fb-corner--next {
-  right: 0;
-  background: linear-gradient(315deg, var(--vx-grey-200) 0 50%, rgba(255, 255, 255, 0) 50%);
+  inset-inline-end: 0;
+  background: linear-gradient(var(--fb-corner-next), var(--vx-grey-200) 0 50%, rgba(255, 255, 255, 0) 50%);
 }
 
 .aixc-vx--flipbook .fb-corner--prev {
-  left: 0;
-  background: linear-gradient(45deg, var(--vx-grey-200) 0 50%, rgba(255, 255, 255, 0) 50%);
+  inset-inline-start: 0;
+  background: linear-gradient(var(--fb-corner-prev), var(--vx-grey-200) 0 50%, rgba(255, 255, 255, 0) 50%);
 }
 
 .aixc-vx--flipbook .fb-corner:hover,
@@ -227,12 +260,12 @@
 
 .aixc-vx--flipbook .fb-corner--next:hover,
 .aixc-vx--flipbook .fb-corner--next:focus-visible {
-  background: linear-gradient(315deg, var(--vx-red) 0 50%, rgba(255, 255, 255, 0) 50%);
+  background: linear-gradient(var(--fb-corner-next), var(--vx-red) 0 50%, rgba(255, 255, 255, 0) 50%);
 }
 
 .aixc-vx--flipbook .fb-corner--prev:hover,
 .aixc-vx--flipbook .fb-corner--prev:focus-visible {
-  background: linear-gradient(45deg, var(--vx-red) 0 50%, rgba(255, 255, 255, 0) 50%);
+  background: linear-gradient(var(--fb-corner-prev), var(--vx-red) 0 50%, rgba(255, 255, 255, 0) 50%);
 }
 
 /* ------------------------------------------------------------------ cover */
@@ -245,8 +278,7 @@
 .aixc-vx--flipbook .fb-page--cover .fb-page__inner {
   gap: 14px;
   padding-top: 0;
-  padding-right: 0;
-  padding-left: 0;
+  padding-inline: 0;
 }
 
 .aixc-vx--flipbook .fb-cover__photo {
@@ -327,7 +359,7 @@
   color: var(--vx-grey-900);
   font-family: var(--vx-font);
   font-size: 1.25rem;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -580,7 +612,7 @@
   display: block;
   height: 100%;
   background: var(--vx-red);
-  transform-origin: 0 50%;
+  transform-origin: var(--fb-start) 50%; /* fills along the reading line */
   transition: transform 0.4s ease;
 }
 
@@ -590,6 +622,27 @@
   font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
   text-align: center;
+}
+
+/* ----------------------------------------------------------------- Arabic */
+
+/* The Arabic face needs taller lines than the Latin display settings, and its
+   joined letters must never be tracked. */
+.aixc-vx--flipbook .fb-cover__title:lang(ar) {
+  max-width: 9ch;
+  line-height: 1.2;
+  letter-spacing: normal;
+}
+
+.aixc-vx--flipbook .fb-contents__title:lang(ar),
+.aixc-vx--flipbook .fb-opener__title:lang(ar) {
+  line-height: 1.3;
+}
+
+.aixc-vx--flipbook .fb-back__title:lang(ar),
+.aixc-vx--flipbook .fb-lead__title:lang(ar),
+.aixc-vx--flipbook .fb-item__title:lang(ar) {
+  line-height: 1.35;
 }
 
 /* ------------------------------------------------------------- responsive */
@@ -608,7 +661,7 @@
   }
 
   .aixc-vx--flipbook .fb-folio {
-    left: 24px;
+    inset-inline-start: 24px;
   }
 
   .aixc-vx--flipbook .fb-cover__mark {
@@ -628,6 +681,14 @@
 
   .aixc-vx--flipbook .fb-item__media {
     aspect-ratio: 7 / 3;
+  }
+
+  /* Arabic copy runs taller: keep the lead's action clear of the folio on single pages. */
+  .aixc-vx--flipbook .fb-lead__desc:lang(ar) {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
   }
 }
 

@@ -3,7 +3,9 @@
  *
  * Numbered service cards fan out along a diagonal: each step away from the
  * current card moves 80% of a card across, 20% down and turns 12° about its
- * bottom-left corner, with the reference's z-order and fading contents, and its
+ * bottom-left corner (in Arabic the whole fan mirrors: it runs toward the left,
+ * turning the other way about the bottom-right corner, and a drag to the right
+ * advances it), with the reference's z-order and fading contents, and its
  * 0.8 s cubic-bezier(0, 0.02, 0, 1) settle. The reference spreads ten cards over
  * its whole range; here the spacing is per card so any number fans the same way.
  * Page scroll (wheel, trackpad, touch), a horizontal drag, a click on a card,
@@ -12,9 +14,10 @@
  */
 
 import { h, pathIcon } from '../dom.js'
+import { countCategories, countServices } from '../../i18n.js'
 import {
   ICON_NEXT, ICON_PREV, arrowKeys, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras, groupsOf,
-  liveStatus, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper,
+  liveStatus, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, t,
 } from './shared.js'
 
 const STEP_PX = 210
@@ -37,7 +40,7 @@ export const renderFan = (schema, index) => {
         tabindex: '-1',
         'data-aixc-item': item.id,
         'data-drag-through': '',
-        'aria-label': `${item.title}, card ${at + 1} of ${total}`,
+        'aria-label': t('{title}, card {n} of {total}', { title: item.title, n: at + 1, total }),
       },
       h(
         'span',
@@ -60,8 +63,8 @@ export const renderFan = (schema, index) => {
   const detail = h('div', { class: 'fn-detail' }, detailGroup, detailTitle, detailDesc, detailActions)
 
   /* -------------------------------------------------------------- controls */
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Previous card' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Next card' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous card') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next card') }, pathIcon(ICON_NEXT, ''))
   const counterNow = h('span', { class: 'fn-counter__now' }, '01')
   const progressFill = h('span', { class: 'fn-progress__fill' })
   const controls = h(
@@ -75,7 +78,7 @@ export const renderFan = (schema, index) => {
       prevButton,
       nextButton,
     ),
-    h('p', { class: 'fn-hint' }, 'Drag the cards, scroll, or use the arrow keys'),
+    h('p', { class: 'fn-hint' }, t('Drag the cards, scroll, or use the arrow keys')),
   )
   const status = liveStatus()
 
@@ -84,14 +87,14 @@ export const renderFan = (schema, index) => {
     'div',
     { class: 'fn-decor', 'aria-hidden': 'true' },
     h('span', { class: 'fn-rule' }),
-    h('p', { class: 'fn-turned' }, `${index.model.title} · ${total} services · ${groups.length} categories`),
+    h('p', { class: 'fn-turned' }, `${index.model.title} · ${countServices(total)} · ${countCategories(groups.length)}`),
   )
   const cursorRing = h('span', { class: 'fn-cursor', 'aria-hidden': 'true' })
   const cursorDot = h('span', { class: 'fn-cursor fn-cursor--dot', 'aria-hidden': 'true' })
 
   const stage = h(
     'section',
-    { class: 'fn-stage vx-dark', 'aria-roledescription': 'carousel', 'aria-label': 'Vodafone services, card fan' },
+    { class: 'fn-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services, card fan') },
     decor,
     deck,
     detail,
@@ -138,7 +141,7 @@ export const renderFan = (schema, index) => {
     progressFill.style.transform = `scaleX(${(next + 1) / total})`
     prevButton.disabled = next === 0
     nextButton.disabled = next === total - 1
-    if (announce) status.textContent = `${next + 1} of ${total}: ${item.title}, ${group.title}`
+    if (announce) status.textContent = t('{n} of {total}: {title}, {group}', { n: next + 1, total, title: item.title, group: group.title })
     active = next
   }
 
@@ -153,6 +156,7 @@ export const renderFan = (schema, index) => {
 
   const onPointer = (event) => {
     if (event.pointerType !== 'mouse' || reducedMotion()) return
+    // Physical coordinates on purpose: the cursor follows the mouse in either direction.
     const rect = stage.getBoundingClientRect()
     const x = `${(event.clientX - rect.left).toFixed(1)}px`
     const y = `${(event.clientY - rect.top).toFixed(1)}px`

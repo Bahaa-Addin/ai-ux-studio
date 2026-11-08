@@ -93,6 +93,7 @@ export const vodafoneServicesPageAr = {
     lead: 'كل اللي ممكن تحتاجه من خدمات ڤودافون بقى حرفياً بين ايديك!',
     description: 'اتحكم في خطك وتابع فواتيرك واستهلاكك بأسهل طريقة',
     storesLabel: 'متاح على',
+    qr: { ...en.closingPromotion.qr, title: 'صوّر الكود وحمّل التطبيق' },
   },
   sections: en.sections.map((section) => {
     const ar = sections[section.id]

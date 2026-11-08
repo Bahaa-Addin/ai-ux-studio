@@ -5,14 +5,15 @@
  * Scrolling the page walks the camera along the wall; when scrolling settles it
  * eases to the nearest piece, and the caption (catalogue number, category, title,
  * description, link) changes with it. The pointer tilts the wall slightly. Arrow
- * keys and prev/next work too. The reference wraps infinitely; here the walk has a
+ * keys and prev/next work too. In Arabic the wall is mirrored: the pieces hang
+ * leftward, the wall recedes the other way, and walking forward moves left. The reference wraps infinitely; here the walk has a
  * start and an end so the page can continue to the footer.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PREV, chromeOffset, clamp, closingBand, ctaFor, experienceRoot, flatItems, groupsOf, media, onScrollFrame,
-  pad2, pageHeading, promotionOf, reducedMotion, scrollToY,
+  ICON_NEXT, ICON_PREV, arrowKeys, chromeOffset, clamp, closingBand, ctaFor, experienceRoot, flatItems, groupsOf, inlineSign,
+  ltrMark, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollToY, t,
 } from './shared.js'
 
 const STEP_PX = 240 // page scroll per piece
@@ -37,7 +38,7 @@ export const renderGallery = (schema, index) => {
   const pieces = entries.map(({ item, group }, at) => {
     const piece = h(
       'button',
-      { type: 'button', class: 'gl-piece', tabindex: '-1', 'data-aixc-item': item.id, 'aria-label': `${item.title}, piece ${at + 1} of ${total}` },
+      { type: 'button', class: 'gl-piece', tabindex: '-1', 'data-aixc-item': item.id, 'aria-label': t('{title}, piece {n} of {total}', { title: item.title, n: at + 1, total }) },
       h('span', { class: 'gl-frame' }, media(item, { className: 'gl-frame__media' })),
       h('span', { class: 'gl-plate', 'aria-hidden': 'true' }, h('span', { class: 'gl-plate__title' }, item.title), h('span', { class: 'gl-plate__group' }, group.title)),
     )
@@ -60,8 +61,8 @@ export const renderGallery = (schema, index) => {
   const caption = h('div', { class: 'gl-caption', 'aria-live': 'polite' }, capNumber, capGroup, capTitle, capDesc, capAction, capMeta)
 
   /* ------------------------------------------------------------- controls */
-  const prevButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': 'Previous piece' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': 'Next piece' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': t('Previous piece') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': t('Next piece') }, pathIcon(ICON_NEXT, ''))
   const progressFill = h('span', { class: 'gl-progress__fill' })
   const counter = h('p', { class: 'gl-counter' })
   const controls = h('div', { class: 'gl-controls' }, prevButton, nextButton, h('div', { class: 'gl-progress' }, progressFill), counter)
@@ -70,10 +71,10 @@ export const renderGallery = (schema, index) => {
     'div',
     { class: 'gl-intro' },
     h('p', { class: 'gl-intro__brand' }, index.model.title),
-    h('p', { class: 'gl-intro__hint' }, 'Scroll, or use the arrows, to walk along the wall.'),
+    h('p', { class: 'gl-intro__hint' }, t('Scroll, or use the arrows, to walk along the wall.')),
   )
 
-  const stage = h('section', { class: 'gl-stage', 'aria-label': 'Gallery of Vodafone services' }, viewport, intro, caption, controls)
+  const stage = h('section', { class: 'gl-stage', 'aria-label': t('Gallery of Vodafone services') }, viewport, intro, caption, controls)
   const track = h('div', { class: 'gl-track' }, stage)
   track.style.setProperty('--pieces', String(total))
   track.style.setProperty('--step', `${STEP_PX}px`)
@@ -86,7 +87,12 @@ export const renderGallery = (schema, index) => {
   let settleTimer = 0
   let stop = null
 
-  /** Frame widths follow the image ratio at the current frame height. */
+  /**
+   * Frame widths follow the image ratio at the current frame height. `--x` is the
+   * distance from the wall's origin to the piece's start edge (CSS places it with
+   * inset-inline-start, so in RTL pieces hang leftward); `offsets` are the signed
+   * physical centres the camera travels to.
+   */
   const measure = () => {
     const height = parseFloat(getComputedStyle(root).getPropertyValue('--gl-frame-h')) || 300
     // Never wider than most of the stage, so wide images still fit on phones.
@@ -100,7 +106,7 @@ export const renderGallery = (schema, index) => {
       piece.style.setProperty('--x', `${Math.round(x)}px`)
       const center = x + width / 2
       x += width + GAP_PX
-      return center
+      return center * inlineSign
     })
   }
 
@@ -114,7 +120,7 @@ export const renderGallery = (schema, index) => {
   const showCaption = (at) => {
     const { item, group } = entries[at]
     const inGroup = group.items.indexOf(item) + 1
-    capNumber.textContent = `No. ${pad2(at + 1)}`
+    capNumber.textContent = t('No. {n}', { n: pad2(at + 1) })
     capGroup.textContent = group.title
     capTitle.textContent = item.title
     capDesc.textContent = item.description ?? ''
@@ -122,9 +128,10 @@ export const renderGallery = (schema, index) => {
     capAction.replaceChildren(...[ctaFor(item, { variant: 'primary', standalone: true })].filter(Boolean))
     const domain = item.cta?.href ? domainOf(item.cta.href) : null
     capMeta.replaceChildren(
-      h('div', null, h('dt', null, 'Category'), h('dd', null, group.title)),
-      h('div', null, h('dt', null, 'In this category'), h('dd', null, `${inGroup} of ${group.items.length}`)),
-      h('div', null, h('dt', null, 'Link'), h('dd', null, domain ?? 'None on the source page')),
+      h('div', null, h('dt', null, t('Category')), h('dd', null, group.title)),
+      h('div', null, h('dt', null, t('In this category')), h('dd', null, t('{n} of {total}', { n: inGroup, total: group.items.length }))),
+      // The domain is Latin: keep it left to right inside the Arabic caption.
+      h('div', null, h('dt', null, t('Link')), h('dd', null, domain ? ltrMark(domain) : t('None on the source page'))),
     )
     caption.classList.remove('is-changing')
     void caption.offsetWidth
@@ -169,15 +176,8 @@ export const renderGallery = (schema, index) => {
   /* --------------------------------------------------------------- events */
   prevButton.addEventListener('click', () => goTo(active - 1))
   nextButton.addEventListener('click', () => goTo(active + 1))
-  stage.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      goTo(active + 1)
-    } else if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      goTo(active - 1)
-    }
-  })
+  // Left/right follow the reading line (ArrowLeft walks forward in Arabic).
+  arrowKeys(stage, { step: (direction) => goTo(active + direction), axis: 'x' })
   const onPointer = (event) => {
     if (reducedMotion()) return
     const rect = stage.getBoundingClientRect()

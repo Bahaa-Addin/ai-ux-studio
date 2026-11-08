@@ -108,6 +108,12 @@
   outline: none;
 }
 
+/* Latin wordmarks keep their letter order inside right-to-left text (shared.js ltrMark). */
+.aixc-vx .vx-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
 .aixc-vx .vx-sr-only {
   position: absolute !important;
   width: 1px;
@@ -470,7 +476,7 @@
   }
 
   .aixc-vx .vx-closing__qr {
-    text-align: left;
+    text-align: start;
   }
 
   .aixc-vx .vx-closing__qr img {

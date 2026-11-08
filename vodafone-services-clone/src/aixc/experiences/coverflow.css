@@ -1,4 +1,6 @@
-/* Cover flow — scoped to .aixc-vx--coverflow. Tokens from vodafone.css. */
+/* Cover flow — scoped to .aixc-vx--coverflow. Tokens from vodafone.css.
+   The 3D flow is a centred physical scene (coverflow.js mirrors its pan and turn
+   in Arabic); the head, panel and controls follow the reading line through flex. */
 
 .aixc-vx--coverflow {
   --cf-size: clamp(150px, min(24vw, calc(var(--vx-vh) * 0.3)), 280px);
@@ -279,6 +281,17 @@
   font-family: var(--vx-font-bold);
   font-size: clamp(1.5rem, 2.6vw, 2.25rem);
   line-height: 1.1;
+}
+
+/* Arabic is joined script: no tracking or case on the page title, and room for
+   the taller Arabic face on the big service title. */
+[dir='rtl'] .aixc-vx--coverflow .cf-brand {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+[dir='rtl'] .aixc-vx--coverflow .cf-detail__title {
+  line-height: 1.4;
 }
 
 .aixc-vx--coverflow .cf-detail__desc {

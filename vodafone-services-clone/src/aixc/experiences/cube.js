@@ -11,21 +11,27 @@
  */
 
 import { h } from '../dom.js'
+import { countCategories } from '../../i18n.js'
 import {
-  chromeOffset, clamp, closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, pad2, promotionOf, reducedMotion, scrollToY,
-  serviceCard,
+  chromeOffset, clamp, closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, inlineSign, isRTL, pad2, promotionOf, reducedMotion, scrollToY,
+  serviceCard, t,
 } from './shared.js'
 
-/** Faces in the order the reference's stops reveal them, with their placement. */
+/**
+ * Faces in the order the reference's stops reveal them, with their placement.
+ * The side faces sit on the reading line's "next" side: the cube turns so each
+ * new face arrives from the right in LTR and from the left in RTL (rotateY is
+ * multiplied by inlineSign, here and in the stops). `name` stays the LTR side.
+ */
 const FACES = [
   { name: 'bottom', place: 'rotateX(-90deg)' },
   { name: 'front', place: 'rotateY(0deg)' },
-  { name: 'right', place: 'rotateY(90deg)' },
+  { name: 'right', place: `rotateY(${90 * inlineSign}deg)` },
   { name: 'back', place: 'rotateY(180deg)' },
-  { name: 'left', place: 'rotateY(-90deg)' },
+  { name: 'left', place: `rotateY(${-90 * inlineSign}deg)` },
   { name: 'top', place: 'rotateX(90deg)' },
 ]
-/** Cube orientation [rotateX, rotateY] that shows each face (from the reference). */
+/** Cube orientation [rotateX, rotateY] that shows each face (from the reference, LTR). */
 const STOPS = [
   [90, 0],
   [0, 0],
@@ -36,7 +42,10 @@ const STOPS = [
 ]
 const INTRO = [-22, 38] // three-quarter view while the intro is on screen
 
-const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
+/** Mirrors a [rotateX, rotateY] orientation for the reading direction. */
+const alongLine = ([x, y]) => [x, y * inlineSign]
+
+const easeInOut = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2)
 
 const mosaic = (items) => {
   const count = items.length
@@ -79,9 +88,9 @@ export const renderCube = (schema, index) => {
   const scene = h('div', { class: 'cb-scene', 'aria-hidden': 'true' }, cube, h('div', { class: 'cb-floor' }))
 
   /* ------------------------------------------------------------------- HUD */
-  const hudPct = h('span', { class: 'cb-hud__pct' }, '000%')
+  const hudPct = h('span', { class: 'cb-hud__pct' }, isRTL ? '0%' : '000%')
   const hudFill = h('span', { class: 'cb-hud__fill' })
-  const hudName = h('span', { class: 'cb-hud__name' }, 'Overview')
+  const hudName = h('span', { class: 'cb-hud__name' }, t('Overview'))
   const hud = h('div', { class: 'cb-hud', 'aria-hidden': 'true' }, hudPct, h('span', { class: 'cb-hud__bar' }, hudFill), hudName)
   const capNum = h('span', { class: 'cb-caption__num' }, '00')
   const capName = h('span', { class: 'cb-caption__name' }, index.model.title)
@@ -91,11 +100,11 @@ export const renderCube = (schema, index) => {
   const intro = h(
     'header',
     { class: 'cb-block cb-block--intro', 'data-stop': '0' },
-    h('p', { class: 'cb-tag' }, `${groups.length} categories`),
+    h('p', { class: 'cb-tag' }, countCategories(groups.length)),
     h('h1', { class: 'cb-intro__title', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' }, index.model.title),
     index.model.intro ? h('p', { class: 'cb-intro__text' }, index.model.intro) : null,
   )
-  const startButton = h('button', { type: 'button', class: 'vx-btn vx-btn--primary' }, 'Turn the cube')
+  const startButton = h('button', { type: 'button', class: 'vx-btn vx-btn--primary' }, t('Turn the cube'))
   intro.append(h('div', { class: 'cb-intro__actions' }, startButton))
 
   const blocks = groups.map((group, groupIndex) => {
@@ -103,7 +112,7 @@ export const renderCube = (schema, index) => {
     return h(
       'section',
       { class: 'cb-block', 'aria-labelledby': headingId, 'data-stop': String(groupIndex + 1), 'data-group': group.id },
-      h('p', { class: 'cb-tag' }, `Face ${pad2((groupIndex % FACES.length) + 1)}`),
+      h('p', { class: 'cb-tag' }, t('Face {number}', { number: pad2((groupIndex % FACES.length) + 1) })),
       group.provenance ? h('p', { class: 'cb-from' }, group.provenance) : null,
       groupTitle(group, 'h2', 'cb-block__title', headingId),
       group.description ? h('p', { class: 'cb-block__desc' }, group.description) : null,
@@ -115,22 +124,23 @@ export const renderCube = (schema, index) => {
 
   /* ----------------------------------------------------------- scene dots */
   const dots = stopsEls.map((block, at) => {
-    const label = at === 0 ? 'Overview' : groups[at - 1].title
-    const dot = h('button', { type: 'button', class: 'cb-dot', 'aria-label': `Go to ${label}` }, h('span', { class: 'cb-dot__label', 'aria-hidden': 'true' }, label))
+    const label = at === 0 ? t('Overview') : groups[at - 1].title
+    const dot = h('button', { type: 'button', class: 'cb-dot', 'aria-label': t('Go to {label}', { label }) }, h('span', { class: 'cb-dot__label', 'aria-hidden': 'true' }, label))
     dot.addEventListener('click', () => goTo(at))
     return dot
   })
-  const dotNav = h('nav', { class: 'cb-dots', 'aria-label': 'Categories' }, h('ul', null, dots.map((dot) => h('li', null, dot))))
+  const dotNav = h('nav', { class: 'cb-dots', 'aria-label': t('Categories') }, h('ul', null, dots.map((dot) => h('li', null, dot))))
 
   const stage = h('div', { class: 'cb-stage' }, scene, hud, caption, dotNav)
   const story = h('div', { class: 'cb-story' }, stopsEls)
   const root = experienceRoot('cube', schema, h('div', { class: 'cb-layout' }, stage, story), closingBand(promo))
 
   /* ---------------------------------------------------------------- motion */
-  const orientationFor = (stop) => (stop === 0 ? INTRO : STOPS[(stop - 1) % STOPS.length].map((value, axis) => (axis === 1 ? value - 360 * Math.floor((stop - 1) / STOPS.length) : value)))
+  const orientationFor = (stop) =>
+    alongLine(stop === 0 ? INTRO : STOPS[(stop - 1) % STOPS.length].map((value, axis) => (axis === 1 ? value - 360 * Math.floor((stop - 1) / STOPS.length) : value)))
 
-  let current = [...INTRO]
-  let target = [...INTRO]
+  let current = orientationFor(0)
+  let target = orientationFor(0)
   let activeStop = -1
   let frame = 0
   let last = 0
@@ -160,12 +170,13 @@ export const renderCube = (schema, index) => {
     const rect = root.getBoundingClientRect()
     const travel = Math.max(1, rect.height - window.innerHeight)
     const pct = Math.round(clamp(-rect.top / travel, 0, 1) * 100)
-    hudPct.textContent = `${String(pct).padStart(3, '0')}%`
+    // The zero-padded "019%" is a Latin display style; in Arabic it reads like a code.
+    hudPct.textContent = isRTL ? `${pct}%` : `${String(pct).padStart(3, '0')}%`
     hudFill.style.transform = `scaleX(${pct / 100})`
 
     if (stop !== activeStop) {
       activeStop = stop
-      const name = stop === 0 ? 'Overview' : groups[stop - 1].title
+      const name = stop === 0 ? t('Overview') : groups[stop - 1].title
       hudName.textContent = name
       capNum.textContent = pad2(stop === 0 ? 0 : ((stop - 1) % FACES.length) + 1)
       capName.textContent = stop === 0 ? index.model.title : name

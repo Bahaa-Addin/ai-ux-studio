@@ -8,15 +8,20 @@
  * forward and scales 1.25×, with the reference's z-order ramp and reflections.
  * Page scroll (the reference pins the page and scrubs), a horizontal drag,
  * clicking a cover, prev/next and the arrow keys all move it; it eases after the
- * scroll and settles on a cover. The flow loops, so the last services wait to the
- * left of the first and prev/next wrap round. The front service's details sit
- * below the floor.
+ * scroll and settles on a cover. The flow loops, so the last services wait
+ * behind the first (to its left in English) and prev/next wrap round. The front
+ * service's details sit below the floor.
+ *
+ * Right to left (the Arabic page) the whole flow mirrors: the next covers wait on
+ * the left and travel rightward, turning the other way; dragging right, the left
+ * arrow key and the A key move forward, so "next" always runs along the Arabic
+ * reading line.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
   ICON_NEXT, ICON_PREV, arrowKeys, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras, groupsOf,
-  liveStatus, media, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper,
+  inlineSign, liveStatus, media, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, t,
 } from './shared.js'
 
 const STEP_PX = 190
@@ -25,9 +30,9 @@ const STAGGER = 0.1
 const MIN_LOOP = 11 // fewer covers than this would show the same cover twice when looping
 const ICON_MOUSE = 'M12 2a6 6 0 0 0-6 6v8a6 6 0 0 0 12 0V8a6 6 0 0 0-6-6zm0 2a4 4 0 0 1 4 4v8a4 4 0 0 1-8 0V8a4 4 0 0 1 4-4zm-1 2h2v4h-2z'
 
-const power1InOut = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
-const power4InOut = (t) => (t < 0.5 ? 8 * t ** 4 : 1 - (-2 * t + 2) ** 4 / 2)
-const power1Out = (t) => 1 - (1 - t) ** 2
+const power1InOut = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2)
+const power4InOut = (p) => (p < 0.5 ? 8 * p ** 4 : 1 - (-2 * p + 2) ** 4 / 2)
+const power1Out = (p) => 1 - (1 - p) ** 2
 
 export const renderCoverflow = (schema, index) => {
   const groups = groupsOf(schema, index)
@@ -40,7 +45,7 @@ export const renderCoverflow = (schema, index) => {
   const covers = entries.map(({ item }, at) => {
     const cover = h(
       'button',
-      { type: 'button', class: 'cf-cover', tabindex: '-1', 'data-aixc-item': item.id, 'data-drag-through': '', 'aria-label': `${item.title}, ${at + 1} of ${total}` },
+      { type: 'button', class: 'cf-cover', tabindex: '-1', 'data-aixc-item': item.id, 'data-drag-through': '', 'aria-label': t('{title}, {n} of {total}', { title: item.title, n: at + 1, total }) },
       media(item, { className: 'cf-cover__media', eager: at < 6 || at > total - 6 }),
     )
     cover.addEventListener('click', () => goTo(at))
@@ -55,8 +60,8 @@ export const renderCoverflow = (schema, index) => {
   const detailActions = h('div', { class: 'cf-detail__actions' })
   const detail = h('div', { class: 'cf-detail' }, detailGroup, detailTitle, detailDesc, detailActions)
 
-  const prevButton = h('button', { type: 'button', class: 'cf-button', 'aria-label': 'Previous service' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'cf-button', 'aria-label': 'Next service' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'cf-button', 'aria-label': t('Previous service') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'cf-button', 'aria-label': t('Next service') }, pathIcon(ICON_NEXT, ''))
   const counterNow = h('span', { class: 'cf-counter__now' }, '01')
   const controls = h(
     'div',
@@ -69,8 +74,8 @@ export const renderCoverflow = (schema, index) => {
 
   const stage = h(
     'section',
-    { class: 'cf-stage vx-dark', 'aria-roledescription': 'carousel', 'aria-label': 'Vodafone services, cover flow' },
-    h('header', { class: 'cf-head', 'aria-hidden': 'true' }, h('p', { class: 'cf-brand' }, index.model.title), h('p', { class: 'cf-scroll' }, pathIcon(ICON_MOUSE, 'cf-scroll__icon'), 'Scroll, drag or use the arrow keys')),
+    { class: 'cf-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services, cover flow') },
+    h('header', { class: 'cf-head', 'aria-hidden': 'true' }, h('p', { class: 'cf-brand' }, index.model.title), h('p', { class: 'cf-scroll' }, pathIcon(ICON_MOUSE, 'cf-scroll__icon'), t('Scroll, drag or use the arrow keys'))),
     flow,
     h('div', { class: 'cf-floor', 'aria-hidden': 'true' }),
     h('div', { class: 'cf-panel' }, controls, detail),
@@ -119,7 +124,7 @@ export const renderCoverflow = (schema, index) => {
       nextButton.disabled = next === total - 1
     }
     covers.forEach((cover, at) => cover.classList.toggle('is-front', at === next))
-    status.textContent = `${next + 1} of ${total}: ${item.title}, ${group.title}`
+    status.textContent = t('{n} of {total}: {title}, {group}', { n: next + 1, total, title: item.title, group: group.title })
     front = next
   }
 
@@ -136,8 +141,9 @@ export const renderCoverflow = (schema, index) => {
         return
       }
       cover.classList.remove('is-off')
-      const pan = 300 - 600 * power1InOut(p) // percent of a cover, 0 = centred
-      const turn = -50 + 100 * power4InOut(p)
+      // Mirrored in RTL: the next covers wait on the left and turn the other way.
+      const pan = (300 - 600 * power1InOut(p)) * inlineSign // percent of a cover, 0 = centred
+      const turn = (-50 + 100 * power4InOut(p)) * inlineSign
       const edge = p < 0.1 ? p / 0.1 : p > 0.9 ? (1 - p) / 0.1 : 1
       const lift = Math.abs(p - 0.5) < 0.1 ? power1Out(1 - Math.abs(p - 0.5) / 0.1) : 0
       const scale = (0.5 + 0.5 * edge) * (1 + 0.25 * lift)
@@ -169,10 +175,10 @@ export const renderCoverflow = (schema, index) => {
   nextButton.addEventListener('click', () => goTo(front + 1))
   arrowKeys(stage, { step: (direction) => goTo(front + direction), first: () => goTo(0), last: () => goTo(total - 1) })
   stage.addEventListener('keydown', (event) => {
-    // The reference's A / D keys.
+    // The reference's A / D keys: A is the left-hand key, so it moves forward in RTL.
     if (event.target.closest?.('input, textarea')) return
-    if (event.key === 'a' || event.key === 'A') goTo(front - 1)
-    else if (event.key === 'd' || event.key === 'D') goTo(front + 1)
+    if (event.key === 'a' || event.key === 'A') goTo(front - inlineSign)
+    else if (event.key === 'd' || event.key === 'D') goTo(front + inlineSign)
   })
 
   let stopDrag = null
