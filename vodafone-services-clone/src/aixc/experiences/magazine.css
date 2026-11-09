@@ -1076,6 +1076,12 @@
   box-shadow: calc(var(--mag-offset) * var(--mag-dir)) var(--mag-offset) 0 var(--mag-deep);
 }
 
+.aixc-magazine .mag-closing__qr img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
 .aixc-magazine .mag-closing__qr figcaption {
   margin-top: 0.6rem;
   font-family: var(--mag-font-bold);

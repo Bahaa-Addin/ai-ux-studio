@@ -464,8 +464,12 @@
   line-height: 1.2;
 }
 
+/* The markup's 330×330 size attributes would otherwise keep a 330px height
+   against the CSS width and stretch the code. */
 .aixc-vx .vx-closing__qr img {
   width: 200px;
+  height: auto;
+  aspect-ratio: 1;
   margin: 0 auto;
   border-radius: 1rem;
 }
