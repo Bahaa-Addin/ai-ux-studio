@@ -6,7 +6,9 @@
  * turns, with eased interpolation between the reference's six orientations, to the
  * face of the category in view. A HUD shows overall progress and the current
  * category, a caption names the face, and scene dots jump between categories.
- * Native scroll only; under reduced motion the cube snaps instead of turning.
+ * Below 900px the cube is centred and pinned behind the story instead, each
+ * category's sheet slides up over it, and the cube turns in the gap between two
+ * sheets. Native scroll only; under reduced motion the cube snaps instead of turning.
  * More than six categories reuse faces in order; fewer leave faces unused.
  */
 
@@ -151,6 +153,8 @@ export const renderCube = (schema, index) => {
   const orientationFor = (stop) =>
     alongLine(stop === 0 ? INTRO : STOPS[(stop - 1) % STOPS.length].map((value, axis) => (axis === 1 ? value - 360 * Math.floor((stop - 1) / STOPS.length) : value)))
 
+  /** Narrow screens stack the story as sheets over the cube (matches cube.css). */
+  const sheets = window.matchMedia('(max-width: 899px)')
   let current = orientationFor(0)
   let target = orientationFor(0)
   let activeStop = -1
@@ -158,13 +162,31 @@ export const renderCube = (schema, index) => {
   let last = 0
   let mounted = false
 
+  /** Half the cube's on-screen height when face-on (perspective enlarges it a little). */
+  const cubeHalf = () => cube.offsetWidth * 0.58
+  const sceneCentre = () => {
+    const rect = scene.getBoundingClientRect()
+    return rect.top + rect.height / 2
+  }
+
   const goTo = (stop) => {
-    const block = stopsEls[clamp(stop, 0, stopsEls.length - 1)]
-    scrollToY(block.getBoundingClientRect().top + window.scrollY - chromeOffset() - 8)
+    const at = clamp(stop, 0, stopsEls.length - 1)
+    const top = stopsEls[at].getBoundingClientRect().top + window.scrollY
+    if (sheets.matches && at > 0) {
+      // Land with the cube turned to the new face and the sheet's heading just below it.
+      const pinnedCentre = chromeOffset() + scene.offsetHeight / 2
+      scrollToY(top - (pinnedCentre + cubeHalf() + 16))
+      return
+    }
+    scrollToY(top - chromeOffset() - 8)
   }
   startButton.addEventListener('click', () => goTo(1))
 
-  const readTarget = () => {
+  /**
+   * Wide screens: the story runs beside the cube. Each face holds while its block
+   * is read and turns near the block's end.
+   */
+  const readBeside = () => {
     const line = chromeOffset() + (window.innerHeight - chromeOffset()) * 0.4
     const tops = stopsEls.map((block) => block.getBoundingClientRect().top)
     let stop = 0
@@ -172,10 +194,32 @@ export const renderCube = (schema, index) => {
     const nextTop = tops[stop + 1]
     const span = nextTop !== undefined ? nextTop - tops[stop] : 1
     const fraction = nextTop !== undefined ? clamp((line - tops[stop]) / span, 0, 1) : 0
-    // Hold on each face while its block is being read, then turn near the end.
-    const turn = clamp((fraction - 0.6) / 0.4, 0, 1)
+    return { stop, turn: clamp((fraction - 0.6) / 0.4, 0, 1), named: stop }
+  }
+
+  /**
+   * Narrow screens: each category is a sheet that slides up over the pinned cube.
+   * A face turns only while the gap between two sheets has the cube fully
+   * uncovered, and the names follow the face the cube shows.
+   */
+  const readSheets = () => {
+    const centre = sceneCentre()
+    const half = cubeHalf()
+    for (let i = 1; i < stopsEls.length; i += 1) {
+      const gapTop = stopsEls[i - 1].getBoundingClientRect().bottom
+      const nextTop = stopsEls[i].getBoundingClientRect().top
+      const clear = nextTop - gapTop - 2 * half // scroll distance the cube is fully visible
+      const progress = clear > 0 ? (centre - half - gapTop) / clear : nextTop <= centre ? 1 : 0
+      const turn = clamp((progress - 0.15) / 0.7, 0, 1)
+      if (turn < 1) return { stop: i - 1, turn, named: turn >= 0.5 ? i : i - 1 }
+    }
+    return { stop: stopsEls.length - 1, turn: 0, named: stopsEls.length - 1 }
+  }
+
+  const readTarget = () => {
+    const { stop, turn, named } = sheets.matches ? readSheets() : readBeside()
     const from = orientationFor(stop)
-    const to = nextTop !== undefined ? orientationFor(stop + 1) : from
+    const to = stop + 1 < stopsEls.length ? orientationFor(stop + 1) : from
     const eased = easeInOut(turn)
     target = [from[0] + (to[0] - from[0]) * eased, from[1] + (to[1] - from[1]) * eased]
 
@@ -186,15 +230,15 @@ export const renderCube = (schema, index) => {
     hudPct.textContent = isRTL ? `${pct}%` : `${String(pct).padStart(3, '0')}%`
     hudFill.style.transform = `scaleX(${pct / 100})`
 
-    if (stop !== activeStop) {
-      activeStop = stop
-      const name = stop === 0 ? t('Overview') : groups[stop - 1].title
+    if (named !== activeStop) {
+      activeStop = named
+      const name = named === 0 ? t('Overview') : groups[named - 1].title
       hudName.textContent = name
-      capNum.textContent = pad2(stop === 0 ? 0 : ((stop - 1) % FACES.length) + 1)
-      capName.textContent = stop === 0 ? index.model.title : name
+      capNum.textContent = pad2(named === 0 ? 0 : ((named - 1) % FACES.length) + 1)
+      capName.textContent = named === 0 ? index.model.title : name
       dots.forEach((dot, at) => {
-        dot.classList.toggle('is-active', at === stop)
-        if (at === stop) dot.setAttribute('aria-current', 'true')
+        dot.classList.toggle('is-active', at === named)
+        if (at === named) dot.setAttribute('aria-current', 'true')
         else dot.removeAttribute('aria-current')
       })
     }
