@@ -376,6 +376,68 @@ export const dragToScroll = (surface, { axis = 'y', factor = 1, touch = false } 
   }
 }
 
+/**
+ * Forward amount of a sideways wheel or trackpad swipe, in pixels, or 0 when the
+ * gesture is mostly vertical (or a pinch). Forward follows the reading line, as a
+ * native horizontal scroller does: content moving toward the start edge, so a
+ * swipe to the left in English and to the right in Arabic.
+ */
+const sidewaysDelta = (event) => {
+  if (event.ctrlKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return 0
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerWidth : 1
+  return event.deltaX * unit * inlineSign
+}
+
+/**
+ * Lets a sideways swipe on `surface` scroll the page, so a horizontal gesture
+ * walks a scroll-driven stage the same way as the wheel. The browser's
+ * swipe-to-go-back is held off while the gesture is over the stage. Returns a cleanup.
+ */
+export const sidewaysWheel = (surface, { factor = 1 } = {}) => {
+  const onWheel = (event) => {
+    const delta = sidewaysDelta(event)
+    if (!delta) return
+    event.preventDefault()
+    window.scrollBy({ top: delta * factor, behavior: 'auto' })
+  }
+  surface.addEventListener('wheel', onWheel, { passive: false })
+  return () => surface.removeEventListener('wheel', onWheel)
+}
+
+/**
+ * Sideways swipes on `surface` as steps: calls step(1 | -1) once per gesture
+ * (forward along the reading line, as in sidewaysWheel), for paged layouts such as
+ * the flipbook and the streaming rows. While `enabled()` is false the gesture is
+ * left to the browser (a row that scrolls natively, say). Returns a cleanup.
+ */
+export const sidewaysSwipe = (surface, step, { threshold = 40, quietMs = 260, enabled = () => true } = {}) => {
+  let total = 0
+  let fired = false
+  let timer = 0
+  const onWheel = (event) => {
+    const delta = sidewaysDelta(event)
+    if (!delta || !enabled()) return
+    event.preventDefault()
+    // A trackpad swipe is a stream of events (with momentum): one step per stream.
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => {
+      total = 0
+      fired = false
+    }, quietMs)
+    if (fired) return
+    total += delta
+    if (Math.abs(total) >= threshold) {
+      fired = true
+      step(Math.sign(total))
+    }
+  }
+  surface.addEventListener('wheel', onWheel, { passive: false })
+  return () => {
+    window.clearTimeout(timer)
+    surface.removeEventListener('wheel', onWheel)
+  }
+}
+
 /** Arrow-key stepping for a stage: calls step(-1 | 1) and first/last for Home/End. */
 export const arrowKeys = (stage, { step, first, last, axis = 'both' }) => {
   // Horizontal keys follow the reading line: in RTL, ArrowLeft moves forward.

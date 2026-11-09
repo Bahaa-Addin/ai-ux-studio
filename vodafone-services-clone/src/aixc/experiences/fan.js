@@ -17,7 +17,7 @@ import { h, pathIcon } from '../dom.js'
 import { countCategories, countServices } from '../../i18n.js'
 import {
   ICON_NEXT, ICON_PREV, arrowKeys, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras, groupsOf,
-  liveStatus, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, t,
+  liveStatus, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t,
 } from './shared.js'
 
 const STEP_PX = 210
@@ -170,6 +170,7 @@ export const renderFan = (schema, index) => {
 
   let stopFrames = null
   let stopDrag = null
+  let stopWheel = null
   const onScroll = () => stepper.settle()
 
   show(0, { announce: false })
@@ -179,6 +180,7 @@ export const renderFan = (schema, index) => {
     mount() {
       stopFrames = onScrollFrame(render)
       stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / DRAG_PX, touch: true })
+      stopWheel = sidewaysWheel(stage) // sideways swipes walk it too, along the reading line
       window.addEventListener('scroll', onScroll, { passive: true })
       stage.addEventListener('pointermove', onPointer)
       stage.addEventListener('pointerleave', onLeave)
@@ -186,6 +188,8 @@ export const renderFan = (schema, index) => {
     unmount() {
       stopFrames?.()
       stopDrag?.()
+      stopWheel?.()
+      stopWheel = null
       stopFrames = stopDrag = null
       stepper.stop()
       window.removeEventListener('scroll', onScroll)

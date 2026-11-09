@@ -17,7 +17,7 @@
 import { h, pathIcon, svgIcon, visuallyHidden } from '../dom.js'
 import {
   ICON_NEXT, ICON_PREV, chromeOffset, clamp, experienceRoot, externalLink, groupsOf, inlineSign, media, onScrollFrame, pageHeading,
-  promotionOf, reducedMotion, scrollToY, t,
+  promotionOf, reducedMotion, scrollToY, sidewaysSwipe, t,
 } from './shared.js'
 
 const WORD = 'VODAFONE'
@@ -332,6 +332,14 @@ export const renderStreaming = (schema, index) => {
       layout()
       viewport.scrollLeft = 0
     })
+    // A sideways swipe pages the row along the reading line. Where the row
+    // scrolls natively (touch, narrow screens) the browser keeps the gesture.
+    sidewaysSwipe(viewport, (direction) => {
+      const page = clamp(slider.page + direction, 0, slider.pages - 1)
+      if (page === slider.page) return
+      slider.page = page
+      layout()
+    }, { enabled: () => getComputedStyle(viewport).overflowX !== 'auto' })
     sliders.push(layout)
 
     return h(

@@ -36,9 +36,9 @@
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 22px;
+  gap: 14px;
   min-height: var(--vx-vh);
-  padding: 28px var(--vx-gutter) 24px;
+  padding: 20px var(--vx-gutter) 16px;
   background: radial-gradient(80% 70% at 50% 40%, var(--vx-grey-100) 0%, var(--vx-grey-200) 100%);
 }
 
@@ -52,7 +52,10 @@
 .aixc-vx--flipbook .fb-book {
   position: relative;
   width: 100%;
-  height: clamp(500px, calc(var(--vx-vh) - 120px), 680px);
+  /* Tall enough for a full page of copy (the cover, an opener with a long
+     description, the back cover's QR); on short windows the controls sit just
+     below the fold rather than the pages clipping. */
+  height: clamp(600px, calc(var(--vx-vh) - 96px), 720px);
   transform-style: preserve-3d;
   transition: transform var(--fb-turn) var(--vx-ease);
 }
@@ -299,6 +302,8 @@
 .aixc-vx--flipbook .fb-cover__mark {
   width: 56px;
   height: 56px;
+  position: relative; /* above the photo, whose reveal clip makes it a layer */
+  z-index: 1;
   margin: -46px 52px 0;
   border-radius: 999px;
   background: var(--vx-red);
@@ -421,7 +426,7 @@
 
 .aixc-vx--flipbook .fb-lead__img {
   aspect-ratio: var(--img-ratio, 4 / 3);
-  max-height: 220px;
+  max-height: 184px;
   border-radius: var(--vx-radius);
 }
 
@@ -524,9 +529,9 @@
 }
 
 .aixc-vx--flipbook .fb-back__title {
-  max-width: 10ch;
+  max-width: 14ch;
   font-family: var(--vx-font-bold);
-  font-size: clamp(2.25rem, 3.6vw, 3rem);
+  font-size: clamp(2rem, 3.2vw, 2.75rem);
   line-height: 1.05;
 }
 
@@ -567,7 +572,8 @@
 }
 
 .aixc-vx--flipbook .fb-back__qr img {
-  width: 150px;
+  width: 132px;
+  height: auto; /* the width/height attributes would otherwise keep it 330px tall */
   border-radius: 12px;
 }
 
@@ -645,6 +651,11 @@
   line-height: 1.35;
 }
 
+/* The Arabic title is short words in a tall face: one line, so the QR stays on the page. */
+.aixc-vx--flipbook .fb-back__title:lang(ar) {
+  max-width: none;
+}
+
 /* ------------------------------------------------------------- responsive */
 
 @media (max-width: 899px) {
@@ -653,7 +664,7 @@
   }
 
   .aixc-vx--flipbook .fb-book {
-    height: max(520px, calc(var(--vx-vh) - 110px));
+    height: max(560px, calc(var(--vx-vh) - 84px));
   }
 
   .aixc-vx--flipbook .fb-page__inner {
@@ -674,13 +685,18 @@
     margin-inline: 24px;
   }
 
-  .aixc-vx--flipbook .fb-item,
-  .aixc-vx--flipbook .fb-lead {
-    grid-template-columns: minmax(0, 1fr);
+  /* A QR to scan cannot be scanned on the phone showing it; the button beside it
+     opens the same app link, and the opener page keeps its room. */
+  .aixc-vx--flipbook .fb-page .vx-aside,
+  .aixc-vx--flipbook .fb-back__qr {
+    display: none;
   }
 
-  .aixc-vx--flipbook .fb-item__media {
-    aspect-ratio: 7 / 3;
+  /* Pictures stay beside the copy (smaller) so a page's items fit the page. */
+  .aixc-vx--flipbook .fb-item,
+  .aixc-vx--flipbook .fb-lead {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 14px;
   }
 
   /* Arabic copy runs taller: keep the lead's action clear of the folio on single pages. */

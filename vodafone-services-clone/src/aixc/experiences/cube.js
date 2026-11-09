@@ -10,7 +10,7 @@
  * More than six categories reuse faces in order; fewer leave faces unused.
  */
 
-import { h } from '../dom.js'
+import { h, svgIcon } from '../dom.js'
 import { countCategories } from '../../i18n.js'
 import {
   chromeOffset, clamp, closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, inlineSign, isRTL, pad2, promotionOf, reducedMotion, scrollToY,
@@ -47,19 +47,31 @@ const alongLine = ([x, y]) => [x, y * inlineSign]
 
 const easeInOut = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2)
 
-const mosaic = (items) => {
+/**
+ * Cells the category cannot fill (and pictures that fail to load) get Vodafone
+ * brand tiles instead of grey boxes: the white speech mark on red, alternating
+ * with the page's hero photo when there is one.
+ */
+const brandTile = (photo, alt) =>
+  alt && photo?.src
+    ? h('span', { class: 'cb-tile cb-tile--brand is-photo' }, h('img', { src: photo.src, alt: '', loading: 'lazy', decoding: 'async' }))
+    : h('span', { class: 'cb-tile cb-tile--brand' }, svgIcon('icon-vodafone-logo-white', 'cb-tile__mark'))
+
+const mosaic = (items, photo) => {
   const count = items.length
   const columns = count === 1 ? 1 : count <= 4 ? 2 : 3
   const cells = columns * columns
   const tiles = []
+  let blanks = 0
   for (let i = 0; i < cells; i += 1) {
     const item = items[i]
     if (item?.image?.src) {
       const tile = h('span', { class: `cb-tile${item.image.fit === 'contain' ? ' is-contain' : ''}` }, h('img', { src: item.image.src, alt: '', loading: 'lazy', decoding: 'async' }))
-      tile.querySelector('img').addEventListener('error', (event) => event.target.remove(), { once: true })
+      tile.querySelector('img').addEventListener('error', () => tile.replaceWith(brandTile(photo, false)), { once: true })
       tiles.push(tile)
     } else {
-      tiles.push(h('span', { class: `cb-tile cb-tile--blank${i % 2 ? ' is-alt' : ''}` }))
+      tiles.push(brandTile(photo, blanks % 2 === 1))
+      blanks += 1
     }
   }
   const grid = h('span', { class: 'cb-mosaic' }, tiles)
@@ -78,7 +90,7 @@ export const renderCube = (schema, index) => {
     const node = h(
       'span',
       { class: `cb-face cb-face--${face.name}` },
-      group ? mosaic(group.items) : h('span', { class: 'cb-face__empty' }),
+      group ? mosaic(group.items, index.model.heroImage) : h('span', { class: 'cb-face__empty' }, svgIcon('icon-vodafone-logo-white', 'cb-tile__mark')),
       group ? h('span', { class: 'cb-face__label' }, h('span', { class: 'cb-face__num' }, pad2(faceIndex + 1)), h('span', null, group.title)) : null,
     )
     node.style.setProperty('--place', face.place)

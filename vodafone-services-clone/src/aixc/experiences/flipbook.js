@@ -13,8 +13,8 @@
 import { h, pathIcon, svgIcon } from '../dom.js'
 import { countCategories, countServices } from '../../i18n.js'
 import {
-  ICON_NEXT, ICON_PREV, ctaFor, experienceRoot, groupExtras, groupsOf, isRTL, media, pad2, promotionOf, reducedMotion, storyLinkClass, t,
-  titleContent,
+  ICON_NEXT, ICON_PREV, ctaFor, experienceRoot, groupExtras, groupsOf, isRTL, media, pad2, promotionOf, reducedMotion, sidewaysSwipe, storyLinkClass,
+  t, titleContent,
 } from './shared.js'
 
 const SPREAD_QUERY = '(min-width: 900px)'
@@ -93,7 +93,32 @@ const bookItem = (item) =>
     ),
   )
 
-const chunk = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, i * size + size))
+/**
+ * Fills pages by how much copy the items carry, at most `size` per page, so a
+ * run of long descriptions (Arabic runs longer) moves to the next page instead
+ * of overflowing it. An item costs its picture and title (ITEM_COST) plus its
+ * characters; a page holds `size` items of COPY_PER_ITEM characters each.
+ */
+const ITEM_COST = 70
+const COPY_PER_ITEM = 105
+const fill = (list, size) => {
+  const budget = size * (ITEM_COST + COPY_PER_ITEM)
+  const cost = (item) => ITEM_COST + String(item.title ?? '').length + String(item.description ?? '').length
+  const pages = []
+  let page = []
+  let used = 0
+  list.forEach((item) => {
+    if (page.length && (page.length === size || used + cost(item) > budget)) {
+      pages.push(page)
+      page = []
+      used = 0
+    }
+    page.push(item)
+    used += cost(item)
+  })
+  if (page.length) pages.push(page)
+  return pages
+}
 
 export const renderFlipbook = (schema, index) => {
   const groups = groupsOf(schema, index)
@@ -107,7 +132,7 @@ export const renderFlipbook = (schema, index) => {
     groups.forEach((group, groupIndex) => {
       const [lead, ...rest] = group.items
       plan.push({ kind: 'opener', key: `group:${group.id}`, group, groupIndex, lead })
-      chunk(rest, perPage).forEach((items, part) => plan.push({ kind: 'items', key: `items:${group.id}:${part}`, group, items }))
+      fill(rest, perPage).forEach((items, part) => plan.push({ kind: 'items', key: `items:${group.id}:${part}`, group, items }))
     })
     if (promo) plan.push({ kind: 'back', key: 'back' })
     if (spread && plan.length % 2 === 1) plan.splice(plan.length - 1, 0, { kind: 'endpaper', key: 'endpaper' })
@@ -338,6 +363,9 @@ export const renderFlipbook = (schema, index) => {
       turn(-1)
     }
   })
+
+  // A sideways swipe turns one page per gesture, along the reading line too.
+  sidewaysSwipe(stage, turn)
 
   const media_ = window.matchMedia(SPREAD_QUERY)
   const onModeChange = () => {

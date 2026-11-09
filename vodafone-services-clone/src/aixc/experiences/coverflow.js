@@ -21,7 +21,7 @@
 import { h, pathIcon } from '../dom.js'
 import {
   ICON_NEXT, ICON_PREV, arrowKeys, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras, groupsOf,
-  inlineSign, liveStatus, media, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, t,
+  inlineSign, liveStatus, media, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t,
 } from './shared.js'
 
 const STEP_PX = 190
@@ -182,6 +182,7 @@ export const renderCoverflow = (schema, index) => {
   })
 
   let stopDrag = null
+  let stopWheel = null
   const onScroll = () => stepper.settle()
 
   showFront(0)
@@ -195,6 +196,7 @@ export const renderCoverflow = (schema, index) => {
       position = stepper.position()
       drawn = ''
       stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / DRAG_PX, touch: true })
+      stopWheel = sidewaysWheel(stage) // sideways swipes walk it too, along the reading line
       window.addEventListener('scroll', onScroll, { passive: true })
       frame = window.requestAnimationFrame(loop)
     },
@@ -202,6 +204,8 @@ export const renderCoverflow = (schema, index) => {
       mounted = false
       window.cancelAnimationFrame(frame)
       stopDrag?.()
+      stopWheel?.()
+      stopWheel = null
       stopDrag = null
       stepper.stop()
       window.removeEventListener('scroll', onScroll)

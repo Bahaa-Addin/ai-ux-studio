@@ -2,16 +2,19 @@
 
 .aixc-vx--gallery {
   --gl-frame-h: clamp(200px, 38vh, 330px);
-  --gl-anchor: 34%;
+  /* The active piece hangs right of centre with its caption on its left, as in
+     the reference, so the pieces still to come stay in view on the right. */
+  --gl-anchor: 60%;
   /* Reading direction: +1 left to right, -1 on the Arabic page, where the wall is
      mirrored (pieces hang leftward and it recedes the other way). */
   --gl-dir: 1;
   background: var(--vx-grey-100);
 }
 
-/* Arabic: the active piece sits in the right third, the caption on the left. */
+/* Arabic, mirrored: the active piece left of centre, the caption on its right,
+   the pieces still to come on the left. */
 [dir='rtl'] .aixc-vx--gallery {
-  --gl-anchor: 66%;
+  --gl-anchor: 40%;
   --gl-dir: -1;
 }
 
@@ -26,9 +29,10 @@
   height: var(--vx-vh);
   min-height: 520px;
   overflow: hidden;
+  touch-action: pan-y; /* sideways swipes walk the wall; vertical ones scroll */
   /* Gallery light: bright centre, soft grey falloff, a floor line. */
   background:
-    radial-gradient(90% 70% at calc(50% - 10% * var(--gl-dir)) 45%, #fff 0%, var(--vx-grey-100) 60%, var(--vx-grey-200) 100%);
+    radial-gradient(90% 70% at calc(50% + 10% * var(--gl-dir)) 45%, #fff 0%, var(--vx-grey-100) 60%, var(--vx-grey-200) 100%);
 }
 
 .aixc-vx--gallery .gl-stage::after {
@@ -61,7 +65,7 @@
   transform-style: preserve-3d;
   transform:
     rotateX(calc(var(--tilt-x) * 1.5deg))
-    rotateY(calc(-18deg * var(--gl-dir) + var(--tilt-y) * 2deg))
+    rotateY(calc(18deg * var(--gl-dir) + var(--tilt-y) * 2deg))
     translateX(var(--camera));
   transition: transform 0.12s linear;
 }
@@ -99,7 +103,13 @@
   text-align: start;
   cursor: pointer;
   transform: translateY(-50%);
-  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.45s ease;
+}
+
+/* Pieces already passed come nearer on the caption's side: faded, so they stay
+   behind the caption and the intro instead of competing with them. */
+.aixc-vx--gallery .gl-piece.is-past {
+  opacity: 0.35;
 }
 
 .aixc-vx--gallery .gl-frame {
@@ -186,12 +196,12 @@
 
 .aixc-vx--gallery .gl-caption {
   position: absolute;
-  top: 50%;
-  inset-inline-end: var(--vx-gutter);
+  top: calc(50% + 16px); /* a little low, clear of the intro above it */
+  inset-inline-start: var(--vx-gutter);
   z-index: 2;
   display: grid;
   gap: 0.6rem;
-  width: min(400px, 32vw);
+  width: min(380px, 30vw);
   padding: 28px 28px 24px;
   border-top: 4px solid var(--vx-red);
   border-radius: 0 0 var(--vx-radius) var(--vx-radius);
@@ -355,7 +365,7 @@
     top: 29%;
     transform:
       rotateX(calc(var(--tilt-x) * 1deg))
-      rotateY(calc(-12deg * var(--gl-dir) + var(--tilt-y) * 1deg))
+      rotateY(calc(12deg * var(--gl-dir) + var(--tilt-y) * 1deg))
       translateX(var(--camera));
   }
 

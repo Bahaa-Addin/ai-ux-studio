@@ -20,9 +20,20 @@
   --sp-logo-x: 22%;
 }
 
-.aixc-vx--spotlight .sp-stage {
+/* The stage stays pinned while the page scrolls one step per service. */
+.aixc-vx--spotlight .sp-track {
   position: relative;
+}
+
+.aixc-vx--spotlight .sp-track__run {
+  height: calc((var(--count) - 1) * var(--step));
+}
+
+.aixc-vx--spotlight .sp-stage {
+  position: sticky;
+  top: var(--sp-top, var(--vx-top));
   height: max(var(--vx-vh), 620px);
+  touch-action: pan-y; /* sideways swipes move the queue; vertical ones scroll */
   overflow: hidden;
   isolation: isolate;
   background: var(--vx-ink);

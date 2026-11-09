@@ -34,6 +34,7 @@
 .aixc-vx--cube .cb-scene {
   position: absolute;
   inset: 0;
+  inset-inline-start: 56px; /* the scene dots get their own strip, clear of the cube */
   display: grid;
   place-items: center;
   perspective: 1400px;
@@ -93,12 +94,28 @@
   padding: 10%;
 }
 
-.aixc-vx--cube .cb-tile--blank {
+/* Brand tiles fill the cells a category leaves empty. */
+.aixc-vx--cube .cb-tile--brand,
+.aixc-vx--cube .cb-face__empty {
+  display: grid;
+  place-items: center;
   background: var(--vx-red);
 }
 
-.aixc-vx--cube .cb-tile--blank.is-alt {
-  background: var(--vx-grey-900);
+.aixc-vx--cube .cb-tile__mark {
+  width: 38%;
+  max-width: 96px;
+  aspect-ratio: 1;
+  height: auto;
+}
+
+.aixc-vx--cube .cb-tile--brand.is-photo {
+  background: var(--vx-ink);
+}
+
+.aixc-vx--cube .cb-tile--brand.is-photo img {
+  opacity: 0.8;
+  mix-blend-mode: luminosity;
 }
 
 .aixc-vx--cube .cb-face__label {
@@ -119,9 +136,6 @@
   opacity: 0.85;
 }
 
-.aixc-vx--cube .cb-face__empty {
-  background: var(--vx-grey-200);
-}
 
 .aixc-vx--cube .cb-floor {
   position: absolute;
@@ -202,6 +216,7 @@
 
 .aixc-vx--cube .cb-dots {
   position: absolute;
+  z-index: 1;
   top: 50%;
   inset-inline-start: 20px;
   transform: translateY(-50%);
@@ -237,15 +252,22 @@
   transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
+/* Names show on hover and keyboard focus only (the HUD and caption already name
+   the current face), on a pill so they read where they pass over the cube. */
 .aixc-vx--cube .cb-dot__label {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--vx-white);
+  box-shadow: var(--vx-shadow);
+  white-space: nowrap;
+  pointer-events: none;
   opacity: 0;
   transform: translateX(calc(-4px * var(--cb-sign))); /* slides out from the dot */
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .aixc-vx--cube .cb-dot:hover .cb-dot__label,
-.aixc-vx--cube .cb-dot:focus-visible .cb-dot__label,
-.aixc-vx--cube .cb-dot.is-active .cb-dot__label {
+.aixc-vx--cube .cb-dot:focus-visible .cb-dot__label {
   opacity: 1;
   transform: none;
 }
@@ -395,6 +417,10 @@
   .aixc-vx--cube .cb-dots,
   .aixc-vx--cube .cb-floor {
     display: none;
+  }
+
+  .aixc-vx--cube .cb-scene {
+    inset-inline-start: 0; /* no dots on narrow screens */
   }
 
   .aixc-vx--cube .cb-hud {

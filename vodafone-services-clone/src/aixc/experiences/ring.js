@@ -23,7 +23,7 @@
 import { h, pathIcon } from '../dom.js'
 import {
   ICON_NEXT, ICON_PREV, arrowKeys, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras,
-  groupsOf, inlineSign, liveStatus, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, t,
+  groupsOf, inlineSign, liveStatus, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t,
 } from './shared.js'
 
 const STEP_PX = 300
@@ -223,6 +223,7 @@ export const renderRing = (schema, index) => {
   arrowKeys(stage, { step: (direction) => stepper.goTo(front + direction), first: () => stepper.goTo(0), last: () => stepper.goTo(total - 1) })
 
   let stopDrag = null
+  let stopWheel = null
   const onScroll = () => stepper.settle()
   const onResize = () => measure()
 
@@ -237,6 +238,7 @@ export const renderRing = (schema, index) => {
       measure()
       position = stepper.position()
       stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / 140, touch: true })
+      stopWheel = sidewaysWheel(stage) // sideways swipes walk it too, along the reading line
       window.addEventListener('scroll', onScroll, { passive: true })
       window.addEventListener('resize', onResize)
       frame = window.requestAnimationFrame(loop)
@@ -245,6 +247,8 @@ export const renderRing = (schema, index) => {
       mounted = false
       window.cancelAnimationFrame(frame)
       stopDrag?.()
+      stopWheel?.()
+      stopWheel = null
       stopDrag = null
       stepper.stop()
       window.removeEventListener('scroll', onScroll)

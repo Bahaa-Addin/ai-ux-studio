@@ -5,19 +5,22 @@
  * Scrolling the page walks the camera along the wall; when scrolling settles it
  * eases to the nearest piece, and the caption (catalogue number, category, title,
  * description, link) changes with it. The pointer tilts the wall slightly. Arrow
- * keys and prev/next work too. In Arabic the wall is mirrored: the pieces hang
- * leftward, the wall recedes the other way, and walking forward moves left. The reference wraps infinitely; here the walk has a
+ * keys and prev/next work too. The caption sits on the active piece's start side
+ * (left; right in Arabic), so the pieces still to come stay in view. In Arabic the
+ * wall is mirrored: the pieces hang leftward, the wall recedes the other way, and
+ * walking forward moves left. The reference wraps infinitely; here the walk has a
  * start and an end so the page can continue to the footer.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PREV, arrowKeys, chromeOffset, clamp, closingBand, ctaFor, experienceRoot, flatItems, groupsOf, inlineSign,
-  ltrMark, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollToY, t,
+  ICON_NEXT, ICON_PREV, arrowKeys, chromeOffset, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupsOf, inlineSign,
+  ltrMark, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollToY, sidewaysWheel,
+  t,
 } from './shared.js'
 
 const STEP_PX = 240 // page scroll per piece
-const GAP_PX = 110 // space between frames on the wall
+const GAP_PX = 84 // space between frames on the wall
 const SETTLE_MS = 180
 
 const domainOf = (href) => {
@@ -86,6 +89,8 @@ export const renderGallery = (schema, index) => {
   let active = -1
   let settleTimer = 0
   let stop = null
+  let stopDrag = null
+  let stopWheel = null
 
   /**
    * Frame widths follow the image ratio at the current frame height. `--x` is the
@@ -94,9 +99,18 @@ export const renderGallery = (schema, index) => {
    * physical centres the camera travels to.
    */
   const measure = () => {
-    const height = parseFloat(getComputedStyle(root).getPropertyValue('--gl-frame-h')) || 300
+    const styles = getComputedStyle(root)
+    const height = parseFloat(styles.getPropertyValue('--gl-frame-h')) || 300
     // Never wider than most of the stage, so wide images still fit on phones.
-    const stageCap = (stage.clientWidth || window.innerWidth) * 0.8
+    let stageCap = (stage.clientWidth || window.innerWidth) * 0.8
+    // Beside the caption (wide screens), the active piece stops short of it.
+    if (window.matchMedia('(min-width: 900px)').matches) {
+      const stageRect = stage.getBoundingClientRect()
+      const capRect = caption.getBoundingClientRect()
+      const anchorX = stageRect.left + (stageRect.width * (parseFloat(styles.getPropertyValue('--gl-anchor')) || 50)) / 100
+      const room = inlineSign > 0 ? anchorX - capRect.right : capRect.left - anchorX
+      if (stageRect.width && capRect.width) stageCap = Math.min(stageCap, Math.max(160, 2 * (room - 32)))
+    }
     let x = 0
     offsets = pieces.map((piece) => {
       const ratio = parseFloat(piece.style.getPropertyValue('--ratio'))
@@ -140,7 +154,10 @@ export const renderGallery = (schema, index) => {
     progressFill.style.transform = `scaleX(${(at + 1) / total})`
     prevButton.disabled = at === 0
     nextButton.disabled = at === total - 1
-    pieces.forEach((piece, i) => piece.classList.toggle('is-active', i === at))
+    pieces.forEach((piece, i) => {
+      piece.classList.toggle('is-active', i === at)
+      piece.classList.toggle('is-past', i < at)
+    })
   }
 
   const render = () => {
@@ -201,10 +218,15 @@ export const renderGallery = (schema, index) => {
       window.addEventListener('scroll', onScroll, { passive: true })
       window.addEventListener('resize', onResize)
       stage.addEventListener('pointermove', onPointer)
+      // Dragging or swiping sideways walks the wall, along the reading line.
+      stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / 160, touch: true })
+      stopWheel = sidewaysWheel(stage)
     },
     unmount() {
       stop?.()
-      stop = null
+      stopDrag?.()
+      stopWheel?.()
+      stop = stopDrag = stopWheel = null
       window.clearTimeout(settleTimer)
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
