@@ -1,0 +1,674 @@
+/*
+ * The customer status widget: docked in the well above the RED world, or floating as a compact
+ * pill at the bottom of the screen. A softly elevated light surface on the dark space beneath the
+ * page; the floating pill echoes the dark navigation pill of the reference.
+ *
+ * Its appearance plays once, in order: the container materialises out of the glow (scale, blur,
+ * opacity), the metrics follow 60ms apart, the bars fill, and one highlight sweeps across.
+ */
+
+.pz-status {
+  --pz-status-radius: 24px;
+  color: var(--pz-ink, #14141e);
+  font-family: var(--pz-font, vodafone-regular-en, vf-regular, sans-serif);
+}
+
+.pz-status__surface {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  overflow: hidden;
+  padding: 8px;
+  border-radius: var(--pz-status-radius);
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 22px 44px -16px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+}
+
+/* -------------------------------------------------------------- identity */
+
+.pz-status__who {
+  display: none;
+}
+
+.pz-status__avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--pz-warm, linear-gradient(180deg, #f2541f, #e60000));
+  color: #fff;
+  font-family: var(--pz-font-bold, vodafone-bold-en, sans-serif);
+  font-size: 1.05rem;
+}
+
+.pz-status__id {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pz-status__name {
+  font-family: var(--pz-font-bold, vodafone-bold-en, sans-serif);
+  font-size: 0.92rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.pz-status__plan {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pz-muted, #666);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.pz-status__live {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2fb35b;
+  box-shadow: 0 0 0 3px rgba(47, 179, 91, 0.2);
+}
+
+/* ---------------------------------------------------------------- metrics */
+
+.pz-status__primary,
+.pz-status__account {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pz-status__primary {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+}
+
+.pz-status__account {
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+}
+
+.pz-status__cell {
+  min-width: 0;
+}
+
+.pz-metric {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 6px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 8px 12px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(20, 20, 30, 0.04);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    transform 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pz-metric:hover {
+  background: rgba(230, 0, 0, 0.07);
+}
+
+.pz-metric:active {
+  transform: scale(0.97);
+}
+
+.pz-metric:focus-visible {
+  outline: 3px solid var(--pz-ink, #14141e);
+  outline-offset: 1px;
+}
+
+.pz-metric__icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(230, 0, 0, 0.1);
+  color: var(--pz-red, #e60000);
+}
+
+.pz-metric__glyph {
+  width: 15px;
+  height: 15px;
+}
+
+.pz-metric__text {
+  display: grid;
+  min-width: 0;
+}
+
+.pz-metric__figure {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pz-metric__value {
+  font-family: var(--pz-font-bold, vodafone-bold-en, sans-serif);
+  font-size: 1.08rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.pz-metric__unit {
+  color: var(--pz-muted, #666);
+  font-size: 0.7rem;
+}
+
+.pz-metric__caption {
+  overflow: hidden;
+  color: var(--pz-faint, #999);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pz-metric__label {
+  overflow: hidden;
+  color: var(--pz-muted, #666);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pz-metric__label-short {
+  display: none;
+}
+
+/* Tight cells say "Data" and "DSL"; roomy ones say "Mobile Internet" and "Home Internet". */
+.pz-status__surface {
+  container-type: inline-size;
+}
+
+@container (max-width: 1150px) {
+  .pz-metric__label-full:has(+ .pz-metric__label-short) {
+    display: none;
+  }
+
+  .pz-metric__label-short {
+    display: inline;
+  }
+}
+
+.pz-metric__bar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 6px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(20, 20, 30, 0.08);
+}
+
+.pz-metric__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--pz-red, #e60000);
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left center;
+}
+
+/* Low allowances and a bill that is due say so in their colour (and in their label). */
+.pz-metric[data-tone='low'] .pz-metric__value,
+.pz-metric[data-tone='due'] .pz-metric__caption {
+  color: var(--pz-red, #e60000);
+}
+
+.pz-metric[data-tone='low'] .pz-metric__fill {
+  background: #ff7a1a;
+}
+
+.pz-metric[data-tone='done'] .pz-metric__caption {
+  color: #2a8a4a;
+}
+
+/* The account row (bill, points, family): a slimmer row of chips under the allowances. */
+.pz-metric--account {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 46px;
+  padding: 6px 8px;
+}
+
+.pz-metric--account .pz-metric__icon {
+  background: rgba(20, 20, 30, 0.07);
+  color: var(--pz-ink, #14141e);
+}
+
+.pz-metric--account .pz-metric__figure {
+  order: 2;
+}
+
+.pz-metric--account .pz-metric__value {
+  font-size: 0.92rem;
+}
+
+.pz-metric--account .pz-metric__caption {
+  display: none;
+}
+
+.pz-metric--account .pz-metric__label {
+  order: 1;
+  font-size: 0.68rem;
+}
+
+.pz-metric--bill[data-tone='due'] .pz-metric__label::after {
+  content: ' · due soon';
+  color: var(--pz-red, #e60000);
+}
+
+.pz-metric.is-updated {
+  animation: pz-metric-bump 0.9s var(--pz-ease-settle, ease);
+}
+
+@keyframes pz-metric-bump {
+  0% {
+    background-color: rgba(230, 0, 0, 0.22);
+  }
+  100% {
+    background-color: rgba(20, 20, 30, 0.04);
+  }
+}
+
+/* A single sweep of light across the surface as it settles. */
+.pz-status__sheen {
+  position: absolute;
+  inset: -20% -40%;
+  z-index: 2;
+  background: linear-gradient(105deg, rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0.75) 50%, rgba(255, 255, 255, 0) 62%);
+  opacity: 0;
+  transform: translateX(-60%);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------- docked */
+
+.pz-status--docked {
+  width: min(100%, 1180px);
+  opacity: 0;
+  visibility: hidden;
+}
+
+.pz-status--docked[data-show='in'],
+.pz-status--docked[data-show='still'],
+.pz-status--docked[data-show='out'] {
+  visibility: visible;
+}
+
+.pz-status--docked[data-show='still'] {
+  opacity: 1;
+}
+
+.pz-status--docked[data-show='in'] {
+  animation: pz-materialize 0.64s var(--pz-ease-settle) both;
+}
+
+.pz-status--docked[data-show='in'] .pz-metric {
+  animation: pz-cell-in 0.46s var(--pz-ease-settle) both;
+  animation-delay: calc(180ms + var(--i, 0) * 60ms);
+}
+
+.pz-status--docked[data-show='in'] .pz-metric__fill {
+  animation: pz-fill 0.8s var(--pz-ease-settle) both;
+  animation-delay: calc(360ms + var(--i, 0) * 60ms);
+}
+
+.pz-status--docked[data-show='in'] .pz-status__sheen {
+  animation: pz-sheen 1.15s cubic-bezier(0.4, 0, 0.2, 1) 0.62s both;
+}
+
+.pz-status--docked[data-show='out'] {
+  animation: pz-dematerialize 0.24s ease-in both;
+}
+
+@keyframes pz-materialize {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.9);
+    filter: blur(14px) brightness(1.6);
+  }
+  45% {
+    opacity: 1;
+    filter: blur(2px) brightness(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes pz-dematerialize {
+  0% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+    filter: blur(10px) brightness(1.4);
+  }
+}
+
+@keyframes pz-cell-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pz-fill {
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(var(--fill, 0));
+  }
+}
+
+@keyframes pz-sheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-60%);
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(60%);
+  }
+}
+
+/* Wider screens: one row, the customer first, then the allowances, then the account. */
+@media (min-width: 900px) {
+  .pz-status--docked .pz-status__surface {
+    grid-template-columns: auto minmax(0, 4fr) minmax(0, 3fr);
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .pz-status--docked .pz-status__who {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px 0 8px;
+    border-right: 1px solid rgba(20, 20, 30, 0.08);
+  }
+
+  .pz-status--docked .pz-metric--account {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-height: 64px;
+  }
+
+  .pz-status--docked .pz-metric--account .pz-metric__value {
+    font-size: 1.02rem;
+  }
+
+  .pz-metric__value {
+    font-size: 1.18rem;
+  }
+
+  .pz-metric__icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .pz-metric__glyph {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+/* Narrow phones: tighten so four allowances fit side by side. */
+@media (max-width: 380px) {
+  .pz-metric--bill[data-tone='due'] .pz-metric__label::after {
+    content: '';
+  }
+
+  .pz-status__surface {
+    padding: 6px;
+  }
+
+  .pz-metric {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+    padding: 7px 6px 11px;
+  }
+
+  .pz-metric__icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .pz-metric__glyph {
+    width: 13px;
+    height: 13px;
+  }
+
+  .pz-metric__value {
+    font-size: 1rem;
+  }
+
+  .pz-metric--account {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+
+/* ------------------------------------------------------------- floating */
+
+.pz-status--floating {
+  position: fixed;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 28;
+  width: min(100% - 24px, 520px);
+  opacity: 0;
+  transform: translate(-50%, 150%);
+  transition:
+    transform 0.46s var(--pz-ease-settle),
+    opacity 0.28s ease;
+  pointer-events: none;
+}
+
+.pz-status--floating[data-floating='true'] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+/* Keep clear of the accessibility button and the guide's microphone when they are on the page. */
+@media (max-width: 767px) {
+  body:has(#vodafone-aw-icon, vg-guide) .pz-status--floating {
+    left: 12px;
+    width: calc(100% - 96px);
+    transform: translate(0, 150%);
+  }
+
+  body:has(#vodafone-aw-icon, vg-guide) .pz-status--floating[data-floating='true'] {
+    transform: none;
+  }
+}
+
+.pz-status__pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 10px 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(20, 20, 30, 0.9);
+  color: #fff;
+  font: inherit;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 14px 32px rgba(20, 20, 30, 0.38);
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pz-status__pill:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--pz-ink, #14141e);
+}
+
+.pz-status__pill-metrics {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pz-status__pill-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pz-status__pill-glyph {
+  align-self: center;
+  width: 15px;
+  height: 15px;
+  margin-right: 2px;
+  color: #ff6b5c;
+}
+
+.pz-status__pill-value {
+  font-family: var(--pz-font-bold, vodafone-bold-en, sans-serif);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pz-status__pill-unit {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.68rem;
+}
+
+.pz-status__pill-metric.is-low .pz-status__pill-value {
+  color: #ff9a6b;
+}
+
+.pz-status__pill-more {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  transition: transform 0.28s var(--pz-ease-settle);
+}
+
+.pz-status__pill-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.pz-status--floating[data-expanded] .pz-status__pill-more {
+  transform: rotate(180deg);
+}
+
+.pz-status__panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  transform-origin: 50% 100%;
+  animation: pz-panel-in 0.34s var(--pz-ease-settle) both;
+}
+
+.pz-status__panel[hidden] {
+  display: none;
+}
+
+@keyframes pz-panel-in {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .pz-status__pill-unit {
+    display: none;
+  }
+
+  .pz-status__pill {
+    gap: 6px;
+    padding-left: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pz-status--docked[data-show='in'],
+  .pz-status--docked[data-show='in'] .pz-metric,
+  .pz-status--docked[data-show='in'] .pz-metric__fill,
+  .pz-status--docked[data-show='out'],
+  .pz-status__panel,
+  .pz-metric.is-updated {
+    animation: none !important;
+  }
+
+  .pz-status--docked[data-show='in'] {
+    opacity: 1;
+  }
+
+  .pz-status--docked[data-show='in'] .pz-status__sheen {
+    display: none;
+  }
+
+  .pz-status--floating,
+  .pz-metric,
+  .pz-status__pill-more {
+    transition: none !important;
+  }
+}

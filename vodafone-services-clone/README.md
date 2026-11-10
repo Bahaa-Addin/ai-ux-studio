@@ -385,6 +385,119 @@ Add `?aixc-debug` to get `window.__aixcTips` (`open`, `hold(card, ms)` to stop a
 
 ---
 
+## Your RED world: the personal layer under the Pocket (demo 5)
+
+A personalization and contextual-benefits layer that lies **beneath** the Pocket album, rebuilt
+from the reference recording of the Vodafone app's *My Lines* and *Benefits* screens. It is not a
+drawer or a modal: it is a second part of the same page, found at the album's end.
+
+1. **Discovery.** Reaching the end of the album (≥60% of its last band in view) raises a Dock
+   from under the page: a frosted bar of the world's categories (*Explore by category* and
+   *RED Lifestyle*; eight, less any the customer cannot have, so no icon opens an empty
+   spotlight), after the pen [Mac Dock Magnify](https://codepen.io/ghaste/pen/bGxWVOm). As in
+   the macOS Dock, the icon under a mouse pointer and its neighbours magnify (1.6 · 1.35 · 1.15 ·
+   1.05, small enough never to widen the page) and push the others aside, but they grow
+   **downward**, toward the world beneath, with the name under the icon; at the bottom edge the page
+   first glides down just enough to make room. Fingers never magnify (the last pointer's type
+   decides, so touch laptops behave), and a tap that wobbles is still a tap: a pull needs 14px of
+   mostly vertical travel. An icon opens the world with its category in the spotlight; arrow keys
+   move along the Dock (one tab stop). The cursor drifting to the bottom edge lifts the Dock a
+   touch. Scrolling never opens it.
+2. **The push.** An icon, Enter, or pulling the Dock up (it follows the finger; let go past a
+   quarter, or flick) pushes the Pocket page **up**: one progress value drives a programmatic
+   scroll (the album rises) and a transform on the world (it comes up from the bottom edge), in
+   one frame loop. The world joins the page's flow (inside `#pocket-output`, before the footer);
+   the document keeps owning the scroll, so there is no nested scroller.
+3. **The peek, and the swap.** It stops partway: the album above, then the *well* (the widget's
+   room, with the Dock under it), then the world's rounded top with the RED hero. The Dock and the
+   widget swap places in the same move: the widget materialises right under the album, where the
+   Dock was, while the Dock first rides with the album and then glides down under the widget, just
+   above the sheet, where it now chooses what the spotlight shows. Closing glides it back. Phones
+   get a nudge of the handle; pointers get "See everything for you", once.
+4. **The status widget** materialises out of that light (scale, blur, opacity, then the metrics 60ms
+   apart, the bars, one sweep of light): minutes, SMS, mobile internet, home internet (DSL), the
+   bill, RED Points and family. It is its own layer: docked in the well while it peeks (in flow,
+   so it scrolls natively), then a compact floating pill once its place has scrolled away (it
+   expands into the full card). The bill opens its details, usage opens the plan, and points and
+   family bring their topic into the spotlight. Its presses never reach the sheet's drag.
+5. **Expanded.** Scrolling, the handle, "See everything" or dragging the handle up: the bar sticks
+   under the site header ("Back to pocket · RED Benefits · Why these?").
+6. **The return.** *Back to pocket*, Esc, or dragging the handle down. From deep in the world the
+   page first jumps invisibly (the sheet is shifted by the same amount and clipped at the header),
+   so only a screen's worth slides away; the scroll lands **exactly** where the album was. The
+   footer is handed over by an inert stand-in, so it never pops. Closing the Pocket resets it all.
+
+**The sheet: one topic at a time.** Under the hero, the sheet's first section is a **spotlight**
+that shows one topic, and a compact bento under it (*More for you*) offers the others as small
+tiles: a name, one line ("2 perks not switched on", "EGP 300 due in 3 days") and, on the wide
+tiles, why it is there. Tiles have no buttons of their own; pressing one brings it into the
+spotlight. Choosing a topic (a Dock icon, a tile, the widget's points or family) condenses the hero
+to a slim band about the bar's height ("Your RED Benefits" and the claimed count), swaps the
+spotlight's content in place (it slides in from the side of its Dock icon while the height
+morphs), re-lays the bento, and settles the page with the Dock under the header, so the Dock, the
+band and the spotlight are in view together. A pull or a plain open shows the full hero and the
+customer's best topic. The bento shows the best seven, then *Show all*; the best tiles take two
+columns, as few as it takes for every row to close (two columns on phones, four from 720px;
+`bentoSpans()` in `topics.js`).
+
+**The topics** (`topics.js`, all from the reference): *Waiting for you* (included perks not switched
+on, + to activate); the Dock's eight categories: Lifestyle (*Ready when you are*: Talabat Pro, QANZ
+Card, BeFit, roaming; "Claim your exclusive benefits!" with partner wordmarks), Home Connectivity
+(50 GB free), Entertainment (4/6 spots), Roaming, RED Experience (Amr Diab · RED Members Only Night),
+RED Fitness, RED Food & Groceries, RED Shopping (*Discover your favourite brands*: vouchers in every
+state); and Family, the bill (*Latest*), RED Coffee (map and places), RED Installments (0% · 0 EGP ·
+0 EGP), RED Points and the RED Elite+ upgrade. Each is ranked by its best item's score. Phones
+follow the recording (white panel over the RED hero, two-up perks, carousels that peek); from
+1100px the spotlight and the bento are white cards over the hero.
+
+**The engine** (`engine.js`) is a deterministic stand-in for a recommendation service, and says
+so. Each rule is a small pure function with a reason a card can show: an included benefit not
+switched on, free family or entertainment spots, a voucher about to expire, an interest with a
+real signal, an allowance under a fifth, a trip coming up, an outgrown plan; settled items stay,
+lower down. Topics are ranked by their best item, so customers open on a different spotlight and
+see the bento in a different order. **Why these?** lists what it noticed.
+A real backend can replace `personalize(profile, { now })` if it returns the same shape.
+
+**Try it.** Pocket two or three services, open the Pocket, scroll to the end, hover the Dock and
+press an icon (or pull the Dock up). Press other icons and tiles to change the spotlight. Press
+**+** on Entertainment (the counter, the widget and the tiles follow), invite family twice (both
+spots taken: the Elite+ upgrade rises with "All 2 family spots are taken"), open a ZARA voucher
+from RED Shopping, press a metric in the floating pill, and go *Back to pocket*. Other customers: `?pz=mariam`
+(RED Elite+, a family of four, no home internet) and `?pz=karim` (3 GB of data left, flying to
+Dubai in nine days: roaming leads, the upgrade rises). `?pz=off` removes the layer; `?aixc-debug`
+exposes `window.__pz` (`store`, `extension`, `widget`). What a customer claims is remembered in
+this browser (`aixc.pz.v1`); *Why these? → Reset this demo* forgets it.
+
+**Artwork.** Everything is drawn for this project as SVG (clay category icons, the perk and
+partner scenes, the RED Points cards, the Elite+ avatars, the map) or comes from this clone's own
+pictures (the roaming traveller, the Amr Diab concert photo). Partners appear as typographic
+wordmarks, never as copies of their logos or campaign photography; a catalogue item's `image`
+field takes a real partner picture instead.
+
+```
+src/personalization/
+  index.js          wiring; loads the world when the album's end comes into view
+  extension.js      the Dock (and its move into the well), the push and the return, the drag,
+                    the scroll tracking, the spotlight's resting place
+  status-widget.js  the account at a glance: docked and floating presentations
+  data.js           plans, partners, the catalogue and three demo customers (pure data)
+  engine.js         the rules, the ranking, the widget's metrics (pure)
+  store.js          what this browser activated, claimed, invited, redeemed (aixc.pz.v1)
+  topics.js         the spotlight's topics, their ranking, hooks and the bento's spans (pure)
+  world.js          the hero, the spotlight and the bento, actions, detail sheets, toast (on demand)
+  components.js     one data-driven builder per section, the topic tiles
+  art.js · icons.js the artwork and the 24px icons
+  motion.js         the easing curves, the scroll guard, the glide
+  extension.css · status-widget.css   (with the page)    world.css   (on demand)
+tests/personalization.test.mjs   data, every rule on its own, ranking, widget, store, topics, bento (npm test)
+```
+
+**Known limitations.** English page only for now (the Arabic page shows the Pocket as before);
+the data is a demonstration set; partner offers, codes and the map are illustrative; "Directions"
+and "Pay" only change this page.
+
+---
+
 ## The Arabic page (`/ar/`)
 
 `ar/index.html` is the [Arabic Services page](https://web.vodafone.com.eg/ar/services), captured on 2026-11-05: the same app, sections, items, ids and pictures as the English page, with Vodafone's Arabic copy and links (`src/content/vodafone-services-ar.js`), right to left. Open http://127.0.0.1:5173/ar/ (`npm run dev` or `node scripts/serve.mjs`). In the voice-guide demo it is mounted at `/ar/services`, and after Arabic pages the journey opens in its Pocket (voice-guide ADR-0043).

@@ -124,6 +124,32 @@ The clone is local-first and self-contained:
 - page images are mirrored into `public/assets/images`
 - the icon sprite used by the page header/footer/app-store area is inlined in `src/main.js`
 
+## RED world (under the Pocket)
+
+The personal benefits layer (`src/personalization/`, README "Your RED world") stays inside this
+system and adds one surface of its own, from the reference recording:
+
+- Colour: actions and accents `#e60000` / `#990000`; promotional surfaces use the RED warm gradient
+  (`#ff6b2c → #f2421a → #e60000`), the hero runs from `#f2541f` down to `#6a0606`; the well under
+  the album is transparent (the album's paper shows through). Neutrals as above (`#333`, `#666`,
+  `#999`, `#ebebeb`, `#f4f4f4`; bento tiles `#f5f5f7`, wide tiles a warm tint `#fff2ed → #ffe7e0`).
+  Partners appear as wordmarks in their own colours on their own tiles. Topics that are not Dock
+  categories get a small gradient badge (family turquoise, bill grey, coffee brown, points gold,
+  Elite+ ink, the rest RED).
+- Type: Vodafone Regular for titles (as in the reference), Vodafone Bold for figures, buttons and
+  the hero; numbers use tabular figures.
+- Shape: the sheet 28px, cards 20–26px, tiles 20px, bento tiles 18px, buttons 12px, pills fully
+  round. The condensed hero is one band about the sheet bar's height.
+- Layout: the sheet holds one spotlight (one topic) and a compact bento of the others: two columns
+  on phones, four from 720px, the best tiles two columns wide so every row closes.
+- Motion: one curve family shared by CSS and JS (`--pz-ease-sheet` = `cubic-bezier(0.32, 0.72, 0, 1)`
+  for the push, `--pz-ease-settle` for things that land); the push 760ms, the return 660ms, the widget
+  640ms with metrics 60ms apart; the Dock's glide into the well rides the push; a spotlight swap
+  420ms (height morph, content sliding 28px from its Dock icon's side), tiles re-lay with FLIP. The
+  Dock magnifies 1.6x at most, for a mouse only. Transforms and opacity only during the push.
+  Reduced motion: every state change is immediate and the widget appears still.
+- Selectors: everything is prefixed `.pz-`.
+
 ## Pocket actors
 
 The Pocket mascot and drone (`src/pocket/pocket-actors.css`, [pocket-actors.md](pocket-actors.md))

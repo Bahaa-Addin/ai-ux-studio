@@ -8,6 +8,7 @@ import { initComposer } from './aixc/controller.js'
 import { initPocket } from './pocket/pocket.js'
 import { initJourney } from './pocket/journey.js'
 import { initTips } from './tips/entry.js'
+import { initPersonalization } from './personalization/index.js'
 
 const regions = renderShell(document.querySelector('#app'))
 const adapter = getPageAdapter(document.body.dataset.page)
@@ -58,3 +59,5 @@ const pocket = initPocket({ adapter, regions, composer })
 if (pocket) initJourney({ pocket })
 // Tips: an Apple Tips-style walkthrough of the four demos, from a button bottom-left (voice-guide ADR-0045).
 initTips({ adapter, regions, pocket })
+// Your RED world: a personal benefits layer that lies beneath the Pocket album, found at its end.
+if (pocket) initPersonalization({ pocket, regions })

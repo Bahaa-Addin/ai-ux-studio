@@ -1,0 +1,674 @@
+/*
+ * The RED world's frame: the lip that peeks out under the Pocket, the stage that joins the page's
+ * flow when it opens (the space beneath, the widget's well, the sheet and its sticky bar), and the
+ * "See everything" invitation. The world's content is styled in ./world.css (loaded on demand).
+ *
+ * Vodafone tokens (docs/design-system.md): red #e60000 / #990000, ink #14141e, neutrals, Vodafone
+ * Regular/Bold/Light. The warm orange-to-red gradient is the RED world's own surface, from the
+ * reference. Every selector is .pz- prefixed.
+ */
+
+:root {
+  --pz-red: #e60000;
+  --pz-red-dark: #990000;
+  --pz-ink: #14141e;
+  --pz-text: #333;
+  --pz-muted: #666;
+  --pz-faint: #999;
+  --pz-line: #ebebeb;
+  --pz-tile: #f4f4f4;
+  --pz-flame: #f2541f;
+  --pz-warm: linear-gradient(180deg, #f2541f 0%, #e60000 100%);
+  --pz-promo: linear-gradient(120deg, #ff6b2c 0%, #f2421a 42%, #e60000 100%);
+  --pz-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --pz-ease-settle: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --pz-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --pz-sheet-radius: 28px;
+  /* The Dock's icon size, and the lip that holds it: never shorter than the Dock needs (6px above,
+     the Dock's 14px of padding and border), 66px on phones, 72px from about 630px. */
+  --pz-dock-w: clamp(26px, calc((100vw - 124px) / 9.7), 52px);
+  --pz-lip-h: max(66px, calc(var(--pz-dock-w) + 20px));
+  --pz-bar-h: 74px;
+  --pz-content-max: 1180px;
+  --pz-font: vodafone-regular-en, vf-regular, sans-serif;
+  --pz-font-bold: vodafone-bold-en, vf-bold, sans-serif;
+  --pz-font-light: vodafone-light-en, vf-light, sans-serif;
+}
+
+.pz-world {
+  /* The sticky site header's height, kept current by the page (src/aixc/controller.js). */
+  --pz-header-h: var(--aixc-header-h, 104px);
+  position: relative;
+  /* Nothing in the world (a magnified Dock, a card sliding in) ever widens the page. Clip, not
+     hidden: no scroll container, so the sheet's bar still sticks. */
+  overflow-x: clip;
+  color: var(--pz-text);
+  font-family: var(--pz-font);
+}
+
+/* ----------------------------------------------------------------- the dock */
+
+/*
+ * Reserved from the start (no layout shift when it appears); the album's paper shows through.
+ * Once the world is open the Dock has moved down into the well and the widget takes this space.
+ */
+.pz-lip {
+  position: relative;
+  z-index: 5;
+  height: var(--pz-lip-h);
+  pointer-events: none;
+}
+
+.pz-lip__clip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 6px;
+  pointer-events: none;
+}
+
+/*
+ * The Dock: a frosted bar of the world's categories. As in the macOS Dock (and the referenced pen),
+ * the icon under a mouse pointer and its neighbours scale up and push the others aside, but they
+ * grow DOWNWARD from the bar's top edge, toward the world beneath the page. The growth is kept
+ * small (1.6x at most) so the magnified Dock always fits the screen's width.
+ */
+.pz-dock {
+  --w: var(--pz-dock-w);
+  --gap: clamp(4px, 1vw, 8px);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap);
+  height: calc(var(--w) + 14px);
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: calc(var(--w) * 0.36 + 7px);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 10px 30px rgba(20, 20, 30, 0.14),
+    0 1px 3px rgba(20, 20, 30, 0.08);
+  opacity: 0;
+  transform: translateY(16px) scale(0.96);
+  visibility: hidden;
+  transition:
+    opacity 0.38s ease,
+    transform 0.42s var(--pz-ease-settle),
+    visibility 0s linear 0.42s;
+  pointer-events: auto;
+  touch-action: pan-up pinch-zoom; /* an upward pull opens the world; a downward swipe still scrolls */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+
+.pz-world:not([data-phase='hidden']) .pz-dock {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition:
+    opacity 0.38s ease,
+    transform 0.42s var(--pz-ease-settle),
+    visibility 0s;
+}
+
+/* The cursor drifting to the bottom edge: the Dock rises a touch, as if about to be pulled. */
+.pz-world[data-phase='discoverable'][data-near] .pz-dock {
+  transform: translateY(-4px);
+}
+
+/* Once open it is the world's switcher, no longer a thing to pull: every scroll gesture is native. */
+.pz-world:not([data-phase='discoverable'], [data-phase='pulling']) .pz-dock {
+  touch-action: manipulation;
+}
+
+.pz-dock__item {
+  --m: 0px;
+  --sep: 0px;
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--w);
+  height: var(--w);
+  margin: 0 var(--m) 0 calc(var(--m) + var(--sep));
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--w) * 0.26);
+  background: none;
+  cursor: pointer;
+  transform-origin: top center;
+  transition:
+    scale 0.4s ease,
+    margin 0.4s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* A little more room between "Explore by category" and "RED Lifestyle". */
+.pz-dock__item[data-group-start] {
+  --sep: calc(var(--gap) + 8px);
+}
+
+.pz-dock__tile {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, #ffffff 0%, #eef0f4 100%);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 1px 2px rgba(20, 20, 30, 0.12),
+    0 3px 8px rgba(20, 20, 30, 0.1);
+  transition: translate 0.1s linear;
+}
+
+.pz-dock__tile svg {
+  width: 86%;
+  height: 86%;
+}
+
+.pz-dock__item:active .pz-dock__tile {
+  translate: 0 1px;
+}
+
+/*
+ * The magnification: under a mouse pointer (or keyboard focus), then one, two and three icons away
+ * on either side. Each margin is half the extra width its scale adds, so magnified icons push their
+ * neighbours aside instead of overlapping them. Fingers never magnify (data-pointer is set from the
+ * last pointer's type, which also covers touch laptops that report hover).
+ */
+.pz-dock[data-pointer='mouse'] .pz-dock__item:hover,
+.pz-dock__item:focus-visible {
+  --m: calc(var(--w) * 0.3);
+  scale: 1.6;
+  z-index: 4;
+}
+
+.pz-dock[data-pointer='mouse'] .pz-dock__item:hover + .pz-dock__item,
+.pz-dock[data-pointer='mouse'] .pz-dock__item:has(+ .pz-dock__item:hover),
+.pz-dock__item:focus-visible + .pz-dock__item,
+.pz-dock__item:has(+ .pz-dock__item:focus-visible) {
+  --m: calc(var(--w) * 0.175);
+  scale: 1.35;
+  z-index: 3;
+}
+
+.pz-dock[data-pointer='mouse'] .pz-dock__item:hover + .pz-dock__item + .pz-dock__item,
+.pz-dock[data-pointer='mouse'] .pz-dock__item:has(+ .pz-dock__item + .pz-dock__item:hover),
+.pz-dock__item:focus-visible + .pz-dock__item + .pz-dock__item,
+.pz-dock__item:has(+ .pz-dock__item + .pz-dock__item:focus-visible) {
+  --m: calc(var(--w) * 0.075);
+  scale: 1.15;
+  z-index: 2;
+}
+
+.pz-dock[data-pointer='mouse'] .pz-dock__item:hover + .pz-dock__item + .pz-dock__item + .pz-dock__item,
+.pz-dock[data-pointer='mouse'] .pz-dock__item:has(+ .pz-dock__item + .pz-dock__item + .pz-dock__item:hover),
+.pz-dock__item:focus-visible + .pz-dock__item + .pz-dock__item + .pz-dock__item,
+.pz-dock__item:has(+ .pz-dock__item + .pz-dock__item + .pz-dock__item:focus-visible) {
+  --m: calc(var(--w) * 0.025);
+  scale: 1.05;
+  z-index: 1;
+}
+
+.pz-dock__item:focus-visible {
+  outline: none;
+}
+
+.pz-dock__item:focus-visible .pz-dock__tile {
+  box-shadow:
+    0 0 0 1.5px #fff,
+    0 0 0 2.5px var(--pz-ink);
+}
+
+/* The name, under the magnified icon (it scales with it, so it is set small). */
+.pz-dock__label {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--pz-ink);
+  box-shadow: 0 1px 3px rgba(20, 20, 30, 0.3);
+  font-family: var(--pz-font-bold);
+  font-size: 7.5px; /* 12px once the icon is magnified (x1.6) */
+  line-height: 1.5;
+  white-space: nowrap;
+  opacity: 0;
+  translate: -50% -2px;
+  transition:
+    opacity 0.2s ease,
+    translate 0.2s ease;
+  pointer-events: none;
+}
+
+.pz-dock__label::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  border: 2px solid transparent;
+  border-bottom-color: #fff;
+  translate: -50% 0;
+}
+
+.pz-dock[data-pointer='mouse'] .pz-dock__item:hover .pz-dock__label,
+.pz-dock__item:focus-visible .pz-dock__label {
+  opacity: 1;
+  translate: -50% 0;
+  pointer-events: auto; /* the pointer can move onto the name without losing it */
+}
+
+/* Escape dismissed the names until the pointer or focus reaches another icon. */
+.pz-dock[data-quiet] .pz-dock__label {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The category in the spotlight, while the world is open: a small dot under its icon. */
+.pz-dock__item::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pz-ink);
+  opacity: 0;
+  translate: -50% 0;
+  transition: opacity 0.2s ease;
+}
+
+.pz-dock__item[aria-current='true']::after {
+  opacity: 0.7;
+}
+
+/* A finger gets no magnification: the press itself is the feedback (a key press keeps its focus). */
+.pz-dock:is([data-pointer='touch'], [data-pointer='pen']) .pz-dock__item:active {
+  scale: 1.08;
+  transition-duration: 0.12s;
+}
+
+/* --------------------------------------------------------------- the stage */
+
+.pz-stage {
+  position: relative;
+}
+
+.pz-stage[data-open='false'] {
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* Open, the world starts where the Dock was: the widget takes its place under the album. */
+.pz-stage[data-open='true'] {
+  margin-top: calc(-1 * var(--pz-lip-h));
+}
+
+.pz-stage__lift {
+  position: relative;
+}
+
+.pz-world:is([data-phase='opening'], [data-phase='pulling']) .pz-stage__lift,
+.pz-world[data-phase='closing'] .pz-sheet {
+  will-change: transform;
+}
+
+/* The space beneath the page: dark, with the light the widget materialises from. */
+.pz-underlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  /* Transparent: the album's own paper shows through behind the widget. */
+  background: transparent;
+}
+
+.pz-underlay__glow {
+  position: absolute;
+  left: 50%;
+  top: 72px;
+  width: min(880px, 130vw);
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.16) 48%, rgba(255, 255, 255, 0) 100%);
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.pz-world[data-phase='open'] .pz-underlay__glow {
+  opacity: 0.42;
+  transition: opacity 0.5s ease;
+}
+
+/*
+ * The widget's dedicated space above the sheet, and under it the Dock (moved here when the world
+ * opens). Above the sheet in the stacking order, so the Dock's magnified icons can grow over it.
+ */
+.pz-well {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px;
+}
+
+.pz-well__widget {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 112px;
+}
+
+.pz-well__dock {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* A stand-in for the footer while the world takes (or gives back) its place in the flow. */
+.pz-footer-stand-in {
+  position: absolute !important;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  width: 100%;
+  margin: 0 !important;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------- the sheet */
+
+.pz-sheet {
+  position: relative;
+  z-index: 3;
+  min-height: calc(100vh - var(--pz-header-h, 104px));
+  border-radius: var(--pz-sheet-radius) var(--pz-sheet-radius) 0 0;
+  background: #fff;
+  box-shadow: 0 -14px 34px rgba(0, 0, 0, 0.32);
+}
+
+.pz-sheet:focus {
+  outline: none;
+}
+
+/* The bar sticks under the site header once the sheet's top reaches it. */
+.pz-bar {
+  position: sticky;
+  top: var(--pz-header-h, 104px);
+  z-index: 6;
+  height: var(--pz-bar-h);
+  border-radius: var(--pz-sheet-radius) var(--pz-sheet-radius) 0 0;
+  color: #fff;
+  transition:
+    background-color 0.22s ease,
+    box-shadow 0.22s ease,
+    border-radius 0.22s ease;
+}
+
+.pz-world.is-stuck .pz-bar {
+  border-radius: 0;
+  background-color: #d81e05;
+  background-image: linear-gradient(180deg, #ea3b10, #d40000);
+  box-shadow: 0 8px 20px rgba(20, 20, 30, 0.2);
+}
+
+.pz-bar__grab {
+  display: grid;
+  place-items: center;
+  height: 22px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.pz-bar__grab:active {
+  cursor: grabbing;
+}
+
+.pz-bar__handle {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: none;
+  cursor: inherit;
+}
+
+.pz-bar__handle-bar {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.62);
+  transition: width 0.2s ease;
+}
+
+.pz-bar__handle:hover .pz-bar__handle-bar {
+  width: 52px;
+}
+
+.pz-bar__handle:focus-visible,
+.pz-bar__back:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.pz-bar__row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  width: min(100% - 24px, var(--pz-content-max));
+  height: calc(var(--pz-bar-h) - 22px);
+  margin: 0 auto;
+  padding-bottom: 6px;
+}
+
+.pz-bar__back {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 14px 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-family: var(--pz-font-bold);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.pz-bar__back:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.pz-bar__back-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.pz-bar__title {
+  margin: 0;
+  font-family: var(--pz-font-bold);
+  font-size: 1.02rem;
+  white-space: nowrap;
+}
+
+.pz-bar__end {
+  display: flex;
+  justify-self: end;
+  gap: 6px;
+}
+
+@media (max-width: 479px) {
+  .pz-bar__back-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .pz-bar__back {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+/* A finger's invitation: the handle stretches twice once the world has settled. */
+.pz-world.is-nudging .pz-bar__handle-bar {
+  animation: pz-handle-nudge 1.4s var(--pz-ease-standard) 2;
+}
+
+@keyframes pz-handle-nudge {
+  0%,
+  100% {
+    width: 40px;
+    transform: none;
+  }
+  40% {
+    width: 60px;
+    transform: translateY(-3px);
+  }
+}
+
+/* Coming back from deep in the world, the stuck bar leaves with the sheet's top. */
+.pz-world.is-deep-return .pz-bar {
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+/* ------------------------------------------- "See everything" while it peeks */
+
+.pz-explore {
+  position: fixed;
+  white-space: nowrap;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 29;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(20, 20, 30, 0.86);
+  color: #fff;
+  font-family: var(--pz-font-bold);
+  font-size: 0.9rem;
+  box-shadow: 0 10px 26px rgba(20, 20, 30, 0.3);
+  opacity: 0;
+  transform: translate(-50%, 160%);
+  transition:
+    transform 0.42s var(--pz-ease-settle),
+    opacity 0.25s ease;
+  pointer-events: none;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.pz-explore.is-shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+  transition-delay: 0.25s;
+}
+
+.pz-explore:hover {
+  background: rgba(20, 20, 30, 0.96);
+}
+
+/* Wide screens: the hero's words are on the left, so the invitation waits on the right. */
+@media (min-width: 900px) {
+  .pz-explore {
+    left: auto;
+    right: max(24px, calc((100vw - var(--pz-content-max)) / 2 + 24px));
+    transform: translateY(160%);
+  }
+
+  .pz-explore.is-shown {
+    transform: none;
+  }
+}
+
+.pz-explore:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--pz-ink);
+}
+
+.pz-explore__icon {
+  width: 20px;
+  height: 20px;
+  animation: pz-nudge-down 2s var(--pz-ease-standard) 1s infinite;
+}
+
+@keyframes pz-nudge-down {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(3px);
+  }
+}
+
+/* --------------------------------------------- the rest of the page while open */
+
+/* The mascot rests on the album's floor line, which is where the world now begins. */
+.pocket-actor-floor {
+  transition: opacity 0.25s ease;
+}
+
+.pocket-actor-floor.pz-tucked {
+  opacity: 0;
+}
+
+/* A section the widget or a category points at glows once. */
+.pz-is-pointed {
+  animation: pz-pointed 1.4s var(--pz-ease-standard);
+}
+
+@keyframes pz-pointed {
+  0% {
+    box-shadow: 0 0 0 0 rgba(230, 0, 0, 0);
+  }
+  25% {
+    box-shadow: 0 0 0 4px rgba(230, 0, 0, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(230, 0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pz-dock,
+  .pz-dock__item,
+  .pz-explore,
+  .pz-bar,
+  .pz-world[data-phase='open'] .pz-underlay__glow {
+    transition: none !important;
+  }
+
+  .pz-explore__icon,
+  .pz-is-pointed {
+    animation: none !important;
+  }
+}
