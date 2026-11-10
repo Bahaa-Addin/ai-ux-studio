@@ -512,8 +512,13 @@ async def streaming_checks(browser):
     await open_template(page, "streaming")
     check("streaming: intro overlay plays", await page.is_visible(".st-intro") and await page.is_visible(".st-skip"))
     check("streaming: header logo waits for the intro", await page.evaluate("getComputedStyle(document.querySelector('.st-brand')).opacity") == "0")
-    await page.wait_for_function("document.getAnimations().some(a => a.effect && a.effect.getTiming().duration === 3200)")
-    await page.evaluate("document.getAnimations().forEach(a => { if (a.effect.getTiming().duration === 3200) { a.pause(); a.currentTime = 3199.5 } })")
+    await page.wait_for_function("document.getAnimations().some(a => a.id === 'st-flight')")
+    # Freeze the whole opening mid-flight: the billboard copy must wait until the logo has passed above it.
+    await page.evaluate("""() => { const flight = document.getAnimations().find(a => a.id === 'st-flight'), t = flight.effect.getTiming(), at = t.delay + t.duration * 0.6; document.getAnimations().forEach(a => { a.pause(); a.currentTime = at }) }""")
+    copy = await page.evaluate("['.st-billboard__title', '.st-billboard__actions'].map(s => getComputedStyle(document.querySelector(s)).opacity)")
+    check("streaming: billboard copy waits while the logo flies over it", copy == ["0", "0"], copy)
+    # Then to the last frame of the flight.
+    await page.evaluate("""() => { const end = document.getAnimations().find(a => a.id === 'st-flight').effect.getComputedTiming().endTime - 0.5; document.getAnimations().forEach(a => { a.pause(); a.currentTime = end }) }""")
     land = await page.evaluate("""() => { const a = document.querySelector('.st-intro__red').getBoundingClientRect(), b = document.querySelector('.st-brand .st-word').getBoundingClientRect(); return Math.max(Math.abs(a.left - b.left), Math.abs(a.top - b.top), Math.abs(a.width - b.width)) }""")
     check("streaming: logo lands exactly in its header slot", land < 1, land)
     lockup = await page.evaluate("""() => {
@@ -562,12 +567,30 @@ async def streaming_checks(browser):
     check("no page errors (streaming)", page.errors == [], page.errors)
     await page.context.close()
 
+    # The Enter that submits a typed prompt mounts this experience while still bubbling: it must not count as a skip.
+    page = await new_page(browser)
+    await submit(page, "Make it a streaming showcase")
+    await page.wait_for_selector("[data-experience=streaming]")
+    await page.wait_for_timeout(1500)
+    check("streaming: the Enter that submitted the prompt does not skip the opening", await page.is_visible(".st-intro") and not await page.evaluate(ready))
+    await page.context.close()
+
     # Skip intro.
     page = await new_page(browser)
     await open_template(page, "streaming")
     await page.click(".st-skip")
     await page.wait_for_function(ready, timeout=2000)
     check("streaming: Skip intro ends the opening at once", await page.is_hidden(".st-intro") and await page.evaluate("document.activeElement.classList.contains('st-brand')"))
+    await page.context.close()
+
+    # Scrolling during the opening ends it at its final frame, so the page never moves under the curtain.
+    page = await new_page(browser)
+    await open_template(page, "streaming")
+    await page.wait_for_function("document.getAnimations().some(a => a.id === 'st-flight')")
+    await page.mouse.move(640, 500)
+    await page.mouse.wheel(0, 200)
+    await page.wait_for_function(ready, timeout=2000)
+    check("streaming: scrolling ends the intro", await page.is_hidden(".st-intro") and await page.evaluate("getComputedStyle(document.querySelector('.st-brand')).opacity") == "1")
     await page.context.close()
 
     # Reduced motion: no intro at all.

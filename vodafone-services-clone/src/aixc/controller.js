@@ -14,7 +14,7 @@ import { buildContentIndex, buildModelPayload, contentFingerprint } from './cont
 import { validateSchema, assertComplete } from './schema-validator.js'
 import { buildFallbackSchema } from './fallback-schema.js'
 import { DEFAULT_MODEL, GeminiError, requestComposition } from './gemini-client.js'
-import { experienceLabel, renderExperience } from './experience-renderer.js'
+import { experienceLabel, renderExperience, warmExperiences } from './experience-renderer.js'
 import { TEMPLATES, buildTemplateSchema, matchTemplate } from './templates.js'
 import { countItems, lang, t } from '../i18n.js'
 
@@ -302,6 +302,7 @@ export const initComposer = ({ adapter, regions }) => {
     returnFocusTo = opener
     state.isComposerOpen = true
     composer.hidden = false
+    warmExperiences()
     launcher.setAttribute('aria-expanded', 'true')
     syncLauncher()
     if (!hasContent) {
