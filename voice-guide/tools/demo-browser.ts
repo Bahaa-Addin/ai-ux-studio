@@ -46,6 +46,8 @@ export interface DemoBrowserOptions {
 	clone?: { path: string; dir: string; pages?: Record<string, string> }
 	/** Replay only: pages opened from the internet (not in the replay) are never saved by the trail. Default: recorded like the rest. */
 	liveUnsaved?: boolean
+	/** The experience layer (ADR-0048): false keeps it off even where the site config turns it on. Default: the site config. */
+	experiences?: boolean
 	/** Replay only: add a stand-in of Vodafone's accessibility button (scripts are off in replay, so the real one is absent). */
 	accessibilityStandIn?: boolean
 	/** Chromium's fake microphone playing this WAV file (tests). */
@@ -69,8 +71,42 @@ export interface DemoBrowser {
 	close(): Promise<void>
 }
 
-/** The loader the demo browser runs in every document: the same tag mode A adds through Tealium. */
-export function loaderScript(o: { siteKey: string; origins: string[]; xray?: string }): string {
+/** Where the loader adds the experience layer (ADR-0048); null: nowhere. */
+export interface LoaderExperiences {
+	/** The site's first (web) origin only, never the shop. */
+	origin: string
+	/** Regular expressions on the path. */
+	paths: string[]
+	/** Paths the clone is mounted on in replay (it runs the demos itself until phase 9). */
+	exclude: string[]
+	/** Enabled demos, passed to the layer. */
+	demos: string[]
+}
+
+/**
+ * Where this demo browser adds the experience layer: the site config's paths on its first (web)
+ * origin, the enabled demos, and in replay the paths the clone is mounted on left out. Null when the
+ * site config or the `experiences: false` option turns it off.
+ */
+export function loaderExperiences(o: Pick<DemoBrowserOptions, 'site' | 'replayDir' | 'clone' | 'experiences'>): LoaderExperiences | null {
+	const x = o.site.experiences
+	if (!x.enabled || o.experiences === false) return null
+	return {
+		origin: new URL(o.site.origins[0].url).origin,
+		paths: x.paths,
+		exclude: o.replayDir && o.clone ? [o.clone.path, ...Object.keys(o.clone.pages || {})].map((p) => p.replace(/\/$/, '')) : [],
+		demos: Object.entries(x.demos)
+			.filter(([, on]) => on)
+			.map(([name]) => name),
+	}
+}
+
+/**
+ * The loader the demo browser runs in every document: the same tags mode A adds through Tealium.
+ * guide.js on every page of an allowed origin; then the experience layer, aixc.js (ADR-0048), on the
+ * web origin's matching pages that have #main-content, unless the URL says ?aixc=off.
+ */
+export function loaderScript(o: { siteKey: string; origins: string[]; xray?: string; experiences?: LoaderExperiences | null }): string {
 	return `(() => { try {
 	if (window.top !== window) return
 	if (!${JSON.stringify(o.origins)}.includes(location.origin)) return
@@ -87,8 +123,24 @@ export function loaderScript(o: { siteKey: string; origins: string[]; xray?: str
 		${o.xray ? `s.dataset.xray = ${JSON.stringify(o.xray)}` : ''}
 		;(document.head || document.documentElement).appendChild(s)
 	}
-	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', add, { once: true })
-	else add()
+	const x = ${JSON.stringify(o.experiences ?? null)}
+	const addLayer = () => {
+		if (!x || location.origin !== x.origin || /[?&]aixc=off(&|$)/.test(location.search)) return
+		if (!document.getElementById('main-content') || document.querySelector('script[data-aixc-demo]')) return
+		if (x.exclude.includes(location.pathname.replace(/\\/$/, '')) || !x.paths.some((p) => new RegExp(p).test(location.pathname))) return
+		const m = document.createElement('script')
+		m.type = 'module'
+		m.src = location.origin + '/__vg/sdk/aixc/aixc.js'
+		m.dataset.aixcDemo = '1'
+		m.dataset.aixcDemos = x.demos.join(' ')
+		;(document.head || document.documentElement).appendChild(m)
+	}
+	const both = () => {
+		add()
+		try { addLayer() } catch (e) {}
+	}
+	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', both, { once: true })
+	else both()
 } catch (e) {} })()`
 }
 
@@ -188,7 +240,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 		})
 	}
 
-	await context.addInitScript(loaderScript({ siteKey: o.site.siteKey, origins, xray: o.xray }))
+	await context.addInitScript(loaderScript({ siteKey: o.site.siteKey, origins, xray: o.xray, experiences: loaderExperiences(o) }))
 	if (o.replayDir && o.accessibilityStandIn !== false) await context.addInitScript(ACCESSIBILITY_STAND_IN)
 	for (const s of o.initScripts || []) await context.addInitScript(s)
 

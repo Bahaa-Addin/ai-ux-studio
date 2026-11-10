@@ -77,6 +77,7 @@ First run only: answer the cookie banner yourself (reject non-essential cookies)
 | `--browser chromium` | Playwright's Chromium instead of Chrome: typing works, speech does not (ADR-0033) |
 | `--port <n>` | Another port if 4400 is taken |
 | `--agent <preset>` / `--agent off` | The fallback agent's model when `VG_LLM_*` is not set. Default `page-agent-testing`: page-agent's free testing API (`qwen3.5-plus`, Alibaba Cloud, mainland China; evaluation only, never for customers, ADR-0042). `off`: no agent |
+| `--aixc off` | Leaves out the experience layer (`aixc.js`, ADR-0048), which the site config otherwise adds beside the guide on `/en/` and `/ar/` pages with `#main-content`. For one page: add `?aixc=off` to its address; `?aixc-debug` exposes `window.__aixc` |
 
 Stop: close the browser window, or press Ctrl+C in the terminal.
 

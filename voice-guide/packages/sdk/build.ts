@@ -1,7 +1,8 @@
 /**
  * Builds the SDK (ADR-0007): guide.js (loader, UI, executor), xray.js (X-ray drawer, on demand), agent.js (page-agent,
  * loaded only on the fallback path), sw.js (push service worker), and the Exploration Trail's three on-demand chunks
- * (ADR-0035): trail.js (timeline, consent, storage), trail-record.js (rrweb record) and trail-replay.js (rrweb replay).
+ * (ADR-0035): trail.js (timeline, consent, storage), trail-record.js (rrweb record) and trail-replay.js (rrweb replay);
+ * and the experience layer from ../experiences (ADR-0048): aixc/aixc.js and its chunks, ES modules.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -70,6 +71,59 @@ const alias: esbuild.Plugin = {
 
 export const SDK_FILES = ['guide.js', 'agent.js', 'xray.js', 'watch.js', 'sw.js', 'trail.js', 'trail-record.js', 'trail-replay.js']
 
+/** The experience layer's sources (the demos' modules, ADR-0046) and its build output (ADR-0048). */
+export const EXPERIENCES = path.resolve(ROOT, '../experiences')
+export const AIXC_ENTRY = path.join(EXPERIENCES, 'src/host/index.js')
+export const AIXC_OUT = path.join(OUT, 'aixc')
+
+export interface AixcManifestFile {
+	file: string
+	/** The source module this file is the entry of (relative to experiences/), or null for shared code. */
+	entry: string | null
+	imports: { file: string; kind: string }[]
+	bytes: number
+}
+
+/**
+ * The experience layer (ADR-0048): ES modules with code splitting, because the demos share code, so
+ * one entry (aixc.js) and named chunks the entry imports on intent. CSS is bundled as text and
+ * injected once by the layer. Skipped while the entry does not exist. Writes manifest.json (each
+ * file, its entry, its imports, its size) for the size budgets.
+ */
+export async function buildAixc(opts: { minify?: boolean } = {}): Promise<Record<string, number>> {
+	if (!fs.existsSync(AIXC_ENTRY)) return {}
+	fs.rmSync(AIXC_OUT, { recursive: true, force: true })
+	const result = await esbuild.build({
+		bundle: true,
+		format: 'esm',
+		splitting: true,
+		platform: 'browser',
+		target: 'es2022',
+		minify: opts.minify ?? true,
+		charset: 'utf8',
+		sourcemap: true,
+		legalComments: 'linked',
+		logLevel: 'warning',
+		entryPoints: { aixc: AIXC_ENTRY },
+		outdir: AIXC_OUT,
+		entryNames: '[name]',
+		chunkNames: '[name]-[hash]',
+		loader: { '.css': 'text' },
+		metafile: true,
+	})
+	const files: AixcManifestFile[] = Object.entries(result.metafile.outputs)
+		.filter(([f]) => f.endsWith('.js'))
+		.map(([f, o]) => ({
+			file: path.basename(f),
+			entry: o.entryPoint ? path.relative(EXPERIENCES, path.resolve(o.entryPoint)) : null,
+			imports: o.imports.filter((i) => !i.external).map((i) => ({ file: path.basename(i.path), kind: i.kind })),
+			bytes: o.bytes,
+		}))
+		.sort((a, b) => a.file.localeCompare(b.file))
+	fs.writeFileSync(path.join(AIXC_OUT, 'manifest.json'), `${JSON.stringify({ files }, null, '\t')}\n`)
+	return Object.fromEntries(files.map((f) => [`aixc/${f.file}`, f.bytes]))
+}
+
 export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<string, number>> {
 	fs.mkdirSync(OUT, { recursive: true })
 	const common: esbuild.BuildOptions = {
@@ -87,7 +141,8 @@ export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<
 		plugins: [raw, stubs, alias],
 		define: { 'process.env.NODE_ENV': '"production"' },
 	}
-	await Promise.all([
+	const [aixc] = await Promise.all([
+		buildAixc(opts),
 		esbuild.build({ ...common, plugins: [...(opts.minify ?? true ? [cssMinify] : []), raw, stubs, alias], entryPoints: [path.join(SRC, 'index.ts')], outfile: path.join(OUT, 'guide.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'agent.ts')], outfile: path.join(OUT, 'agent.js') }),
 		esbuild.build({ ...common, plugins: [...(opts.minify ?? true ? [cssMinify] : []), raw, stubs, alias], entryPoints: [path.join(SRC, 'xray-chunk.ts')], outfile: path.join(OUT, 'xray.js') }),
@@ -99,7 +154,7 @@ export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<
 	])
 	const sizes: Record<string, number> = {}
 	for (const f of SDK_FILES) sizes[f] = fs.statSync(path.join(OUT, f)).size
-	return sizes
+	return { ...sizes, ...aixc }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

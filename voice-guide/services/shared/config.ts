@@ -222,6 +222,29 @@ export const SiteConfig = z.object({
 				.default({ enabled: false, minCohort: 20, windowDays: 28 }),
 		})
 		.default({ enabled: false, retentionHours: 24, excludePaths: [], privateSelectors: [], replayAssetPaths: [], aggregation: { enabled: false, minCohort: 20, windowDays: 28 } }),
+	/**
+	 * The experience layer beside the guide (ADR-0046, ADR-0048): the Pocket, Reimagine, the RED world
+	 * and Tips on the site's own pages. The demo browser's loader adds aixc.js on the site's first
+	 * origin, on paths matching `paths` (regular expressions), on pages that have #main-content.
+	 * `demos` turns each demo off or on; the loader passes the enabled ones to the layer.
+	 */
+	experiences: z
+		.object({
+			enabled: z.boolean().default(false),
+			paths: z.array(z.string()).default(['^/(en|ar)/']),
+			demos: z
+				.object({
+					pocket: z.boolean().default(true),
+					reimagine: z.boolean().default(true),
+					journey: z.boolean().default(true),
+					world: z.boolean().default(true),
+					tips: z.boolean().default(true),
+					watch: z.boolean().default(false),
+					demoKit: z.boolean().default(true),
+				})
+				.default({ pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true }),
+		})
+		.default({ enabled: false, paths: ['^/(en|ar)/'], demos: { pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true } }),
 })
 export type SiteConfig = z.infer<typeof SiteConfig>
 

@@ -91,6 +91,18 @@ export function createGateway(opts: GatewayOptions) {
 		})
 		res.end(fs.readFileSync(file))
 	})
+	// The experience layer beside the guide (ADR-0048): aixc.js and the chunks it imports on intent.
+	router.on('GET', '/sdk/aixc/:file', (_req, res, p) => {
+		if (!/^[\w.-]+\.js(\.map)?$/.test(p.file)) throw new HttpError(404, 'not found')
+		const file = path.join(sdkDir, 'aixc', p.file)
+		if (!fs.existsSync(file)) throw new HttpError(404, 'experience layer not built: npm run build:sdk')
+		res.writeHead(200, {
+			'Content-Type': 'text/javascript; charset=utf-8',
+			'Access-Control-Allow-Origin': '*',
+			'Cache-Control': process.env.NODE_ENV === 'production' ? 'public, max-age=300' : 'no-store',
+		})
+		res.end(fs.readFileSync(file))
+	})
 
 	router.on('GET', '/health', async (_req, res) => {
 		sendJson(res, 200, { ok: true, store: s.store.kind, services: platform.services, sites: [...s.sites.keys()], agent: s.local.agent.status() })

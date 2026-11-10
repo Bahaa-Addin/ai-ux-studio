@@ -161,3 +161,12 @@ trail:
   # Vodafone's CMS serves pictures from /documents/<ids>?t=… (no extension): let memories show them.
   replayAssetPaths: [/documents/]
   aggregation: { enabled: false, minCohort: 20 }
+
+# The experience layer beside the guide (ADR-0046, ADR-0048): the five demos on Vodafone's own pages.
+# The demo browser's loader adds aixc.js on web.vodafone.com.eg pages under /en/ and /ar/ that have
+# #main-content (not the /spa/ app, not pages the clone is mounted on in replay). ?aixc=off turns it
+# off for one page. watch waits for the page-watch decision (D1 of the live plan).
+experiences:
+  enabled: true
+  paths: ['^/(en|ar)/']
+  demos: { pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true }

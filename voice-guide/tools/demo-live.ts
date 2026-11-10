@@ -9,6 +9,7 @@
  *   npm run demo:live -- --replay --trail               # with the Exploration Trail (SPEC-06; demo only, consent still asked)
  *   npm run demo:trail                                  # the same, starting on /en/home (the journey opens in the Pocket)
  *   npm run demo:live -- --agent off                    # no fallback agent (default: VG_LLM_*, else page-agent's testing API, ADR-0042)
+ *   npm run demo:live -- --aixc off                     # without the experience layer (ADR-0048; default: the site config)
  *
  * In replay, /en/services (and /ar/services, its Arabic page) is the Vodafone Services clone with Pocket (../experiences),
  * so every page of the demo is a Vodafone page: saved ones, and the clone where the Pocket lives
@@ -54,6 +55,7 @@ const { values } = parseArgs({
 		trail: { type: 'boolean', default: false },
 		clone: { type: 'string' },
 		agent: { type: 'string' },
+		aixc: { type: 'string', default: 'on' },
 	},
 	allowNegative: false,
 	strict: true,
@@ -103,6 +105,7 @@ const stopWatches = startScheduler(services.local.watch, 5000)
 console.log(`Gateway: http://127.0.0.1:${port} (store: ${services.store.kind}, agent: ${services.local.agent.status().available ? 'on' : 'no model configured'})`)
 const preset = llmPreset(platform.llm.preset)
 if (preset) console.log(`Agent model: ${preset.model} via ${preset.label}: ${preset.notice}\n  Use your own model with VG_LLM_BASE_URL and VG_LLM_MODEL, or turn the agent off with --agent off.`)
+console.log(`Experience layer (ADR-0048): ${site.experiences.enabled && values.aixc !== 'off' ? `on (${site.experiences.paths.join(', ')}; --aixc off to leave it out)` : 'off'}`)
 console.log(replayDir ? `Replay: ${path.relative(ROOT, replayDir)} (offline)${clone ? `, ${[clone.path, ...Object.keys(clone.pages)].join(' and ')} ${Object.keys(clone.pages).length ? 'are' : 'is'} the Services clone with Pocket` : ''}` : 'Live: real Vodafone pages')
 
 const browser = await launchDemoBrowser({
@@ -115,6 +118,7 @@ const browser = await launchDemoBrowser({
 	xray: values.xray as 'off' | 'button' | 'open',
 	replayDir,
 	clone,
+	experiences: values.aixc !== 'off',
 	channel: values.browser === 'chromium' ? 'chromium' : 'chrome',
 	log: (m) => console.log(m),
 })
