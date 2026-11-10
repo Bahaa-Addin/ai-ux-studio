@@ -15,7 +15,7 @@ import { renderJourney } from './experiences/journey.js'
 import { renderGallery } from './experiences/gallery.js'
 import { renderFlipbook } from './experiences/flipbook.js'
 import { renderCube } from './experiences/cube.js'
-import { renderStreaming } from './experiences/streaming.js'
+import { renderStreaming, warmStreaming } from './experiences/streaming.js'
 import { renderSplit } from './experiences/split.js'
 import { renderFan } from './experiences/fan.js'
 import { renderRing } from './experiences/ring.js'
@@ -40,6 +40,11 @@ const experiences = {
 }
 
 export const experienceLabel = (name) => experiences[name]?.label ?? 'Reimagined view'
+
+/** Early, cheap preparation once the user shows intent (the composer opens): fetches what an opening needs. */
+export const warmExperiences = () => {
+  warmStreaming()
+}
 
 /**
  * @returns {{ element: HTMLElement, mount: Function, unmount: Function }}

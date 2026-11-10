@@ -6,10 +6,31 @@
 
 import { h, pathIcon, svgIcon, visuallyHidden } from '../dom.js'
 import { describeImageShape, PROMOTION_KIND } from '../content-index.js'
+import { t } from '../../i18n.js'
+
+export { t }
+
+/**
+ * Right-to-left (the Arabic page). Experiences read these instead of assuming
+ * left-to-right:
+ *   isRTL       the page runs right to left
+ *   inlineSign  +1 in LTR, -1 in RTL: multiply any horizontal offset, translateX,
+ *               rotateY or drag delta that means "forward along the reading line"
+ *   ltrMark     wrap Latin wordmarks (VODAFONE, letter-by-letter animations) so
+ *               their letters never reorder: h('span', { dir: 'ltr' }, …)
+ */
+// From the document's direction only: the CSS keys on [dir='rtl'], so the JS signs
+// must agree with it even on a page whose language and direction disagree.
+export const isRTL = typeof document !== 'undefined' && document.documentElement.dir === 'rtl'
+export const inlineSign = isRTL ? -1 : 1
+export const ltrMark = (...children) => h('span', { dir: 'ltr', class: 'vx-ltr' }, ...children)
 
 const ICON_EXTERNAL = 'M14 3h7v7h-2V6.4l-9.3 9.3-1.4-1.4L17.6 5H14V3zM5 5h6v2H7v10h10v-4h2v6H5V5z'
-export const ICON_PREV = 'M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'
-export const ICON_NEXT = 'M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'
+const CHEVRON_LEFT = 'M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z'
+const CHEVRON_RIGHT = 'M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'
+/** Previous/next chevrons, already pointing the way the reading line runs. */
+export const ICON_PREV = isRTL ? CHEVRON_RIGHT : CHEVRON_LEFT
+export const ICON_NEXT = isRTL ? CHEVRON_LEFT : CHEVRON_RIGHT
 export const ICON_PAUSE = 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z'
 export const ICON_PLAY = 'M8 5v14l11-7z'
 
@@ -36,10 +57,10 @@ export const groupsOf = (schema, index) =>
         id: section.id,
         items,
         sources,
-        title: section.title ?? sourceTitles[0] ?? 'More services',
+        title: section.title ?? sourceTitles[0] ?? t('More services'),
         authored,
         // Real source names to show next to a model-authored label.
-        provenance: authored && sourceTitles.length ? `From ${sourceTitles.join(', ')}` : null,
+        provenance: authored && sourceTitles.length ? t('From {sources}', { sources: sourceTitles.join(isRTL ? '، ' : ', ') }) : null,
         description: sources.length === 1 ? sources[0].description : null,
         cta: sources.length === 1 && sources[0].cta?.href ? sources[0].cta : null,
         aside: sources.length === 1 ? sources[0].aside : null,
@@ -65,7 +86,7 @@ export const externalLink = (href, className, ...children) =>
     'a',
     { class: className, href, target: '_blank', rel: 'noopener noreferrer' },
     ...children,
-    visuallyHidden(' (opens in a new tab)'),
+    visuallyHidden(` ${t('(opens in a new tab)')}`),
     pathIcon(ICON_EXTERNAL, 'vx-ext'),
   )
 
@@ -80,7 +101,7 @@ export const ctaFor = (item, { variant = 'primary', standalone = false, onDark =
   const tone = onDark ? ' vx-on-dark' : ''
   if (label && href) return externalLink(href, `vx-btn vx-btn--${variant}${tone}`, label)
   if (label) return h('span', { class: `vx-inert${tone}` }, label)
-  if (href && standalone) return externalLink(href, `vx-btn vx-btn--${variant}${tone}`, 'View service')
+  if (href && standalone) return externalLink(href, `vx-btn vx-btn--${variant}${tone}`, t('View service'))
   return null
 }
 
@@ -92,7 +113,7 @@ export const titleContent = (item) => {
       'a',
       { class: 'vx-story-link', href, target: '_blank', rel: 'noopener noreferrer' },
       item.title,
-      visuallyHidden(' (opens in a new tab)'),
+      visuallyHidden(` ${t('(opens in a new tab)')}`),
     )
   }
   return item.title
@@ -191,7 +212,7 @@ export const closingBand = (promo) => {
                     null,
                     h(
                       'a',
-                      { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} (opens in a new tab)` },
+                      { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} ${t('(opens in a new tab)')}` },
                       svgIcon(store.icon, 'vx-closing__store-icon'),
                     ),
                   ),
@@ -205,7 +226,7 @@ export const closingBand = (promo) => {
             'figure',
             { class: 'vx-closing__qr' },
             promo.qr.title ? h('figcaption', null, promo.qr.title) : null,
-            h('img', { src: promo.qr.image.src, alt: 'QR code to download the Ana Vodafone app', width: 330, height: 330, loading: 'lazy', decoding: 'async' }),
+            h('img', { src: promo.qr.image.src, alt: t('QR code to download the Ana Vodafone app'), width: 330, height: 330, loading: 'lazy', decoding: 'async' }),
           )
         : null,
     ),
@@ -301,7 +322,7 @@ export const scrollStepper = ({ track, count, step, settleMs = 200, tolerance = 
  * Lets a mouse (or pen) drag on `surface` scroll the page, so dragging moves a
  * scroll-driven stage like the references' drag handlers did. `axis` is the drag
  * direction that maps onto scrolling; `factor` is scroll pixels per dragged pixel
- * (drag left/up = forward). With `touch`, horizontal touch drags are handled too
+ * (drag up, or against the reading line, = forward). With `touch`, horizontal touch drags are handled too
  * (vertical touch keeps native scrolling via `touch-action: pan-y` in CSS).
  * A drag that moved suppresses the click that follows it. Returns a cleanup.
  */
@@ -309,7 +330,8 @@ export const dragToScroll = (surface, { axis = 'y', factor = 1, touch = false } 
   let pointer = null
   let start = 0
   let moved = false
-  const coord = (event) => (axis === 'x' ? event.clientX : event.clientY)
+  // Forward is a drag against the reading line: left in LTR, right in RTL.
+  const coord = (event) => (axis === 'x' ? event.clientX * inlineSign : event.clientY)
   const onDown = (event) => {
     if (event.button !== 0 || (event.pointerType === 'touch' && !touch)) return
     if (event.target.closest('a, button:not([data-drag-through]), input, textarea, select, [data-no-drag]')) return
@@ -354,10 +376,74 @@ export const dragToScroll = (surface, { axis = 'y', factor = 1, touch = false } 
   }
 }
 
+/**
+ * Forward amount of a sideways wheel or trackpad swipe, in pixels, or 0 when the
+ * gesture is mostly vertical (or a pinch). Forward follows the reading line, as a
+ * native horizontal scroller does: content moving toward the start edge, so a
+ * swipe to the left in English and to the right in Arabic.
+ */
+const sidewaysDelta = (event) => {
+  if (event.ctrlKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return 0
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerWidth : 1
+  return event.deltaX * unit * inlineSign
+}
+
+/**
+ * Lets a sideways swipe on `surface` scroll the page, so a horizontal gesture
+ * walks a scroll-driven stage the same way as the wheel. The browser's
+ * swipe-to-go-back is held off while the gesture is over the stage. Returns a cleanup.
+ */
+export const sidewaysWheel = (surface, { factor = 1 } = {}) => {
+  const onWheel = (event) => {
+    const delta = sidewaysDelta(event)
+    if (!delta) return
+    event.preventDefault()
+    window.scrollBy({ top: delta * factor, behavior: 'auto' })
+  }
+  surface.addEventListener('wheel', onWheel, { passive: false })
+  return () => surface.removeEventListener('wheel', onWheel)
+}
+
+/**
+ * Sideways swipes on `surface` as steps: calls step(1 | -1) once per gesture
+ * (forward along the reading line, as in sidewaysWheel), for paged layouts such as
+ * the flipbook and the streaming rows. While `enabled()` is false the gesture is
+ * left to the browser (a row that scrolls natively, say). Returns a cleanup.
+ */
+export const sidewaysSwipe = (surface, step, { threshold = 40, quietMs = 260, enabled = () => true } = {}) => {
+  let total = 0
+  let fired = false
+  let timer = 0
+  const onWheel = (event) => {
+    const delta = sidewaysDelta(event)
+    if (!delta || !enabled()) return
+    event.preventDefault()
+    // A trackpad swipe is a stream of events (with momentum): one step per stream.
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => {
+      total = 0
+      fired = false
+    }, quietMs)
+    if (fired) return
+    total += delta
+    if (Math.abs(total) >= threshold) {
+      fired = true
+      step(Math.sign(total))
+    }
+  }
+  surface.addEventListener('wheel', onWheel, { passive: false })
+  return () => {
+    window.clearTimeout(timer)
+    surface.removeEventListener('wheel', onWheel)
+  }
+}
+
 /** Arrow-key stepping for a stage: calls step(-1 | 1) and first/last for Home/End. */
 export const arrowKeys = (stage, { step, first, last, axis = 'both' }) => {
-  const back = axis === 'y' ? ['ArrowUp'] : axis === 'x' ? ['ArrowLeft'] : ['ArrowLeft', 'ArrowUp']
-  const forward = axis === 'y' ? ['ArrowDown'] : axis === 'x' ? ['ArrowRight'] : ['ArrowRight', 'ArrowDown']
+  // Horizontal keys follow the reading line: in RTL, ArrowLeft moves forward.
+  const [backX, forwardX] = isRTL ? ['ArrowRight', 'ArrowLeft'] : ['ArrowLeft', 'ArrowRight']
+  const back = axis === 'y' ? ['ArrowUp'] : axis === 'x' ? [backX] : [backX, 'ArrowUp']
+  const forward = axis === 'y' ? ['ArrowDown'] : axis === 'x' ? [forwardX] : [forwardX, 'ArrowDown']
   stage.addEventListener('keydown', (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return
     if (event.target.closest?.('input, textarea, select')) return

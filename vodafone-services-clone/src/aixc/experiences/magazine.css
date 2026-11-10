@@ -33,6 +33,8 @@
   --mag-pad: clamp(1.25rem, 3.6vw, 3.5rem);
   --mag-gap: clamp(1rem, 2.2vw, 2rem);
   --mag-offset: 10px;
+  /* +1 left to right, -1 right to left: mirrors the print offsets and the callout tilt. */
+  --mag-dir: 1;
   --mag-display: 1;
   --mag-body: 1rem;
 
@@ -47,6 +49,10 @@
   font-family: var(--mag-font);
   font-size: var(--mag-body);
   line-height: 1.55;
+}
+
+[dir='rtl'] .aixc-magazine {
+  --mag-dir: -1;
 }
 
 .aixc-magazine[data-density='compact'] {
@@ -274,7 +280,7 @@
   margin: 0;
   padding: clamp(6px, 0.8vw, 10px);
   background: var(--mag-paper);
-  box-shadow: var(--mag-offset) var(--mag-offset) 0 var(--mag-accent);
+  box-shadow: calc(var(--mag-offset) * var(--mag-dir)) var(--mag-offset) 0 var(--mag-accent);
 }
 
 .aixc-magazine .mag-frame img {
@@ -437,7 +443,7 @@
 }
 
 .aixc-magazine .mag-frame--cover {
-  box-shadow: var(--mag-offset) var(--mag-offset) 0 var(--mag-red);
+  box-shadow: calc(var(--mag-offset) * var(--mag-dir)) var(--mag-offset) 0 var(--mag-red);
 }
 
 .aixc-magazine .mag-cover__story-title {
@@ -464,8 +470,8 @@
 .aixc-magazine .mag-cover__contents {
   grid-area: contents;
   align-self: start;
-  padding-left: calc(var(--mag-gap) * 1.2);
-  border-left: 1px solid rgba(255, 255, 255, 0.28);
+  padding-inline-start: calc(var(--mag-gap) * 1.2);
+  border-inline-start: 1px solid rgba(255, 255, 255, 0.28);
 }
 
 .aixc-magazine .mag-cover__contents-title {
@@ -933,7 +939,7 @@
 .aixc-magazine .mag-frame--callout {
   width: min(100%, calc(var(--img-w, 300) * 1.4px));
   justify-self: center;
-  transform: rotate(-2deg);
+  transform: rotate(calc(-2deg * var(--mag-dir)));
 }
 
 .aixc-magazine .mag-callout__more {
@@ -1067,7 +1073,13 @@
   padding: 14px 14px 12px;
   background: #fff;
   color: var(--mag-ink);
-  box-shadow: var(--mag-offset) var(--mag-offset) 0 var(--mag-deep);
+  box-shadow: calc(var(--mag-offset) * var(--mag-dir)) var(--mag-offset) 0 var(--mag-deep);
+}
+
+.aixc-magazine .mag-closing__qr img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
 }
 
 .aixc-magazine .mag-closing__qr figcaption {
@@ -1076,6 +1088,48 @@
   font-size: 0.9375rem;
   line-height: 1.25;
   text-align: center;
+}
+
+/* ----------------------------------------------------------------- Arabic */
+
+/* Arabic is a joined script: no tracking (it pulls the letters apart), and the
+   Arabic face needs taller lines than the Latin display settings allow. */
+.aixc-magazine:lang(ar) .mag-title,
+.aixc-magazine:lang(ar) .mag-cover__title,
+.aixc-magazine:lang(ar) .mag-feature__title,
+.aixc-magazine:lang(ar) .mag-tile.is-lead .mag-tile__title,
+.aixc-magazine:lang(ar) .mag-split__title,
+.aixc-magazine:lang(ar) .mag-callout__text,
+.aixc-magazine:lang(ar) .mag-callout__title.is-large,
+.aixc-magazine:lang(ar) .mag-head--opener .mag-title,
+.aixc-magazine:lang(ar) .mag-closing__title {
+  letter-spacing: normal;
+}
+
+.aixc-magazine:lang(ar) .mag-cover__title {
+  line-height: 1.15;
+}
+
+.aixc-magazine:lang(ar) .mag-feature__title,
+.aixc-magazine:lang(ar) .mag-tile.is-lead .mag-tile__title,
+.aixc-magazine:lang(ar) .mag-split__title,
+.aixc-magazine:lang(ar) .mag-head--opener .mag-title,
+.aixc-magazine:lang(ar) .mag-closing__title,
+.aixc-magazine:lang(ar) .mag-title {
+  line-height: 1.2;
+}
+
+.aixc-magazine:lang(ar) .mag-cover__story-title,
+.aixc-magazine:lang(ar) .mag-row__title,
+.aixc-magazine:lang(ar) .mag-tile__title,
+.aixc-magazine:lang(ar) .mag-card__title,
+.aixc-magazine:lang(ar) .mag-entry__title {
+  line-height: 1.3;
+}
+
+.aixc-magazine:lang(ar) .mag-callout__text,
+.aixc-magazine:lang(ar) .mag-callout__title.is-large {
+  line-height: 1.35;
 }
 
 /* ------------------------------------------------------------- responsive */
@@ -1097,7 +1151,7 @@
   .aixc-magazine .mag-cover__contents {
     padding: 1rem 0 0;
     border-top: 1px solid rgba(255, 255, 255, 0.28);
-    border-left: 0;
+    border-inline-start: 0;
   }
 
   .aixc-magazine .mag-feature__lead,

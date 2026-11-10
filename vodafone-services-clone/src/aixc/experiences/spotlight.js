@@ -2,20 +2,25 @@
  * Spotlight cards — adapted from "Timed Cards Opening" (codepen.io/dilums/full/NWodZMd).
  *
  * One service fills the stage; the next services wait as cards at the bottom
- * right. Advancing expands the next card into the stage (a clip-path reveal),
+ * end corner (right in English, left in Arabic, where the queue runs leftward). Advancing expands the next card into the stage (a clip-path reveal),
  * slides the queue along, and animates the details panel in. A red timer bar
  * auto-advances; it pauses on hover, focus, the pause button, a hidden tab, and is
- * off by default under reduced motion. Arrow keys, prev/next and category jumps
- * reach every service, and the closing app promotion follows the stage.
+ * off by default under reduced motion. The stage is pinned while the page scrolls
+ * through the services, so the wheel, a trackpad swipe (sideways too), a drag on
+ * the stage, touch and the scrollbar all move between cards; the timer, arrow
+ * keys, prev/next and category jumps scroll the page to their card. The closing
+ * app promotion follows the stage.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PAUSE, ICON_PLAY, ICON_PREV, closingBand, ctaFor, experienceRoot, flatItems, groupsOf, media, pad2,
-  pageHeading, promotionOf, reducedMotion,
+  ICON_NEXT, ICON_PAUSE, ICON_PLAY, ICON_PREV, arrowKeys, chromeOffset, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems,
+  groupsOf, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t,
 } from './shared.js'
 
 const DWELL_MS = 6500
+const STEP_PX = 200 // page scroll per service
+const DRAG_PX = 120 // dragged pixels per service
 const QUEUE_DESKTOP = 4
 const QUEUE_MOBILE = 2
 
@@ -48,8 +53,8 @@ export const renderSpotlight = (schema, index) => {
         class: 'sp-slide',
         'data-aixc-item': item.id,
         role: 'group',
-        'aria-roledescription': 'slide',
-        'aria-label': `${at + 1} of ${total}: ${item.title}`,
+        'aria-roledescription': t('slide'),
+        'aria-label': t('{n} of {total}: {title}', { n: at + 1, total, title: item.title }),
         hidden: at !== 0,
       },
       h('p', { class: 'sp-slide__place' }, group.title),
@@ -64,18 +69,19 @@ export const renderSpotlight = (schema, index) => {
   const cards = entries.map(({ item, group }, at) => {
     const card = h(
       'button',
-      { type: 'button', class: 'sp-card', 'aria-label': `Show ${item.title}`, 'data-index': String(at) },
+      // data-drag-through: a drag that starts on a card still moves the queue.
+      { type: 'button', class: 'sp-card', 'aria-label': t('Show {title}', { title: item.title }), 'data-index': String(at), 'data-drag-through': '' },
       media(item, { className: 'sp-card__media' }),
       h('span', { class: 'sp-card__text', 'aria-hidden': 'true' }, h('span', { class: 'sp-card__place' }, group.title), h('span', { class: 'sp-card__title' }, item.title)),
     )
-    card.addEventListener('click', () => goTo(at, { from: card }))
+    card.addEventListener('click', () => goTo(at))
     return card
   })
-  const queue = h('div', { class: 'sp-queue', role: 'group', 'aria-label': 'Up next' }, cards)
+  const queue = h('div', { class: 'sp-queue', role: 'group', 'aria-label': t('Up next') }, cards)
 
   /* -------------------------------------------------------------- controls */
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Previous service' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Next service' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_NEXT, ''))
   const playButton = h('button', { type: 'button', class: 'vx-round vx-on-dark sp-play', 'aria-pressed': 'false' })
   const progressFill = h('span', { class: 'sp-progress__fill' })
   const counter = h('span', { class: 'sp-counter__now' }, '01')
@@ -100,11 +106,11 @@ export const renderSpotlight = (schema, index) => {
     button.addEventListener('click', () => goTo(firstIndexOf.get(group.id)))
     return button
   })
-  const jumps = h('nav', { class: 'sp-jumps', 'aria-label': 'Jump to a category' }, h('ul', null, jumpButtons.map((button) => h('li', null, button))))
+  const jumps = h('nav', { class: 'sp-jumps', 'aria-label': t('Jump to a category') }, h('ul', null, jumpButtons.map((button) => h('li', null, button))))
 
   const stage = h(
     'section',
-    { class: 'sp-stage vx-dark', 'aria-roledescription': 'carousel', 'aria-label': 'Vodafone services spotlight' },
+    { class: 'sp-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services spotlight') },
     backdrops,
     timer,
     jumps,
@@ -113,7 +119,13 @@ export const renderSpotlight = (schema, index) => {
     controls,
   )
 
-  const root = experienceRoot('spotlight', schema, pageHeading(index), stage, closingBand(promo))
+  // The run after the stage is the scroll distance it stays pinned for.
+  const track = h('div', { class: 'sp-track' }, stage, h('div', { class: 'sp-track__run', 'aria-hidden': 'true' }))
+  track.style.setProperty('--count', String(total))
+  track.style.setProperty('--step', `${STEP_PX}px`)
+
+  const root = experienceRoot('spotlight', schema, pageHeading(index), track, closingBand(promo))
+  const stepper = scrollStepper({ track, count: total, step: () => STEP_PX })
 
   /* ----------------------------------------------------------------- logic */
   const queueSize = () => (window.matchMedia('(max-width: 719px)').matches ? QUEUE_MOBILE : QUEUE_DESKTOP)
@@ -122,9 +134,10 @@ export const renderSpotlight = (schema, index) => {
   const layoutQueue = () => {
     const size = queueSize()
     cards.forEach((card, at) => {
-      const slot = (at - state.active - 1 + total) % total // 0 = next up
-      const visible = slot < size
-      card.style.setProperty('--slot', String(Math.min(slot, size)))
+      // 0 = next up; cards already shown park before the queue, later ones after it.
+      const slot = at - state.active - 1
+      const visible = slot >= 0 && slot < size
+      card.style.setProperty('--slot', String(Math.max(-1, Math.min(slot, size))))
       card.classList.toggle('is-queued', visible)
       card.classList.toggle('is-parked', !visible)
       card.inert = !visible
@@ -135,6 +148,8 @@ export const renderSpotlight = (schema, index) => {
     const group = entries[state.active].group
     counter.textContent = pad2(state.active + 1)
     progressFill.style.transform = `scaleX(${(state.active + 1) / total})`
+    prevButton.disabled = state.active === 0
+    nextButton.disabled = state.active === total - 1
     jumpButtons.forEach((button) => {
       const current = button.dataset.group === group.id
       button.classList.toggle('is-current', current)
@@ -142,13 +157,18 @@ export const renderSpotlight = (schema, index) => {
       else button.removeAttribute('aria-current')
     })
     playButton.replaceChildren(pathIcon(state.playing ? ICON_PAUSE : ICON_PLAY, ''))
-    playButton.setAttribute('aria-label', state.playing ? 'Pause automatic rotation' : 'Start automatic rotation')
+    playButton.setAttribute('aria-label', state.playing ? t('Pause automatic rotation') : t('Start automatic rotation'))
     playButton.setAttribute('aria-pressed', String(!state.playing))
     slideList.setAttribute('aria-live', state.playing ? 'off' : 'polite')
   }
 
-  /** Expands a new backdrop from `fromRect` (a queue card) to the full stage. */
+  let reveal = null
+
+  /** Expands a new backdrop from `fromEl` (a queue card) to the full stage. */
   const revealBackdrop = (entry, fromEl) => {
+    // Scrolling fast through several services: drop the reveal still running.
+    reveal?.cancel()
+    reveal = null
     const layer = backdropFor(entry)
     backdrops.append(layer)
     const previous = [...backdrops.children].slice(0, -1)
@@ -173,14 +193,16 @@ export const renderSpotlight = (schema, index) => {
     )
     animation.onfinish = finish
     animation.oncancel = finish
+    reveal = animation
   }
 
-  const goTo = (target, { from = null, user = true } = {}) => {
-    const next = ((target % total) + total) % total
+  /** Shows service `next` (called as the scroll position reaches it). */
+  const show = (next) => {
     if (next === state.active) return
     const outgoing = slides[state.active]
     const incoming = slides[next]
-    const fromEl = from ?? (next === (state.active + 1) % total ? cards[next] : null)
+    // Stepping forward, the backdrop grows out of the card that was next up.
+    const fromEl = next === state.active + 1 ? cards[next] : null
     revealBackdrop(entries[next], fromEl && !fromEl.inert ? fromEl : null)
     outgoing.hidden = true
     incoming.hidden = false
@@ -192,13 +214,28 @@ export const renderSpotlight = (schema, index) => {
     state.elapsed = 0
     layoutQueue()
     syncControls()
-    if (user && document.activeElement && cards.includes(document.activeElement)) {
-      // The clicked card moves away; keep focus on the stage controls.
+    if (document.activeElement && cards.includes(document.activeElement) && document.activeElement.inert) {
+      // The clicked card moved away; keep focus on the stage controls.
       nextButton.focus({ preventScroll: true })
     }
   }
 
-  const paused = () => !state.playing || state.hovered || state.focused || document.hidden
+  /** Scrolls the page to service `target`; `show` follows from the scroll. */
+  const goTo = (target) => stepper.goTo(target)
+
+  const render = () => show(Math.round(stepper.position()))
+
+  /**
+   * Pinned under the site chrome; when the stage is taller than the window (a
+   * short window, long copy) it pins higher instead, so its controls stay in view.
+   */
+  const pinTop = () => {
+    stage.style.setProperty('--sp-top', `${Math.round(Math.min(chromeOffset(), window.innerHeight - stage.offsetHeight))}px`)
+  }
+
+  // The timer only runs while the stage is pinned, so it never scrolls the page
+  // from elsewhere; on the last service it holds.
+  const paused = () => !state.playing || state.hovered || state.focused || document.hidden || !stepper.pinned() || state.active === total - 1
 
   const tick = (now) => {
     if (!state.mounted) return
@@ -206,7 +243,10 @@ export const renderSpotlight = (schema, index) => {
     state.last = now
     if (!paused()) {
       state.elapsed += delta
-      if (state.elapsed >= DWELL_MS) goTo(state.active + 1, { user: false })
+      if (state.elapsed >= DWELL_MS) {
+        state.elapsed = 0
+        goTo(state.active + 1)
+      }
     }
     timer.firstChild.style.transform = `scaleX(${Math.min(state.elapsed / DWELL_MS, 1)})`
     timer.classList.toggle('is-paused', paused())
@@ -226,16 +266,16 @@ export const renderSpotlight = (schema, index) => {
   stage.addEventListener('focusout', (event) => {
     if (!stage.contains(event.relatedTarget)) state.focused = false
   })
-  stage.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      goTo(state.active + 1)
-    } else if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      goTo(state.active - 1)
-    }
-  })
-  const onResize = () => layoutQueue()
+  // Left/right follow the reading line (ArrowLeft advances in Arabic).
+  arrowKeys(stage, { step: (direction) => goTo(state.active + direction), first: () => goTo(0), last: () => goTo(total - 1), axis: 'x' })
+  const onResize = () => {
+    layoutQueue()
+    pinTop()
+  }
+  const onScroll = () => stepper.settle()
+  let stopFrames = null
+  let stopDrag = null
+  let stopWheel = null
 
   layoutQueue()
   syncControls()
@@ -245,11 +285,23 @@ export const renderSpotlight = (schema, index) => {
     mount() {
       state.mounted = true
       state.last = 0
+      pinTop()
+      stopFrames = onScrollFrame(render)
+      stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / DRAG_PX, touch: true })
+      stopWheel = sidewaysWheel(stage)
+      window.addEventListener('scroll', onScroll, { passive: true })
       window.addEventListener('resize', onResize)
       state.frame = window.requestAnimationFrame(tick)
     },
     unmount() {
       state.mounted = false
+      stopFrames?.()
+      stopDrag?.()
+      stopWheel?.()
+      stopFrames = stopDrag = stopWheel = null
+      stepper.stop()
+      reveal?.cancel()
+      window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       window.cancelAnimationFrame(state.frame)
     },

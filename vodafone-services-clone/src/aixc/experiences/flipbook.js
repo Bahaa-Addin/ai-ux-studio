@@ -11,16 +11,55 @@
  */
 
 import { h, pathIcon, svgIcon } from '../dom.js'
-import { ICON_NEXT, ICON_PREV, ctaFor, experienceRoot, groupExtras, groupsOf, media, pad2, promotionOf, reducedMotion, storyLinkClass, titleContent } from './shared.js'
+import { countCategories, countServices } from '../../i18n.js'
+import {
+  ICON_NEXT, ICON_PREV, ctaFor, experienceRoot, groupExtras, groupsOf, isRTL, media, pad2, promotionOf, reducedMotion, sidewaysSwipe, storyLinkClass,
+  t, titleContent,
+} from './shared.js'
 
 const SPREAD_QUERY = '(min-width: 900px)'
 
 /** Deterministic depths for the letter fly-in, like the reference's per-letter translateZ. */
 const depthFor = (at) => 140 + ((at * 137) % 560)
 
+const ARABIC = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/
+const LATIN = /[A-Za-z]/
+const NUMERIC = /^[\d.,%+-]+$/
+
+/**
+ * Words for the RTL fly-in: Arabic letters join, so each word flies in whole.
+ * Consecutive Latin words (e.g. a brand name) stay one LTR unit, otherwise the
+ * inline-blocks would be laid out right to left and reorder them.
+ */
+const flyUnits = (text) => {
+  const units = []
+  for (const word of text.split(' ').filter(Boolean)) {
+    const prev = units.at(-1)
+    // A number right after Latin words belongs to that run ("Vodafone 2025").
+    const latin = (LATIN.test(word) && !ARABIC.test(word)) || (Boolean(prev?.latin) && NUMERIC.test(word))
+    if (latin && prev?.latin) prev.text += ` ${word}`
+    else units.push({ text: word, latin })
+  }
+  return units
+}
+
 const lettered = (text, className, id) => {
   let count = 0
   const heading = h('h2', { class: `fb-letters ${className}`, id, 'aria-label': text })
+  // Never split Arabic into letters: on the Arabic page (or for Arabic text) fly in by word.
+  if (isRTL || ARABIC.test(text)) {
+    heading.classList.add('fb-letters--words')
+    for (const unit of flyUnits(text)) {
+      if (heading.childNodes.length) heading.append(' ')
+      const span = h('span', { class: 'fb-char fb-char--word', 'aria-hidden': 'true', dir: unit.latin ? 'ltr' : null }, unit.text)
+      span.style.setProperty('--d', `${depthFor(count)}px`)
+      // Fewer, longer pieces: stagger them more than letters (4 letter-steps per word).
+      span.style.setProperty('--i', String(count * 4))
+      count += 1
+      heading.append(span)
+    }
+    return heading
+  }
   for (const word of text.split(' ')) {
     if (heading.childNodes.length) heading.append(' ')
     const wordEl = h('span', { class: 'fb-word', 'aria-hidden': 'true' })
@@ -36,6 +75,10 @@ const lettered = (text, className, id) => {
   return heading
 }
 
+/** "6 categories, 40 services" in the page's language (Arabic plural forms for services). */
+const countLine = (categories, services) =>
+  `${countCategories(categories)}${isRTL ? '، ' : ', '}${countServices(services)}`
+
 const bookItem = (item) =>
   h(
     'article',
@@ -50,7 +93,32 @@ const bookItem = (item) =>
     ),
   )
 
-const chunk = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, i * size + size))
+/**
+ * Fills pages by how much copy the items carry, at most `size` per page, so a
+ * run of long descriptions (Arabic runs longer) moves to the next page instead
+ * of overflowing it. An item costs its picture and title (ITEM_COST) plus its
+ * characters; a page holds `size` items of COPY_PER_ITEM characters each.
+ */
+const ITEM_COST = 70
+const COPY_PER_ITEM = 105
+const fill = (list, size) => {
+  const budget = size * (ITEM_COST + COPY_PER_ITEM)
+  const cost = (item) => ITEM_COST + String(item.title ?? '').length + String(item.description ?? '').length
+  const pages = []
+  let page = []
+  let used = 0
+  list.forEach((item) => {
+    if (page.length && (page.length === size || used + cost(item) > budget)) {
+      pages.push(page)
+      page = []
+      used = 0
+    }
+    page.push(item)
+    used += cost(item)
+  })
+  if (page.length) pages.push(page)
+  return pages
+}
 
 export const renderFlipbook = (schema, index) => {
   const groups = groupsOf(schema, index)
@@ -64,7 +132,7 @@ export const renderFlipbook = (schema, index) => {
     groups.forEach((group, groupIndex) => {
       const [lead, ...rest] = group.items
       plan.push({ kind: 'opener', key: `group:${group.id}`, group, groupIndex, lead })
-      chunk(rest, perPage).forEach((items, part) => plan.push({ kind: 'items', key: `items:${group.id}:${part}`, group, items }))
+      fill(rest, perPage).forEach((items, part) => plan.push({ kind: 'items', key: `items:${group.id}:${part}`, group, items }))
     })
     if (promo) plan.push({ kind: 'back', key: 'back' })
     if (spread && plan.length % 2 === 1) plan.splice(plan.length - 1, 0, { kind: 'endpaper', key: 'endpaper' })
@@ -93,13 +161,13 @@ export const renderFlipbook = (schema, index) => {
           svgIcon('icon-vodafone-logo-white', 'fb-cover__mark'),
           h('h1', { class: 'fb-cover__title', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' }, page.title),
           page.intro ? h('p', { class: 'fb-cover__intro' }, page.intro) : null,
-          h('p', { class: 'fb-cover__count' }, `${groups.length} categories, ${groups.reduce((sum, group) => sum + group.items.length, 0)} services`),
+          h('p', { class: 'fb-cover__count' }, countLine(groups.length, groups.reduce((sum, group) => sum + group.items.length, 0))),
         )
       case 'contents': {
         const numbers = openerNumbers(plan)
         return shell(
           'contents',
-          h('h2', { class: 'fb-contents__title' }, 'Contents'),
+          h('h2', { class: 'fb-contents__title' }, t('Contents')),
           h(
             'ol',
             { class: 'fb-contents__list' },
@@ -162,13 +230,13 @@ export const renderFlipbook = (schema, index) => {
                     'ul',
                     null,
                     promo.stores.map((store) =>
-                      h('li', null, h('a', { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} (opens in a new tab)` }, svgIcon(store.icon, 'fb-back__store'))),
+                      h('li', null, h('a', { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} ${t('(opens in a new tab)')}` }, svgIcon(store.icon, 'fb-back__store'))),
                     ),
                   ),
                 )
               : null,
             promo.qr?.image?.src
-              ? h('figure', { class: 'fb-back__qr' }, h('img', { src: promo.qr.image.src, alt: 'QR code to download the Ana Vodafone app', width: 330, height: 330, loading: 'lazy', decoding: 'async' }), promo.qr.title ? h('figcaption', null, promo.qr.title) : null)
+              ? h('figure', { class: 'fb-back__qr' }, h('img', { src: promo.qr.image.src, alt: t('QR code to download the Ana Vodafone app'), width: 330, height: 330, loading: 'lazy', decoding: 'async' }), promo.qr.title ? h('figcaption', null, promo.qr.title) : null)
               : null,
           ),
         )
@@ -180,11 +248,11 @@ export const renderFlipbook = (schema, index) => {
   /* -------------------------------------------------------------- the book */
   const book = h('div', { class: 'fb-book' })
   const status = h('p', { class: 'fb-status', 'aria-live': 'polite' })
-  const prevButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': 'Previous page' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': 'Next page' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': t('Previous page') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round', 'aria-label': t('Next page') }, pathIcon(ICON_NEXT, ''))
   const progressFill = h('span', { class: 'fb-progress__fill' })
   const controls = h('div', { class: 'fb-controls' }, prevButton, h('div', { class: 'fb-progress' }, progressFill), status, nextButton)
-  const stage = h('section', { class: 'fb-stage', 'aria-label': 'Vodafone services flipbook', 'aria-roledescription': 'book' }, h('div', { class: 'fb-desk' }, book), controls)
+  const stage = h('section', { class: 'fb-stage', 'aria-label': t('Vodafone services flipbook'), 'aria-roledescription': t('book') }, h('div', { class: 'fb-desk' }, book), controls)
   const root = experienceRoot('flipbook', schema, stage)
 
   let spread = window.matchMedia(SPREAD_QUERY).matches
@@ -211,15 +279,16 @@ export const renderFlipbook = (schema, index) => {
     book.classList.toggle('is-spread', spread)
     book.classList.toggle('is-single', !spread)
     book.replaceChildren(...leaves)
-    // Corner turns inside the pages.
+    // Corner turns inside the pages. A leaf's back face is the page already read
+    // (left in LTR, right in RTL, where the CSS places its corner on the outer edge).
     pageNodes.forEach((node, at) => {
-      const isLeft = spread ? at % 2 === 1 : false
+      const isBack = spread ? at % 2 === 1 : false
       const corner = h(
         'button',
-        { type: 'button', class: `fb-corner fb-corner--${isLeft ? 'prev' : 'next'}`, 'aria-label': isLeft ? 'Turn back a page' : 'Turn the page' },
+        { type: 'button', class: `fb-corner fb-corner--${isBack ? 'prev' : 'next'}`, 'aria-label': isBack ? t('Turn back a page') : t('Turn the page') },
       )
-      corner.addEventListener('click', () => turn(isLeft ? -1 : 1))
-      if (!(isLeft && at === 0) && !(!isLeft && at === pageNodes.length - 1)) node.append(corner)
+      corner.addEventListener('click', () => turn(isBack ? -1 : 1))
+      if (!(isBack && at === 0) && !(!isBack && at === pageNodes.length - 1)) node.append(corner)
     })
     book.querySelectorAll('[data-go]').forEach((button) => button.addEventListener('click', () => goToKey(button.dataset.go)))
   }
@@ -248,7 +317,10 @@ export const renderFlipbook = (schema, index) => {
     prevButton.disabled = position === 0
     nextButton.disabled = position === maxPosition()
     const pages = visiblePages().map((i) => i + 1)
-    status.textContent = pages.length > 1 ? `Pages ${pages[0]}–${pages[1]} of ${pageNodes.length}` : `Page ${pages[0]} of ${pageNodes.length}`
+    status.textContent =
+      pages.length > 1
+        ? t('Pages {from}–{to} of {total}', { from: pages[0], to: pages[1], total: pageNodes.length })
+        : t('Page {page} of {total}', { page: pages[0], total: pageNodes.length })
     progressFill.style.transform = `scaleX(${maxPosition() ? position / maxPosition() : 1})`
   }
 
@@ -277,16 +349,23 @@ export const renderFlipbook = (schema, index) => {
 
   prevButton.addEventListener('click', () => turn(-1))
   nextButton.addEventListener('click', () => turn(1))
+  // The next page lies along the reading line: ArrowRight in LTR, ArrowLeft in RTL.
+  const [backKey, forwardKey] = isRTL ? ['ArrowRight', 'ArrowLeft'] : ['ArrowLeft', 'ArrowRight']
   stage.addEventListener('keydown', (event) => {
+    // Alt+Arrow is the browser's Back/Forward; modified keys are not page turns.
+    if (event.altKey || event.ctrlKey || event.metaKey) return
     if (event.target.closest('input, textarea')) return
-    if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+    if (event.key === forwardKey || event.key === 'PageDown') {
       event.preventDefault()
       turn(1)
-    } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+    } else if (event.key === backKey || event.key === 'PageUp') {
       event.preventDefault()
       turn(-1)
     }
   })
+
+  // A sideways swipe turns one page per gesture, along the reading line too.
+  sidewaysSwipe(stage, turn)
 
   const media_ = window.matchMedia(SPREAD_QUERY)
   const onModeChange = () => {

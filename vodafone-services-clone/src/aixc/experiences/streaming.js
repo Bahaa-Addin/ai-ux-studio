@@ -2,11 +2,15 @@
  * Streaming showcase — rebuilt from the author's own pen "Flix"
  * (codepen.io/Bahaa-Addin/pen/YayLbo), in the design language of a streaming home.
  *
- * Opening: the VODAFONE wordmark (Roboto 900, the pen's font) appears in white
- * with a long extruded shadow, flashes to red, pushes toward the camera, then
- * flies into its slot in the experience's top bar while the page is revealed.
- * Everything animates transform/opacity only (Web Animations API) — the original
- * animated font-size and a 100-layer text-shadow, which is what made it stutter.
+ * Opening: the VODAFONE wordmark (Roboto 900, the pen's font) rises from the
+ * bottom of the screen, white, leaving its long extruded shadow stretched out
+ * behind it; as it reaches the centre the shadow catches up and snaps onto it;
+ * the shadow folds into the letters in a red flash; the logo pushes toward the
+ * camera, then flies into its slot in the experience's top bar as the curtain
+ * lifts and the billboard copy rises (timeline: T, below). The pen this grew
+ * from animated font-size and a 100-layer text-shadow, which stutters; here
+ * every move is a transform or an opacity on the compositor (the red is a
+ * clip-path sweep), and the shadow is a stack of slabs that move on their own.
  *
  * Below: a billboard for the lead service, then one row per category with paged
  * sliders and cards that expand on hover/focus, a preview modal (native <dialog>)
@@ -17,15 +21,86 @@
 import { h, pathIcon, svgIcon, visuallyHidden } from '../dom.js'
 import {
   ICON_NEXT, ICON_PREV, chromeOffset, clamp, experienceRoot, externalLink, groupsOf, media, onScrollFrame, pageHeading,
-  promotionOf, reducedMotion, scrollToY,
+  promotionOf, reducedMotion, scrollToY, sidewaysSwipe, t,
 } from './shared.js'
 
 const WORD = 'VODAFONE'
-const INTRO_MS = 3200
+
+/**
+ * The opening, in ms from its start. One lead (the wordmark) and everything
+ * else hung on its moments:
+ *   rise    the lockup comes up from below the bottom edge to the centre, white;
+ *           its shadow is left behind, stretching out below it as it climbs
+ *   catch   as the lockup settles in the centre, the shadow snaps up onto it
+ *           (a short hold follows, the 3D wordmark at rest)
+ *   fold    the shadow folds into the letters while red sweeps across them,
+ *           with a flash: the bloom spikes and decays
+ *   push    a push toward the camera on the red, then a settle
+ *   fly     it flies to its slot in the top bar while the curtain lifts
+ *   reveal  the billboard copy rises once the logo is clear of it (no crossing)
+ */
+const T = {
+  rise: 0,
+  riseMs: 800,
+  catch: 660, // the rise is 99% done here: the shadow lands as the lockup does
+  catchMs: 280,
+  fold: 1320,
+  foldMs: 320,
+  wipe: 1420,
+  wipeMs: 200,
+  flash: 1540, // peaks 12% in, at 1602: as the red lands
+  flashMs: 520,
+  push: 1700,
+  pushMs: 360,
+  settleMs: 200,
+  fly: 2260,
+  flyMs: 940,
+  reveal: 2980,
+}
+const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)'
+/** The rise: fast off the bottom, easing into the centre. */
+const RISE_EASE = 'cubic-bezier(0.3, 0.7, 0.2, 1)'
+/** The catch: the stretched shadow whips up and lands on the letters, pressing in a little before it rests. */
+const CATCH_EASE = 'cubic-bezier(0.5, 0, 0.15, 1.18)'
+const FOLD_EASE = 'cubic-bezier(0.6, 0, 0.3, 1)'
+
+/**
+ * The pen's long shadow (100 layers at 45°), as a stack of slabs that can move:
+ * each is a copy of the lockup carrying one slice of the extrusion in 0.01em
+ * steps (about a pixel, so the edges stay smooth), set one slice further along
+ * the diagonal than the last. Greys run light to dark with depth.
+ */
+const DEPTH_EM = 0.96
+const DEPTH_STEP = 0.01
+/**
+ * Slabs: as many as a texture budget allows (each is a composited copy of the
+ * lockup, sized like .st-intro__logo's font-size clamp), from 10 (slices of
+ * ~0.1em, still continuous) to 24. Touch devices get the tighter budget.
+ */
+const depthLayerCount = () => {
+  const fontPx = Math.min(200, Math.max(40, window.innerWidth * 0.125))
+  const dpr = window.devicePixelRatio || 1
+  const slabBytes = 6.2 * fontPx * 1.45 * fontPx * 4 * dpr * dpr
+  const budget = (window.matchMedia('(hover: hover)').matches ? 96 : 32) * 1024 * 1024
+  return Math.max(10, Math.min(24, Math.floor(budget / slabBytes)))
+}
+/** The shadow's angle at rest, y over x (the pen's steepens to 1.5). */
+const DEPTH_LEAN = 1.3
+/**
+ * How far the shadow stretches behind the rising lockup, as a multiple of the
+ * stack's own height: enough to run to the bottom edge of the intro where the
+ * type is small, at least 1.8× (it runs off the edge) where the type is large.
+ */
+const STRETCH_MIN = 1.8
+const STRETCH_MAX = 2.6
+const depthGrey = (at) => {
+  const v = Math.round(0xb4 + (0x3a - 0xb4) * Math.min(1, at)).toString(16).padStart(2, '0')
+  return `#${v}${v}${v}`
+}
 const ICON_PLAY = 'M8 5.14v13.72L19 12z'
 const ICON_INFO = 'M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z'
 const ICON_CLOSE = 'M18.3 7.1 16.9 5.7 12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z'
-const ICON_CHEVRON = 'M8.6 16.6 10 18l6-6-6-6-1.4 1.4 4.6 4.6z'
+const NEW_TAB = () => ` ${t('(opens in a new tab)')}`
 
 const domainOf = (href) => {
   try {
@@ -44,62 +119,51 @@ const svgEl = (tag, attributes = {}) => {
   for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value))
   return node
 }
-let extrusionIds = 0
 
 /**
- * The mark as recolourable SVG (disc and speech mark take CSS colours, so the
- * intro can show it white, then red). `extruded` adds the long diagonal shadow,
- * drawn once as a swept disc in the same greys as the letters' text-shadow.
+ * The mark as recolourable SVG: disc and speech mark take CSS colours, so the
+ * intro can show it white, grey (in the shadow slabs) and red.
  */
-const markSvg = ({ extruded = false } = {}) => {
+const markSvg = () => {
   const svg = svgEl('svg', { class: 'st-mark', viewBox: '0 0 48 48', overflow: 'visible', 'aria-hidden': 'true', focusable: 'false' })
-  if (extruded) {
-    const id = `st-extrude-${(extrusionIds += 1)}`
-    // 0.96em of shadow at a 0.9em mark (48 units) ≈ 51 units along the diagonal.
-    const depth = 51
-    const gradient = svgEl('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1: 24, y1: 24, x2: 24 + depth, y2: 24 + depth })
-    gradient.append(svgEl('stop', { offset: '0', 'stop-color': '#b4b4b4' }), svgEl('stop', { offset: '1', 'stop-color': '#3a3a3a' }))
-    const r = 23.95
-    const n = r / Math.SQRT2
-    const band = [
-      [24 + n, 24 - n],
-      [24 + n + depth, 24 - n + depth],
-      [24 - n + depth, 24 + n + depth],
-      [24 - n, 24 + n],
-    ]
-      .map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`)
-      .join(' ')
-    const extrusion = svgEl('g', { fill: `url(#${id})` })
-    extrusion.append(svgEl('polygon', { points: band }), svgEl('circle', { cx: 24 + depth, cy: 24 + depth, r }))
-    svg.append(svgEl('defs'), extrusion)
-    svg.firstChild.append(gradient)
-  }
   svg.append(svgEl('path', { class: 'st-mark__disc', d: MARK_DISC, 'fill-rule': 'evenodd' }), svgEl('path', { class: 'st-mark__glyph', d: MARK_GLYPH, 'fill-rule': 'evenodd' }))
   return svg
 }
 
 /**
  * The lockup: Vodafone mark + VODAFONE, always built and animated as one element.
- * Letters grow toward the edges, the bowed streaming-logo silhouette.
+ * The lockup is a Latin wordmark: it stays left to right on the Arabic page too
+ * (its letters are separate flex items, which a right-to-left flex row would reverse).
  */
-const wordmark = (className, { extruded = false } = {}) => {
-  const lockup = h('span', { class: `st-word ${className}`, 'aria-hidden': 'true' }, markSvg({ extruded }))
-  const letters = h('span', { class: 'st-word__letters' })
-  const middle = (WORD.length - 1) / 2
-  ;[...WORD].forEach((char, at) => {
-    const letter = h('span', { class: 'st-word__l' }, char)
-    letter.style.setProperty('--k', (((at - middle) / middle) ** 2).toFixed(3))
-    letters.append(letter)
-  })
+const wordmark = (className) => {
+  const lockup = h('span', { class: `st-word vx-ltr ${className}`, dir: 'ltr', 'aria-hidden': 'true' }, markSvg())
+  const letters = h('span', { class: 'st-word__letters' }, [...WORD].map((char) => h('span', { class: 'st-word__l' }, char)))
   lockup.append(letters)
   return lockup
+}
+
+/**
+ * Roboto 900 is used by nothing else on the page, so it is only fetched when first
+ * asked for. Waiting for just this face (not fonts.ready, which also waits for every
+ * other font the new page pulls in) and fetching it early keeps the curtain from
+ * sitting empty before the intro: about a third of a second on a first visit.
+ */
+let wordmarkFontLoad = null
+const wordmarkFont = () => {
+  wordmarkFontLoad ??= document.fonts?.load ? document.fonts.load('900 64px Roboto', WORD).catch(() => {}) : Promise.resolve()
+  return wordmarkFontLoad
+}
+
+/** Called when the composer opens: starts fetching the wordmark font while the user chooses. */
+export const warmStreaming = () => {
+  wordmarkFont()
 }
 
 const circleButton = (icon, label, extraClass = '') =>
   h('button', { type: 'button', class: `st-circle ${extraClass}`.trim(), 'aria-label': label }, pathIcon(icon, ''))
 
 const circleLink = (href, icon, label) =>
-  h('a', { class: 'st-circle st-circle--primary', href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${label} (opens in a new tab)` }, pathIcon(icon, ''))
+  h('a', { class: 'st-circle st-circle--primary', href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${label}${NEW_TAB()}` }, pathIcon(icon, ''))
 
 export const renderStreaming = (schema, index) => {
   const groups = groupsOf(schema, index)
@@ -114,7 +178,7 @@ export const renderStreaming = (schema, index) => {
 
   /* ---------------------------------------------------------------- modal */
   const modalBody = h('div', { class: 'st-modal__content' })
-  const modalClose = h('button', { type: 'button', class: 'st-modal__close', 'aria-label': 'Close' }, pathIcon(ICON_CLOSE, ''))
+  const modalClose = h('button', { type: 'button', class: 'st-modal__close', 'aria-label': t('Close') }, pathIcon(ICON_CLOSE, ''))
   const modal = h('dialog', { class: 'st-modal', 'aria-labelledby': 'st-modal-title' }, modalClose, modalBody)
   modalClose.addEventListener('click', () => modal.close())
   modal.addEventListener('click', (event) => {
@@ -126,7 +190,7 @@ export const renderStreaming = (schema, index) => {
   const smallCard = (item) => {
     const button = h(
       'button',
-      { type: 'button', class: 'st-more__card', 'aria-label': `More info: ${item.title}` },
+      { type: 'button', class: 'st-more__card', 'aria-label': t('More info: {title}', { title: item.title }) },
       media(item, { className: 'st-more__media' }),
       h('span', { class: 'st-more__title' }, item.title),
       item.description ? h('span', { class: 'st-more__desc' }, item.description) : null,
@@ -137,14 +201,14 @@ export const renderStreaming = (schema, index) => {
 
   const primaryAction = (item, { large = false } = {}) => {
     const { label, href } = item.cta ?? {}
-    const text = label ?? 'View service'
+    const text = label ?? t('View service')
     if (href) {
       return h(
         'a',
         { class: `st-btn st-btn--play${large ? ' st-btn--large' : ''}`, href, target: '_blank', rel: 'noopener noreferrer' },
         pathIcon(ICON_PLAY, 'st-btn__icon'),
         h('span', null, text),
-        visuallyHidden(' (opens in a new tab)'),
+        visuallyHidden(NEW_TAB()),
       )
     }
     // The source shows this label without a destination; show it as information.
@@ -169,12 +233,12 @@ export const renderStreaming = (schema, index) => {
         h(
           'dl',
           { class: 'st-modal__meta' },
-          group ? h('div', null, h('dt', null, 'Category'), h('dd', null, group.title)) : null,
-          h('div', null, h('dt', null, 'Link'), h('dd', null, domain ?? 'None on the source page')),
+          group ? h('div', null, h('dt', null, t('Category')), h('dd', null, group.title)) : null,
+          h('div', null, h('dt', null, t('Link')), h('dd', null, domain ? h('bdi', null, domain) : t('None on the source page'))),
         ),
       ),
       siblings.length
-        ? h('section', { class: 'st-more', 'aria-labelledby': 'st-more-title' }, h('h3', { class: 'st-more__heading', id: 'st-more-title' }, `More in ${group.title}`), h('div', { class: 'st-more__grid' }, siblings.map(smallCard)))
+        ? h('section', { class: 'st-more', 'aria-labelledby': 'st-more-title' }, h('h3', { class: 'st-more__heading', id: 'st-more-title' }, t('More in {category}', { category: group.title })), h('div', { class: 'st-more__grid' }, siblings.map(smallCard)))
         : null,
     )
     if (!modal.open) modal.showModal()
@@ -199,7 +263,7 @@ export const renderStreaming = (schema, index) => {
   }
 
   /* ------------------------------------------------------------ top bar */
-  const brand = h('a', { class: 'st-brand', href: '#st-top', 'aria-label': 'Vodafone, back to the top' }, wordmark('st-brand__word'))
+  const brand = h('a', { class: 'st-brand', href: '#st-top', 'aria-label': t('Vodafone, back to the top') }, wordmark('st-brand__word'))
   const navLinks = rows.map((row) => {
     const link = h('a', { class: 'st-nav__link', href: `#st-row-${row.group.id}` }, row.group.title)
     link.addEventListener('click', (event) => {
@@ -210,14 +274,14 @@ export const renderStreaming = (schema, index) => {
     })
     return link
   })
-  const homeLink = h('a', { class: 'st-nav__link is-current', href: '#st-top', 'aria-current': 'page' }, 'Home')
+  const homeLink = h('a', { class: 'st-nav__link is-current', href: '#st-top', 'aria-current': 'page' }, t('Home'))
   const backToTop = (event) => {
     event.preventDefault()
     scrollToY(root.getBoundingClientRect().top + window.scrollY - chromeOffset())
   }
   homeLink.addEventListener('click', backToTop)
   brand.addEventListener('click', backToTop)
-  const navBar = h('nav', { class: 'st-nav', 'aria-label': 'Streaming showcase' }, brand, h('ul', { class: 'st-nav__links' }, [homeLink, ...navLinks].map((link) => h('li', null, link))))
+  const navBar = h('nav', { class: 'st-nav', 'aria-label': t('Streaming showcase') }, brand, h('ul', { class: 'st-nav__links' }, [homeLink, ...navLinks].map((link) => h('li', null, link))))
 
   /* ------------------------------------------------------------ billboard */
   let billboard = null
@@ -225,7 +289,7 @@ export const renderStreaming = (schema, index) => {
     const titleArt = featured.image?.fit === 'contain' && featured.image?.src
       ? h('img', { class: 'st-billboard__art', src: featured.image.src, alt: '', width: featured.image.width, height: featured.image.height })
       : null
-    const moreInfo = h('button', { type: 'button', class: 'st-btn st-btn--info' }, pathIcon(ICON_INFO, 'st-btn__icon'), h('span', null, 'More info'))
+    const moreInfo = h('button', { type: 'button', class: 'st-btn st-btn--info' }, pathIcon(ICON_INFO, 'st-btn__icon'), h('span', null, t('More info')))
     moreInfo.addEventListener('click', () => openItem(featured))
     billboard = h(
       'section',
@@ -251,20 +315,20 @@ export const renderStreaming = (schema, index) => {
   const sliders = []
   const rowEls = rows.map((row) => {
     const titleId = `st-row-title-${row.group.id}`
-    const exploreButton = h('button', { type: 'button', class: 'st-row__explore' }, h('span', null, 'Explore all'), pathIcon(ICON_CHEVRON, ''))
+    const exploreButton = h('button', { type: 'button', class: 'st-row__explore' }, h('span', null, t('Explore all')), pathIcon(ICON_NEXT, ''))
     exploreButton.addEventListener('click', () => openGroup(row.group))
 
     const cards = row.items.map((item) => {
       const open = h(
         'button',
-        { type: 'button', class: 'st-card__open', 'aria-label': `More info: ${item.title}` },
+        { type: 'button', class: 'st-card__open', 'aria-label': t('More info: {title}', { title: item.title }) },
         media(item, { className: 'st-card__media' }),
         h('span', { class: 'st-card__label', 'aria-hidden': 'true' }, item.title),
       )
       open.addEventListener('click', () => openItem(item))
-      const info = circleButton(ICON_INFO, `More info: ${item.title}`, 'st-circle--ghost')
+      const info = circleButton(ICON_INFO, t('More info: {title}', { title: item.title }), 'st-circle--ghost')
       info.addEventListener('click', () => openItem(item))
-      const action = item.cta?.href ? circleLink(item.cta.href, ICON_PLAY, item.cta.label ?? `View ${item.title}`) : null
+      const action = item.cta?.href ? circleLink(item.cta.href, ICON_PLAY, item.cta.label ?? t('View {title}', { title: item.title })) : null
       return h(
         'li',
         { class: 'st-card', 'data-aixc-item': item.id },
@@ -286,8 +350,8 @@ export const renderStreaming = (schema, index) => {
 
     const track = h('ul', { class: 'st-row__track' }, cards)
     const viewport = h('div', { class: 'st-row__viewport' }, track)
-    const prev = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--prev', 'aria-label': `Previous ${row.group.title}` }, pathIcon(ICON_PREV, ''))
-    const next = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--next', 'aria-label': `Next ${row.group.title}` }, pathIcon(ICON_NEXT, ''))
+    const prev = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--prev', 'aria-label': t('Previous {title}', { title: row.group.title }) }, pathIcon(ICON_PREV, ''))
+    const next = h('button', { type: 'button', class: 'st-row__arrow st-row__arrow--next', 'aria-label': t('Next {title}', { title: row.group.title }) }, pathIcon(ICON_NEXT, ''))
     const pager = h('ol', { class: 'st-row__pages', 'aria-hidden': 'true' })
 
     const slider = { page: 0, pages: 1, per: 1 }
@@ -330,6 +394,14 @@ export const renderStreaming = (schema, index) => {
       layout()
       viewport.scrollLeft = 0
     })
+    // A sideways swipe pages the row along the reading line. Where the row
+    // scrolls natively (touch, narrow screens) the browser keeps the gesture.
+    sidewaysSwipe(viewport, (direction) => {
+      const page = clamp(slider.page + direction, 0, slider.pages - 1)
+      if (page === slider.page) return
+      slider.page = page
+      layout()
+    }, { enabled: () => getComputedStyle(viewport).overflowX !== 'auto' })
     sliders.push(layout)
 
     return h(
@@ -362,41 +434,71 @@ export const renderStreaming = (schema, index) => {
                 'div',
                 { class: 'st-closing__stores' },
                 promo.storesLabel ? h('p', null, promo.storesLabel) : null,
-                h('ul', null, promo.stores.map((store) => h('li', null, h('a', { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} (opens in a new tab)` }, svgIcon(store.icon, 'st-closing__store'))))),
+                h('ul', null, promo.stores.map((store) => h('li', null, h('a', { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label}${NEW_TAB()}` }, svgIcon(store.icon, 'st-closing__store'))))),
               )
             : null,
         ),
         promo.qr?.image?.src
-          ? h('figure', { class: 'st-closing__qr' }, h('img', { src: promo.qr.image.src, alt: 'QR code to download the Ana Vodafone app', width: 330, height: 330, loading: 'lazy', decoding: 'async' }), promo.qr.title ? h('figcaption', null, promo.qr.title) : null)
+          ? h('figure', { class: 'st-closing__qr' }, h('img', { src: promo.qr.image.src, alt: t('QR code to download the Ana Vodafone app'), width: 330, height: 330, loading: 'lazy', decoding: 'async' }), promo.qr.title ? h('figcaption', null, promo.qr.title) : null)
           : null,
       )
     : null
 
   /* ---------------------------------------------------------------- intro */
-  const introLogo = h(
-    'div',
-    { class: 'st-intro__logo' },
-    wordmark('st-intro__depth', { extruded: true }),
-    wordmark('st-intro__white'),
-    wordmark('st-intro__glow'),
-    wordmark('st-intro__red'),
-  )
+  // The shadow: slab k sits k slices down the diagonal and paints its own slice of
+  // the extrusion (its glyphs in that depth's grey, a few 0.01em text-shadow steps
+  // behind them). Its disc is a plain grey disc; the stacked discs make the mark's
+  // band at whatever angle the stack leans to.
+  const depthCount = depthLayerCount()
+  const depthSlice = DEPTH_EM / depthCount
+  const depthLayers = Array.from({ length: depthCount }, (_, k) => {
+    const start = k * depthSlice
+    const layer = wordmark('st-intro__depth')
+    const grey = depthGrey(start / DEPTH_EM)
+    layer.style.color = grey
+    layer.style.setProperty('--st-mark-disc', grey)
+    layer.style.setProperty('--st-mark-glyph', grey)
+    const steps = Math.max(1, Math.round(depthSlice / DEPTH_STEP))
+    // The steps run at the stack's own lean, so slab meets slab without a jog.
+    layer.style.textShadow = Array.from({ length: steps }, (_, i) => {
+      const d = (i + 1) * DEPTH_STEP
+      return `${d.toFixed(2)}em ${(d * DEPTH_LEAN).toFixed(3)}em 0 ${depthGrey((start + d) / DEPTH_EM)}`
+    }).join(', ')
+    layer.style.transform = `translate3d(${start.toFixed(3)}em, ${(start * DEPTH_LEAN).toFixed(3)}em, 0)`
+    layer.dataset.depth = start.toFixed(3)
+    return layer
+  })
+  // Farthest slab first, so the nearest paints on top; the faces go above them all.
+  const depthStack = h('div', { class: 'st-intro__depth-stack' }, [...depthLayers].reverse())
+  const whiteLayer = wordmark('st-intro__white')
+  const glowLayer = wordmark('st-intro__glow')
+  const redLayer = wordmark('st-intro__red')
+  // Each face sits in a box that carries a fixed slanted clip (wipe): the sweep moves
+  // the box and counter-moves the face, so the clip edge travels and nothing repaints.
+  const whiteClip = h('div', { class: 'st-intro__clip' }, whiteLayer)
+  const redClip = h('div', { class: 'st-intro__clip' }, redLayer)
+  // Two nested boxes so two motions never fight over one transform: the stage
+  // rises from the bottom; the logo around it pushes and flies.
+  // The glow sits under the faces: it halos the letters without tinting the white
+  // ones pink while the red is still sweeping in.
+  const introStage = h('div', { class: 'st-intro__stage' }, depthStack, glowLayer, whiteClip, redClip)
+  const introLogo = h('div', { class: 'st-intro__logo' }, introStage)
   const curtain = h('div', { class: 'st-intro__curtain' })
   const intro = h('div', { class: 'st-intro', 'aria-hidden': 'true' }, curtain, introLogo)
-  const skip = h('button', { type: 'button', class: 'st-skip' }, 'Skip intro')
+  const skip = h('button', { type: 'button', class: 'st-skip' }, t('Skip intro'))
 
   const root = experienceRoot(
     'streaming',
     schema,
     h('span', { id: 'st-top', class: 'st-anchor' }),
     pageHeading(index),
+    skip, // the first Tab stop after the heading (fixed in place, so order is only for focus)
     navBar,
     billboard,
     h('div', { class: 'st-rows' }, rowEls),
     closing,
     modal,
     intro,
-    skip,
   )
 
   let introPlayed = false
@@ -404,42 +506,186 @@ export const renderStreaming = (schema, index) => {
   let skipRequested = false
   let stopScroll = null
 
-  // "Skip intro" shows while the intro still waits for the wordmark font; a press then is kept
-  // and ends the intro as soon as it starts.
+  // "Skip intro", a click on the curtain, a scroll, a touch drag or a key ends the
+  // intro at its final frame. A request made while the intro still waits for the
+  // wordmark font is kept and ends it as soon as it starts.
   const endIntro = () => {
     skipRequested = true
     introAnimations.forEach((animation) => animation.finish())
   }
+  const PASSIVE_KEYS = new Set(['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'CapsLock'])
+  /** Wheel travel (px) before a scroll counts as a skip: a trackpad still coasting from the composer's list stays under it. */
+  const WHEEL_SKIP_PX = 80
+  let introStartedAt = 0
+  let introWidth = 0
+  let introScrollY = 0
+  let wheelTravel = 0
+  /** True for an event that was already in flight when the opening began: the Enter that submitted the composer's prompt (which mounts this experience) is not a request to skip it. */
+  const predatesIntro = (event) => event.timeStamp <= introStartedAt
+  const onInterrupt = (event) => {
+    if (predatesIntro(event)) return
+    if (event.type === 'keydown' && (event.repeat || PASSIVE_KEYS.has(event.key))) return
+    endIntro()
+  }
+  // Over the curtain: short wheel travel is swallowed (the page must not move under
+  // the curtain, or the landing it was measured for goes stale); past the threshold
+  // it is a skip, and the scroll goes through.
+  const onWheel = (event) => {
+    if (predatesIntro(event)) return
+    wheelTravel += Math.abs(event.deltaY) + Math.abs(event.deltaX)
+    if (wheelTravel < WHEEL_SKIP_PX) event.preventDefault()
+    else endIntro()
+  }
+  // Anything else that moves the page (the scrollbar, a wheel over the site header, a script).
+  const onScroll = () => {
+    if (window.scrollY !== introScrollY) endIntro()
+  }
+  const listenForInterrupt = (on) => {
+    const method = on ? 'addEventListener' : 'removeEventListener'
+    window[method]('touchmove', onInterrupt, { passive: true })
+    window[method]('keydown', onInterrupt, { passive: true })
+    window[method]('scroll', onScroll, { passive: true })
+    curtain[method]('wheel', onWheel, { passive: false })
+    // click, not pointerdown: a tap's click must still find the curtain, not what lies under it.
+    curtain[method]('click', onInterrupt)
+  }
+
+  /** Skip leaves once there is nothing left to skip, passing keyboard focus to the brand it would have. */
+  const retireSkip = () => {
+    const focused = document.activeElement === skip
+    skip.hidden = true
+    if (focused) brand.focus({ preventScroll: true })
+  }
+
+  /** The logo has landed: the real brand link takes over and the overlay goes. */
+  const handOff = () => {
+    brand.classList.remove('is-waiting')
+    intro.hidden = true
+    retireSkip()
+  }
 
   const cleanupIntro = () => {
     introAnimations = []
-    intro.hidden = true
-    skip.hidden = true
-    brand.classList.remove('is-waiting')
+    listenForInterrupt(false)
+    handOff()
     root.classList.add('is-ready')
-    root.classList.remove('is-intro')
+    root.classList.remove('is-intro', 'is-fallback-face')
   }
 
-  /** Content rises in behind the curtain as the logo flies to its slot. */
-  const revealContent = (delay) => {
-    const targets = [
-      ...root.querySelectorAll('.st-nav__links li'),
-      ...root.querySelectorAll('.st-billboard__info > *'),
-      ...root.querySelectorAll('.st-row'),
-    ]
-    return targets.map((target, at) =>
-      target.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], {
-        duration: 620,
-        delay: delay + Math.min(at, 12) * 55,
-        easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)',
+  /** A moment on the intro's clock with no visuals of its own; finish() still resolves it. */
+  const cue = (at) => new Animation(new KeyframeEffect(null, [], { duration: at }), document.timeline)
+
+  /** Rise into place: opacity plus a short lift, the distance set by importance. */
+  const rise = (target, { delay, distance, duration }) =>
+    target?.animate([{ opacity: 0, transform: `translateY(${distance}px)` }, { opacity: 1, transform: 'none' }], {
+      delay,
+      duration,
+      easing: EASE_OUT,
+      fill: 'backwards',
+    })
+
+  /**
+   * The page behind the curtain. The billboard's photo and the rows below are
+   * simply uncovered by the curtain; only the copy moves, and only once the
+   * flying logo has passed above it. The bar's links appear as the logo lands.
+   * Created when the curtain starts to lift (T.fly), so the copy is not held
+   * composited while the shadow stack needs the memory; until then the is-intro
+   * class keeps it invisible. Delays are from that moment.
+   */
+  const revealContent = () => {
+    const info = root.querySelector('.st-billboard__info')
+    const pick = (selector) => info?.querySelector(selector) ?? null
+    const at = T.reveal - T.fly
+    return [
+      rise(pick('.st-badge'), { delay: at, distance: 12, duration: 640 }),
+      rise(pick('.st-billboard__art'), { delay: at, distance: 18, duration: 700 }),
+      rise(pick('.st-billboard__title'), { delay: at + 60, distance: 24, duration: 720 }),
+      rise(pick('.st-billboard__synopsis'), { delay: at + 110, distance: 14, duration: 640 }),
+      rise(pick('.st-billboard__actions'), { delay: at + 150, distance: 10, duration: 600 }),
+      root.querySelector('.st-nav__links')?.animate([{ opacity: 0 }, { opacity: 1 }], {
+        delay: T.flyMs - 200,
+        duration: 360,
+        easing: 'ease-out',
         fill: 'backwards',
       }),
+    ].filter(Boolean)
+  }
+
+  /**
+   * The red sweep: each face sits in a box with a fixed clip whose edge leans at
+   * 45°, the shadow's direction, so a letter turns red as one piece from its face
+   * back. The sweep slides the box along the lockup and slides the face inside it
+   * the other way, so the letters stay put while the clip edge travels: nothing is
+   * repainted. The lockup is Latin and always left to right, so the red starts at
+   * the mark on the Arabic page too. Polygons reach past the box (in em) for the
+   * taller edge letters.
+   */
+  const wipe = ({ fontPx, width }) => {
+    const TOP = -0.5 // em, above the tallest (edge) letters
+    const BOTTOM = 2 // em, below the shadow's end
+    // Points (x, y) on the edge satisfy x - y = c, with c = `pct`% + `em`em of the box.
+    const at = (pct, em, y) => `calc(${pct}% + ${(em + y).toFixed(2)}em) ${y}em`
+    const before = ({ pct, em }) => `polygon(-1em ${TOP}em, ${at(pct, em, TOP)}, ${at(pct, em, BOTTOM)}, -1em ${BOTTOM}em)`
+    const after = ({ pct, em }) =>
+      `polygon(${at(pct, em, TOP)}, calc(100% + 1em) ${TOP}em, calc(100% + 1em) ${BOTTOM}em, ${at(pct, em, BOTTOM)})`
+    // Edge positions clear of every letter at either end, and the distance between them.
+    const start = { pct: 0, em: -1.5 }
+    const end = { pct: 100, em: 0.5 }
+    const travel = width + 2 * fontPx
+    // Red keeps what lies before the end edge, white what lies after the start edge:
+    // at rest each shows the whole lockup; offset by the travel, nothing.
+    redClip.style.clipPath = before(end)
+    whiteClip.style.clipPath = after(start)
+    const slide = (px) => `translate3d(${px.toFixed(1)}px, 0, 0)`
+    const timing = { delay: T.wipe, duration: T.wipeMs, easing: 'cubic-bezier(0.65, 0, 0.35, 1)', fill: 'both' }
+    return [
+      redClip.animate([{ transform: slide(-travel) }, { transform: slide(0) }], timing),
+      redLayer.animate([{ transform: slide(travel) }, { transform: slide(0) }], timing),
+      whiteClip.animate([{ transform: slide(0) }, { transform: slide(travel) }], timing),
+      whiteLayer.animate([{ transform: slide(0) }, { transform: slide(-travel) }], timing),
+    ]
+  }
+
+  /**
+   * The shadow's motion. The stack as a whole stretches down behind the rising
+   * lockup (a scaleY anchored at the letters, on the lockup's own easing, so the
+   * shadow is left behind in proportion to the climb) and whips back onto it at
+   * the catch. Then each slab, in px of this run, slides onto the letters at the
+   * fold so the extrusion shortens into nothing; the stack fades over its last
+   * stretch, where only the slabs' own few steps would be left peeking past the red.
+   */
+  const shadowMotion = ({ fontPx, stretch }) => {
+    const end = T.fold + T.foldMs
+    const catchEnd = T.catch + T.catchMs
+    const slide = (x, y) => `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`
+    const slabs = depthLayers.map((layer) => {
+      const start = Number(layer.dataset.depth) * fontPx
+      const [bx, by] = [start, start * DEPTH_LEAN]
+      return layer.animate(
+        [
+          { offset: 0, transform: slide(bx, by) },
+          { offset: T.fold / end, transform: slide(bx, by), easing: FOLD_EASE },
+          { offset: 1, transform: slide(0, 0) },
+        ],
+        { duration: end, fill: 'both' },
+      )
+    })
+    const stretched = depthStack.animate(
+      [
+        { offset: 0, transform: 'scaleY(1)', easing: RISE_EASE },
+        { offset: T.catch / catchEnd, transform: `scaleY(${stretch.toFixed(3)})`, easing: CATCH_EASE },
+        { offset: 1, transform: 'scaleY(1)' },
+      ],
+      { duration: catchEnd, fill: 'both' },
     )
+    const fade = depthStack.animate([{ opacity: 1 }, { opacity: 0 }], { delay: end - 150, duration: 170, easing: 'ease-in', fill: 'both' })
+    return [...slabs, stretched, fade]
   }
 
   const playIntro = async () => {
     introPlayed = true
-    if (reducedMotion() || typeof introLogo.animate !== 'function') {
+    const canAnimate = typeof introLogo.animate === 'function' && typeof KeyframeEffect === 'function' && typeof Animation === 'function'
+    if (reducedMotion() || !canAnimate) {
       cleanupIntro()
       return
     }
@@ -447,61 +693,104 @@ export const renderStreaming = (schema, index) => {
     brand.classList.add('is-waiting')
     intro.hidden = false
     skip.hidden = false
-    // Measure only once the wordmark font is in, so the landing matches exactly.
-    await Promise.race([document.fonts?.ready ?? Promise.resolve(), new Promise((resolve) => setTimeout(resolve, 1200))])
+    // The lockup waits just below the bottom edge of the intro (it sits in its centre):
+    // out of sight, but close enough that its layers raster before the first frame.
+    const riseFrom = intro.getBoundingClientRect().height / 2 + introLogo.getBoundingClientRect().height / 2 + 24
+    introStage.style.transform = `translate3d(0, ${riseFrom.toFixed(1)}px, 0)`
+    introStartedAt = performance.now()
+    introWidth = window.innerWidth
+    introScrollY = window.scrollY
+    wheelTravel = 0
+    listenForInterrupt(true)
+    // Measure only once the wordmark font is in, so the landing matches exactly (usually
+    // already fetched: warmStreaming runs when the composer opens).
+    const fontArrived = await Promise.race([wordmarkFont().then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 1200))])
+    // Still not in: pin this run to the fallback face, so a late arrival cannot reflow the
+    // lockups mid-move or shift the slot they were measured against. The brand swaps once
+    // the opening is over.
+    if (!fontArrived) root.classList.add('is-fallback-face')
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    if (!root.isConnected) return
+    if (!root.isConnected) {
+      listenForInterrupt(false)
+      return
+    }
 
-    const from = introLogo.getBoundingClientRect()
-    const to = brand.querySelector('.st-word').getBoundingClientRect()
-    const dx = to.left + to.width / 2 - (from.left + from.width / 2)
-    const dy = to.top + to.height / 2 - (from.top + from.height / 2)
-    const scale = to.width / from.width
-    const timing = { duration: INTRO_MS, fill: 'both' }
+    try {
+      const from = introLogo.getBoundingClientRect()
+      const to = brand.querySelector('.st-word').getBoundingClientRect()
+      const dx = to.left + to.width / 2 - (from.left + from.width / 2)
+      const dy = to.top + to.height / 2 - (from.top + from.height / 2)
+      const scale = to.width / from.width
+      const flightMs = T.fly + T.flyMs - T.push
+      const fontPx = parseFloat(getComputedStyle(introLogo).fontSize)
+      // How far the shadow can stretch: to the bottom edge where there is room, never less than STRETCH_MIN.
+      const stackExtent = from.height + (DEPTH_EM * DEPTH_LEAN + 0.2) * fontPx
+      const stretch = clamp((intro.getBoundingClientRect().bottom - from.top) / stackExtent, STRETCH_MIN, STRETCH_MAX)
 
-    introAnimations = [
-      // Slide in from the right, settle, push toward the camera, then fly to the bar.
-      introLogo.animate(
+      // The push toward the camera, its settle, then the flight (measured, so it
+      // lands wherever the brand sits).
+      const flight = introLogo.animate(
         [
-          { offset: 0, transform: 'translate3d(9%, 0, 0) scale(0.84)', easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
-          { offset: 0.16, transform: 'translate3d(0, 0, 0) scale(0.94)', easing: 'ease-in-out' },
-          { offset: 0.44, transform: 'translate3d(0, 0, 0) scale(1)', easing: 'cubic-bezier(0.3, 0, 0.2, 1)' },
-          { offset: 0.56, transform: 'translate3d(0, 0, 0) scale(1.16)', easing: 'ease-out' },
-          { offset: 0.64, transform: 'translate3d(0, 0, 0) scale(1.12)', easing: 'cubic-bezier(0.65, 0, 0.2, 1)' },
+          { offset: 0, transform: 'none', easing: 'cubic-bezier(0.2, 0, 0.1, 1)' },
+          { offset: T.pushMs / flightMs, transform: 'scale(1.16)', easing: 'cubic-bezier(0.4, 0, 0.6, 1)' },
+          { offset: (T.pushMs + T.settleMs) / flightMs, transform: 'scale(1.12)', easing: 'cubic-bezier(0.6, 0, 0.15, 1)' },
           { offset: 1, transform: `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0) scale(${scale.toFixed(4)})` },
         ],
-        timing,
-      ),
-      // White with a long extruded shadow, flashing to red as the depth collapses.
-      introLogo.querySelector('.st-intro__white').animate(
-        [{ offset: 0, opacity: 0 }, { offset: 0.07, opacity: 1 }, { offset: 0.3, opacity: 1 }, { offset: 0.4, opacity: 0 }, { offset: 1, opacity: 0 }],
-        timing,
-      ),
-      introLogo.querySelector('.st-intro__depth').animate(
-        [
-          { offset: 0, opacity: 0, transform: 'translate3d(0, 0, 0)' },
-          { offset: 0.07, opacity: 1, transform: 'translate3d(0, 0, 0)' },
-          { offset: 0.3, opacity: 1, transform: 'translate3d(0, 0, 0)' },
-          { offset: 0.44, opacity: 0, transform: 'translate3d(-1.5%, -3%, 0)' },
-          { offset: 1, opacity: 0, transform: 'translate3d(-1.5%, -3%, 0)' },
-        ],
-        timing,
-      ),
-      introLogo.querySelector('.st-intro__red').animate(
-        [{ offset: 0, opacity: 0 }, { offset: 0.3, opacity: 0 }, { offset: 0.4, opacity: 1 }, { offset: 1, opacity: 1 }],
-        timing,
-      ),
-      // A red bloom on the push toward the camera.
-      introLogo.querySelector('.st-intro__glow').animate(
-        [{ offset: 0, opacity: 0 }, { offset: 0.44, opacity: 0 }, { offset: 0.54, opacity: 0.85 }, { offset: 0.66, opacity: 0 }, { offset: 1, opacity: 0 }],
-        timing,
-      ),
-      curtain.animate([{ offset: 0, opacity: 1 }, { offset: 0.66, opacity: 1 }, { offset: 0.94, opacity: 0 }, { offset: 1, opacity: 0 }], timing),
-      skip.animate([{ offset: 0, opacity: 0 }, { offset: 0.1, opacity: 1 }, { offset: 0.8, opacity: 1 }, { offset: 1, opacity: 0 }], timing),
-      ...revealContent(INTRO_MS * 0.66),
-    ]
+        { id: 'st-flight', delay: T.push, duration: flightMs, fill: 'both' },
+      )
+      // The rise: up from below the bottom edge into the centre.
+      const rise = introStage.animate(
+        [{ transform: `translate3d(0, ${riseFrom.toFixed(1)}px, 0)` }, { transform: 'translate3d(0, 0, 0)' }],
+        { duration: T.riseMs, easing: RISE_EASE, fill: 'both' },
+      )
+      const curtainLift = cue(T.fly)
+      const skipFade = skip.animate([{ opacity: 0 }, { offset: 0.14, opacity: 0 }, { offset: 0.25, opacity: 1 }, { offset: 0.9, opacity: 1 }, { opacity: 0 }], {
+        duration: T.fly,
+        fill: 'both',
+      })
+      introAnimations = [
+        rise,
+        ...shadowMotion({ fontPx, stretch }),
+        ...wipe({ fontPx, width: from.width }),
+        // The flash: the bloom spikes as the red lands, then decays.
+        glowLayer.animate(
+          [
+            { opacity: 0, easing: 'linear' },
+            { offset: 0.12, opacity: 0.95, easing: 'cubic-bezier(0.2, 0.6, 0.4, 1)' },
+            { opacity: 0 },
+          ],
+          { delay: T.flash, duration: T.flashMs, fill: 'both' },
+        ),
+        flight,
+        curtain.animate([{ opacity: 1 }, { opacity: 0 }], { delay: T.fly, duration: 720, easing: 'cubic-bezier(0.4, 0, 0.6, 1)', fill: 'both' }),
+        skipFade,
+        curtainLift,
+      ]
+      curtainLift.play()
+      // Once the curtain starts to lift: clicks reach the page; Skip has nothing left to
+      // skip (a focused Skip stays visible until the brand it hands focus to is showing);
+      // and the page's copy gets its animations.
+      curtainLift.finished.then(() => {
+        curtain.style.pointerEvents = 'none'
+        if (document.activeElement === skip) {
+          skipFade.cancel()
+          skip.style.opacity = '1'
+        } else {
+          skip.hidden = true
+        }
+        const reveals = revealContent()
+        introAnimations.push(...reveals)
+        if (skipRequested) reveals.forEach((animation) => animation.finish())
+      }, () => {})
+      flight.finished.then(handOff, () => {})
+    } catch (error) {
+      // A failure here must degrade to "no opening", never to a curtain left over the page.
+      introAnimations.forEach((animation) => animation.cancel())
+      cleanupIntro()
+      console.error('AIXC streaming: the opening was skipped', error)
+      return
+    }
     if (skipRequested) endIntro()
-    await introAnimations[0].finished.catch(() => {})
     await Promise.all(introAnimations.map((animation) => animation.finished.catch(() => {})))
     cleanupIntro()
   }
@@ -532,11 +821,15 @@ export const renderStreaming = (schema, index) => {
       stopScroll?.()
       stopScroll = null
       endIntro()
+      listenForInterrupt(false) // also when it ends before the intro has started
       if (modal.open) modal.close()
     },
   }
 
   function onResize() {
     sliders.forEach((layout) => layout())
+    // The opening's landing was measured for the old width: end it at its last frame. A
+    // height-only change (a phone's keyboard closing after a typed prompt) moves nothing it depends on.
+    if (root.classList.contains('is-intro') && window.innerWidth !== introWidth) endIntro()
   }
 }

@@ -15,7 +15,7 @@
 import { h, pathIcon } from '../dom.js'
 import {
   arrowKeys, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras, groupsOf, liveStatus, longestLine,
-  onScrollFrame, pad2, pageHeading, promotionOf, scrollStepper,
+  onScrollFrame, pad2, pageHeading, promotionOf, scrollStepper, t,
 } from './shared.js'
 
 const STEP_PX = 380
@@ -40,14 +40,15 @@ export const renderSplit = (schema, index) => {
   const promo = promotionOf(schema, index)
 
   /* ---------------------------------------------------------------- halves */
-  // The left half runs in reverse (it moves down as the right half moves up).
-  const leftPanes = entries.map(({ item }) => paneFor(item))
-  const rightPanes = entries.map(({ item }) => paneFor(item))
+  // The start half (left in English, right in Arabic) runs in reverse: it moves
+  // down as the end half moves up, so the pair mirrors with the reading line.
+  const startPanes = entries.map(({ item }) => paneFor(item))
+  const endPanes = entries.map(({ item }) => paneFor(item))
   const halves = h(
     'div',
     { class: 'ss-halves', 'aria-hidden': 'true' },
-    h('div', { class: 'ss-half ss-half--left' }, leftPanes),
-    h('div', { class: 'ss-half ss-half--right' }, rightPanes),
+    h('div', { class: 'ss-half ss-half--start' }, startPanes),
+    h('div', { class: 'ss-half ss-half--end' }, endPanes),
     h('div', { class: 'ss-scrim' }),
   )
 
@@ -63,8 +64,8 @@ export const renderSplit = (schema, index) => {
         'data-aixc-item': item.id,
         'data-pos': at === 0 ? '0' : '1',
         role: 'group',
-        'aria-roledescription': 'slide',
-        'aria-label': `${at + 1} of ${total}: ${item.title}`,
+        'aria-roledescription': t('slide'),
+        'aria-label': t('{n} of {total}: {title}', { n: at + 1, total, title: item.title }),
         inert: at !== 0,
       },
       // Three rows with the title in the middle one, so every title sits on the same
@@ -100,7 +101,7 @@ export const renderSplit = (schema, index) => {
     })
     const button = h(
       'button',
-      { type: 'button', class: 'ss-rail__group', 'data-group': group.id, 'aria-label': `Go to ${group.title}` },
+      { type: 'button', class: 'ss-rail__group', 'data-group': group.id, 'aria-label': t('Go to {title}', { title: group.title }) },
       h('span', { class: 'ss-rail__label', 'aria-hidden': 'true' }, group.title),
       h('span', { class: 'ss-rail__ticks', 'aria-hidden': 'true' }, lines),
     )
@@ -111,11 +112,11 @@ export const renderSplit = (schema, index) => {
     })
     return button
   })
-  const rail = h('nav', { class: 'ss-rail', 'aria-label': 'Categories' }, h('ul', null, railButtons.map((button) => h('li', null, button))))
+  const rail = h('nav', { class: 'ss-rail', 'aria-label': t('Categories') }, h('ul', null, railButtons.map((button) => h('li', null, button))))
 
   /* -------------------------------------------------------------- controls */
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Previous service' }, pathIcon(ICON_UP, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Next service' }, pathIcon(ICON_DOWN, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_UP, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_DOWN, ''))
   const counterNow = h('span', { class: 'ss-counter__now' }, '01')
   const controls = h(
     'div',
@@ -128,13 +129,13 @@ export const renderSplit = (schema, index) => {
 
   const stage = h(
     'section',
-    { class: 'ss-stage vx-dark', 'aria-roledescription': 'carousel', 'aria-label': 'Vodafone services, split slideshow' },
+    { class: 'ss-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services, split slideshow') },
     halves,
     h(
       'header',
       { class: 'ss-head' },
       h('p', { class: 'ss-brand' }, index.model.title),
-      h('p', { class: 'ss-hint' }, 'Scroll, drag or use the arrow keys'),
+      h('p', { class: 'ss-hint' }, t('Scroll, drag or use the arrow keys')),
     ),
     h('div', { class: 'ss-texts' }, texts),
     rail,
@@ -168,8 +169,8 @@ export const renderSplit = (schema, index) => {
   }
 
   const show = (next, { announce = true } = {}) => {
-    place(leftPanes, next)
-    place(rightPanes, next)
+    place(startPanes, next)
+    place(endPanes, next)
     place(texts, next)
     texts.forEach((text, at) => (text.inert = at !== next))
     const { item, group } = entries[next]
@@ -184,7 +185,7 @@ export const renderSplit = (schema, index) => {
     prevButton.disabled = next === 0
     nextButton.disabled = next === total - 1
     stage.dataset.tone = item.image?.fit === 'contain' ? 'mark' : 'photo'
-    if (announce) status.textContent = `${next + 1} of ${total}: ${item.title}, ${group.title}`
+    if (announce) status.textContent = t('{n} of {total}: {title}, {group}', { n: next + 1, total, title: item.title, group: group.title })
     active = next
   }
 
@@ -202,8 +203,8 @@ export const renderSplit = (schema, index) => {
   const onScroll = () => stepper.settle()
 
   // Initial placement: the first service in view, everything else waiting below.
-  place(leftPanes, 0)
-  place(rightPanes, 0)
+  place(startPanes, 0)
+  place(endPanes, 0)
   show(0, { announce: false })
 
   return {

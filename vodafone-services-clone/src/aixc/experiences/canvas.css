@@ -1,4 +1,7 @@
-/* Infinite canvas — scoped to .aixc-vx--canvas. Tokens from vodafone.css. */
+/* Infinite canvas — scoped to .aixc-vx--canvas. Tokens from vodafone.css.
+   Tiles are placed by physical translate3d from the top left (canvas.js mirrors
+   the grid's columns in Arabic); everything framed by the reading line uses
+   logical properties, with [dir='rtl'] overrides for the Arabic face. */
 
 .aixc-vx--canvas {
   background: #000;
@@ -73,7 +76,7 @@
   padding: 0;
   border: 0;
   color: var(--vx-white);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: opacity 0.8s cubic-bezier(0.455, 0.03, 0.515, 0.955);
 }
@@ -163,10 +166,16 @@
   transition: opacity 0.8s ease;
 }
 
+/* The glow sits across from the mark, which moves to the top right in Arabic. */
+[dir='rtl'] .aixc-vx--canvas .cv-tile--brand {
+  background:
+    radial-gradient(120% 100% at 0% 0%, #ff1a1a 0%, var(--vx-red) 40%, var(--vx-red-dark) 100%);
+}
+
 .aixc-vx--canvas .cv-tile__mark {
   position: absolute;
   top: 16px;
-  left: 16px;
+  inset-inline-start: 16px;
   width: 40px;
   height: 40px;
 }
@@ -243,7 +252,7 @@
 
 .aixc-vx--canvas .cv-col--keys {
   grid-column: 11 / span 2;
-  text-align: right;
+  text-align: end;
 }
 
 .aixc-vx--canvas .cv-brand {
@@ -294,18 +303,18 @@
   color: var(--vx-white);
   font: inherit;
   font-family: var(--vx-font-bold);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   pointer-events: auto;
   transition: color 0.3s ease;
 }
 
-/* The reference's link highlight that wipes in behind the text. */
+/* The reference's link highlight that wipes in behind the text (from the reading line's start). */
 .aixc-vx--canvas .cv-link::after {
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
+  inset-inline-start: 0;
   z-index: -1;
   width: 0;
   height: 100%;
@@ -339,7 +348,7 @@
 
 .aixc-vx--canvas .cv-sign {
   grid-column: 9 / span 4;
-  text-align: right;
+  text-align: end;
 }
 
 .aixc-vx--canvas .cv-key {
@@ -353,6 +362,11 @@
   border: 1px solid var(--vx-white);
   border-radius: 3px;
   font-size: 0.6875rem;
+}
+
+/* Coordinates stay Latin (X/Y, signed digits) and keep to the reading line's start. */
+[dir='rtl'] .aixc-vx--canvas .cv-coords {
+  text-align: right;
 }
 
 /* ------------------------------------------------------- vignette and grain */
@@ -528,10 +542,37 @@
 .aixc-vx--canvas .cv-dialog__close {
   position: absolute;
   top: 20px;
-  right: 20px;
+  inset-inline-end: 20px;
   z-index: 2;
   color: var(--vx-white);
   background: rgba(0, 0, 0, 0.35);
+}
+
+/* ------------------------------------------------------------ Arabic text */
+
+/* Arabic is joined script: no tracking, no case, and room for its taller face
+   (the rising words are clipped by .cv-word, so they need the most headroom). */
+[dir='rtl'] .aixc-vx--canvas .cv-card__name,
+[dir='rtl'] .aixc-vx--canvas .cv-dialog__title,
+[dir='rtl'] .aixc-vx--canvas .cv-dialog__meta {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+[dir='rtl'] .aixc-vx--canvas .cv-card__name {
+  line-height: 1.45;
+}
+
+[dir='rtl'] .aixc-vx--canvas .cv-tile__title {
+  line-height: 1.4;
+}
+
+[dir='rtl'] .aixc-vx--canvas .cv-dialog__title {
+  line-height: 1.5;
+}
+
+[dir='rtl'] .aixc-vx--canvas .cv-word {
+  padding-block: 0.08em 0.14em;
 }
 
 /* -------------------------------------------------------------- responsive */
@@ -581,7 +622,13 @@
 
   .aixc-vx--canvas .cv-dialog__close {
     top: 12px;
-    right: 12px;
+    inset-inline-end: 12px;
+  }
+
+  /* The wider Arabic face wraps the brand title into the mark on short phone tiles. */
+  [dir='rtl'] .aixc-vx--canvas .cv-tile__title {
+    font-size: 1.125rem;
+    line-height: 1.3;
   }
 }
 

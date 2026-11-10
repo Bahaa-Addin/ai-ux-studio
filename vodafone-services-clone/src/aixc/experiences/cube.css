@@ -2,6 +2,8 @@
 
 .aixc-vx--cube {
   --cb-size: min(34vw, calc(var(--vx-vh) * 0.52), 420px);
+  --cb-start: 0%; /* x of the inline-start edge, for transform-origin */
+  --cb-sign: 1; /* +1 LTR, -1 RTL, like inlineSign */
   /* Grid texture from the reference, in Vodafone greys. */
   background:
     linear-gradient(var(--vx-grey-200) 1px, transparent 1px) 0 0 / 48px 48px,
@@ -13,6 +15,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   align-items: start;
+}
+
+[dir='rtl'] .aixc-vx--cube {
+  --cb-start: 100%;
+  --cb-sign: -1;
 }
 
 /* ------------------------------------------------------------------ stage */
@@ -27,6 +34,7 @@
 .aixc-vx--cube .cb-scene {
   position: absolute;
   inset: 0;
+  inset-inline-start: 56px; /* the scene dots get their own strip, clear of the cube */
   display: grid;
   place-items: center;
   perspective: 1400px;
@@ -86,12 +94,28 @@
   padding: 10%;
 }
 
-.aixc-vx--cube .cb-tile--blank {
+/* Brand tiles fill the cells a category leaves empty. */
+.aixc-vx--cube .cb-tile--brand,
+.aixc-vx--cube .cb-face__empty {
+  display: grid;
+  place-items: center;
   background: var(--vx-red);
 }
 
-.aixc-vx--cube .cb-tile--blank.is-alt {
-  background: var(--vx-grey-900);
+.aixc-vx--cube .cb-tile__mark {
+  width: 38%;
+  max-width: 96px;
+  aspect-ratio: 1;
+  height: auto;
+}
+
+.aixc-vx--cube .cb-tile--brand.is-photo {
+  background: var(--vx-ink);
+}
+
+.aixc-vx--cube .cb-tile--brand.is-photo img {
+  opacity: 0.8;
+  mix-blend-mode: luminosity;
 }
 
 .aixc-vx--cube .cb-face__label {
@@ -112,9 +136,6 @@
   opacity: 0.85;
 }
 
-.aixc-vx--cube .cb-face__empty {
-  background: var(--vx-grey-200);
-}
 
 .aixc-vx--cube .cb-floor {
   position: absolute;
@@ -132,7 +153,7 @@
 .aixc-vx--cube .cb-hud {
   position: absolute;
   top: 24px;
-  right: 24px;
+  inset-inline-end: 24px;
   display: grid;
   grid-template-columns: auto 120px;
   gap: 6px 12px;
@@ -159,7 +180,7 @@
   height: 100%;
   background: var(--vx-red);
   transform: scaleX(0);
-  transform-origin: 0 50%;
+  transform-origin: var(--cb-start) 50%; /* fills along the reading line */
 }
 
 .aixc-vx--cube .cb-hud__name {
@@ -195,8 +216,9 @@
 
 .aixc-vx--cube .cb-dots {
   position: absolute;
+  z-index: 1;
   top: 50%;
-  left: 20px;
+  inset-inline-start: 20px;
   transform: translateY(-50%);
 }
 
@@ -215,7 +237,7 @@
   background: transparent;
   color: var(--vx-grey-700);
   font-size: 0.8125rem;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -230,15 +252,22 @@
   transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
+/* Names show on hover and keyboard focus only (the HUD and caption already name
+   the current face), on a pill so they read where they pass over the cube. */
 .aixc-vx--cube .cb-dot__label {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--vx-white);
+  box-shadow: var(--vx-shadow);
+  white-space: nowrap;
+  pointer-events: none;
   opacity: 0;
-  transform: translateX(-4px);
+  transform: translateX(calc(-4px * var(--cb-sign))); /* slides out from the dot */
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .aixc-vx--cube .cb-dot:hover .cb-dot__label,
-.aixc-vx--cube .cb-dot:focus-visible .cb-dot__label,
-.aixc-vx--cube .cb-dot.is-active .cb-dot__label {
+.aixc-vx--cube .cb-dot:focus-visible .cb-dot__label {
   opacity: 1;
   transform: none;
 }
@@ -257,7 +286,8 @@
 /* ------------------------------------------------------------------ story */
 
 .aixc-vx--cube .cb-story {
-  padding: 0 var(--vx-gutter) 20vh 0;
+  padding-block: 0 20vh;
+  padding-inline: 0 var(--vx-gutter);
 }
 
 .aixc-vx--cube .cb-block {
@@ -343,64 +373,100 @@
   aspect-ratio: auto;
 }
 
+/* ----------------------------------------------------------------- Arabic */
+
+/* The Arabic face needs taller lines than the Latin display settings, and its
+   joined letters must never be tracked. */
+.aixc-vx--cube .cb-intro__title:lang(ar) {
+  max-width: 10ch;
+  line-height: 1.2;
+  letter-spacing: normal;
+}
+
+.aixc-vx--cube .cb-block__title:lang(ar) {
+  line-height: 1.3;
+}
+
+.aixc-vx--cube .cb-face__label:lang(ar),
+.aixc-vx--cube .cb-caption:lang(ar) {
+  line-height: 1.4;
+}
+
 /* ------------------------------------------------------------- responsive */
 
 @media (max-width: 899px) {
   .aixc-vx--cube {
-    --cb-size: min(46vw, calc(var(--vx-vh) * 0.26), 240px);
+    --cb-size: min(62vw, calc(var(--vx-vh) * 0.42), 340px);
+    --cb-sheet-gap: calc(var(--vx-vh) * 0.8);
   }
 
+  /* The cube is the centre of the screen, pinned behind the story, and each
+     category's sheet slides up over it at full width. In the gap between two
+     sheets the cube is uncovered and turns to the next face (readSheets in
+     cube.js), so it leads without taking room from the cards. */
   .aixc-vx--cube .cb-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .aixc-vx--cube .cb-stage {
-    z-index: 2;
-    height: calc(var(--cb-size) * 1.45 + 24px);
-    min-height: 0;
-    border-bottom: 1px solid var(--vx-grey-300);
-    background:
-      linear-gradient(var(--vx-grey-200) 1px, transparent 1px) 0 0 / 48px 48px,
-      linear-gradient(90deg, var(--vx-grey-200) 1px, transparent 1px) 0 0 / 48px 48px,
-      var(--vx-grey-100);
+  .aixc-vx--cube .cb-stage,
+  .aixc-vx--cube .cb-story {
+    grid-area: 1 / 1;
   }
 
-  .aixc-vx--cube .cb-dots,
+  .aixc-vx--cube .cb-stage {
+    height: var(--vx-vh);
+    min-height: 0;
+  }
+
+  /* A little above the middle, so the next sheet's heading can show under it. */
+  .aixc-vx--cube .cb-scene {
+    inset: 0 0 auto;
+    height: calc(var(--vx-vh) * 0.88);
+  }
+
   .aixc-vx--cube .cb-floor {
+    top: calc(50% + var(--cb-size) * 0.64);
+    bottom: auto;
+  }
+
+  .aixc-vx--cube .cb-dots {
     display: none;
   }
 
   .aixc-vx--cube .cb-hud {
-    top: 12px;
-    right: 12px;
-    grid-template-columns: auto 64px;
+    top: 16px;
+    inset-inline-end: var(--vx-gutter);
+    grid-template-columns: auto 72px;
   }
 
   .aixc-vx--cube .cb-hud__name {
     display: none;
   }
 
+  /* The face's own red label and the sheet's heading already name the category. */
   .aixc-vx--cube .cb-caption {
-    bottom: 8px;
-    left: var(--vx-gutter);
-    transform: none;
-  }
-
-  .aixc-vx--cube .cb-caption__name {
-    font-size: 1rem;
+    display: none;
   }
 
   .aixc-vx--cube .cb-story {
-    padding: 0 var(--vx-gutter) 12vh;
+    position: relative;
+    z-index: 1;
+    padding: 0 0 24px;
   }
 
   .aixc-vx--cube .cb-block {
     min-height: 0;
-    padding: 48px 0;
+    margin-top: var(--cb-sheet-gap);
+    padding: 32px var(--vx-gutter) 36px;
+    border-radius: 24px;
+    background: var(--vx-grey-100);
+    box-shadow: 0 -1px 0 var(--vx-grey-300), 0 -10px 30px rgba(20, 20, 30, 0.12);
   }
 
+  /* The opening sheet starts just under the cube's three-quarter view (its lowest
+     corner reaches about 0.78 of the cube's size below the centre), title showing. */
   .aixc-vx--cube .cb-block--intro {
-    padding-top: 32px;
+    margin-top: calc(var(--vx-vh) * 0.44 + var(--cb-size) * 0.78 + 16px);
   }
 }
 

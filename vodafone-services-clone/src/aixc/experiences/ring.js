@@ -10,14 +10,20 @@
  * gradient inside a black frame) slides vertically while the ring turns
  * horizontally, and fast scrolling stretches and blurs the scene like the
  * reference's velocity effect. Page scroll turns it and it settles on each
- * service; the ring closes on itself, so the last services wait to the left of
- * the first. The details, counter and prev/next sit under the ring.
+ * service; the ring closes on itself, so the last services wait behind the
+ * first (to its left in English, to its right in Arabic). The details, counter
+ * and prev/next sit under the ring.
+ *
+ * Right to left (the Arabic page): the ring turns the other way, so the next
+ * service always waits on the side the line reads towards (the left), and
+ * dragging right turns it forward. Arabic titles are never stroked (outlines
+ * show seams where the joined letters overlap); they are filled faintly instead.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
   ICON_NEXT, ICON_PREV, arrowKeys, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras,
-  groupsOf, liveStatus, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper,
+  groupsOf, inlineSign, liveStatus, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t,
 } from './shared.js'
 
 const STEP_PX = 300
@@ -50,7 +56,7 @@ export const renderRing = (schema, index) => {
         tabindex: '-1',
         'data-aixc-item': item.id,
         'data-drag-through': '',
-        'aria-label': `${item.title}, ${at + 1} of ${total}`,
+        'aria-label': t('{title}, {n} of {total}', { title: item.title, n: at + 1, total }),
       },
       h('span', { class: 'rg-item__badge', 'aria-hidden': 'true' }, pad2(at + 1)),
       h('span', { class: 'rg-item__title', 'aria-hidden': 'true' }, item.title),
@@ -84,8 +90,8 @@ export const renderRing = (schema, index) => {
   const detail = h('div', { class: 'rg-detail' }, detailTitle, detailDesc, detailActions)
 
   const counterNow = h('span', { class: 'rg-counter__now' }, '01')
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Previous service' }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': 'Next service' }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_NEXT, ''))
   const foot = h(
     'div',
     { class: 'rg-foot' },
@@ -97,14 +103,14 @@ export const renderRing = (schema, index) => {
 
   const stage = h(
     'section',
-    { class: 'rg-stage vx-dark', 'aria-roledescription': 'carousel', 'aria-label': 'Vodafone services, ring' },
+    { class: 'rg-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services, ring') },
     backdrop,
     ring,
     h('span', { class: 'rg-edge rg-edge--left', 'aria-hidden': 'true' }),
     h('span', { class: 'rg-edge rg-edge--right', 'aria-hidden': 'true' }),
     head,
     foot,
-    h('p', { class: 'rg-hint', 'aria-hidden': 'true' }, 'Scroll to turn the ring'),
+    h('p', { class: 'rg-hint', 'aria-hidden': 'true' }, t('Scroll to turn the ring')),
     status,
   )
   const track = h('div', { class: 'rg-track' }, stage)
@@ -152,7 +158,7 @@ export const renderRing = (schema, index) => {
     counterNow.textContent = pad2(next + 1)
     prevButton.disabled = next === 0
     nextButton.disabled = next === total - 1
-    status.textContent = `${next + 1} of ${total}: ${item.title}, ${group.title}`
+    status.textContent = t('{n} of {total}: {title}, {group}', { n: next + 1, total, title: item.title, group: group.title })
     front = next
   }
 
@@ -165,7 +171,9 @@ export const renderRing = (schema, index) => {
     items.forEach((node, at) => {
       let d = at - position
       if (closed) d = ((((d + total / 2) % total) + total) % total) - total / 2
-      const deg = d * stepDeg
+      // Forward along the reading line: later services wait to the right in
+      // English and to the left in Arabic, so the ring turns the other way.
+      const deg = d * stepDeg * inlineSign
       const rad = (deg * Math.PI) / 180
       const depth = radius * (1 - Math.cos(rad))
       const visible = Math.abs(deg) < 60 && depth < limit
@@ -215,6 +223,7 @@ export const renderRing = (schema, index) => {
   arrowKeys(stage, { step: (direction) => stepper.goTo(front + direction), first: () => stepper.goTo(0), last: () => stepper.goTo(total - 1) })
 
   let stopDrag = null
+  let stopWheel = null
   const onScroll = () => stepper.settle()
   const onResize = () => measure()
 
@@ -229,6 +238,7 @@ export const renderRing = (schema, index) => {
       measure()
       position = stepper.position()
       stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / 140, touch: true })
+      stopWheel = sidewaysWheel(stage) // sideways swipes walk it too, along the reading line
       window.addEventListener('scroll', onScroll, { passive: true })
       window.addEventListener('resize', onResize)
       frame = window.requestAnimationFrame(loop)
@@ -237,6 +247,8 @@ export const renderRing = (schema, index) => {
       mounted = false
       window.cancelAnimationFrame(frame)
       stopDrag?.()
+      stopWheel?.()
+      stopWheel = null
       stopDrag = null
       stepper.stop()
       window.removeEventListener('scroll', onScroll)

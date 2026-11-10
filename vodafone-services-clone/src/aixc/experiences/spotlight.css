@@ -4,13 +4,36 @@
   --sp-card-w: 200px;
   --sp-card-h: 280px;
   --sp-card-gap: 24px;
-  --sp-queue-right: calc(-0.5 * var(--sp-card-w));
+  --sp-queue-end: calc(-0.5 * var(--sp-card-w));
+  /* Reading direction: +1 left to right, -1 on the Arabic page (queue runs leftward). */
+  --sp-dir: 1;
+  /* Film angle: dense behind the text at the start edge, lighter toward the end. */
+  --sp-film-angle: 90deg;
+  /* Where a contained logo sits: toward the end edge, away from the text. */
+  --sp-logo-x: 78%;
   background: var(--vx-ink);
 }
 
-.aixc-vx--spotlight .sp-stage {
+[dir='rtl'] .aixc-vx--spotlight {
+  --sp-dir: -1;
+  --sp-film-angle: 270deg;
+  --sp-logo-x: 22%;
+}
+
+/* The stage stays pinned while the page scrolls one step per service. */
+.aixc-vx--spotlight .sp-track {
   position: relative;
+}
+
+.aixc-vx--spotlight .sp-track__run {
+  height: calc((var(--count) - 1) * var(--step));
+}
+
+.aixc-vx--spotlight .sp-stage {
+  position: sticky;
+  top: var(--sp-top, var(--vx-top));
   height: max(var(--vx-vh), 620px);
+  touch-action: pan-y; /* sideways swipes move the queue; vertical ones scroll */
   overflow: hidden;
   isolation: isolate;
   background: var(--vx-ink);
@@ -49,19 +72,19 @@
 
 .aixc-vx--spotlight .sp-backdrop.is-contain img {
   object-fit: contain;
-  object-position: 78% 50%;
+  object-position: var(--sp-logo-x) 50%;
   padding: 10% 6%;
   filter: none;
   transform: none;
 }
 
-/* Vodafone's dark action-card film: dense behind the text, lighter on the right. */
+/* Vodafone's dark action-card film: dense behind the text, lighter toward the queue. */
 .aixc-vx--spotlight .sp-backdrop::after {
   content: '';
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(20, 20, 30, 0.94) 0%, rgba(20, 20, 30, 0.82) 38%, rgba(20, 20, 30, 0.3) 100%),
+    linear-gradient(var(--sp-film-angle), rgba(20, 20, 30, 0.94) 0%, rgba(20, 20, 30, 0.82) 38%, rgba(20, 20, 30, 0.3) 100%),
     linear-gradient(0deg, rgba(20, 20, 30, 0.8) 0%, rgba(20, 20, 30, 0) 45%);
 }
 
@@ -83,6 +106,12 @@
   transform-origin: 0 50%;
 }
 
+/* Timer and progress fill from the start edge: the right in Arabic. */
+[dir='rtl'] .aixc-vx--spotlight .sp-timer__fill,
+[dir='rtl'] .aixc-vx--spotlight .sp-progress__fill {
+  transform-origin: 100% 50%;
+}
+
 .aixc-vx--spotlight .sp-timer.is-paused .sp-timer__fill {
   background: rgba(255, 255, 255, 0.55);
 }
@@ -92,8 +121,7 @@
 .aixc-vx--spotlight .sp-jumps {
   position: absolute;
   top: 26px;
-  right: var(--vx-gutter);
-  left: var(--vx-gutter);
+  inset-inline: var(--vx-gutter);
   z-index: 3;
 }
 
@@ -137,7 +165,7 @@
 .aixc-vx--spotlight .sp-details {
   position: absolute;
   top: clamp(108px, 20%, 200px);
-  left: var(--vx-gutter);
+  inset-inline-start: var(--vx-gutter);
   z-index: 2;
   /* Stays clear of the queue: stage width minus the visible cards. */
   width: min(560px, calc(100% - 3.5 * var(--sp-card-w) - 3 * var(--sp-card-gap) - 32px - var(--vx-gutter)));
@@ -171,6 +199,12 @@
   font-size: clamp(2.25rem, 4.4vw, 4.25rem);
   line-height: 1;
   letter-spacing: -0.01em;
+}
+
+/* Arabic: joined script takes no tracking, and its tall face needs more leading. */
+.aixc-vx--spotlight .sp-slide__title:lang(ar) {
+  line-height: 1.3;
+  letter-spacing: normal;
 }
 
 .aixc-vx--spotlight .sp-slide__desc {
@@ -227,7 +261,7 @@
 
 .aixc-vx--spotlight .sp-queue {
   position: absolute;
-  right: var(--sp-queue-right);
+  inset-inline-end: var(--sp-queue-end);
   bottom: 128px;
   z-index: 2;
   width: calc(4 * var(--sp-card-w) + 3 * var(--sp-card-gap));
@@ -237,7 +271,7 @@
 .aixc-vx--spotlight .sp-card {
   position: absolute;
   top: 0;
-  left: 0;
+  inset-inline-start: 0;
   width: var(--sp-card-w);
   height: var(--sp-card-h);
   padding: 0;
@@ -246,9 +280,10 @@
   border-radius: var(--vx-radius);
   background: var(--vx-grey-900);
   box-shadow: var(--vx-shadow-lift);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
-  transform: translateX(calc(var(--slot, 0) * (var(--sp-card-w) + var(--sp-card-gap))));
+  /* Slot 0 (next up) sits at the start of the queue; later slots run along the reading line. */
+  transform: translateX(calc(var(--sp-dir) * var(--slot, 0) * (var(--sp-card-w) + var(--sp-card-gap))));
   transition: transform 0.6s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.4s ease;
 }
 
@@ -277,9 +312,8 @@
 
 .aixc-vx--spotlight .sp-card__text {
   position: absolute;
-  right: 14px;
+  inset-inline: 14px;
   bottom: 14px;
-  left: 14px;
   z-index: 1;
   display: grid;
   gap: 4px;
@@ -298,6 +332,10 @@
   line-height: 1.15;
 }
 
+.aixc-vx--spotlight .sp-card__title:lang(ar) {
+  line-height: 1.35;
+}
+
 .aixc-vx--spotlight .sp-card:focus-visible {
   outline: 3px solid var(--vx-white);
   outline-offset: 3px;
@@ -307,7 +345,7 @@
 
 .aixc-vx--spotlight .sp-controls {
   position: absolute;
-  right: var(--vx-gutter);
+  inset-inline-end: var(--vx-gutter);
   bottom: 40px;
   z-index: 3;
   display: flex;
@@ -383,7 +421,7 @@
 
   .aixc-vx--spotlight .sp-queue {
     margin-top: auto;
-    margin-right: calc(-1 * var(--vx-gutter));
+    margin-inline-end: calc(-1 * var(--vx-gutter));
     overflow: hidden;
   }
 

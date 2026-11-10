@@ -219,8 +219,7 @@
 .aixc-vx--ring .rg-head {
   position: absolute;
   top: clamp(16px, 3.6vh, 32px);
-  right: 0;
-  left: 0;
+  inset-inline: 0;
   z-index: 3;
   display: grid;
   gap: 6px;
@@ -247,9 +246,8 @@
 
 .aixc-vx--ring .rg-foot {
   position: absolute;
-  right: var(--vx-gutter);
+  inset-inline: var(--vx-gutter);
   bottom: clamp(16px, 3.6vh, 32px);
-  left: var(--vx-gutter);
   z-index: 3;
   display: grid;
   grid-template-columns: 1fr minmax(0, 34rem) 1fr;
@@ -325,6 +323,45 @@
   transform: translateY(-50%);
 }
 
+/* ------------------------------------------------- right to left (Arabic) */
+
+/* Joined Arabic letters overlap, so a stroke outlines every join: Arabic titles
+   are filled faintly instead of outlined, the current one fills in white, and
+   their lines get the room the Arabic face needs. The size is worked out from
+   character counts tuned for Latin capitals, which wrap to two narrow lines;
+   Arabic would set on one line as wide as the item and touch its neighbours,
+   so it is set a little smaller and narrower, and wraps the same way. */
+.aixc-vx--ring .rg-item__title:lang(ar) {
+  max-inline-size: calc(var(--u) * 36);
+  font-size: calc(var(--u) * var(--fs, 6.5) * 0.82);
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.22);
+  -webkit-text-stroke: 0;
+}
+
+.aixc-vx--ring .rg-item.is-front .rg-item__title:lang(ar) {
+  color: var(--vx-white);
+}
+
+/* Tracking pulls joined script apart. */
+.aixc-vx--ring .rg-head__brand:lang(ar),
+.aixc-vx--ring .rg-head__group:lang(ar),
+.aixc-vx--ring .rg-hint:lang(ar) {
+  letter-spacing: 0;
+}
+
+.aixc-vx--ring .rg-head__group:lang(ar) {
+  line-height: 1.35;
+}
+
+/* The hint moves to the end (left) edge; its letters still face outwards.
+   Physical sides: the hint's own writing mode is vertical. */
+[dir='rtl'] .aixc-vx--ring .rg-hint {
+  right: auto;
+  left: 14px;
+  transform: translateY(-50%) rotate(180deg);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .aixc-vx--ring .rg-detail.is-changing > * {
     animation: rg-in 0.5s ease both;
@@ -350,8 +387,7 @@
   }
 
   .aixc-vx--ring .rg-foot {
-    right: 16px;
-    left: 16px;
+    inset-inline: 16px;
     grid-template-columns: auto 1fr;
     grid-template-areas:
       'detail detail'

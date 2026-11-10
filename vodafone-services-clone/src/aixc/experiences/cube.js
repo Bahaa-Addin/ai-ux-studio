@@ -6,26 +6,34 @@
  * turns, with eased interpolation between the reference's six orientations, to the
  * face of the category in view. A HUD shows overall progress and the current
  * category, a caption names the face, and scene dots jump between categories.
- * Native scroll only; under reduced motion the cube snaps instead of turning.
+ * Below 900px the cube is centred and pinned behind the story instead, each
+ * category's sheet slides up over it, and the cube turns in the gap between two
+ * sheets. Native scroll only; under reduced motion the cube snaps instead of turning.
  * More than six categories reuse faces in order; fewer leave faces unused.
  */
 
-import { h } from '../dom.js'
+import { h, svgIcon } from '../dom.js'
+import { countCategories } from '../../i18n.js'
 import {
-  chromeOffset, clamp, closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, pad2, promotionOf, reducedMotion, scrollToY,
-  serviceCard,
+  chromeOffset, clamp, closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, inlineSign, isRTL, pad2, promotionOf, reducedMotion, scrollToY,
+  serviceCard, t,
 } from './shared.js'
 
-/** Faces in the order the reference's stops reveal them, with their placement. */
+/**
+ * Faces in the order the reference's stops reveal them, with their placement.
+ * The side faces sit on the reading line's "next" side: the cube turns so each
+ * new face arrives from the right in LTR and from the left in RTL (rotateY is
+ * multiplied by inlineSign, here and in the stops). `name` stays the LTR side.
+ */
 const FACES = [
   { name: 'bottom', place: 'rotateX(-90deg)' },
   { name: 'front', place: 'rotateY(0deg)' },
-  { name: 'right', place: 'rotateY(90deg)' },
+  { name: 'right', place: `rotateY(${90 * inlineSign}deg)` },
   { name: 'back', place: 'rotateY(180deg)' },
-  { name: 'left', place: 'rotateY(-90deg)' },
+  { name: 'left', place: `rotateY(${-90 * inlineSign}deg)` },
   { name: 'top', place: 'rotateX(90deg)' },
 ]
-/** Cube orientation [rotateX, rotateY] that shows each face (from the reference). */
+/** Cube orientation [rotateX, rotateY] that shows each face (from the reference, LTR). */
 const STOPS = [
   [90, 0],
   [0, 0],
@@ -36,21 +44,36 @@ const STOPS = [
 ]
 const INTRO = [-22, 38] // three-quarter view while the intro is on screen
 
-const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
+/** Mirrors a [rotateX, rotateY] orientation for the reading direction. */
+const alongLine = ([x, y]) => [x, y * inlineSign]
 
-const mosaic = (items) => {
+const easeInOut = (p) => (p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2)
+
+/**
+ * Cells the category cannot fill (and pictures that fail to load) get Vodafone
+ * brand tiles instead of grey boxes: the white speech mark on red, alternating
+ * with the page's hero photo when there is one.
+ */
+const brandTile = (photo, alt) =>
+  alt && photo?.src
+    ? h('span', { class: 'cb-tile cb-tile--brand is-photo' }, h('img', { src: photo.src, alt: '', loading: 'lazy', decoding: 'async' }))
+    : h('span', { class: 'cb-tile cb-tile--brand' }, svgIcon('icon-vodafone-logo-white', 'cb-tile__mark'))
+
+const mosaic = (items, photo) => {
   const count = items.length
   const columns = count === 1 ? 1 : count <= 4 ? 2 : 3
   const cells = columns * columns
   const tiles = []
+  let blanks = 0
   for (let i = 0; i < cells; i += 1) {
     const item = items[i]
     if (item?.image?.src) {
       const tile = h('span', { class: `cb-tile${item.image.fit === 'contain' ? ' is-contain' : ''}` }, h('img', { src: item.image.src, alt: '', loading: 'lazy', decoding: 'async' }))
-      tile.querySelector('img').addEventListener('error', (event) => event.target.remove(), { once: true })
+      tile.querySelector('img').addEventListener('error', () => tile.replaceWith(brandTile(photo, false)), { once: true })
       tiles.push(tile)
     } else {
-      tiles.push(h('span', { class: `cb-tile cb-tile--blank${i % 2 ? ' is-alt' : ''}` }))
+      tiles.push(brandTile(photo, blanks % 2 === 1))
+      blanks += 1
     }
   }
   const grid = h('span', { class: 'cb-mosaic' }, tiles)
@@ -69,7 +92,7 @@ export const renderCube = (schema, index) => {
     const node = h(
       'span',
       { class: `cb-face cb-face--${face.name}` },
-      group ? mosaic(group.items) : h('span', { class: 'cb-face__empty' }),
+      group ? mosaic(group.items, index.model.heroImage) : h('span', { class: 'cb-face__empty' }, svgIcon('icon-vodafone-logo-white', 'cb-tile__mark')),
       group ? h('span', { class: 'cb-face__label' }, h('span', { class: 'cb-face__num' }, pad2(faceIndex + 1)), h('span', null, group.title)) : null,
     )
     node.style.setProperty('--place', face.place)
@@ -79,9 +102,9 @@ export const renderCube = (schema, index) => {
   const scene = h('div', { class: 'cb-scene', 'aria-hidden': 'true' }, cube, h('div', { class: 'cb-floor' }))
 
   /* ------------------------------------------------------------------- HUD */
-  const hudPct = h('span', { class: 'cb-hud__pct' }, '000%')
+  const hudPct = h('span', { class: 'cb-hud__pct' }, isRTL ? '0%' : '000%')
   const hudFill = h('span', { class: 'cb-hud__fill' })
-  const hudName = h('span', { class: 'cb-hud__name' }, 'Overview')
+  const hudName = h('span', { class: 'cb-hud__name' }, t('Overview'))
   const hud = h('div', { class: 'cb-hud', 'aria-hidden': 'true' }, hudPct, h('span', { class: 'cb-hud__bar' }, hudFill), hudName)
   const capNum = h('span', { class: 'cb-caption__num' }, '00')
   const capName = h('span', { class: 'cb-caption__name' }, index.model.title)
@@ -91,11 +114,11 @@ export const renderCube = (schema, index) => {
   const intro = h(
     'header',
     { class: 'cb-block cb-block--intro', 'data-stop': '0' },
-    h('p', { class: 'cb-tag' }, `${groups.length} categories`),
+    h('p', { class: 'cb-tag' }, countCategories(groups.length)),
     h('h1', { class: 'cb-intro__title', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' }, index.model.title),
     index.model.intro ? h('p', { class: 'cb-intro__text' }, index.model.intro) : null,
   )
-  const startButton = h('button', { type: 'button', class: 'vx-btn vx-btn--primary' }, 'Turn the cube')
+  const startButton = h('button', { type: 'button', class: 'vx-btn vx-btn--primary' }, t('Turn the cube'))
   intro.append(h('div', { class: 'cb-intro__actions' }, startButton))
 
   const blocks = groups.map((group, groupIndex) => {
@@ -103,7 +126,7 @@ export const renderCube = (schema, index) => {
     return h(
       'section',
       { class: 'cb-block', 'aria-labelledby': headingId, 'data-stop': String(groupIndex + 1), 'data-group': group.id },
-      h('p', { class: 'cb-tag' }, `Face ${pad2((groupIndex % FACES.length) + 1)}`),
+      h('p', { class: 'cb-tag' }, t('Face {number}', { number: pad2((groupIndex % FACES.length) + 1) })),
       group.provenance ? h('p', { class: 'cb-from' }, group.provenance) : null,
       groupTitle(group, 'h2', 'cb-block__title', headingId),
       group.description ? h('p', { class: 'cb-block__desc' }, group.description) : null,
@@ -115,34 +138,55 @@ export const renderCube = (schema, index) => {
 
   /* ----------------------------------------------------------- scene dots */
   const dots = stopsEls.map((block, at) => {
-    const label = at === 0 ? 'Overview' : groups[at - 1].title
-    const dot = h('button', { type: 'button', class: 'cb-dot', 'aria-label': `Go to ${label}` }, h('span', { class: 'cb-dot__label', 'aria-hidden': 'true' }, label))
+    const label = at === 0 ? t('Overview') : groups[at - 1].title
+    const dot = h('button', { type: 'button', class: 'cb-dot', 'aria-label': t('Go to {label}', { label }) }, h('span', { class: 'cb-dot__label', 'aria-hidden': 'true' }, label))
     dot.addEventListener('click', () => goTo(at))
     return dot
   })
-  const dotNav = h('nav', { class: 'cb-dots', 'aria-label': 'Categories' }, h('ul', null, dots.map((dot) => h('li', null, dot))))
+  const dotNav = h('nav', { class: 'cb-dots', 'aria-label': t('Categories') }, h('ul', null, dots.map((dot) => h('li', null, dot))))
 
   const stage = h('div', { class: 'cb-stage' }, scene, hud, caption, dotNav)
   const story = h('div', { class: 'cb-story' }, stopsEls)
   const root = experienceRoot('cube', schema, h('div', { class: 'cb-layout' }, stage, story), closingBand(promo))
 
   /* ---------------------------------------------------------------- motion */
-  const orientationFor = (stop) => (stop === 0 ? INTRO : STOPS[(stop - 1) % STOPS.length].map((value, axis) => (axis === 1 ? value - 360 * Math.floor((stop - 1) / STOPS.length) : value)))
+  const orientationFor = (stop) =>
+    alongLine(stop === 0 ? INTRO : STOPS[(stop - 1) % STOPS.length].map((value, axis) => (axis === 1 ? value - 360 * Math.floor((stop - 1) / STOPS.length) : value)))
 
-  let current = [...INTRO]
-  let target = [...INTRO]
+  /** Narrow screens stack the story as sheets over the cube (matches cube.css). */
+  const sheets = window.matchMedia('(max-width: 899px)')
+  let current = orientationFor(0)
+  let target = orientationFor(0)
   let activeStop = -1
   let frame = 0
   let last = 0
   let mounted = false
 
+  /** Half the cube's on-screen height when face-on (perspective enlarges it a little). */
+  const cubeHalf = () => cube.offsetWidth * 0.58
+  const sceneCentre = () => {
+    const rect = scene.getBoundingClientRect()
+    return rect.top + rect.height / 2
+  }
+
   const goTo = (stop) => {
-    const block = stopsEls[clamp(stop, 0, stopsEls.length - 1)]
-    scrollToY(block.getBoundingClientRect().top + window.scrollY - chromeOffset() - 8)
+    const at = clamp(stop, 0, stopsEls.length - 1)
+    const top = stopsEls[at].getBoundingClientRect().top + window.scrollY
+    if (sheets.matches && at > 0) {
+      // Land with the cube turned to the new face and the sheet's heading just below it.
+      const pinnedCentre = chromeOffset() + scene.offsetHeight / 2
+      scrollToY(top - (pinnedCentre + cubeHalf() + 16))
+      return
+    }
+    scrollToY(top - chromeOffset() - 8)
   }
   startButton.addEventListener('click', () => goTo(1))
 
-  const readTarget = () => {
+  /**
+   * Wide screens: the story runs beside the cube. Each face holds while its block
+   * is read and turns near the block's end.
+   */
+  const readBeside = () => {
     const line = chromeOffset() + (window.innerHeight - chromeOffset()) * 0.4
     const tops = stopsEls.map((block) => block.getBoundingClientRect().top)
     let stop = 0
@@ -150,28 +194,51 @@ export const renderCube = (schema, index) => {
     const nextTop = tops[stop + 1]
     const span = nextTop !== undefined ? nextTop - tops[stop] : 1
     const fraction = nextTop !== undefined ? clamp((line - tops[stop]) / span, 0, 1) : 0
-    // Hold on each face while its block is being read, then turn near the end.
-    const turn = clamp((fraction - 0.6) / 0.4, 0, 1)
+    return { stop, turn: clamp((fraction - 0.6) / 0.4, 0, 1), named: stop }
+  }
+
+  /**
+   * Narrow screens: each category is a sheet that slides up over the pinned cube.
+   * A face turns only while the gap between two sheets has the cube fully
+   * uncovered, and the names follow the face the cube shows.
+   */
+  const readSheets = () => {
+    const centre = sceneCentre()
+    const half = cubeHalf()
+    for (let i = 1; i < stopsEls.length; i += 1) {
+      const gapTop = stopsEls[i - 1].getBoundingClientRect().bottom
+      const nextTop = stopsEls[i].getBoundingClientRect().top
+      const clear = nextTop - gapTop - 2 * half // scroll distance the cube is fully visible
+      const progress = clear > 0 ? (centre - half - gapTop) / clear : nextTop <= centre ? 1 : 0
+      const turn = clamp((progress - 0.15) / 0.7, 0, 1)
+      if (turn < 1) return { stop: i - 1, turn, named: turn >= 0.5 ? i : i - 1 }
+    }
+    return { stop: stopsEls.length - 1, turn: 0, named: stopsEls.length - 1 }
+  }
+
+  const readTarget = () => {
+    const { stop, turn, named } = sheets.matches ? readSheets() : readBeside()
     const from = orientationFor(stop)
-    const to = nextTop !== undefined ? orientationFor(stop + 1) : from
+    const to = stop + 1 < stopsEls.length ? orientationFor(stop + 1) : from
     const eased = easeInOut(turn)
     target = [from[0] + (to[0] - from[0]) * eased, from[1] + (to[1] - from[1]) * eased]
 
     const rect = root.getBoundingClientRect()
     const travel = Math.max(1, rect.height - window.innerHeight)
     const pct = Math.round(clamp(-rect.top / travel, 0, 1) * 100)
-    hudPct.textContent = `${String(pct).padStart(3, '0')}%`
+    // The zero-padded "019%" is a Latin display style; in Arabic it reads like a code.
+    hudPct.textContent = isRTL ? `${pct}%` : `${String(pct).padStart(3, '0')}%`
     hudFill.style.transform = `scaleX(${pct / 100})`
 
-    if (stop !== activeStop) {
-      activeStop = stop
-      const name = stop === 0 ? 'Overview' : groups[stop - 1].title
+    if (named !== activeStop) {
+      activeStop = named
+      const name = named === 0 ? t('Overview') : groups[named - 1].title
       hudName.textContent = name
-      capNum.textContent = pad2(stop === 0 ? 0 : ((stop - 1) % FACES.length) + 1)
-      capName.textContent = stop === 0 ? index.model.title : name
+      capNum.textContent = pad2(named === 0 ? 0 : ((named - 1) % FACES.length) + 1)
+      capName.textContent = named === 0 ? index.model.title : name
       dots.forEach((dot, at) => {
-        dot.classList.toggle('is-active', at === stop)
-        if (at === stop) dot.setAttribute('aria-current', 'true')
+        dot.classList.toggle('is-active', at === named)
+        if (at === named) dot.setAttribute('aria-current', 'true')
         else dot.removeAttribute('aria-current')
       })
     }

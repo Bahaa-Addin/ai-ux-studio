@@ -6,6 +6,11 @@
  * built only from Vodafone tokens: ink #14141e as the canvas (≈ the streaming
  * #141414), brand red #e60000 (≈ #e50914), Vodafone neutrals and Vodafone type.
  * The wordmark uses Roboto 900, the font of the original pen.
+ *
+ * Right to left (the Arabic page): layout uses logical properties; what they
+ * cannot express (row paging, the billboard scrim, hover-growth origins) reads
+ * --st-inline (+1 LTR, -1 RTL) or a [dir='rtl'] override at the end of this file.
+ * The VODAFONE lockup stays left to right (dir="ltr" in streaming.js).
  */
 
 .aixc-vx--streaming {
@@ -17,6 +22,10 @@
   --st-text-3: #999999;
   --st-logo-font: Roboto, 'Inter', 'Helvetica Neue', Arial, sans-serif;
   --st-nav-h: 64px;
+  /* +1 left to right, -1 right to left: multiplies offsets along the reading line. */
+  --st-inline: 1;
+  --st-scrim-angle: 77deg;
+  --st-hero-x: 60%;
   background: var(--st-canvas);
   color: var(--vx-white);
 }
@@ -28,6 +37,12 @@
 
 /* ----------------------------------------------------------------- wordmark */
 
+/* The opening could not wait for Roboto: both lockups stay on the fallback face
+   until it ends, so a late arrival cannot reflow them mid-move (streaming.js). */
+.aixc-vx--streaming.is-fallback-face {
+  --st-logo-font: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+}
+
 .aixc-vx--streaming .st-word {
   /* Mark + letters form one lockup: sized, animated and moved as a single element. */
   display: inline-flex;
@@ -35,7 +50,7 @@
   gap: 0.16em;
   font-family: var(--st-logo-font);
   font-weight: 900;
-  line-height: 1;
+  line-height: 1.2; /* holds the letters' ink, so nothing overflows the lockup's box */
   letter-spacing: -0.015em;
   white-space: nowrap;
 }
@@ -61,11 +76,10 @@
   fill: var(--st-mark-glyph, #fff);
 }
 
-/* Letters grow toward the edges: the bowed streaming-logo silhouette. */
+/* The letters carry no transform of their own: a transformed letter over the
+   composited shadow slabs would get a compositor layer per lockup. */
 .aixc-vx--streaming .st-word__l {
   display: inline-block;
-  transform: scaleY(calc(1 + var(--k) * 0.22));
-  transform-origin: 50% 50%;
 }
 
 /* ------------------------------------------------------------------ top bar */
@@ -163,10 +177,11 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: 60% 50%;
+  /* Bias the crop away from the copy (which sits at the start of the line). */
+  object-position: var(--st-hero-x) 50%;
 }
 
-/* Left vignette for the copy, and a fade into the rows. */
+/* Vignette behind the copy (start side), and a fade into the rows. */
 .aixc-vx--streaming .st-billboard__media::before,
 .aixc-vx--streaming .st-billboard__media::after {
   content: '';
@@ -175,7 +190,7 @@
 }
 
 .aixc-vx--streaming .st-billboard__media::before {
-  background: linear-gradient(77deg, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.35) 45%, rgba(0, 0, 0, 0) 85%);
+  background: linear-gradient(var(--st-scrim-angle), rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.35) 45%, rgba(0, 0, 0, 0) 85%);
 }
 
 .aixc-vx--streaming .st-billboard__media::after {
@@ -185,7 +200,7 @@
 .aixc-vx--streaming .st-billboard__info {
   position: absolute;
   bottom: calc(6vw + 72px);
-  left: var(--st-gutter);
+  inset-inline-start: var(--st-gutter);
   z-index: 1;
   display: grid;
   gap: 1.1rem;
@@ -245,7 +260,8 @@
   justify-content: center;
   gap: 0.6rem;
   min-height: 44px;
-  padding: 0.55rem 1.6rem 0.55rem 1.25rem;
+  padding-block: 0.55rem;
+  padding-inline: 1.25rem 1.6rem;
   border: 0;
   border-radius: 4px;
   font-family: var(--vx-font-bold);
@@ -335,7 +351,7 @@
   font-size: 0.875rem;
   opacity: 0;
   cursor: pointer;
-  transform: translateX(-8px);
+  transform: translateX(calc(-8px * var(--st-inline)));
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
@@ -358,7 +374,8 @@
 .aixc-vx--streaming .st-row__pages {
   display: flex;
   gap: 2px;
-  margin: 0 0 0 auto;
+  margin: 0;
+  margin-inline-start: auto;
   padding: 0;
   list-style: none;
 }
@@ -391,7 +408,8 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  transform: translate3d(calc(var(--shift) * -100% / var(--per)), 0, 0);
+  /* Forward pages travel toward the start of the line: left in LTR, right in RTL. */
+  transform: translate3d(calc(var(--shift) * -100% / var(--per) * var(--st-inline)), 0, 0);
   transition: transform 0.75s cubic-bezier(0.5, 0, 0.1, 1);
 }
 
@@ -425,7 +443,7 @@
   border: 0;
   border-radius: 4px;
   background: var(--st-raised);
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -592,13 +610,17 @@
 }
 
 .aixc-vx--streaming .st-row__arrow--prev {
-  left: 0;
-  border-radius: 0 4px 4px 0;
+  inset-inline-start: 0;
+  border-radius: 0;
+  border-start-end-radius: 4px;
+  border-end-end-radius: 4px;
 }
 
 .aixc-vx--streaming .st-row__arrow--next {
-  right: 0;
-  border-radius: 4px 0 0 4px;
+  inset-inline-end: 0;
+  border-radius: 0;
+  border-start-start-radius: 4px;
+  border-end-start-radius: 4px;
 }
 
 .aixc-vx--streaming .st-row__arrow svg {
@@ -687,6 +709,8 @@
 
 .aixc-vx--streaming .st-closing__qr img {
   width: 132px;
+  height: auto;
+  aspect-ratio: 1;
   border-radius: 10px;
 }
 
@@ -732,11 +756,13 @@
   top: 14px;
   z-index: 3;
   display: grid;
+  /* Physical, not inline-end: that value needs Chromium 118+. RTL flips it below. */
   float: right;
   place-items: center;
   width: 38px;
   height: 38px;
-  margin: 14px 14px -52px 0;
+  margin-block: 14px -52px;
+  margin-inline: 0 14px;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -863,7 +889,7 @@
   background: var(--st-raised-2);
   color: var(--vx-white);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
@@ -896,29 +922,80 @@
 
 /* -------------------------------------------------------------------- intro */
 
+/* Above the page's own floating corner widgets (z-index 6-9), so nothing sits on
+   the curtain; below the site header and view bar, which stay usable. */
 .aixc-vx--streaming .st-intro {
   position: fixed;
   inset: var(--vx-top) 0 0;
-  z-index: 8;
+  z-index: 10;
   display: grid;
   place-items: center;
   pointer-events: none;
 }
 
+/* Catches clicks while it is up (a click skips) and swallows touch scrolling;
+   streaming.js lets clicks through as soon as it starts to lift. */
 .aixc-vx--streaming .st-intro__curtain {
   position: absolute;
   inset: 0;
   background: #000;
+  pointer-events: auto;
+  touch-action: none;
 }
 
+/* The page's copy stays out of sight until the curtain lifts and its own rise
+   animations exist (streaming.js, revealContent); animations override this. */
+.aixc-vx--streaming.is-intro .st-billboard__info > *,
+.aixc-vx--streaming.is-intro .st-nav__links {
+  opacity: 0;
+}
+
+/* Sized so the lockup, its full shadow and the push toward the camera all fit
+   the width, down to a 360px phone. */
 .aixc-vx--streaming .st-intro__logo {
   position: relative;
-  display: grid;
-  font-size: clamp(56px, 13vw, 200px);
+  font-size: clamp(40px, 12.5vw, 200px);
   will-change: transform;
 }
 
-.aixc-vx--streaming .st-intro__logo > .st-word {
+/* Parked below the bottom edge by streaming.js until the opening starts, so its
+   layers raster out of sight instead of popping in tile by tile. */
+.aixc-vx--streaming .st-intro__stage {
+  display: grid;
+  will-change: transform;
+}
+
+/* Every layer (the shadow stack and the three faces) on the one cell. */
+.aixc-vx--streaming .st-intro__stage > * {
+  grid-area: 1 / 1;
+}
+
+/* The sweep (streaming.js, wipe): a box with a fixed slanted clip slides over
+   the lockup while the face inside slides the other way. Both move by
+   transform only. */
+.aixc-vx--streaming .st-intro__clip {
+  display: grid;
+  will-change: transform;
+}
+
+.aixc-vx--streaming .st-intro__clip > .st-word,
+.aixc-vx--streaming .st-intro__white,
+.aixc-vx--streaming .st-intro__red {
+  grid-area: 1 / 1;
+  will-change: transform;
+}
+
+/* The shadow: a stack of slabs (streaming.js, depthLayers) on one cell, each
+   carrying its slice of the extrusion; the stack stretches down from the
+   letters' top (and shows nothing above it), the slabs fold by transform. */
+.aixc-vx--streaming .st-intro__depth-stack {
+  display: grid;
+  transform-origin: 50% 0.2em;
+  clip-path: inset(0.2em -1em -4em -1em);
+  will-change: transform;
+}
+
+.aixc-vx--streaming .st-intro__depth-stack > .st-word {
   grid-area: 1 / 1;
 }
 
@@ -928,68 +1005,18 @@
   color: #f3f3f3;
 }
 
+/* Red waits out of sight inside its clip box until the sweep (streaming.js, wipe). */
 .aixc-vx--streaming .st-intro__red {
   color: var(--vx-red);
 }
 
-/* The pen's long shadow, pre-rendered once; only its opacity animates. */
+/* One slab of the shadow: its grey, its 0.01em text-shadow steps and its place
+   down the diagonal are set inline by streaming.js. */
 .aixc-vx--streaming .st-intro__depth {
-  --st-mark-disc: #f3f3f3;
-  --st-mark-glyph: #f3f3f3;
-  color: #f3f3f3;
-  text-shadow:
-    0.02em 0.02em 0 #b1b1b1,
-    0.04em 0.04em 0 #aeaeae,
-    0.06em 0.06em 0 #acacac,
-    0.08em 0.08em 0 #a9a9a9,
-    0.10em 0.10em 0 #a7a7a7,
-    0.12em 0.12em 0 #a4a4a4,
-    0.14em 0.14em 0 #a2a2a2,
-    0.16em 0.16em 0 #9f9f9f,
-    0.18em 0.18em 0 #9d9d9d,
-    0.20em 0.20em 0 #9a9a9a,
-    0.22em 0.22em 0 #989898,
-    0.24em 0.24em 0 #959595,
-    0.26em 0.26em 0 #929292,
-    0.28em 0.28em 0 #909090,
-    0.30em 0.30em 0 #8d8d8d,
-    0.32em 0.32em 0 #8b8b8b,
-    0.34em 0.34em 0 #888888,
-    0.36em 0.36em 0 #868686,
-    0.38em 0.38em 0 #838383,
-    0.40em 0.40em 0 #818181,
-    0.42em 0.42em 0 #7e7e7e,
-    0.44em 0.44em 0 #7c7c7c,
-    0.46em 0.46em 0 #797979,
-    0.48em 0.48em 0 #777777,
-    0.50em 0.50em 0 #747474,
-    0.52em 0.52em 0 #717171,
-    0.54em 0.54em 0 #6f6f6f,
-    0.56em 0.56em 0 #6c6c6c,
-    0.58em 0.58em 0 #6a6a6a,
-    0.60em 0.60em 0 #676767,
-    0.62em 0.62em 0 #656565,
-    0.64em 0.64em 0 #626262,
-    0.66em 0.66em 0 #606060,
-    0.68em 0.68em 0 #5d5d5d,
-    0.70em 0.70em 0 #5b5b5b,
-    0.72em 0.72em 0 #585858,
-    0.74em 0.74em 0 #555555,
-    0.76em 0.76em 0 #535353,
-    0.78em 0.78em 0 #505050,
-    0.80em 0.80em 0 #4e4e4e,
-    0.82em 0.82em 0 #4b4b4b,
-    0.84em 0.84em 0 #494949,
-    0.86em 0.86em 0 #464646,
-    0.88em 0.88em 0 #444444,
-    0.90em 0.90em 0 #414141,
-    0.92em 0.92em 0 #3f3f3f,
-    0.94em 0.94em 0 #3c3c3c,
-    0.96em 0.96em 0 #3a3a3a;
-  will-change: opacity, transform;
+  will-change: transform;
 }
 
-/* A soft red bloom on the push toward the camera. */
+/* A soft red bloom as the red lands. */
 .aixc-vx--streaming .st-intro__glow {
   --st-mark-disc: #ff1a1a;
   --st-mark-glyph: #ff1a1a;
@@ -999,16 +1026,13 @@
   will-change: opacity;
 }
 
-.aixc-vx--streaming .st-intro__white,
-.aixc-vx--streaming .st-intro__red {
-  will-change: opacity;
-}
-
+/* Top end of the curtain: clear of the logo, of the billboard buttons that rise
+   later at the bottom, and of the page's floating corner widgets. */
 .aixc-vx--streaming .st-skip {
   position: fixed;
-  right: var(--st-gutter);
-  bottom: 7vh;
-  z-index: 9;
+  top: calc(var(--vx-top) + 20px);
+  inset-inline-end: var(--st-gutter);
+  z-index: 11;
   min-height: 44px;
   padding: 0.6rem 1.4rem;
   border: 1px solid rgba(255, 255, 255, 0.75);
@@ -1018,10 +1042,16 @@
   font-family: var(--vx-font-bold);
   font-size: 1rem;
   cursor: pointer;
+  opacity: 0;
 }
 
 .aixc-vx--streaming .st-skip:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.aixc-vx--streaming .st-skip:focus-visible {
+  outline: 2px solid var(--vx-white);
+  outline-offset: 3px;
 }
 
 .aixc-vx--streaming .st-intro[hidden],
@@ -1046,7 +1076,7 @@
 @media (max-width: 899px) {
   .aixc-vx--streaming .st-billboard__info {
     width: auto;
-    right: var(--st-gutter);
+    inset-inline-end: var(--st-gutter);
     min-width: 0;
   }
 
@@ -1103,6 +1133,7 @@
     height: max(var(--vx-vh), 520px);
   }
 
+  /* Copy sits at the bottom here, so the crop is the same in both directions. */
   .aixc-vx--streaming .st-billboard__media img {
     object-position: 70% 50%;
   }
@@ -1148,6 +1179,37 @@
   }
 }
 
+/* -------------------------------------------------------------- right to left */
+
+[dir='rtl'] .aixc-vx--streaming {
+  --st-inline: -1;
+  --st-scrim-angle: -77deg;
+  --st-hero-x: 40%;
+}
+
+/* Edge cards grow inward: the first visible card sits at the right edge in RTL. */
+[dir='rtl'] .aixc-vx--streaming .st-card.is-first .st-card__inner {
+  transform-origin: 100% 50%;
+}
+
+[dir='rtl'] .aixc-vx--streaming .st-card.is-last .st-card__inner {
+  transform-origin: 0 50%;
+}
+
+/* The Arabic face needs more line room than Latin display type at line-height 1. */
+.aixc-vx--streaming:lang(ar) .st-billboard__title {
+  line-height: 1.3;
+}
+
+.aixc-vx--streaming:lang(ar) .st-modal__title,
+.aixc-vx--streaming:lang(ar) .st-closing__title {
+  line-height: 1.3;
+}
+
+.aixc-vx--streaming:lang(ar) .st-btn {
+  line-height: 1.3;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .aixc-vx--streaming .st-row__track,
   .aixc-vx--streaming .st-card__inner,
@@ -1155,4 +1217,8 @@
   .aixc-vx--streaming .st-nav {
     transition: none !important;
   }
+}
+
+[dir='rtl'] .aixc-vx--streaming .st-modal__close {
+  float: left;
 }
