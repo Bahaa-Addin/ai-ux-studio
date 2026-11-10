@@ -7,6 +7,7 @@ import { getPageAdapter } from './aixc/page-adapters.js'
 import { initComposer } from './aixc/controller.js'
 import { initPocket } from './pocket/pocket.js'
 import { initJourney } from './pocket/journey.js'
+import { initTips } from './tips/entry.js'
 
 const regions = renderShell(document.querySelector('#app'))
 const adapter = getPageAdapter(document.body.dataset.page)
@@ -55,3 +56,5 @@ window.addEventListener('vg:trail-ready', () => {
 const pocket = initPocket({ adapter, regions, composer })
 // Your journey: when the Voice Guide trail runs on this page, the journey lives in the pocket.
 if (pocket) initJourney({ pocket })
+// Tips: an Apple Tips-style walkthrough of the four demos, from a button bottom-left (voice-guide ADR-0045).
+initTips({ adapter, regions, pocket })

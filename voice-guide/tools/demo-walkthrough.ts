@@ -117,11 +117,11 @@ async function dwell(selector: string, ms = 2500) {
 	}
 }
 
-/** The floating controls: the guide's microphone and journey pill, Vodafone's accessibility button, the Pocket and Reimagine. */
+/** The floating controls: the guide's microphone and journey pill, Vodafone's accessibility button, the Pocket, Reimagine and Tips (ADR-0045). */
 const CONTROLS = `(() => {
 	const r = document.querySelector('vg-guide')?.shadowRoot
 	const box = (el) => { if (!el) return null; const s = getComputedStyle(el); const b = el.getBoundingClientRect(); return b.width && b.height && s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity > 0.05 ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } : null }
-	return { mic: box(r?.querySelector('.vg-mic')), accessibility: box(document.getElementById('vodafone-aw-icon')), pocket: box(document.querySelector('.pocket-peek:not([data-state="hidden"])')), reimagine: box(document.querySelector('.aixc-launcher')), journey: box(r?.querySelector('.tr-pill')) }
+	return { mic: box(r?.querySelector('.vg-mic')), accessibility: box(document.getElementById('vodafone-aw-icon')), pocket: box(document.querySelector('.pocket-peek:not([data-state="hidden"])')), reimagine: box(document.querySelector('.aixc-launcher')), journey: box(r?.querySelector('.tr-pill')), tips: box(document.querySelector('.tips-entry')) }
 })()`
 const controls: Record<string, unknown> = {}
 async function measure(when: string) {

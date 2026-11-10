@@ -1,0 +1,216 @@
+/* Tips: the button and the first-visit invitation (voice-guide ADR-0045). Loaded with the page;
+   the collection's own styles (tips.css) load when it first opens. Vodafone tokens only. */
+
+.tips-entry {
+  position: fixed;
+  left: max(20px, env(safe-area-inset-left));
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--tips-lift, 0px));
+  z-index: 41;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: #fff;
+  color: #14141e;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(20, 20, 30, 0.18);
+  cursor: pointer;
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.18s ease,
+    opacity 0.2s ease;
+}
+
+.tips-entry:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(20, 20, 30, 0.22);
+}
+
+.tips-entry:active {
+  transform: scale(0.96);
+}
+
+.tips-entry:focus-visible {
+  outline: 3px solid #e60000;
+  outline-offset: 3px;
+}
+
+.tips-entry__icon {
+  width: 22px;
+  height: 22px;
+  color: #e60000;
+  flex: none;
+}
+
+/* A red dot until the tips have been opened once. */
+.tips-entry__new {
+  position: absolute;
+  top: 6px;
+  left: 30px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e60000;
+  box-shadow: 0 0 0 2px #fff;
+  transform: scale(0);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tips-entry.is-new .tips-entry__new {
+  transform: scale(1);
+}
+
+/* The experience owns the edges in the Reimagine view and the open Pocket (as in ADR-0044), and the
+   button is not needed while the tips are open. */
+body[data-aixc-view='reimagined'] .tips-entry,
+body[data-pocket-view] .tips-entry,
+html.tips-open .tips-entry {
+  opacity: 0;
+  transform: scale(0.85);
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0s linear 0.2s;
+}
+
+/* -------------------------------------------------------------- the invitation (TipKit style) */
+
+.tips-invite {
+  position: fixed;
+  left: max(20px, env(safe-area-inset-left));
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--tips-lift, 0px) + 56px);
+  z-index: 42;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  width: min(340px, calc(100vw - 40px));
+  padding: 14px 16px 12px 14px;
+  border-radius: 14px;
+  background: #fff;
+  color: #333;
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  box-shadow:
+    0 12px 32px rgba(20, 20, 30, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+  opacity: 0;
+  transform: translateY(10px) scale(0.96);
+  transform-origin: 22px 100%;
+  transition:
+    opacity 0.24s ease,
+    transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tips-invite.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+/* The arrow down to the button. */
+.tips-invite::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 0 0 3px 0;
+  transform: rotate(45deg);
+  box-shadow: 3px 3px 4px rgba(20, 20, 30, 0.06);
+}
+
+.tips-invite__disc {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+}
+
+.tips-invite__disc svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tips-invite__text {
+  display: grid;
+  gap: 2px;
+}
+
+.tips-invite__text strong {
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-weight: normal;
+  font-size: 1rem;
+  color: #14141e;
+}
+
+.tips-invite__actions {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tips-invite__actions button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.tips-invite__go {
+  border: 0;
+  background: #e60000;
+  color: #fff;
+}
+
+.tips-invite__go:hover {
+  background: #990000;
+}
+
+.tips-invite__later {
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #333;
+}
+
+.tips-invite__actions button:focus-visible {
+  outline: 3px solid #333;
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .tips-entry {
+    left: max(16px, env(safe-area-inset-left));
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + var(--tips-lift, 0px));
+  }
+
+  .tips-invite {
+    left: max(16px, env(safe-area-inset-left));
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + var(--tips-lift, 0px) + 56px);
+    width: min(320px, calc(100vw - 112px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tips-entry,
+  .tips-entry__new,
+  .tips-invite {
+    transition: none;
+  }
+}

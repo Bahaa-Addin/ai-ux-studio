@@ -230,6 +230,15 @@ Verified there: consent and local recording (IndexedDB) with Pause and Clear; sp
 
 **Not verified there, do it on the Mac by hand:** Google Chrome, the microphone and real speech recognition (server recognition is allowed for the owner's demos, O15; check the X-ray "listen" row says whether it ran on-device); the Arabic system voice; the live site. Then the same walkthrough by voice, in English and Arabic, at both sizes. Moments 5–6 (shop crawl) and moment 7's notification (`config/sites/vodafone-clone.yaml`, O3, O4, O6) are not in this build.
 
+### Tips: the walkthrough of the four demos (ADR-0045)
+
+On the Services clone a **Tips** button sits bottom-left. It opens an Apple Tips-style collection: a cover, two tips for each demo with a looping animation, and a closing card. **Try it** points at the real control (the microphone, a "Pocket it" chip and the corner, the Reimagine launcher, "Your journey") and waits for you to press it.
+
+- In the demo browser (`npm run demo:trail`) the first-visit invitation never shows, because the browser is driven by Playwright. Open the tips from the button, or go to `/en/services?tips=open` (`/ar/services?tips=open`).
+- The tips remember what was seen and tried in `localStorage` (`aixc.tips.v1`); clear site data to show them as new. `?tips=off` hides nothing but stops the invitation.
+- The button steps aside in the Reimagine view and in the open Pocket. The tips never cover Vodafone's accessibility button.
+- Measured with the real guide on the saved pages (`tests/e2e/tips.e2e.test.ts`, 2026-11-07): no overlaps with the floating controls on load and with the Pocket peeking, English and Arabic, 1366×860 and 390×844. The walkthrough tool now measures the Tips button too.
+
 ## 6. Scheduled crawling (paused)
 
 The schedule stays off until Vodafone approves scheduled crawling of its production site in writing (PRD decision D3). While `sync.schedule.enabled` is `false`:

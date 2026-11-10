@@ -47,6 +47,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0042](0042-page-agent-testing-api-as-the-demo-agent-model.md) | page-agent's testing API is the demo's default agent model, as a replaceable preset; never for customers | Agent, privacy, demo | Accepted for demos |
 | [0043](0043-arabic-services-clone-and-journey-host-by-language.md) | An Arabic Services clone at /ar/services; the journey's host page follows the page's language (`{lang}` in `hostUrl`) | UI, demo | Accepted for the prototype; amends 0040 |
 | [0044](0044-pocket-corner-tucks-in-during-the-reimagine-view.md) | In the Reimagine view the Pocket corner tucks in and the right-hand column stays lifted | UI, floating controls | Accepted |
+| [0045](0045-tips-walkthrough-of-the-four-demos.md) | Tips: an Apple Tips-style walkthrough of the four demos in the Services clone, with "Try it" coach marks on the real controls; the button bottom-left | UI, onboarding, floating controls | Proposed |
 
 ## Changes to the demo plan these decisions made
 

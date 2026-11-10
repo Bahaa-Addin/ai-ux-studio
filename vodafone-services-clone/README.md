@@ -99,6 +99,7 @@ pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
 python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket and its actors: 119 checks
+python tests/e2e/tips_e2e.py http://127.0.0.1:5200/     # Tips, the walkthrough: 87 checks
 ```
 
 ---
@@ -342,6 +343,45 @@ person's journey lives in the Pocket (voice-guide ADR-0040). `index.html` declar
 
 The trail does the recording, storage, sandboxed replay and wording; this file only draws and
 forwards intents. Without the guide on the page, nothing of the journey appears.
+
+---
+
+## Tips: the walkthrough of the four demos
+
+An onboarding in the manner of Apple's Tips app (voice-guide ADR-0045): a **Tips** button at the
+bottom-left opens a collection that pages sideways, a cover, two tips for each demo (voice guide,
+Pocket, Reimagine this page, Your journey) and a closing card.
+
+- **Each tip loops a short animation** of the gesture on a small copy of this page: the page's own
+  services, pictures and section titles, the template names and icons, the journey's own consent
+  words, three of the guide's verified journey questions and a spoken example from the router's
+  tuning set. A page the clone does not have (internet bundles) is drawn as grey blocks.
+- **Try it** hands over to a coach mark on the real control (a "Pocket it" chip, the Pocket
+  corner, the Reimagine launcher and a template, the guide's microphone, "Your journey"). It waits
+  for you to press it; nothing is pressed for you. When the guide is not on the page its two tips
+  say so instead of offering Try it.
+- **Never in the way.** The button is on the one free edge and steps aside in the Reimagine view
+  and the open Pocket; the scrims keep a hole for Vodafone's accessibility button; the trail never
+  records the tips (`data-vg`). A first visit gets a small invitation above the button, not a
+  modal; a browser driven by automation gets none. `?tips=open`, `?tips=invite`, `?tips=off`.
+- Phones get a bottom sheet (swipe sideways, drag down to close); Arabic pages right to left;
+  reduced motion stops each scene on a still frame. Only the button loads with the page; the rest
+  loads the first time the tips open.
+
+```
+src/tips/
+  entry.js / entry.css   the button and the invitation (loaded with the page)
+  tips.js / tips.css     the collection: sheet, paging, parallax, closing card (on demand)
+  scenes.js              the nine animated scenes (Web Animations API on a 400×250 canvas)
+  coach.js               "Try it": TipKit-style popovers, the scrim with holes, the four flows
+  catalog.js             the cards, the rules and the saved state (pure, unit-tested)
+  geometry.js            popover placement and the scrim's shape (pure, unit-tested)
+  icons.js               the demos' own icons
+tests/tips.test.mjs      order, rules, state, geometry, every string in Arabic (npm test)
+tests/e2e/tips_e2e.py    87 browser checks
+```
+
+Add `?aixc-debug` to get `window.__aixcTips` (`open`, `hold(card, ms)` to stop a scene at a moment).
 
 ---
 
