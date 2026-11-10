@@ -59,7 +59,7 @@ The preview is labelled "A memory of <page>, not the live page", is inert, not f
 
 A page with `<meta name="vg-trail-host" content="pocket">` draws the journey itself through `TrailHostApi` (`trail/host.ts`); the trail never opens its sheet there. On other pages of a site with `trail.hostUrl`, the consented pill goes to the host and the journey opens there.
 
-On the Services clone (`../vodafone-services-clone`, mounted at `/en/services` in the demo):
+On the Services clone (`../experiences`, mounted at `/en/services` in the demo):
 
 | Element | Where and how |
 |---|---|

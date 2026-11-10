@@ -65,7 +65,7 @@ const browser = await launchDemoBrowser({
 	channel: 'chromium',
 	xray: 'button',
 	replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'),
-	clone: { path: '/en/services', dir: path.join(ROOT, '../vodafone-services-clone'), pages: { '/ar/services': 'ar/index.html' } },
+	clone: { path: '/en/services', dir: path.join(ROOT, '../experiences'), pages: { '/ar/services': 'ar/index.html' } },
 	accessibilityStandIn: true,
 	fakeMic: wav,
 	initScripts: [VOICE_STUB],

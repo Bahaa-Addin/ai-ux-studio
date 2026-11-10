@@ -13,7 +13,7 @@ The [upstream README](https://github.com/BuildChromeExtensions/textToSpeech) des
 From this branch's root, with Node 18+:
 
 ```sh
-cd vodafone-services-clone
+cd experiences
 node scripts/serve.mjs --port 5181
 ```
 

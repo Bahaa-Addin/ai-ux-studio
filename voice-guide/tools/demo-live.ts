@@ -10,7 +10,7 @@
  *   npm run demo:trail                                  # the same, starting on /en/home (the journey opens in the Pocket)
  *   npm run demo:live -- --agent off                    # no fallback agent (default: VG_LLM_*, else page-agent's testing API, ADR-0042)
  *
- * In replay, /en/services (and /ar/services, its Arabic page) is the Vodafone Services clone with Pocket (../vodafone-services-clone),
+ * In replay, /en/services (and /ar/services, its Arabic page) is the Vodafone Services clone with Pocket (../experiences),
  * so every page of the demo is a Vodafone page: saved ones, and the clone where the Pocket lives
  * (ADR-0040). --clone <dir> picks another clone folder, --clone off serves the saved page instead.
  *
@@ -160,7 +160,7 @@ function defaultReplayDir(siteId: string): string {
 /** The Services clone with Pocket, mounted over the saved /en/services and /ar/services pages (Vodafone only). */
 function cloneMount(option: string | undefined): { path: string; dir: string; pages: Record<string, string> } | undefined {
 	if (option === 'off' || site.id !== 'vodafone-eg') return undefined
-	const dir = path.resolve(option || path.join(ROOT, '../vodafone-services-clone'))
+	const dir = path.resolve(option || path.join(ROOT, '../experiences'))
 	if (fs.existsSync(path.join(dir, 'index.html'))) return { path: '/en/services', dir, pages: fs.existsSync(path.join(dir, 'ar/index.html')) ? { '/ar/services': 'ar/index.html' } : {} }
 	if (option) throw new Error(`No clone in ${dir} (index.html missing)`)
 	console.log(`Clone: ${path.relative(ROOT, dir)} not found, /en/services is the saved page`)

@@ -32,7 +32,7 @@ Offline-first: E1, E4 and T-302 are built and tested on fixtures before anything
 - **Status 2026-10-23**: theme pack in `packages/sdk/src/theme/vodafone.ts`, selected by `ui.theme: vodafone`; `tests/unit/voice.test.ts` checks the tokens and that every colour is in the SPEC-01 palette (found and fixed `#fff5f5`). Open: comparison with the clone's `vodafone.css`.
 - Add `packages/sdk/src/theme/vodafone.ts` exporting the SPEC-01 §2 tokens as a CSS string; select it with site config `ui.theme: vodafone | page` (schema change, default `page`).
 - `themeFromPage()` stays for `page`.
-- **Acceptance**: unit test asserts every SPEC-01 token value; a unit test compares the shared subset with `../vodafone-services-clone/src/aixc/experiences/vodafone.css` (ADR-0029 §4); `config/sites/vodafone-eg.yaml` sets `ui.theme: vodafone`.
+- **Acceptance**: unit test asserts every SPEC-01 token value; a unit test compares the shared subset with `../experiences/src/aixc/experiences/vodafone.css` (ADR-0029 §4); `config/sites/vodafone-eg.yaml` sets `ui.theme: vodafone`.
 
 ### T-102 Restyle existing components · M · depends T-101 · [~]
 - **Status 2026-10-23**: components restyled through `VODAFONE_CSS`; end-to-end tests pass. Open: screenshots in `tests/visual/` (T-105).
@@ -44,7 +44,7 @@ Offline-first: E1, E4 and T-302 are built and tested on fixtures before anything
 - **Acceptance**: end-to-end test on a fixture page whose `body` has no font (like `/spa/`) shows `vodafone-regular-*` or the Arial/Tahoma fallback on every guide text node.
 
 ### T-104 Mirror the Arabic Vodafone font files · S · 🌐 · [ ]
-- Copy `vodafone-regular-ar`, `vf-bold-ar` and `vodafone-light-ar` from the live site's `@font-face` sources into `../vodafone-services-clone/public/assets/fonts/` (the team already mirrors the English files there), and serve them through the gateway font route.
+- Copy `vodafone-regular-ar`, `vf-bold-ar` and `vodafone-light-ar` from the live site's `@font-face` sources into `../experiences/public/assets/fonts/` (the team already mirrors the English files there), and serve them through the gateway font route.
 - **Acceptance**: fixture pages render Arabic guide text in the Vodafone Arabic face offline.
 
 ### T-105 Visual and contrast checks · S · depends T-102 · [ ]
@@ -117,7 +117,7 @@ Offline-first: E1, E4 and T-302 are built and tested on fixtures before anything
 - **Acceptance**: SPEC-02 acceptance 2 on fixture pages that carry a copy of the accessibility button and OneTrust banner markup; SPEC-03 acceptance 6.
 
 ### T-306 Offline fallback site config · S · [ ]
-- `config/sites/vodafone-clone.yaml` serving `../vodafone-services-clone` (built or served by its `scripts/serve.mjs`), with the tag injected; a minimal curated overlay for moments 1, 4 and 8.
+- `config/sites/vodafone-clone.yaml` serving `../experiences` (built or served by its `scripts/serve.mjs`), with the tag injected; a minimal curated overlay for moments 1, 4 and 8.
 - **Acceptance**: `npm run dev -- --site vodafone-clone` works with the network off (apart from speech).
 
 ### T-307 Public HTTPS gateway · S · needs D4 · [ ]
@@ -248,7 +248,7 @@ Offline-first: E1, E4 and T-302 are built and tested on fixtures before anything
 - **Known (B-19)**: Vodafone's live pages call `localStorage.clear()` on load; consent must survive it before the trail can run on the real site.
 
 ### T-808 The journey in the Pocket, on Vodafone pages only · M · Owner: Claude · [x]
-- **Status 2026-11-03**: host mode (`<meta name="vg-trail-host">`, `TrailHostApi`, `trail.hostUrl`); the Services clone's Pocket draws "Your journey", a slim album-style slider and a lightly frosted layer with a staggered entrance (`vodafone-services-clone/src/pocket/journey.js`); clone sections marked with `data-vg-destination`; `npm run demo:trail` runs the saved Vodafone pages with the clone at `/en/services` (ADR-0040). The old fixture demo script is gone.
+- **Status 2026-11-03**: host mode (`<meta name="vg-trail-host">`, `TrailHostApi`, `trail.hostUrl`); the Services clone's Pocket draws "Your journey", a slim album-style slider and a lightly frosted layer with a staggered entrance (`experiences/src/pocket/journey.js`); clone sections marked with `data-vg-destination`; `npm run demo:trail` runs the saved Vodafone pages with the clone at `/en/services` (ADR-0040). The old fixture demo script is gone.
 - **Acceptance**: `tests/e2e/pocket-journey.e2e.test.ts` (5 scenarios); the clone's `pocket_e2e.py` still passes.
 
 ### T-807 Knowledge relations for calls to action · S · [ ]

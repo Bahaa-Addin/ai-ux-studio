@@ -1,6 +1,6 @@
 # VoiceTut × Vodafone Services
 
-**Status (2026-11-05):** ported onto `integration/main` behind a flag. The Services clone loads it only with `?demo=voicetut` (`vodafone-services-clone/src/voicetut-loader.js`); without the flag the page is unchanged. **Neither backend is live today:** the author's public Hugging Face Space answers "The space is paused" (HTTP 503), and the Modal deployment was never activated (blocked on billing since 2026-10-26; its URL answers "invalid function call"). The panel says "Could not connect" until one of them runs. Local model downloads were removed on 2026-10-26; benchmark evidence and recordings are kept.
+**Status (2026-11-05):** ported onto `integration/main` behind a flag. The Services clone loads it only with `?demo=voicetut` (`experiences/src/voicetut-loader.js`); without the flag the page is unchanged. **Neither backend is live today:** the author's public Hugging Face Space answers "The space is paused" (HTTP 503), and the Modal deployment was never activated (blocked on billing since 2026-10-26; its URL answers "invalid function call"). The panel says "Could not connect" until one of them runs. Local model downloads were removed on 2026-10-26; benchmark evidence and recordings are kept.
 
 Owner's choices for the port (2026-11-05): the public Space is the default backend (blank endpoint field), and the earlier GPL-3.0 Chrome extension stays in `experiments/text-to-speech/extension/` (not loaded by any page).
 
@@ -9,7 +9,7 @@ Owner's choices for the port (2026-11-05): the public Space is the default backe
 ## Try it
 
 ```sh
-cd vodafone-services-clone
+cd experiences
 node scripts/serve.mjs --port 5181
 ```
 

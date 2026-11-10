@@ -21,7 +21,7 @@ import { type DemoBrowser, launchDemoBrowser } from '../../tools/demo-browser.ts
 import { SPEECH_STUB } from './browser.ts'
 
 export const V = 'https://web.vodafone.com.eg'
-const CLONE = path.join(ROOT, '../vodafone-services-clone')
+const CLONE = path.join(ROOT, '../experiences')
 
 export interface Run {
 	b: DemoBrowser

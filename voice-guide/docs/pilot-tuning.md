@@ -138,7 +138,7 @@ from trace_events where name = 'router.hint' and at > now() - interval '7 days' 
 | Knob | Where | Default | Change when |
 |---|---|---|---|
 | `?tips=open`, `?tips=invite`, `?tips=off` | the page URL | none | `open` on stage (the Playwright-driven demo browser never gets the invitation); `off` for recordings that must not show the button's dot. |
-| Invitation delay, wait for the consent card | `vodafone-services-clone/src/tips/entry.js` | 1.6 s; up to 60 s | If the invitation lands on top of the page still loading, or after people have started using it. |
+| Invitation delay, wait for the consent card | `experiences/src/tips/entry.js` | 1.6 s; up to 60 s | If the invitation lands on top of the page still loading, or after people have started using it. |
 | Cards: order, copy | `src/tips/catalog.js`; Arabic in `src/i18n.js` | 10 cards, 2 per demo | When a demo changes (O19, the shop, an agent model): its tip changes with it. |
 | Spoken example, journey questions | `src/tips/tips.js` | the router's tuning phrase; three verified questions | Keep them from the tuning set and the experience profile's `verified` questions only. |
 | Scene loop lengths and poster frames | `src/tips/scenes.js` | 6.4–9 s; poster mid-gesture | If people wait for a loop to end before reading, shorten it. |

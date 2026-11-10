@@ -1,7 +1,7 @@
 /**
  * The journey in the Pocket, on Vodafone pages only (ADR-0040, SPEC-06 §6a). The saved pages of
  * web.vodafone.com.eg are replayed under their real URLs, and /en/services is the Services clone
- * with Pocket (../vodafone-services-clone), exactly as `npm run demo:trail` runs it. The SDK, the
+ * with Pocket (../experiences), exactly as `npm run demo:trail` runs it. The SDK, the
  * gateway, every service, the committed knowledge base and the committed experience profile are
  * real; speech synthesis is recorded at the browser boundary (ADR-0024). No microphone is used.
  */

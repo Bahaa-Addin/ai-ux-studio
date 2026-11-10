@@ -9,7 +9,7 @@ This builds on the [official one-line quick start](https://github.com/alibaba/pa
 From this branch's root, with Node 18+:
 
 ```sh
-cd vodafone-services-clone
+cd experiences
 node scripts/serve.mjs --port 5182
 ```
 

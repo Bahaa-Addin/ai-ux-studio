@@ -3,7 +3,7 @@
 - Status: Ready to build
 - Requirement: PRD R1 (the whole experience matches Vodafone's design language)
 - Decision: [ADR-0029](../adr/0029-vodafone-theme-as-fixed-tokens.md)
-- Source facts: [live site audit](../reference/vodafone-live-site-audit.md) §4–§6; `vodafone-services-clone/docs/design-system.md`
+- Source facts: [live site audit](../reference/vodafone-live-site-audit.md) §4–§6; `experiences/docs/design-system.md`
 
 ## 1. Principle
 
@@ -61,7 +61,7 @@ The SDK ships these as CSS custom properties inside its shadow root (`packages/s
 }
 ```
 
-Fonts: the SDK does **not** ship Vodafone font files. On Vodafone pages the page's own `@font-face` rules already load them, and a shadow root can use document-level font faces. Pages that don't load a weight fall back to Arial or Tahoma, never to Times. On `/spa/` pages, check that the Arabic and English regular faces are loaded (`document.fonts.check('16px vodafone-regular-ar')`). If they are not, load the mirrored English files from `vodafone-services-clone/public/assets/fonts/` through the gateway (`/sdk/fonts/…`). Arabic files must be mirrored first (task T-104).
+Fonts: the SDK does **not** ship Vodafone font files. On Vodafone pages the page's own `@font-face` rules already load them, and a shadow root can use document-level font faces. Pages that don't load a weight fall back to Arial or Tahoma, never to Times. On `/spa/` pages, check that the Arabic and English regular faces are loaded (`document.fonts.check('16px vodafone-regular-ar')`). If they are not, load the mirrored English files from `experiences/public/assets/fonts/` through the gateway (`/sdk/fonts/…`). Arabic files must be mirrored first (task T-104).
 
 ## 3. Components and how each one is styled
 

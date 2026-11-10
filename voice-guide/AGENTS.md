@@ -92,4 +92,4 @@ Stop, write the question in the handoff (§5), and move to another task when:
 | `fixtures/sites/` | Offline test sites |
 | `tests/` | `unit/`, `integration/`, `e2e/`, `live/` (only with `VG_LIVE=1`), `fixtures/`, `helpers/` |
 | `docs/` | PRD, JTBD, specs, ADRs, diagrams, tasks, QA, ops, reference, prompts ([index](docs/README.md)) |
-| `../vodafone-services-clone/` | The AIXC clone of Vodafone's Services page: design tokens, fonts, offline fallback |
+| `../experiences/` | The demos' modules (Pocket with its actors and portal, Reimagine, the RED world, Tips) and, until the live plan's phase 9, the Services clone page they run on (ADR-0046) |

@@ -16,7 +16,7 @@ The SDK is one script tag (ADR-0006). The question is who adds it to `web.vodafo
 | **B. Demo browser** | `tools/demo-browser.ts` injects the loader into every top-level document of the allowed origins | Yes | Yes | **The demo**, until mode A exists |
 | C. Reverse proxy mirror | Our proxy rewrites HTML and adds the tag | No: another origin; login, cookies and SPA API calls break | Partly | Rejected (ADR-0026) |
 | D. Iframe around the site | | Blocked by `X-Frame-Options: SAMEORIGIN` | | Not possible |
-| E. Clone with the tag | `vodafone-services-clone` and the fixture sites | No | Only cloned pages | **Offline fallback** on stage |
+| E. Clone with the tag | `experiences` and the fixture sites | No | Only cloned pages | **Offline fallback** on stage |
 | F. Bookmarklet | The presenter, on each full page load | Yes | No: lost on every full page load | Debugging only |
 
 ### Mode A: Tealium tag (for Vodafone's web team)
@@ -48,7 +48,7 @@ Before the demo, the presenter answers the cookie banner once in the demo profil
 
 ### Mode E: offline fallback
 
-`npm run dev -- --site vodafone-clone` serves `../vodafone-services-clone` with the tag injected (site config `config/sites/vodafone-clone.yaml`, task T-306). The script says which moments still work offline.
+`npm run dev -- --site vodafone-clone` serves `../experiences` with the tag injected (site config `config/sites/vodafone-clone.yaml`, task T-306). The script says which moments still work offline.
 
 ## 2. Page types the SDK must handle
 

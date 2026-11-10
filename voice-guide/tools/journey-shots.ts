@@ -47,7 +47,7 @@ const browser = await launchDemoBrowser({
 	channel: 'chromium',
 	xray: 'off',
 	replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'),
-	clone: { path: '/en/services', dir: path.join(ROOT, '../vodafone-services-clone') },
+	clone: { path: '/en/services', dir: path.join(ROOT, '../experiences') },
 	initScripts: [consent],
 	viewport: phone ? { width: 390, height: 844 } : { width: 1366, height: 860 },
 	log: (x) => console.log(x),

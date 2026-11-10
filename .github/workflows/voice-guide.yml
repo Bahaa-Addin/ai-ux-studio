@@ -4,7 +4,7 @@ name: voice-guide
 
 on:
   pull_request:
-    paths: ['voice-guide/**', '.github/workflows/voice-guide.yml']
+    paths: ['voice-guide/**', 'experiences/**', '.github/workflows/voice-guide.yml']
   workflow_dispatch:
 
 concurrency:
