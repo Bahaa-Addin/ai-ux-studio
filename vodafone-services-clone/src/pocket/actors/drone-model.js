@@ -24,14 +24,18 @@ export const DRONE_MODEL = {
 
 const ARMS = [45, 135, 225, 315]
 
+/** The default key light: upper left, in front. */
+export const DRONE_LIGHT = normalize(v3(-0.5, 0.75, 0.45))
+
 export const restDronePose = () => ({ yaw: DRONE_MODEL.restYaw, pitch: 0, roll: 0, y: 0 })
 
 /**
  * @param {object} pose    { yaw, pitch, roll, y }
  * @param {object} camera  from createCamera() (origin at the hull centre)
  * @param {number} spin    rotor angle in degrees
+ * @param {object} [options] { light }: the key light's direction in view space
  */
-export const droneFrame = (pose, camera, spin = 0) => {
+export const droneFrame = (pose, camera, spin = 0, options = {}) => {
   const p = { ...restDronePose(), ...pose }
   const M = orientation({ yaw: p.yaw, pitch: p.pitch, roll: p.roll })
   const lift = v3(0, p.y, 0)
@@ -106,7 +110,7 @@ export const droneFrame = (pose, camera, spin = 0) => {
   const noseNormal = normalize(axis(v3(0, 0.25, 1)))
   const detailMatrix = planeMatrix(camera, toView(details.at), normalize(axis(v3(1, 0, 0))), normalize(axis(v3(0, 1, 0))), details.unit)
 
-  const hullLight = camera.project(add(hullCentre, scale(normalize(v3(-0.5, 0.75, 0.45)), hull.x * 0.6)))
+  const hullLight = camera.project(add(hullCentre, scale(options.light ?? DRONE_LIGHT, hull.x * 0.6)))
 
   return {
     hull: { ...hullShape, light: hullLight },

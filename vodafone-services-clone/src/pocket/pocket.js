@@ -25,6 +25,7 @@ const RAD = Math.PI / 180
 const PEEL_MS = 560 // peel back to halfway (the adhesive holds, then gives)
 const LIFT_MS = 520 // keep peeling while lifting it off, until the last corner lets go
 const THROW_MS = 820 // thrown into the pocket
+const FLIGHT_MS = PEEL_MS + LIFT_MS + THROW_MS // a pocketed sticker lands in the corner this long after the click
 const LIFTED_ANGLE = 0.72 * Math.PI // how steeply a small freed sticker is held up
 const LIFT_HEIGHT = 170 // px: a long sticker droops instead, so it never rises higher than this
 const PEEK_PHI = 38 * RAD // the page corner curls from the bottom-right
@@ -614,8 +615,9 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     }
     const landing = fly(peelAndFly(card, startX))
     openPeek()
-    actors?.itemPocketed({ phi: state.peek?.phi })
+    actors?.itemPocketed({ phi: state.peek?.phi, landsIn: FLIGHT_MS })
     await landing
+    actors?.itemLanded()
     if (state.view === 'page') {
       updateCount()
       bumpPeek()

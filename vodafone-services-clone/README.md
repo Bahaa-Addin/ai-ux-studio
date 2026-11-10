@@ -98,7 +98,7 @@ npm test             # validator, content model and template unit tests (Node bu
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
-python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket and its actors: 119 checks
+python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket and its actors: 204 checks
 ```
 
 ---
@@ -277,21 +277,40 @@ pocket; **Reimagine this page** sits top-right under the header and opens its pa
 button → click it → remove one sticker → *Back to Services* → *Put back* on a liner.
 
 **The mascot and the drone** (`src/pocket/pocket-actors.js`, details in
-[docs/pocket-actors.md](docs/pocket-actors.md)) are 3D models drawn as SVG every frame, so they
-really turn, lean, bank and twirl.
-- **The mascot** is a Vodafone-red flame that lives *under* the page curl. It sits in the curl's
-  `under` layer, so the lifted paper really covers it. Pocketing an item makes it slide out from
-  under the curl, turn to you, wave and dive back under. When the page turns it gets caught,
-  turns and sprints to the opposite corner, skids and swings back round to face you. There its
-  body turns toward the pointer, it twirls when you hover a card, and if left alone it gets
-  impatient, eats an apple and dozes off until you move.
-- **The drone** draws a dashed heart once per opening: it turns its nose into each curve and
-  banks with its rotors spinning in perspective. It dodges the pointer with a pirouette and can
-  be dragged (it always springs home).
-- **They stay out of the way.** They never delay saving, opening or closing, and never cover
-  controls or cards. With reduced motion they appear as calm still poses.
+[docs/pocket-actors.md](docs/pocket-actors.md)) are 3D models drawn as SVG every frame, moved by
+physics (springs, a hoverboard and a drone that fly) rather than fixed curves, so they turn,
+lean and bank freely. Their direction is a "live stage" ([ADR-0002](docs/adr/0002-pocket-actors-live-stage.md),
+superseding the quiet stage of [ADR-0001](docs/adr/0001-pocket-actors-quiet-stage.md)), and the
+mascot flies the drone ([ADR-0003](docs/adr/0003-pocket-actors-mascot-pilots-the-drone.md))
+from a hoverboard ([ADR-0004](docs/adr/0004-pocket-actors-mascot-rides-a-hoverboard.md)).
+- **The mascot** is a Vodafone-red flame that hides behind the pocket button (inside the page
+  curl, so the button and the lifted paper cover it). Every time you pocket something it rises
+  straight up from behind the button, takes hold of its rim and pulls the pocket open; the item
+  drops in, the button snaps shut, the count goes up and it sinks straight back down behind it.
+  When the page turns it rides its hoverboard in from the corner to stand under the drone. Both stand on the album's
+  content margin: their right edges line up with the cards and "Empty pocket". In the album it breathes and shifts its weight, its body turns toward your cards while
+  its modelled eye follows your cursor, and left alone for a minute it dozes off.
+- **It rides a hoverboard** in the album (phones too): a floating Vodafone-red board with an
+  upturned nose and glowing pads that flies like the drone. Riding in, the board banks into the move and wobbles as it
+  brakes while the mascot leans and holds its arms out; then it hovers, bobbing, drifting and
+  swaying on all six axes. It sets the board down to doze and lifts it when it wakes.
+- **It flies the drone.** In the album it holds an RC remote in both hands. Its thumbs move the
+  sticks and the drone answers a moment later. It watches the drone while the drone does
+  something, and your cursor otherwise. When the pocket opens, the drone takes off from the floor
+  beside it. Before it dozes it lands the drone there again, and flies it back up when it wakes.
+- **The drone** hovers round its place, drifting gently on all six axes and banking into its
+  moves. Move the cursor slowly in the open space and it comes over to keep it company; the
+  first click makes it draw a small heart, later clicks a hop. It can be dragged and always
+  comes home. Phones get no drone.
+- **The cursor** on the Pocket page (mouse or trackpad) becomes a small red light: cards near it
+  lean toward it and catch a sheen, a click sends a ring of light that makes the mascot flinch
+  and shoves the drone aside, and the characters' highlights and shadows follow the light.
+- **They stay out of the way.** They never delay saving, opening or closing, never cover
+  controls or cards, and keep their movement small. With reduced motion they appear as calm
+  still poses and the cursor stays normal.
 - **No dependencies.** There is no library: just a small 3D kit, procedural models and SVG decal
-  sheets traced from the reference art. The build grows by about 25 KB gzip.
+  sheets traced from the reference art. This version adds about 8 KB gzip to the production
+  build compared with `integration/main` (measured with `vite build`).
 
 **How the curl works** (`src/pocket/curl.js`). The sheet wraps around a cylinder whose axis sits
 `x` px from the peeled corner. The flat part, the back half of the roll (sliced into strips and
@@ -308,16 +327,19 @@ src/pocket/
   curl.js     page-curl engine: createCurl({ width, height, front, under, back }) → update({ x, phi, R, angle })
   pocket.js   chips, liners, sticker flight, peeking corner, page turn, pocket album, persistence
   pocket.css  all .pocket- / .curl- styles, Vodafone tokens only
-  pocket-actors.js   the mascot and drone: rigs, clips, layout, input, lifecycle (called by pocket.js)
-  pocket-actors.css  .pocket-actor- / .pocket-mascot- / .pocket-drone- styles
+  pocket-actors.js   the mascot and drone: rigs, physics loops, layout, input, lifecycle (called by pocket.js)
+  pocket-actors.css  .pocket-actor- / .pocket-mascot- / .pocket-drone- styles (and the held-open button)
+  pocket-cursor.js   the cursor on the Pocket page: the light, the cards' lean, ripples
+  pocket-cursor.css  .pocket-cursor / .pocket-light / .pocket-ripple styles
   actors/            state machines (mascot-brain, drone-brain), 3D kit (space), 3D models
-                     (mascot-model, drone-model), SVG renderer, pose clips, flight geometry (motion),
-                     timing, cleanup scope; assets/ holds the decal sheets and manifest.json
+                     (mascot-model, drone-model), SVG renderer, motion (physics, gait, drone-flight,
+                     clips), flight geometry (motion), timing, cleanup scope; assets/ holds the decal
+                     sheets and manifest.json
 tests/
   pocket-curl.test.mjs     curl geometry (npm test)
-  pocket-actors.test.mjs   actor states, idle ladder, drag, cleanup, 3D models and projection, assets (npm test)
-  e2e/pocket_e2e.py        119 browser checks: every flow, keyboard, reduced motion, mobile, persistence,
-                           and the actors (occlusion, greeting, page-turn run, idle ladder, drone, 7 viewports)
+  pocket-actors.test.mjs   actor states, physics, the ride, flight, the modelled eye, 3D projection, assets (npm test)
+  e2e/pocket_e2e.py        204 browser checks: every flow, keyboard, reduced motion, mobile, persistence,
+                           and the actors (occlusion, the catch, the reveal, quiet reading, drone, 7 viewports)
 ```
 
 **Implementation notes for a production build.** Clones are made from the rendered DOM, so

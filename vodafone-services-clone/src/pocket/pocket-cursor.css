@@ -1,0 +1,169 @@
+/*
+ * The cursor on the Pocket page (src/pocket/pocket-cursor.js): a small Vodafone-red light, a
+ * soft pool of light on the page, cards that lean toward it with a sheen, and the ring of
+ * light a click sends out. Everything applies only while the album has [data-cursor], which
+ * the script sets for a mouse or trackpad (never with reduced motion), so without it the
+ * page keeps its normal cursor. Selectors are .pocket-cursor-, .pocket-light, .pocket-ripple
+ * prefixed, plus the cards' lean under .pocket-output[data-cursor].
+ */
+
+/* The native cursor gives way to the light, except over text fields. */
+.pocket-output[data-cursor],
+.pocket-output[data-cursor] * {
+  cursor: none !important;
+}
+
+.pocket-output[data-cursor] :is(input, textarea, [contenteditable='true'], [contenteditable='']) {
+  cursor: text !important;
+}
+
+.pocket-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.pocket-output[data-cursor] .pocket-cursor {
+  opacity: 1;
+}
+
+.pocket-cursor[data-over='text'] {
+  opacity: 0 !important;
+}
+
+/* The exact point: a red dot ringed in white, readable on any background. */
+.pocket-cursor__dot {
+  position: absolute;
+  left: -4.5px;
+  top: -4.5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e60000;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 3px rgba(20, 20, 30, 0.22),
+    0 1px 6px rgba(20, 20, 30, 0.25);
+  transition: transform 0.15s ease;
+}
+
+/* The glow round it, trailing a little; it opens into a ring over things you can press. */
+.pocket-cursor__halo {
+  position: absolute;
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0, rgba(255, 236, 232, 0.4) 42%, rgba(230, 0, 0, 0) 72%);
+  box-shadow: inset 0 0 0 1.5px rgba(230, 0, 0, 0.28);
+  transition:
+    width 0.2s ease,
+    height 0.2s ease,
+    left 0.2s ease,
+    top 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.pocket-cursor:is([data-over='control'], [data-over='drone']) .pocket-cursor__halo {
+  left: -26px;
+  top: -26px;
+  width: 52px;
+  height: 52px;
+  box-shadow: inset 0 0 0 2px rgba(230, 0, 0, 0.6);
+}
+
+.pocket-cursor:is([data-over='control'], [data-over='drone']) .pocket-cursor__dot {
+  transform: scale(0.8);
+}
+
+.pocket-cursor[data-over='card'] .pocket-cursor__halo {
+  left: -24px;
+  top: -24px;
+  width: 48px;
+  height: 48px;
+}
+
+.pocket-cursor[data-pressed] .pocket-cursor__dot {
+  transform: scale(0.6);
+}
+
+/* The pool of light on the page: a gentle glow round the pointer, the rest a shade dimmer.
+   It covers the album part of the view; JS moves the centre (--lx, --ly). */
+.pocket-light {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: var(--top, 0px);
+  z-index: 2;
+  background: radial-gradient(
+    circle 1500px at var(--lx, 50%) var(--ly, 50%),
+    rgba(255, 255, 255, 0.26) 0,
+    rgba(255, 255, 255, 0.1) 90px,
+    rgba(255, 255, 255, 0) 170px,
+    rgba(16, 16, 26, 0.035) 300px,
+    rgba(16, 16, 26, 0.075) 680px,
+    rgba(16, 16, 26, 0.075) 1500px
+  );
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.pocket-output[data-cursor] .pocket-light {
+  opacity: 1;
+}
+
+/* Saved cards lean toward the light and catch a sheen where it falls. */
+.pocket-output[data-cursor] .pocket-sticker {
+  transform: perspective(900px) rotateX(var(--lean-x, 0deg)) rotateY(var(--lean-y, 0deg)) rotate(var(--tilt, 0deg));
+  transition:
+    transform 0.35s cubic-bezier(0.2, 0.7, 0.3, 1),
+    box-shadow 0.25s ease;
+}
+
+.pocket-output[data-cursor] .pocket-sticker:hover,
+.pocket-output[data-cursor] .pocket-sticker:focus-within {
+  transform: perspective(900px) rotateX(var(--lean-x, 0deg)) rotateY(var(--lean-y, 0deg)) rotate(0deg) translateY(-3px);
+}
+
+.pocket-output[data-cursor] .pocket-sticker::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: radial-gradient(circle at var(--sheen-x, 50%) var(--sheen-y, 50%), rgba(255, 255, 255, calc(var(--sheen-a, 0) * 0.55)) 0, rgba(255, 255, 255, 0) 55%);
+  pointer-events: none;
+}
+
+/* A click's ring of light. */
+.pocket-ripples {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pocket-ripple {
+  position: absolute;
+  width: calc(var(--reach, 260px) * 2);
+  height: calc(var(--reach, 260px) * 2);
+  border-radius: 50%;
+  border: 2px solid rgba(230, 0, 0, 0.32);
+  box-shadow:
+    0 0 22px 5px rgba(255, 255, 255, 0.6),
+    inset 0 0 18px 4px rgba(255, 255, 255, 0.55);
+  transform: translate(-50%, -50%) scale(0);
+}
+
+/* While the journey covers the album, the light steps aside with the actors. */
+.pocket-output[data-journey='open'] :is(.pocket-light, .pocket-cursor, .pocket-ripples) {
+  display: none;
+}

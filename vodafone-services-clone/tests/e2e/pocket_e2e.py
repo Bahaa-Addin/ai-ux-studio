@@ -1,18 +1,18 @@
 """
-End-to-end checks for Pocket (sticker peel, peeking corner, page turn) and its actors (the
-mascot under the curl and the drone over the album). Optional; needs Python Playwright,
-like aixc_e2e.py.
+End-to-end checks for Pocket (sticker peel, peeking corner, page turn), its actors (the mascot
+behind the pocket button and in the album, the drone) and the Pocket-page cursor. Optional;
+needs Python Playwright, like aixc_e2e.py.
 
     node scripts/serve.mjs --port 5200 &
     python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/
     POCKET_SHOTS=shots python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # + screenshots
 
 Each check prints PASS/FAIL; the script exits non-zero if any check fails. The actor checks
-seed the actors' randomness and shorten the later idle thresholds through
-window.__POCKET_ACTORS_TEST__ (read once at start-up), so every timing is deterministic.
+seed the actors' randomness and bring the doze forward through window.__POCKET_ACTORS_TEST__
+(read once at start-up), so the timings are deterministic.
 """
 
-import asyncio
+import asyncio, math
 import json
 import os
 import sys
@@ -23,9 +23,8 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:5200/"
 SHOTS = os.environ.get("POCKET_SHOTS")
 results = []
 
-# Deterministic actors: fixed seed, the brief's 2 s impatience, apple and sleep brought forward,
-# ambient glances pushed out of the way so they cannot interleave with the checks.
-ACTOR_TEST = "window.__POCKET_ACTORS_TEST__ = { seed: 7, timing: { eatAt: 3500, sleepAt: 6000, impatient: 1000, eat: 1600, glanceEvery: [600000, 600000] } }"
+# Deterministic actors: fixed seed, the doze brought forward to 6 s.
+ACTOR_TEST = "window.__POCKET_ACTORS_TEST__ = { seed: 7, timing: { sleepAt: 6000 } }"
 
 # Records every mascot/drone state change with where the mascot is and whether a turn is running.
 ACTOR_LOG = """
@@ -40,6 +39,7 @@ new MutationObserver((records) => {
       turning: !!document.querySelector('.pocket-layer--plane .curl-flat'),
       under: !!node.closest('.pocket-layer--plane .curl-under'),
       album: !!node.closest('#pocket-output'),
+      flying: !!document.querySelector('.curl-host--flying'),
     })
   }
 }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-mascot-state', 'data-drone-state'] })
@@ -127,12 +127,14 @@ async def collisions(page):
     return await page.evaluate("""(() => {
         const box = (n) => n && n.getClientRects().length ? n.getBoundingClientRect() : null
         const hit = (a, b) => a && b && a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1
+        // On its board the mascot's body is drawn above its box: what counts is all that is drawn.
+        const union = (a, b) => a && b ? { left: Math.min(a.left, b.left), right: Math.max(a.right, b.right), top: Math.min(a.top, b.top), bottom: Math.max(a.bottom, b.bottom) } : a || b
         const drone = document.querySelector('.pocket-drone')
         const mascot = document.querySelector('.pocket-mascot')
-        const living = ['corner-idle', 'glancing', 'impatient', 'eating', 'yawning', 'sleeping', 'jumping', 'beaming', 'waking']
+        const living = ['idle', 'yawning', 'sleeping', 'flinching', 'waking']
         const actors = [
           ['drone', drone && !drone.hidden ? box(drone) : null],
-          ['mascot', mascot && living.includes(mascot.dataset.mascotState) ? box(mascot.querySelector('svg')) : null],
+          ['mascot', mascot && living.includes(mascot.dataset.mascotState) ? union(union(box(mascot.querySelector('svg')), box(mascot.querySelector('[data-part="outline"]'))), box(mascot.querySelector('[data-part="board-deck"]'))) : null],
         ]
         const targets = [...document.querySelectorAll('#pocket-output .pocket-back, #pocket-output .pocket-clear, #pocket-title, .pocket-view__lead, .pocket-view__mark, .pocket-sticker, .pocket-empty')]
         const hits = []
@@ -144,6 +146,131 @@ async def collisions(page):
     })()""")
 
 
+# Records every frame in which the visible mascot overlaps a card's text or controls.
+# Where the visible right edges of the mascot's body and the drone's rotor guards are, relative to
+# the album content's right edge (where the cards and "Empty pocket" end), sampled for 1.2 s.
+MARGIN_PROBE = """() => new Promise((done) => {
+  const right = (root, sel) => { let r = -Infinity; for (const n of root.querySelectorAll(sel)) { const b = n.getBoundingClientRect(); if (b.width) r = Math.max(r, b.right) } return r }
+  const content = document.querySelector('.pocket-view__inner').getBoundingClientRect().right
+  const m = [], d = []; const end = performance.now() + 1200
+  const f = () => {
+    const svg = document.querySelector('.pocket-mascot svg'), drone = document.querySelector('.pocket-drone')
+    // The mascot's visible right edge: its body, or the end of its board where that reaches further.
+    const outline = svg.querySelector('[data-part="outline"]'), deck = svg.querySelector('[data-part="board"]')?.style.display === 'none' ? null : svg.querySelector('[data-part="board-deck"]')
+    const unit = svg.getBoundingClientRect().width / 120
+    m.push(Math.max(right(svg, '[data-part="outline"]') + (+outline.getAttribute('stroke-width') / 2) * unit, deck ? deck.getBoundingClientRect().right + (+deck.getAttribute('stroke-width') / 2) * unit : -Infinity))
+    if (drone && !drone.hidden) d.push(right(drone, '[data-part^="rotor-unit"] > path') + 2.3 * drone.offsetWidth / 200)
+    if (performance.now() < end) return requestAnimationFrame(f)
+    const mean = (a) => a.length ? +(a.reduce((x, y) => x + y, 0) / a.length - content).toFixed(1) : null
+    done({ content, mascot: mean(m), mascotMax: +(Math.max(...m) - content).toFixed(1), drone: mean(d), droneMax: d.length ? +(Math.max(...d) - content).toFixed(1) : null, anchor: drone?.dataset.droneAnchor })
+  }; requestAnimationFrame(f) })"""
+
+# The hoverboard (ADR-0004): per frame, the mascot's state, its board and pose, the box's offset,
+# where its feet and hands are against the deck and the body, and its right edge against the content.
+BOARD_TRACK = """() => { window.__board = []; const f = () => {
+  const m = document.querySelector('.pocket-mascot'), svg = m?.querySelector('svg')
+  if (svg) {
+    const b = (sel) => { const n = svg.querySelector(sel); return n && n.getClientRects().length && getComputedStyle(n).display !== 'none' ? n.getBoundingClientRect() : null }
+    const deck = svg.querySelector('[data-part="board"]')?.style.display === 'none' ? null : b('[data-part="board-deck"]')
+    const feet = Math.max(...['foot-l', 'foot-r'].map((p) => b(`[data-limb="${p}"]`)?.bottom ?? -Infinity))
+    const body = b('[data-part="outline"]'), hands = ['l', 'r'].map((p) => b(`[data-place="hand-${p}"]`))
+    const tr = /translate3d\\(([-\\d.]+)px/.exec(m.querySelector('.pocket-mascot__mover')?.style.transform || m.firstElementChild?.style.transform || '') || [0, 0]
+    const pose = (m.dataset.boardPose || '0,0,0,0,0,0').split(',').map(Number)
+    const content = document.querySelector('.pocket-view__inner')?.getBoundingClientRect().right
+    window.__board.push({ t: performance.now(), s: m.dataset.mascotState, board: m.dataset.board, remote: m.dataset.remote, pose, x: +tr[1],
+      deckTop: deck?.top, deckBottom: deck?.bottom, deckRight: deck?.right, feet, h: svg.getBoundingClientRect().height, bodyL: body?.left, bodyR: body?.right,
+      handsOut: hands.filter((h) => h && body && (h.left + h.width / 2 < body.left || h.left + h.width / 2 > body.right)).length, content })
+  }
+  if (window.__board.length < 3000) requestAnimationFrame(f) }; requestAnimationFrame(f) }"""
+
+def on_deck(r):
+    """The feet stand on the deck: no lower than its underside, and no higher above it than its
+    thickness and tilt allow (a fifth of the mascot's height; the nose rises higher still)."""
+    return r["deckTop"] is not None and r["deckBottom"] - 0.2 * r["h"] <= r["feet"] <= r["deckBottom"] + 1
+
+def board_ride(track):
+    """The ride in, from the board track: frames riding, feet off the deck, its biggest bank, hands out, remote up early, where it starts, any step back."""
+    ride = [r for r in track if r["s"] == "riding"]
+    off = [None if r["deckTop"] is None else round(r["deckBottom"] - r["feet"], 1) for r in ride if not on_deck(r)]
+    # Riding in toward its spot (x falls to 0): it starts in the corner and never steps back on the way.
+    way = []
+    for r in ride:
+        way.append(r["x"])
+        if r["x"] <= 2:
+            break
+    back = max((b - a for a, b in zip(way, way[1:])), default=0)
+    mid = ride[len(ride) // 5: len(ride) * 4 // 5]
+    return {"frames": len(ride), "board": sorted({r["board"] for r in ride}), "feet_off_deck": off[:5], "bank": round(max((abs(r["pose"][1]) for r in ride), default=0), 1),
+            "arms_out": round(sum(1 for r in mid if r["handsOut"]) / max(1, len(mid)), 2), "remote_while_riding": sorted({r["remote"] for r in ride}),
+            "start": way[0] if way else None, "furthest": max(way, default=None), "step_back": round(back, 2)}
+
+def board_hover(track):
+    """Hovering, from the board track: the range on each axis, how high it sits, its feet on the deck and its right edge against the content."""
+    rows = [r for r in track if r["s"] == "idle" and r["board"] == "hovering"]
+    span = lambda key, i=None: round(max(r[key] if i is None else r[key][i] for r in rows) - min(r[key] if i is None else r[key][i] for r in rows), 1) if rows else 0
+    return {"frames": len(rows), "x": span("x"), "bob": span("pose", 0), "roll": span("pose", 1), "pitch": span("pose", 2), "yaw": span("pose", 3), "depth": span("pose", 4),
+            "height": [round(min(r["pose"][0] for r in rows), 1), round(max(r["pose"][0] for r in rows), 1)] if rows else None,
+            "feet_off_deck": sum(1 for r in rows if not on_deck(r)),
+            "deck_past_margin": round(max((r["deckRight"] - r["content"] for r in rows), default=0), 1)}
+
+# The pilot (ADR-0003): where the mascot's hands are against the remote, and whether its rotors turn.
+HANDS_ON_REMOTE = """(() => {
+  const box = (n) => n && n.getClientRects().length ? n.getBoundingClientRect() : null
+  const remote = box(document.querySelector('.pocket-mascot [data-part="remote-case"]'))
+  const hands = ['l', 'r'].map((side) => box(document.querySelector(`.pocket-mascot [data-place="hand-${side}"]`)))
+  const touch = (a, b) => a && b && a.left < b.right + 1 && a.right > b.left - 1 && a.top < b.bottom + 1 && a.bottom > b.top - 1
+  return { remote: !!remote, held: document.querySelector('.pocket-mascot').dataset.remote, hands: hands.map((h) => touch(h, remote)) }
+})()"""
+
+# Per frame: the drone's state and offset, the mascot's sticks and where it looks.
+PILOT_TRACK = """() => { window.__pilot = []; const f = () => {
+  const m = document.querySelector('.pocket-mascot'), d = document.querySelector('.pocket-drone')
+  const tr = /translate3d\\(([-\\d.]+)px, ([-\\d.]+)px/.exec(d.style.transform) || [0, 0, 0]
+  let l = Infinity, r = -Infinity, b = -Infinity
+  for (const n of d.querySelectorAll('[data-part^="rotor-unit"] > path, [data-part="body"] > ellipse')) { const q = n.getBoundingClientRect(); if (!q.width) continue; l = Math.min(l, q.left); r = Math.max(r, q.right); b = Math.max(b, q.bottom) }
+  const page = document.querySelector('.pocket-drone-shadow:not(.pocket-drone-shadow--ground)'), ground = document.querySelector('.pocket-drone-shadow--ground')
+  const pb = page.getBoundingClientRect(), gb = ground.getBoundingClientRect()
+  window.__pilot.push({ t: performance.now(), ds: d.dataset.droneState, s: (m.dataset.sticks || '0,0,0,0').split(',').map(Number), x: +tr[1], y: +tr[2], look: m.dataset.look,
+    dx: (l + r) / 2, db: b, bh: +(m.dataset.boardPose || '0').split(',')[0], px: pb.left + pb.width / 2, py: pb.top + pb.height / 2, pop: +getComputedStyle(page).opacity, gx: gb.left + gb.width / 2, gy: gb.top + gb.height / 2, gop: +getComputedStyle(ground).opacity, floor: m.querySelector('svg').getBoundingClientRect().bottom })
+  if (window.__pilot.length < 2400) requestAnimationFrame(f) }; requestAnimationFrame(f) }"""
+
+def shadow_gaps(track):
+    """How far its shadows get from the drone: the one on the page (from the drone's lowest point,
+    while it shows) and the one on the floor (across from the drone, and off the floor, while it shows)."""
+    page = max((math.hypot(r["px"] - r["dx"], r["py"] - r["db"]) for r in track if r["pop"] > 0.05 and r["dx"] == r["dx"]), default=0)
+    ground = [r for r in track if r["gop"] > 0.05]
+    across = max((abs(r["gx"] - r["dx"]) for r in ground), default=0)
+    floor = max((abs(r["gy"] - r["floor"]) for r in ground), default=0)
+    return {"page": round(page, 1), "ground_across": round(across, 1), "ground_off_floor": round(floor, 1), "ground_frames": len(ground)}
+
+def stick_lead(track, state):
+    """ms from the first frame in `state` to the sticks moving past 0.3, and to the drone moving faster than 40 px/s."""
+    start = next((i for i, r in enumerate(track) if r["ds"] == state), None)
+    if start is None:
+        return None, None
+    t0 = track[start]["t"]
+    sticks = next((r["t"] - t0 for r in track[start:] if max(abs(v) for v in r["s"]) > 0.3), None)
+    moved = None
+    for a, b in zip(track[start:], track[start + 1:]):
+        if math.hypot(b["x"] - a["x"], b["y"] - a["y"]) / max(1, b["t"] - a["t"]) * 1000 > 40:
+            moved = b["t"] - t0
+            break
+    return sticks, moved
+
+CROSSING_PROBE = """(() => { window.__crossings = []; const f = () => {
+  const m = document.querySelector('.pocket-mascot'); const st = m?.dataset.mascotState
+  if (m && !['hidden', 'tucked', 'leaving'].includes(st) && m.closest('#pocket-output') && getComputedStyle(m).visibility !== 'hidden') {
+    // What is drawn: the box, the body above it on the board, and the board.
+    const rects = [m.querySelector('svg'), m.querySelector('[data-part="outline"]'), m.querySelector('[data-part="board-deck"]')].map((n) => n?.getBoundingClientRect()).filter((r) => r && r.width)
+    const a = rects.length ? { left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)), top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom)) } : null
+    for (const n of document.querySelectorAll('#pocket-output .pocket-sticker__title, #pocket-output .pocket-sticker__from, #pocket-output .pocket-sticker__cta, #pocket-output .pocket-sticker__remove')) {
+      const b = n.getBoundingClientRect()
+      if (a && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2) window.__crossings.push(st + ' x ' + n.className)
+    }
+  }
+  if (window.__crossings.length < 500) requestAnimationFrame(f) }; requestAnimationFrame(f) })()"""
+
+
 async def actor_animations(page):
     """Web/CSS animations still running on either actor."""
     return await page.evaluate("document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.target?.closest?.('.pocket-mascot, .pocket-drone, .pocket-drone-trail')).length")
@@ -152,7 +279,7 @@ async def actor_animations(page):
 async def open_and_settle(page):
     await page.click(".pocket-peek")
     await page.wait_for_function("document.activeElement?.id === 'pocket-title'", timeout=6000)
-    await page.wait_for_function("['corner-idle', 'tucked'].includes(document.querySelector('.pocket-mascot')?.dataset.mascotState)", timeout=6000)
+    await page.wait_for_function("['idle', 'tucked'].includes(document.querySelector('.pocket-mascot')?.dataset.mascotState)", timeout=6000)
     await page.wait_for_function("['home-hover', 'hidden'].includes(document.querySelector('.pocket-drone')?.dataset.droneState)", timeout=6000)
 
 
@@ -266,13 +393,21 @@ async def main():
         check("no page errors (desktop)", not page.errors, page.errors)
         await ctx.close()
 
-        # ------------------------------------------------------------ actors: greeting
+        # ------------------------------------------------------------ actors: the save
         ctx, page = await new_page(browser, width=1440, height=900, actors=True)
         await page.wait_for_selector("body[data-pocket-actor-ready]", timeout=5000)
         header_before = await page.evaluate("document.querySelector('#site-header').outerHTML + document.querySelector('footer').outerHTML")
         check("actors: no mascot on the page before anything is pocketed", await page.evaluate("document.querySelectorAll('.pocket-mascot').length") == 0)
         await scroll_to(page, "stay-in-control")
         await page.mouse.move(700, 300)
+        # Watch the pocket button: when it is held open, whether a mitten shows, whether the item is in the air.
+        await page.evaluate("""() => { window.__hold = []; const f = () => {
+            const b = document.querySelector('.pocket-peek'); const g = document.querySelector('.pocket-actor-grip')
+            const m = document.querySelector('.pocket-mascot'), svg = m?.querySelector('svg')?.getBoundingClientRect(), line = document.querySelector('.pocket-actor-peek__clip')?.getBoundingClientRect()
+            if (b) window.__hold.push({ t: Math.round(performance.now()), shown: b.dataset.state === 'shown', held: b.hasAttribute('data-actor-hold'), grip: !!g?.hasAttribute('data-shown'), flying: !!document.querySelector('.curl-host--flying'), count: document.querySelector('.pocket-peek__count')?.textContent,
+              state: m?.dataset.mascotState, visible: !!m && getComputedStyle(m).visibility === 'visible', mx: svg ? svg.left + svg.width / 2 : null, mtop: svg?.top, line: line?.top, bx: (() => { const r = b.getBoundingClientRect(); return [r.left, r.right, r.top] })(),
+              top: (() => { const r = b.getBoundingClientRect(); const n = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!n?.closest('.pocket-peek') })() })
+            if (window.__hold.length < 600) requestAnimationFrame(f) }; requestAnimationFrame(f) }""")
         t0 = await clock(page)
         await page.click('[data-aixc-item="calls-services"] .pocket-cta')
         await page.wait_for_timeout(120)
@@ -283,199 +418,342 @@ async def main():
             const lift = getComputedStyle(document.querySelector('.pocket-layer--lift')).zIndex
             return { state: m?.dataset.mascotState, under: !!m?.closest('.pocket-layer--plane .curl-under'), behindPaper: +plane < +lift, hidden: m && getComputedStyle(m).visibility === 'hidden' }
         })()""")
-        check("actors: mascot starts hidden inside the curl's under layer, beneath the lifted paper", hidden_under == {"state": "hidden", "under": True, "behindPaper": True, "hidden": True}, hidden_under)
-        await wait_state(page, "waving", timeout=3000)
-        await shot(page, "01-mascot-peeking-behind-curl", {"x": 1140, "y": 600, "width": 300, "height": 300})
-        check("actors: the pocket button stays on top and clickable during the wave", await page.evaluate("""(() => {
-            const b = document.querySelector('.pocket-peek').getBoundingClientRect()
-            return !!document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest('.pocket-peek') })()"""))
-        greeting_log = await log(page, "mascot", t0)
-        check("actors: it rises from under the curl (occluded layer) while the corner opens", any(e["state"] == "peeking" and e["under"] for e in greeting_log), greeting_log)
-        rise_at = next((e["t"] - t0 for e in greeting_log if e["state"] == "peeking"), None)
-        check("actors: it stays hidden for the first ~220 ms of the corner opening", rise_at is not None and 200 <= rise_at <= 450, rise_at)
+        check("actors: the mascot starts hidden behind the button, inside the curl's under layer beneath the paper", hidden_under == {"state": "hidden", "under": True, "behindPaper": True, "hidden": True}, hidden_under)
+        await wait_state(page, "hidden", timeout=4000)
+        await page.wait_for_function("window.__actorLog.some((e) => e.who === 'mascot' && e.state === 'slipping')", timeout=5000)
         await wait_state(page, "hidden", timeout=3000)
-        sequence = [e for e in await states(page, "mascot", t0) if e != "hidden"]
-        check("actors: rises, waves once and ducks back to hidden", sequence == ["peeking", "waving", "retreating"], sequence)
-        await settle(page)
+        save_log = await log(page, "mascot", t0)
+        sequence = [e["state"] for e in save_log]
+        check("actors: every save: it comes out, holds the button open, catches, sinks back", sequence == ["emerging", "holding", "catching", "slipping", "hidden"], sequence)
+        emerge = next((e for e in save_log if e["state"] == "emerging"), None)
+        check("actors: it comes out from under the curl while the item is still in the air", emerge and emerge["under"] and emerge["flying"], emerge)
+        check("actors: it starts coming out about 0.7 s before the landing", emerge and 1050 <= emerge["t"] - t0 <= 1450, emerge and emerge["t"] - t0)
+        holding = next((e for e in save_log if e["state"] == "holding"), None)
+        check("actors: it has the pocket open before the item arrives", holding and holding["flying"] and holding["t"] - t0 <= 1800, holding and holding["t"] - t0)
+        catch = next((e for e in save_log if e["state"] == "catching"), None)
+        check("actors: it catches the item as it lands (not before)", catch and not catch["flying"] and 1850 <= catch["t"] - t0 <= 2250, catch and catch["t"] - t0)
+        gone = next((e for e in save_log if e["state"] == "hidden"), None)
+        check("actors: it is gone again within about 0.8 s of the landing", gone and catch and gone["t"] - catch["t"] <= 850, gone and catch and gone["t"] - catch["t"])
+        frames = await page.evaluate("window.__hold")
+        held = [f for f in frames if f["held"]]
+        check("actors: the pocket button is held open (its mouth showing) while the item flies in", held and all(f["flying"] for f in held[:-2]) and held[0]["t"] - t0 < 1900, held[:1])
+        check("actors: its hands show on the button's rim while it holds it", any(f["grip"] and f["held"] for f in frames))
+        check("actors: the button closes as the item drops in, and the count goes up", held and not frames[-1]["held"] and frames[-1]["count"] == "1" and not any(f["held"] and f["count"] == "1" for f in frames), frames[-1])
+        shown = [f for f in frames if f["shown"]]
+        check("actors: the pocket button stays on top and clickable throughout", shown and all(f["top"] for f in shown), [f for f in shown if not f["top"]][:2])
+        out = [f for f in frames if f["visible"] and f["mx"] is not None]
+        check("actors: it rises and sinks straight up and down behind the button (no sideways travel)", out and max(f["mx"] for f in out) - min(f["mx"] for f in out) <= 1 and out[0]["bx"][0] <= out[0]["mx"] <= out[0]["bx"][1], out and (min(f["mx"] for f in out), max(f["mx"] for f in out), out[0]["bx"]))
+        check("actors: it starts and ends wholly below the button's middle (hidden behind it), and rises over its rim", out and out[0]["mtop"] >= out[0]["line"] - 0.5 and min(f["mtop"] for f in out) < out[0]["bx"][2] - 20 and all(f["mtop"] >= f["line"] - 0.5 for f in frames if f["t"] > out[-1]["t"] and f["mtop"] is not None), out and (out[0]["mtop"], out[-1]["mtop"], out[0]["line"], min(f["mtop"] for f in out), out[0]["bx"]))
+        check("actors: the hands come off the button afterwards", not await page.evaluate("document.querySelector('.pocket-actor-grip').hasAttribute('data-shown')"))
+        await shot(page, "01-save")
 
-        # Two saves in quick succession: one greeting, one mascot.
-        await scroll_to(page, "call-and-connect-abroad")
+        # Every save gets it; a rapid second save keeps it holding on (one appearance, two catches).
         t1 = await clock(page)
+        await scroll_to(page, "call-and-connect-abroad")
         await page.click('[data-aixc-item="roaming"] .pocket-cta')
+        await page.wait_for_timeout(250)
         await page.click('[data-aixc-item="visiting-egypt"] .pocket-cta')
-        await page.wait_for_timeout(2100)
-        check("actors: rapid saves coalesce into one greeting and one mascot", (await states(page, "mascot", t1)).count("peeking") == 1 and await page.evaluate("document.querySelectorAll('.pocket-mascot').length") == 1, await states(page, "mascot", t1))
         await settle(page)
+        await page.wait_for_function("document.querySelector('.pocket-mascot').dataset.mascotState === 'hidden'", timeout=4000)
+        later = await states(page, "mascot", t1)
+        check("actors: rapid saves: it comes out once and catches each item", later.count("emerging") == 1 and later.count("catching") == 2 and await count_badge(page) == "3", later)
 
-        # Opening the pocket mid-wave interrupts the greeting.
+        # Pressing the pocket button while it holds the button: it lets go at once.
+        await page.evaluate(BOARD_TRACK)
         await scroll_to(page, "great-entertainment")
         await page.click('[data-aixc-item="mo-salah-world"] .pocket-cta')
-        await wait_state(page, "waving", timeout=3000)
-        t2 = await clock(page)
-        await page.mouse.move(600, 500)
-        await page.click(".pocket-peek")
-        await page.wait_for_timeout(60)
-        check("actors: pressing the pocket button mid-wave ducks the mascot at once", await state(page) == "retreating" and (await log(page, "mascot", t2))[0]["state"] == "retreating")
-        await page.wait_for_function("document.querySelector('.pocket-mascot')?.dataset.mascotState === 'running'", timeout=5000)
-        await shot(page, "02-pocket-reveal-mascot-running")
-        await page.wait_for_function("document.activeElement?.id === 'pocket-title'", timeout=5000)
+        # Press it (a real click event) in the first frame the mascot is holding the button.
+        t2 = await page.evaluate("""() => new Promise((done) => { const f = () => {
+            if (document.querySelector('.pocket-mascot')?.dataset.mascotState === 'holding') {
+              const at = Math.round(performance.now()); document.querySelector('.pocket-peek').click(); done(at)
+            } else requestAnimationFrame(f) }; f() })""")
+        after_press = await log(page, "mascot", t2)
+        check("actors: pressing the pocket button mid-hold makes it let go at once", after_press and after_press[0]["state"] == "slipping" and after_press[0]["t"] - t2 <= 30, after_press[:2])
+
+        # ------------------------------------------------------------ actors: the album
+        await page.wait_for_function("document.activeElement?.id === 'pocket-title'", timeout=6000)
         check("actors: focus still lands on the pocket title", await page.evaluate("document.activeElement.id") == "pocket-title")
-        await wait_state(page, "drawing-heart", who="drone", timeout=3000)
-        await page.wait_for_timeout(900)
-        await shot(page, "07-drone-drawing-heart")
-        await wait_state(page, "corner-idle", timeout=5000)
-        open_log = await log(page, "mascot", t2)
-        names = [e["state"] for e in open_log]
-        reveal = [n for n in names if n in ("page-reveal-hidden", "startled", "running", "recovering", "corner-idle")]
-        check("actors: caught by the turn: hidden, startled, runs, recovers, settles", reveal == ["page-reveal-hidden", "startled", "running", "recovering", "corner-idle"], names)
-        startled = next(e for e in open_log if e["state"] == "startled")
-        check("actors: it is caught while the page is still turning (the turn stays in control)", startled["turning"] and startled["album"], startled)
+        await page.wait_for_function("document.querySelector('.pocket-mascot').dataset.mascotState === 'idle'", timeout=6000)
+        opened = await log(page, "mascot", t2)
+        riding = next((e for e in opened if e["state"] == "riding"), None)
+        check("actors: on opening it rides from the corner while the page is still turning", riding and riding["turning"] and riding["album"], riding)
+        idle_at = next((e["t"] for e in opened if e["state"] == "idle"), None)
+        check("actors: a short ride (well under 2 s)", riding and idle_at and idle_at - riding["t"] <= 2000, riding and idle_at and idle_at - riding["t"])
+        ride = board_ride(await page.evaluate("window.__board"))
+        check("actors (board): it rides in from the corner on its hoverboard (then settles hovering), feet on the deck every frame, never stepping back", ride["frames"] > 20 and ride["board"] in (["riding"], ["hovering", "riding"]) and not ride["feet_off_deck"] and ride["start"] and ride["start"] >= ride["furthest"] - 1 and ride["step_back"] <= 1, ride)
+        check("actors (board): riding, the board banks into the ride and the rider holds its arms out; the remote comes up only once it has stopped", ride["bank"] >= 4 and ride["arms_out"] >= 0.5 and ride["remote_while_riding"] == ["none"], ride)
         check("actors: exactly one mascot, now in the album", await page.evaluate("document.querySelectorAll('.pocket-mascot').length === 1 && !!document.querySelector('.pocket-mascot').closest('#pocket-output .pocket-mascot-stage')"))
-        settled = await rect(page, ".pocket-mascot svg")
-        check("actors: it runs to the corner opposite the curl (bottom-left)", settled and settled["x"] + settled["w"] / 2 < 1440 * 0.2 and abs(settled["y"] + settled["h"] - 900) <= 2, settled)
-        await shot(page, "03-mascot-settled-opposite-corner")
-        await page.wait_for_timeout(1200)
-        check("actors: it stays anchored there after the turn", near(await rect(page, ".pocket-mascot svg"), settled))
-
-        # Drone: one heart, then home.
-        await wait_state(page, "home-hover", who="drone", timeout=5000)
-        hearts = (await states(page, "drone", t2)).count("drawing-heart")
-        check("actors: the drone draws one heart per opening", hearts == 1, await states(page, "drone", t2))
-        home = await rect(page, ".pocket-drone")
+        await wait_state(page, "home-hover", who="drone", timeout=3000)
+        drone_open = await log(page, "drone", t2)
+        take_off = next((e["t"] for e in drone_open if e["state"] == "taking-off"), None)
+        check("actors (pilot): the drone waits parked on the floor beside where it will stand", [e["state"] for e in drone_open][:1] == ["landed"], [e["state"] for e in drone_open])
+        check("actors (pilot): it takes off only once the mascot has ridden in and raised the remote", take_off and idle_at and take_off - idle_at >= 300, take_off and idle_at and take_off - idle_at)
+        hands = await page.evaluate(HANDS_ON_REMOTE)
+        check("actors (pilot): it holds the remote in both hands", hands["remote"] and hands["held"] == "held" and all(hands["hands"]), hands)
+        line = await page.evaluate("document.querySelector('.pocket-mascot svg').getBoundingClientRect().bottom")
+        check("actors: it stands on the bottom edge", abs(line - 900) <= 8, line)
+        margin = await page.evaluate(MARGIN_PROBE)
+        check("actors: the drone hovers on the content margin, upper right (not in the gutter)", margin["anchor"] == "upper-right", margin)
+        check("actors: the drone's right edge lines up with the content's (as Empty pocket and the cards), drifting a few px either side", -6.5 <= margin["drone"] <= 3.5 and margin["droneMax"] <= 4.5, margin)
+        check("actors: the mascot (body and board) lines up with the same margin, under the drone", abs(margin["mascot"]) <= 3, margin)
         col = await collisions(page)
-        check("actors: drone home is collision-free in the upper right", col["anchor"] == "upper-right" and not col["hits"], col)
-        await shot(page, "08-drone-home-anchor")
+        check("actors: drone and mascot cover nothing", not col["hits"], col)
+        gaps = await page.evaluate("""() => new Promise((done) => { const gaps = []; const end = performance.now() + 2000; const f = () => {
+            const d = document.querySelector('.pocket-drone').getBoundingClientRect(), c = document.querySelector('.pocket-clear').getBoundingClientRect()
+            gaps.push(Math.max(c.left - d.right, d.left - c.right, c.top - d.bottom, d.top - c.bottom))
+            if (performance.now() < end) requestAnimationFrame(f); else done(gaps) }; requestAnimationFrame(f) })""")
+        check("actors: hovering, the drone always keeps at least 24 px from Empty pocket", min(gaps) >= 23.5, min(gaps))
+        alive = await page.evaluate("""() => new Promise((done) => {
+            const d = document.querySelector('.pocket-drone'), m = document.querySelector('.pocket-mascot svg')
+            const a = [d.style.transform, d.querySelector('svg').innerHTML, m.innerHTML]
+            setTimeout(() => done([d.style.transform !== a[0], d.querySelector('svg').innerHTML !== a[1], m.innerHTML !== a[2]]), 900) })""")
+        check("actors: both are alive: the drone drifts, its rotors spin, the mascot breathes", all(alive), alive)
+        await shot(page, "02-album")
 
-        # Eye tracking stays inside the socket.
-        await page.mouse.move(1430, 110)
-        await page.wait_for_timeout(450)
-        right = await page.evaluate("document.querySelector('.pocket-mascot [data-part=iris]').dataset.gaze.split(',').map(Number)")
-        await page.mouse.move(2, 880)
-        await page.wait_for_timeout(450)
-        left = await page.evaluate("document.querySelector('.pocket-mascot [data-part=iris]').dataset.gaze.split(',').map(Number)")
-        check("actors: the pupil follows the pointer", right[0] > 2 and right[1] < 0 and left[0] < 0, (right, left))
-        check("actors: the pupil stays inside the eye socket", max((x * x + y * y) ** 0.5 for x, y in (right, left)) <= 7.0 + 1e-6, (right, left))
+        # Where it faces and looks (the drone just hovering, so the pilot's eye is free). The test's
+        # 6 s idle threshold may have passed during the checks above: input brings the drone back up.
+        await page.mouse.move(640, 420)
+        await wait_state(page, "home-hover", who="drone", timeout=5000)
+        await page.mouse.move(200, 500, steps=6)
+        await page.wait_for_timeout(1300)
+        looking = await page.evaluate("[document.querySelector('.pocket-mascot').dataset.look, document.querySelector('.pocket-drone').dataset.droneState]")
+        check("actors (pilot): with the drone just hovering, its eye is on the cursor", looking == ["cursor", "home-hover"], looking)
+        yaw_left = await page.evaluate("+document.querySelector('.pocket-mascot').dataset.bodyYaw")
+        gaze_left = await page.evaluate("document.querySelector('.pocket-mascot [data-part=\"iris\"]').dataset.gaze.split(',').map(Number)")
+        check("actors: its body is turned toward the saved cards, not at the viewer", -45 <= yaw_left <= -12, yaw_left)
+        check("actors: its eye follows the cursor (left)", gaze_left[0] < -2, (gaze_left, looking))
+        await page.mouse.move(1430, 700, steps=6)
+        await page.wait_for_timeout(1300)
+        yaw_right = await page.evaluate("+document.querySelector('.pocket-mascot').dataset.bodyYaw")
+        gaze_right = await page.evaluate("document.querySelector('.pocket-mascot [data-part=\"iris\"]').dataset.gaze.split(',').map(Number)")
+        check("actors: its eye follows the cursor (right) while its body stays toward the cards", gaze_right[0] > 2 and yaw_right < 0, (gaze_right, yaw_right))
+        await page.mouse.move(1360, 450, steps=6)
+        await page.wait_for_timeout(1000)
+        gaze_up = await page.evaluate("document.querySelector('.pocket-mascot [data-part=\"iris\"]').dataset.gaze.split(',').map(Number)")
+        check("actors: it looks up at a cursor above it", gaze_up[1] > 2, gaze_up)
 
-        # Card hover: one jump per entry; keyboard focus: the reduced equivalent.
-        card = await rect(page, '[data-pocket-id="roaming"]')
-        t3 = await clock(page)
-        await page.mouse.move(card["x"] + card["w"] / 2, card["y"] + 40, steps=4)
-        for dx in (10, 25, 40):
-            await page.mouse.move(card["x"] + card["w"] / 2 + dx, card["y"] + 60)
-        await page.wait_for_timeout(120)
-        await shot(page, "04-card-hover-jump")
-        await page.mouse.move(700, 880)
-        await page.mouse.move(card["x"] + card["w"] / 2, card["y"] + 40)
-        await page.wait_for_timeout(700)
-        check("actors: hovering a pocket card triggers one jump (crossings debounced)", (await states(page, "mascot", t3)).count("jumping") == 1, await states(page, "mascot", t3))
-        check("actors: the grid and its cards are not moved by the mascot", near(await rect(page, '[data-pocket-id="roaming"]'), card, 0.5))
-        await page.mouse.move(700, 880)
-        await page.wait_for_timeout(700)
-        t4 = await clock(page)
-        await page.focus("#pocket-title")
-        await page.keyboard.press("Tab")
-        await page.wait_for_timeout(150)
-        check("actors: keyboard focus on a card gets the reduced reaction (no jump)", "beaming" in await states(page, "mascot", t4) and "jumping" not in await states(page, "mascot", t4), await states(page, "mascot", t4))
+        # A card someone rests on turns the body toward it.
+        card = await rect(page, '[data-pocket-id="calls-services"]')
+        first = await rect(page, '.pocket-grid__item:first-child')
+        await page.mouse.move(first["x"] + first["w"] / 2, first["y"] + first["h"] / 2, steps=6)
+        await page.wait_for_timeout(1400)
+        yaw_first = await page.evaluate("+document.querySelector('.pocket-mascot').dataset.bodyYaw")
+        await page.mouse.move(card["x"] + card["w"] / 2, card["y"] + card["h"] / 2, steps=6)
+        await page.wait_for_timeout(1400)
+        yaw_card = await page.evaluate("+document.querySelector('.pocket-mascot').dataset.bodyYaw")
+        check("actors: resting on a card turns the body toward that card", yaw_first < yaw_card - 3 or (first == card), (yaw_first, yaw_card))
+        check("actors: turning toward cards is not a performance (it stays idle)", await state(page) == "idle")
+        check("actors: the grid and its cards are not moved by the mascot", near(await rect(page, '[data-pocket-id="calls-services"]'), card, 0.5))
         check("actors: the mascot is hidden from assistive tech and never takes focus", await page.evaluate("document.querySelector('.pocket-mascot').getAttribute('aria-hidden') === 'true' && !document.activeElement.closest('.pocket-mascot')"))
 
-        # Idle ladder on deterministic timing: 2 s impatient, then apple, then sleep; input wakes.
-        t5 = await clock(page)
-        await page.keyboard.press("Shift")
-        await wait_state(page, "impatient", timeout=4000)
-        impatient_at = next(e["t"] for e in await log(page, "mascot", t5) if e["state"] == "impatient") - t5
-        check("actors: two seconds of inactivity makes it impatient", 1900 <= impatient_at <= 2500, impatient_at)
-        await page.wait_for_timeout(700)
-        await shot(page, "05-mascot-impatient", {"x": 0, "y": 740, "width": 300, "height": 160})
-        await wait_state(page, "eating", timeout=4000)
+        # ------------------------------------------------------------ actors: the cursor
+        await page.mouse.move(700, 270, steps=4)
+        await page.wait_for_timeout(300)
+        cur = await page.evaluate("""(() => {
+            const root = document.querySelector('#pocket-output'), dot = document.querySelector('.pocket-cursor')
+            const m = new DOMMatrix(getComputedStyle(dot).transform)
+            return { on: root.hasAttribute('data-cursor'), native: getComputedStyle(document.querySelector('.pocket-sticker')).cursor, x: m.m41, y: m.m42, over: dot.dataset.over, light: getComputedStyle(document.querySelector('.pocket-light')).opacity }
+        })()""")
+        check("actors: on the Pocket page the cursor becomes a light (the native arrow gives way)", cur["on"] and cur["native"] == "none" and float(cur["light"]) > 0.5, cur)
+        check("actors: its dot sits exactly on the pointer", abs(cur["x"] - 700) <= 1 and abs(cur["y"] - 270) <= 1, cur)
+        back_btn = await rect(page, ".pocket-view__bar .pocket-back:not(.pocket-journey-cta)")
+        await page.mouse.move(back_btn["x"] + 10, back_btn["y"] + back_btn["h"] / 2, steps=3)
+        await page.wait_for_timeout(150)
+        check("actors: over a control it opens into a ring", await page.evaluate("document.querySelector('.pocket-cursor').dataset.over") == "control")
+        await page.mouse.move(card["x"] + card["w"] * 0.85, card["y"] + card["h"] * 0.2, steps=4)
         await page.wait_for_timeout(500)
-        await shot(page, "05-mascot-apple", {"x": 0, "y": 740, "width": 300, "height": 160})
-        await wait_state(page, "sleeping", timeout=6000)
-        ladder = await log(page, "mascot", t5)
-        eat_at = next(e["t"] for e in ladder if e["state"] == "eating") - t5
-        sleep_at = next(e["t"] for e in ladder if e["state"] == "yawning") - t5
-        check("actors: later thresholds bring the apple, then sleep", 3400 <= eat_at <= 4000 and 5900 <= sleep_at <= 6600, (eat_at, sleep_at))
-        await page.wait_for_timeout(900)
-        await shot(page, "05-mascot-sleeping", {"x": 0, "y": 740, "width": 300, "height": 160})
-        t6 = await clock(page)
-        await page.mouse.move(800, 500)
-        await page.wait_for_timeout(80)
-        check("actors: input wakes it", await state(page) == "waking")
-        await wait_state(page, "impatient", timeout=4500)
-        rewind = next(e["t"] for e in await log(page, "mascot", t6) if e["state"] == "impatient") - t6
-        check("actors: waking restarts the idle ladder from zero", 2400 <= rewind <= 3300, rewind)
-        await page.mouse.move(820, 520)
+        lean = await page.evaluate("""(() => { const s = document.querySelector('[data-pocket-id="calls-services"] .pocket-sticker').style
+            return { y: parseFloat(s.getPropertyValue('--lean-y')), x: parseFloat(s.getPropertyValue('--lean-x')), sheen: parseFloat(s.getPropertyValue('--sheen-a')) } })()""")
+        check("actors: the card under the light leans toward it and catches a sheen", lean["y"] > 0.5 and lean["x"] > 0.2 and lean["sheen"] > 0.2, lean)
+        await page.mouse.move(700, 40, steps=4)
+        await page.wait_for_timeout(250)
+        check("actors: outside the album (the site header) the normal cursor is back", not await page.evaluate("document.querySelector('#pocket-output').hasAttribute('data-cursor')"))
 
-        # Drone play: hover dodge, drag (release, cancel, Escape) always springs home.
-        t7 = await clock(page)
-        await page.hover(".pocket-drone")
+        # A click's ripple: the mascot flinches when it reaches it, the drone is shoved aside.
+        m_box = await rect(page, ".pocket-mascot svg")
+        t3 = await clock(page)
+        await page.mouse.click(m_box["x"] - 90, m_box["y"] + 20)
         await page.wait_for_timeout(120)
-        check("actors: hovering the drone startles it", "evading" in await states(page, "drone", t7))
-        await page.mouse.move(700, 600)
+        check("actors: a click sends a ring of light across the page", await page.evaluate("document.querySelectorAll('.pocket-ripple').length") >= 1)
+        await page.wait_for_timeout(500)
+        check("actors: the ring makes the mascot flinch when it reaches it", "flinching" in await states(page, "mascot", t3), await states(page, "mascot", t3))
+        d_box = await rect(page, ".pocket-drone")
+        t4 = await clock(page)
+        await page.mouse.click(d_box["x"] - 70, d_box["y"] + d_box["h"] + 40)
+        await page.wait_for_timeout(700)
+        check("actors: and shoves the drone aside, which recovers", "dodging" in await states(page, "drone", t4), await states(page, "drone", t4))
+        await page.wait_for_timeout(1300)
+
+        # ------------------------------------------------------------ actors: the drone plays
         await wait_state(page, "home-hover", who="drone", timeout=3000)
-        await page.wait_for_timeout(100)
-        check("actors: after the dodge it is back on its anchor", near(await rect(page, ".pocket-drone"), home), (await rect(page, ".pocket-drone"), home))
+        home_x = await page.evaluate("(() => { const d = document.querySelector('.pocket-drone'); return document.querySelector('.pocket-actor-layer').getBoundingClientRect().left + parseFloat(d.style.left) })()")
+        home_y = await page.evaluate("(() => { const d = document.querySelector('.pocket-drone'); return document.querySelector('.pocket-actor-layer').getBoundingClientRect().top + parseFloat(d.style.top) })()")
+        title = await rect(page, "#pocket-title")
+        row_top = await page.evaluate("Math.min(...[...document.querySelectorAll('.pocket-grid__item')].map((n) => n.getBoundingClientRect().top))")
+        # A slow cursor in the open space between the title and the cards, toward the drone.
+        y = (title["y"] + title["h"] + row_top) / 2 + 10
+        x = home_x - 420
+        await page.mouse.move(x, y, steps=5)
+        t5 = await clock(page)
+        await page.evaluate(PILOT_TRACK)
+        for _ in range(36):
+            x += 5
+            await page.mouse.move(x, y)
+            await page.wait_for_timeout(35)
+        await page.wait_for_timeout(700)
+        check("actors: a slow cursor in the open space brings the drone over", "following" in await states(page, "drone", t5), await states(page, "drone", t5))
+        track = await page.evaluate("window.__pilot")
+        sticks_at, moved_at = stick_lead(track, "following")
+        check("actors (pilot): its thumbs move the sticks first; the drone answers about 0.1 s later", sticks_at is not None and moved_at is not None and 60 <= moved_at - sticks_at <= 200, (sticks_at, moved_at))
+        gaps = shadow_gaps(track)
+        check("actors: flying over, its shadow on the page stays with it (never more than 45 px from it)", 0 < gaps["page"] <= 45, gaps)
+        watched = [r["look"] for r in track if r["ds"] == "following"]
+        check("actors (pilot): while it flies the drone over, it watches the drone", watched and watched[-1] == "drone" and watched.count("drone") >= len(watched) * 0.6, watched[-5:])
+        follow = await page.evaluate("""([px, py]) => { const d = document.querySelector('.pocket-drone').getBoundingClientRect(); return Math.hypot(d.left + d.width / 2 - px, d.top + d.height / 2 - py) }""", [x, y])
+        check("actors: it keeps a little way off the cursor", follow >= 45, follow)
+        col = await collisions(page)
+        check("actors: following, it still covers nothing", not col["hits"], col)
+        # A quick move onto a card (one jump, so the pointer never passes over the drone).
+        await page.mouse.move(first["x"] + first["w"] / 2, first["y"] + first["h"] / 2)
+        await page.wait_for_timeout(1400)
+        check("actors: when the cursor goes onto a card (or speeds off) it flies home", await state(page, "drone") == "home-hover" and (await states(page, "drone", t5))[-2:] == ["returning-home", "home-hover"], await states(page, "drone", t5))
+
+        # Pointer on it: curious. Keyboard Enter: the heart (first time), later a hop.
+        d_box = await rect(page, ".pocket-drone")
+        t6 = await clock(page)
+        await page.mouse.move(d_box["x"] + d_box["w"] / 2, d_box["y"] + d_box["h"] / 2, steps=4)
+        await page.wait_for_timeout(300)
+        check("actors: the pointer makes the drone curious", await state(page, "drone") == "curious", await states(page, "drone", t6))
+        await page.mouse.move(700, 270)
+        await page.wait_for_timeout(700)
+        await page.focus(".pocket-drone")
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(500)
+        check("actors: the drone is a named button; Enter plays with it (the first time: a heart)", await page.evaluate("document.activeElement.getAttribute('aria-label')") == "Play with the Pocket drone" and await state(page, "drone") == "drawing-heart")
+        trail = await rect(page, ".pocket-drone-trail")
+        check("actors: only the heart is inked (96 px or less, no approach loop)", trail and trail["w"] <= 96 + 26 and trail["h"] <= 96 + 26, trail)
+        await shot(page, "03-heart")
+        await page.wait_for_timeout(1300 + 600 + 600 + 450)
+        check("actors: the heart fades soon after", await page.evaluate("!document.querySelector('.pocket-drone-trail').hasAttribute('data-shown')"))
+        await wait_state(page, "home-hover", who="drone", timeout=3000)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(120)
+        heart_states = await states(page, "drone", t6)
+        check("actors: later clicks get a hop; one heart per page load", heart_states.count("drawing-heart") == 1 and heart_states[-1] == "evading", heart_states)
+        check("actors: its target is at least 44 x 44 px", await page.evaluate("(() => { const r = document.querySelector('.pocket-drone').getBoundingClientRect(); return r.width >= 44 && r.height >= 44 })()"))
+        await page.wait_for_timeout(900)
+        await wait_state(page, "home-hover", who="drone", timeout=3000)
+
+        async def home_distance():
+            return await page.evaluate("""([hx, hy]) => { const r = document.querySelector('.pocket-drone').getBoundingClientRect(); return Math.hypot(r.left + r.width / 2 - (hx + r.width / 2), r.top + r.height / 2 - (hy + r.height / 2)) }""", [home_x, home_y])
 
         async def grab_and_drag(dx, dy):
             box = await rect(page, ".pocket-drone")
             await page.mouse.move(box["x"] + box["w"] / 2, box["y"] + box["h"] / 2)
-            await page.wait_for_timeout(950)  # past the hover-dodge cooldown and back home
-            await wait_state(page, "home-hover", who="drone", timeout=3000)
+            await page.wait_for_timeout(250)
             await page.mouse.down()
             await page.mouse.move(box["x"] + box["w"] / 2 + dx, box["y"] + box["h"] / 2 + dy, steps=8)
-            await page.wait_for_timeout(250)
+            await page.wait_for_timeout(450)
 
+        await page.evaluate(PILOT_TRACK)
         await grab_and_drag(-160, 220)
-        moved = await rect(page, ".pocket-drone")
-        check("actors: the drone can be dragged", await state(page, "drone") == "dragging" and moved["x"] < home["x"] - 60 and moved["y"] > home["y"] + 80, moved)
+        check("actors: the drone can be dragged", await state(page, "drone") == "dragging" and await home_distance() > 150, await home_distance())
+        fight = await page.evaluate("document.querySelector('.pocket-mascot').dataset.sticks.split(',').map(Number)")
+        check("actors (pilot): dragged away, its sticks fight the hand (pushed hard toward home)", max(abs(v) for v in fight) > 0.8, fight)
+        await page.wait_for_timeout(450)
+        shaking = await page.evaluate("document.querySelector('.pocket-mascot').dataset.look")
+        check("actors (pilot): then it shakes the remote and peers at it", shaking == "remote", shaking)
         await page.mouse.up()
-        await wait_state(page, "home-hover", who="drone", timeout=3000)
-        await page.wait_for_timeout(100)
-        check("actors: releasing a drag springs it back home", near(await rect(page, ".pocket-drone"), home), await rect(page, ".pocket-drone"))
-        await grab_and_drag(120, 160)
-        await page.dispatch_event(".pocket-drone", "pointercancel", {"pointerId": 1, "pointerType": "mouse", "bubbles": True})
-        await page.wait_for_timeout(60)
-        cancelled = await state(page, "drone")
+        await page.wait_for_timeout(1400)
+        check("actors: releasing a drag springs it back home", await home_distance() <= 16, await home_distance())
+        gaps = shadow_gaps(await page.evaluate("window.__pilot"))
+        check("actors: dragged far and flying back, its shadow stays with it (never more than 45 px from it)", 0 < gaps["page"] <= 45, gaps)
+        await grab_and_drag(-120, 160)
+        await page.evaluate("""() => { const d = document.querySelector('.pocket-drone'); const id = 1
+            d.dispatchEvent(new PointerEvent('pointercancel', { pointerId: id, bubbles: true })) }""")
         await page.mouse.up()
-        await wait_state(page, "home-hover", who="drone", timeout=3000)
-        check("actors: pointer cancellation springs it back home", cancelled == "returning-home" and near(await rect(page, ".pocket-drone"), home), cancelled)
-        await grab_and_drag(-100, 140)
+        await page.wait_for_timeout(1400)
+        check("actors: pointer cancellation springs it back home", await home_distance() <= 16 and "returning-home" in await states(page, "drone", t6), await home_distance())
+        await grab_and_drag(-120, 160)
         await page.keyboard.press("Escape")
-        await page.wait_for_timeout(60)
         escaped = await state(page, "drone")
         await page.mouse.up()
-        await wait_state(page, "home-hover", who="drone", timeout=3000)
-        check("actors: Escape during a drag returns it home (and keeps the pocket open)", escaped == "returning-home" and await page.evaluate("!document.querySelector('#pocket-output').hidden") and near(await rect(page, ".pocket-drone"), home), escaped)
-        await page.focus(".pocket-drone")
-        t8 = await clock(page)
-        await page.keyboard.press("Enter")
-        await page.wait_for_timeout(80)
-        check("actors: the drone is a named button; Enter plays with it", await page.evaluate("document.activeElement.getAttribute('aria-label')") == "Play with the Pocket drone" and "evading" in await states(page, "drone", t8))
-        check("actors: its target is at least 44 x 44 px", await page.evaluate("(() => { const r = document.querySelector('.pocket-drone').getBoundingClientRect(); return r.width >= 44 && r.height >= 44 })()"))
-        await wait_state(page, "home-hover", who="drone", timeout=3000)
+        await page.wait_for_timeout(1400)
+        check("actors: Escape during a drag returns it home (and keeps the pocket open)", escaped == "returning-home" and await page.evaluate("!document.querySelector('#pocket-output').hidden") and await home_distance() <= 16, escaped)
 
-        # Resizing re-anchors without replaying the heart.
-        t9 = await clock(page)
-        await page.set_viewport_size({"width": 1024, "height": 768})
-        await page.wait_for_timeout(600)
+        t7 = await clock(page)
+        await page.set_viewport_size({"width": 1100, "height": 820})
+        await page.wait_for_timeout(900)
         col = await collisions(page)
         check("actors: resizing keeps one mascot and one drone, re-anchored and collision-free", await page.evaluate("document.querySelectorAll('.pocket-mascot').length === 1 && document.querySelectorAll('.pocket-drone').length === 1") and not col["hits"] and col["overflow"] <= 0, col)
-        check("actors: resizing does not replay the heart", "drawing-heart" not in await states(page, "drone", t9))
+        check("actors: resizing does not replay the heart", "drawing-heart" not in await states(page, "drone", t7))
         await page.set_viewport_size({"width": 1440, "height": 900})
-        await page.wait_for_timeout(400)
+        await page.wait_for_timeout(900)
 
-        # Closing cancels everything; reopening starts clean.
+        # ------------------------------------------------------------ actors: idle
+        await page.mouse.move(700, 270)
+        t8 = await clock(page)
+        await page.evaluate(BOARD_TRACK)
+        await page.wait_for_timeout(4000)
+        quiet = [s for s in await states(page, "mascot", t8)]
+        check("actors: nothing performs while people read (4 s without input); it just lives", not quiet, quiet)
+        hov = board_hover(await page.evaluate("window.__board"))
+        check("actors (board): hovering, the board moves on all six axes (bob, drift, depth, roll, pitch, turn)", hov["frames"] > 60 and hov["bob"] >= 1.5 and hov["x"] >= 0.5 and hov["depth"] >= 1 and hov["roll"] >= 1 and hov["pitch"] >= 1 and hov["yaw"] >= 1.5, hov)
+        check("actors (board): it hovers near its height, the rider's feet on the deck, the board inside the margin", hov["height"] and 15 <= hov["height"][0] and hov["height"][1] <= 30 and hov["feet_off_deck"] == 0 and hov["deck_past_margin"] <= 3, hov)
+        await page.wait_for_function("document.querySelector('.pocket-mascot').dataset.mascotState === 'sleeping'", timeout=6000)
+        ladder = await log(page, "mascot", t8)
+        sleep_at = ladder[0]["t"] - t8 if ladder else None
+        check("actors: the only idle payoff is a doze, at the idle threshold (a pilot lands its drone first)", sleep_at and 5800 <= sleep_at <= 6700 and [e["state"] for e in ladder] == ["parking", "yawning", "sleeping"], (sleep_at, [e["state"] for e in ladder]))
+        parked = await page.evaluate("""(() => {
+            const right = (root, sel, k) => { let r = { l: Infinity, r: -Infinity, b: -Infinity }; for (const n of root.querySelectorAll(sel)) { const b = n.getBoundingClientRect(); if (!b.width) continue; r = { l: Math.min(r.l, b.left - k), r: Math.max(r.r, b.right + k), b: Math.max(r.b, b.bottom + k) } } return r }
+            const d = document.querySelector('.pocket-drone'), m = document.querySelector('.pocket-mascot svg')
+            const k = 2.3 * d.offsetWidth / 200
+            const guards = right(d, '[data-part^="rotor-unit"] > path', k)
+            const body = m.querySelector('[data-part="outline"]').getBoundingClientRect()
+            const feet = m.getBoundingClientRect().bottom
+            const blades = [...d.querySelectorAll('[data-part="blades"]')].map((n) => n.getAttribute('transform')).join()
+            return { state: d.dataset.droneState, gap: Math.min(Math.abs(body.left - guards.r), Math.abs(guards.l - body.right)), floor: feet - guards.b, blades, look: document.querySelector('.pocket-mascot').dataset.look }
+        })()""")
+        check("actors (pilot): it landed the drone on the floor right beside it", parked["state"] == "landed" and 2 <= parked["gap"] <= 22 and -6 <= parked["floor"] <= 8, parked)
+        col = await collisions(page)
+        check("actors (pilot): parked, the drone covers nothing", not col["hits"], col)
+        await page.wait_for_timeout(300)
+        still_blades = await page.evaluate("[...document.querySelectorAll('.pocket-drone [data-part=\"blades\"]')].map((n) => n.getAttribute('transform')).join()")
+        check("actors (pilot): its rotors have stopped", still_blades == parked["blades"])
+        await page.wait_for_timeout(900)
+        down = await page.evaluate("[document.querySelector('.pocket-mascot').dataset.board, ...document.querySelector('.pocket-mascot').dataset.boardPose.split(',').map(Number)]")
+        check("actors (board): dozing, it has set the board down on the floor and its glow has dimmed", down[0] == "down" and down[1] < 1.5 and down[6] < 0.3, down)
+        t_wake = await clock(page)
+        await page.mouse.move(720, 280)
+        await page.wait_for_timeout(100)
+        check("actors: input wakes it", await state(page) == "waking")
+        await page.evaluate(PILOT_TRACK)
+        await wait_state(page, "home-hover", who="drone", timeout=4000)
+        woke = await states(page, "drone", t_wake)
+        check("actors (pilot): awake, it flies the drone back up to its place", woke[-2:] == ["taking-off", "home-hover"], woke)
+        climb = [r["look"] for r in await page.evaluate("window.__pilot") if r["ds"] == "taking-off"]
+        check("actors (pilot): it watches the drone take off", climb and climb.count("drone") >= len(climb) * 0.6, climb[-5:])
+        lift = next((r["bh"] for r in await page.evaluate("window.__pilot") if r["ds"] == "taking-off"), None)
+        check("actors (board): waking, it lifts the board before the drone takes off", lift is not None and lift >= 12, lift)
+        gaps = shadow_gaps(await page.evaluate("window.__pilot"))
+        check("actors: taking off, its floor shadow stays on the floor right under it and its page shadow stays with it", gaps["ground_frames"] > 0 and gaps["ground_across"] <= 2 and gaps["ground_off_floor"] <= 4 and gaps["page"] <= 45, gaps)
+
+        # ------------------------------------------------------------ actors: closing
+        await page.wait_for_timeout(600)
+        t9 = await clock(page)
+        await page.click(".pocket-view__bar .pocket-back:not(.pocket-journey-cta)")
+        await page.wait_for_timeout(250)
+        check("actors: Back: it lowers the remote and rides off toward the corner while the page turns back", await state(page) == "leaving" and await page.evaluate("document.querySelector('.pocket-mascot').dataset.board") == "riding", await state(page))
+        await page.wait_for_function("document.querySelector('#pocket-output').hidden", timeout=4000)
+        mascot_close = await states(page, "mascot", t9)
+        drone_close = await states(page, "drone", t9)
+        check("actors: closing ends hidden for both actors", mascot_close == ["leaving", "hidden"] and drone_close[:1] == ["closing"] and drone_close[-1] == "hidden", (mascot_close, drone_close))
+        check("actors: after closing, one hidden mascot back behind the button and no actor animation running", await page.evaluate("document.querySelectorAll('.pocket-mascot').length === 1 && !!document.querySelector('.pocket-mascot').closest('.pocket-layer--plane .curl-under')") and await actor_animations(page) == 0, await actor_animations(page))
+        check("actors: the cursor light is gone with the album", await page.evaluate("document.querySelectorAll('.pocket-cursor, .pocket-light, .pocket-ripple').length === 0 && !document.querySelector('#pocket-output').hasAttribute('data-cursor')"))
         t10 = await clock(page)
-        await page.click(".pocket-view__bar .pocket-back")
-        await page.wait_for_function("document.querySelector('#pocket-output').hidden && document.activeElement?.classList.contains('pocket-peek')", timeout=5000)
-        await page.wait_for_timeout(200)
-        mascot_close = await states(page, "mascot", t10)
-        drone_close = await states(page, "drone", t10)
-        check("actors: Back ducks the mascot and stands the drone down", mascot_close[:1] == ["closing"] and mascot_close[-1] == "hidden" and drone_close[:1] == ["closing"] and drone_close[-1] == "hidden", (mascot_close, drone_close))
-        check("actors: after closing, one hidden mascot back under the curl and no actor animation running", await page.evaluate("document.querySelectorAll('.pocket-mascot').length === 1 && !!document.querySelector('.pocket-mascot').closest('.pocket-layer--plane .curl-under')") and await actor_animations(page) == 0, await actor_animations(page))
-        t11 = await clock(page)
         await open_and_settle(page)
-        reopen = [s for s in await states(page, "mascot", t11) if s in ("page-reveal-hidden", "startled", "running", "recovering", "corner-idle")]
-        check("actors: reopening starts from a clean state (one journey, one heart)", reopen == ["page-reveal-hidden", "startled", "running", "recovering", "corner-idle"] and (await states(page, "drone", t11)).count("drawing-heart") == 1, (reopen, await states(page, "drone", t11)))
+        reopen = await states(page, "mascot", t10)
+        check("actors: reopening: it rides to its place again; no heart", reopen[-1] == "idle" and "riding" in reopen and "drawing-heart" not in await states(page, "drone", t10), (reopen, await states(page, "drone", t10)))
         check("actors: the protected header and footer are untouched", await page.evaluate("document.querySelector('#site-header').outerHTML + document.querySelector('footer').outerHTML") == header_before)
         check("no page errors (actors)", not page.errors, page.errors)
         await ctx.close()
@@ -486,12 +764,27 @@ async def main():
             await page.wait_for_selector("body[data-pocket-actor-ready]", timeout=5000)
             await page.wait_for_selector(".pocket-peek[data-state='shown']", timeout=5000)
             await page.wait_for_timeout(800)
+            await page.evaluate(CROSSING_PROBE)
             await open_and_settle(page)
             await page.wait_for_timeout(1700)
             col = await collisions(page)
             check(f"actors {label}: no overflow, nothing covered", col["overflow"] <= 0 and not col["hits"], col)
+            crossings = await page.evaluate("window.__crossings")
+            check(f"actors {label}: the mascot never crosses card content during its ride", not crossings, crossings[:5])
             if width >= 1024:
-                check(f"actors {label}: the mascot stays in view in its corner (not tucked away)", col["mascot"] in ("corner-idle", "glancing", "impatient", "eating", "yawning", "sleeping"), col)
+                check(f"actors {label}: the mascot stays in view under the drone (not tucked away)", col["mascot"] in ("idle", "yawning", "sleeping"), col)
+            # The pointer somewhere over the album (as in use), then the margins.
+            await page.mouse.move(width * 0.4, height * 0.45, steps=4)
+            await page.wait_for_timeout(900)
+            margin = await page.evaluate(MARGIN_PROBE)
+            check(f"actors {label}: the mascot (body and board) lines up with the content's right margin", abs(margin["mascot"]) <= 3, margin)
+            if margin["anchor"] not in (None, "none"):
+                check(f"actors {label}: the drone's right edge lines up with the same margin", margin["anchor"] == "upper-right" and -6.5 <= margin["drone"] <= 3.5 and margin["droneMax"] <= 4.5, margin)
+                hands = await page.evaluate(HANDS_ON_REMOTE)
+                check(f"actors {label}: it flies the drone with the remote in both hands", hands["held"] == "held" and all(hands["hands"]), hands)
+            if width < 640:
+                check(f"actors {label}: phones get no drone (the control bar stays clear)", col["anchor"] == "none" and await page.evaluate("document.querySelector('.pocket-drone').hidden"), col)
+                check(f"actors {label}: no drone, no remote", await page.evaluate("document.querySelector('.pocket-mascot').dataset.remote") in (None, "none"))
             if label == "390x844":
                 await shot(page, "09-mobile-390x844")
             for y in (400, 2000):
@@ -544,11 +837,16 @@ async def main():
             "!document.querySelector('#pocket-output').hidden && document.querySelector('.pocket-layer--plane').childElementCount === 0"))
         await page.wait_for_timeout(1500)
         reduced_states = await states(page)
-        check("reduced motion: the mascot is shown straight in its corner pose (no journey)", await state(page) == "corner-idle" and not set(reduced_states) & {"peeking", "startled", "running", "jumping", "impatient"}, reduced_states)
+        check("reduced motion: the mascot is shown straight in its place (no ride)", await state(page) == "idle" and not set(reduced_states) & {"emerging", "holding", "riding", "flinching"}, reduced_states)
         check("reduced motion: the drone rests at home, decorative, nothing animating", await state(page, "drone") == "home-hover" and await page.evaluate("document.querySelector('.pocket-drone').inert") and await actor_animations(page) == 0 and "drawing-heart" not in await states(page, "drone"), await actor_animations(page))
         await page.hover('[data-pocket-id="roaming"] .pocket-sticker')
         await page.wait_for_timeout(2600)
-        check("reduced motion: no jump, no idle ladder", await state(page) == "corner-idle", await states(page))
+        still = await page.evaluate("(() => { const m = document.querySelector('.pocket-mascot svg'); const a = m.innerHTML; return new Promise((done) => setTimeout(() => done(a === m.innerHTML), 800)) })()")
+        check("reduced motion: no reactions, and the characters are drawn still", await state(page) == "idle" and still, await states(page))
+        check("reduced motion (board): it stands on its board, hovering still", await page.evaluate("document.querySelector('.pocket-mascot').dataset.board") == "hovering")
+        held = await page.evaluate(HANDS_ON_REMOTE)
+        check("reduced motion (pilot): it simply holds the remote, sticks centred; the drone never lands", held["held"] == "held" and all(held["hands"]) and await page.evaluate("(document.querySelector('.pocket-mascot').dataset.sticks || '0,0,0,0').split(',').every((v) => Math.abs(+v) < 0.01)") and not {"landing", "landed", "taking-off"} & set(await states(page, "drone")), held)
+        check("reduced motion: the cursor stays the normal cursor (no light, no lean)", await page.evaluate("!document.querySelector('#pocket-output').hasAttribute('data-cursor') && getComputedStyle(document.querySelector('.pocket-sticker')).cursor !== 'none'"))
         await shot(page, "10-reduced-motion-static")
         check("no page errors (reduced motion)", not page.errors, page.errors)
         await ctx.close()
@@ -564,6 +862,14 @@ async def main():
         await page.wait_for_function("document.activeElement?.id === 'pocket-title'", timeout=4000)
         overflow = await page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
         check("mobile: pocket album fits the screen", overflow <= 0, overflow)
+        check("mobile: no drone in the control bar", await page.evaluate("document.querySelector('.pocket-drone')?.hidden !== false"))
+        await page.wait_for_function("document.querySelector('.pocket-mascot').dataset.mascotState === 'idle'", timeout=6000)
+        await page.evaluate(BOARD_TRACK)
+        await page.wait_for_timeout(2500)
+        phone = board_hover(await page.evaluate("window.__board"))
+        check("mobile (board): it hovers on its board there too (no remote: there is no drone)", phone["frames"] > 40 and phone["bob"] >= 1 and phone["feet_off_deck"] == 0 and await page.evaluate("document.querySelector('.pocket-mascot').dataset.remote") == "none", phone)
+        col = await collisions(page)
+        check("mobile (board): the mascot on its board covers nothing", not col["hits"], col)
         check("no page errors (mobile)", not page.errors, page.errors)
         await ctx.close()
 
@@ -574,4 +880,5 @@ async def main():
     sys.exit(1 if failed else 0)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
