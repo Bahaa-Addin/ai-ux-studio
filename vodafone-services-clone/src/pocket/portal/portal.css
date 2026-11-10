@@ -1,0 +1,488 @@
+/*
+ * The Pocket's portal transition (docs/adr/0005-pocket-portal-transition.md).
+ *
+ * Palette: white and soft neutral whites for the hall (#fff, #f7f7f8 … #c7c7cd), Vodafone red
+ * #e60000 with dark red #990000 for the portal, ink #14141e only in shadows at low alpha.
+ * Type in the preview: the page's own Vodafone faces. Every selector is .vf-portal- prefixed;
+ * nothing here applies outside the transition except two layering rules while it runs.
+ * Only transform and opacity change per frame.
+ */
+
+/* While a transition runs: the page's scrollbar goes (the wall carries a copy of it), and the
+   things that exist on every page (Vodafone's accessibility button, the Voice Guide) stay
+   above the transition. ./controller.js (holdLive) starts them where the page has them (the
+   open Pocket lifts them) and brings them down to their usual place as the destination comes,
+   inline; the usual place below is the fallback. */
+html[data-vf-portal='active'] {
+  overflow: hidden !important;
+}
+
+html[data-vf-portal='active'] #vodafone-aw-icon {
+  z-index: 2147482001 !important;
+  bottom: 20px !important;
+}
+
+html[data-vf-portal='active'] vg-guide {
+  --vg-lift: 0px;
+}
+
+.vf-portal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482000;
+  overflow: hidden;
+  background: #fff;
+  contain: strict;
+  isolation: isolate;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.vf-portal__scene {
+  position: absolute;
+  inset: 0;
+  perspective-origin: 50% 50%;
+}
+
+.vf-portal__scene > * {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.vf-portal__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.vf-portal__go {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+/* -------------------------------------------------------------- the hall */
+
+.vf-portal__tunnel {
+  width: 100%;
+  height: 100%;
+}
+
+.vf-portal__glare {
+  width: 100%;
+  height: 100%;
+  background: #fff;
+}
+
+/* A drifting bank of mist (painted at a quarter size; stretched and grown, it stays soft). */
+.vf-portal__mist {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+
+/* The light in the fog, behind the portal (a square canvas placed and sized inline; it travels
+   and grows with the portal). */
+.vf-portal__light {
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+
+/* The bloom of the hall's lights (painted at a quarter size; stretching it softens it further). */
+.vf-portal__glowmap {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+
+/* A wave of light: a bright core with a soft halo on both sides. */
+.vf-portal__pulse {
+  box-sizing: border-box;
+  border: 3px solid #fff;
+  box-shadow:
+    0 0 14px 3px rgba(255, 255, 255, 0.95),
+    0 0 60px 14px rgba(255, 255, 255, 0.45),
+    inset 0 0 14px 3px rgba(255, 255, 255, 0.95),
+    inset 0 0 60px 14px rgba(255, 255, 255, 0.4);
+  opacity: 0;
+  backface-visibility: hidden;
+}
+
+/* -------------------------------------------------------------- the wall */
+
+.vf-portal__wall {
+  transform-style: preserve-3d;
+}
+
+.vf-portal__face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+
+.vf-portal__flow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+}
+
+.vf-portal__media-stub {
+  background: #f4f4f4;
+}
+
+.vf-portal__scrollbar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  box-sizing: border-box;
+  background: #f1f1f1;
+  border-left: 1px solid #e6e6e6;
+}
+
+.vf-portal__scrollbar-thumb {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 6px;
+  background: #c1c1c1;
+}
+
+/* Backlit as it lets go: a little darker toward its foot. */
+.vf-portal__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(20, 20, 30, 0.55), rgba(20, 20, 30, 0.12) 70%, rgba(20, 20, 30, 0.04));
+  opacity: 0;
+}
+
+/* The first light, from the click: it seeps in at the page's edges (from behind it), soft and
+   white. Gradients, not blurred shadows: a shadow this soft took over 100 ms to paint on a phone. */
+.vf-portal__seep {
+  position: absolute;
+  inset: 0;
+  --vf-seep: rgba(255, 255, 255, 0.92) 0, rgba(255, 255, 255, 0.5) 22px, rgba(255, 255, 255, 0.16) 90px, rgba(255, 255, 255, 0.05) 180px, rgba(255, 255, 255, 0) 280px;
+  background:
+    linear-gradient(to right, var(--vf-seep)),
+    linear-gradient(to left, var(--vf-seep)),
+    linear-gradient(to bottom, var(--vf-seep)),
+    linear-gradient(to top, var(--vf-seep));
+  opacity: 0;
+}
+
+/* Tipped back, its far (top) end hazes into the light. */
+.vf-portal__haze {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 45%, rgba(255, 255, 255, 0.92) 100%);
+  opacity: 0;
+}
+
+.vf-portal__wash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+}
+
+/* Its thickness: the underside, which turns toward the viewer as it tips. */
+.vf-portal__underside {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  width: 100%;
+  transform-origin: 50% 0;
+  transform: rotateX(-90deg);
+  backface-visibility: hidden;
+  /* Facing the viewer, away from the light behind it: in its own shade, with a lit front arris. */
+  background: linear-gradient(to bottom, #f4f4f6 0%, #b9b9c1 22%, #9a9aa4 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Light leaking round its edges: a glow just behind the slab. */
+.vf-portal__spill {
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    0 0 34px 10px #fff,
+    0 0 110px 40px rgba(255, 255, 255, 0.85);
+  opacity: 0;
+}
+
+/* Where the slab meets the floor: a soft occlusion shadow that tightens as it comes down. */
+.vf-portal__floor-shadow {
+  transform-origin: 50% 0;
+  background:
+    radial-gradient(ellipse 47% 44% at 50% 47%, rgba(20, 20, 30, 0.34), rgba(20, 20, 30, 0.16) 70%, rgba(20, 20, 30, 0) 100%);
+  opacity: 0;
+}
+
+/* -------------------------------------------------------------- the portal */
+
+.vf-portal__gate {
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+  opacity: 0;
+}
+
+.vf-portal__view {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.vf-portal__destination {
+  position: absolute;
+  inset: 0;
+}
+
+.vf-portal__iframe {
+  display: block;
+  border: 0;
+  background: #fff;
+  pointer-events: none;
+}
+
+.vf-portal__veil {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* Waiting for the page: a slow band of light, nothing more. */
+.vf-portal__veil[data-loading]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 60%;
+  background: linear-gradient(90deg, rgba(235, 235, 238, 0), rgba(235, 235, 238, 0.9) 50%, rgba(235, 235, 238, 0));
+  animation: vf-portal-shimmer 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes vf-portal-shimmer {
+  to {
+    transform: translateX(267%);
+  }
+}
+
+.vf-portal__frame,
+.vf-portal__glow {
+  position: absolute;
+  inset: calc(-1 * var(--vf-portal-frame));
+  pointer-events: none;
+}
+
+/* A close, soft red glow round the line: light, never a neon halo. */
+.vf-portal__glow {
+  box-shadow:
+    0 0 calc(var(--vf-portal-halo) * 0.8) calc(var(--vf-portal-halo) * 0.05) rgba(230, 0, 0, 0.3),
+    0 0 calc(var(--vf-portal-halo) * 3) calc(var(--vf-portal-halo) * 0.3) rgba(230, 0, 0, 0.14),
+    inset 0 0 calc(var(--vf-portal-halo) * 0.8) 0 rgba(230, 0, 0, 0.12);
+  opacity: 0;
+}
+
+/* One clipped track per side: the soft red line and the lights' trails. Widened across (from
+   ./gate.js) so the line keeps about the same width on screen whatever the distance. */
+.vf-portal__track {
+  position: absolute;
+  overflow: hidden;
+  transform-origin: 50% 50%;
+}
+
+.vf-portal__track--top,
+.vf-portal__track--bottom {
+  left: 0;
+  width: 100%;
+  height: var(--vf-portal-band);
+}
+
+.vf-portal__track--top {
+  top: 0;
+}
+
+.vf-portal__track--bottom {
+  bottom: 0;
+}
+
+.vf-portal__track--left,
+.vf-portal__track--right {
+  top: 0;
+  width: var(--vf-portal-band);
+  height: 100%;
+}
+
+.vf-portal__track--left {
+  left: 0;
+}
+
+.vf-portal__track--right {
+  right: 0;
+}
+
+.vf-portal__line,
+.vf-portal__trail,
+.vf-portal__spark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+}
+
+/* Its image in the glossy floor: the ring and a faint pale page, fading with distance from the floor line. */
+.vf-portal__reflection {
+  transform-origin: 0 0;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 40%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.45) 16%, rgba(0, 0, 0, 0) 42%);
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, 0.45) 16%, rgba(0, 0, 0, 0) 42%);
+  opacity: 0;
+}
+
+.vf-portal__reflection-ring {
+  position: absolute;
+  inset: calc(-1 * var(--vf-portal-frame));
+  box-shadow:
+    0 0 6px 1px rgba(230, 0, 0, 0.5),
+    inset 0 0 6px 1px rgba(230, 0, 0, 0.4);
+}
+
+/* The red the portal casts on the white around it. */
+.vf-portal__redlight {
+  transform-origin: 50% 50%;
+  background: radial-gradient(closest-side, rgba(230, 0, 0, 0.14), rgba(230, 0, 0, 0.06) 50%, rgba(230, 0, 0, 0) 100%);
+  opacity: 0;
+}
+
+/* ---------------------------------------- the preview (a page that cannot be shown) */
+
+.vf-portal__preview {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  background: #fff;
+  color: #333;
+  font-family: vodafone-regular-en, vf-regular, sans-serif;
+}
+
+.vf-portal__preview-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: center;
+  width: min(1140px, 100%);
+}
+
+.vf-portal__preview-media {
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border-radius: 8px;
+  background: #f4f4f4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+.vf-portal__preview-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vf-portal__preview-media img.is-contain {
+  object-fit: contain;
+  padding: 8%;
+  box-sizing: border-box;
+}
+
+.vf-portal__preview-from {
+  margin: 0 0 10px;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vf-portal__preview-title {
+  margin: 0 0 14px;
+  color: #333;
+  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-size: clamp(1.8rem, 1.2rem + 2vw, 2.442rem);
+  line-height: 1.15;
+}
+
+.vf-portal__preview-text {
+  margin: 0 0 22px;
+  color: #666;
+  font-size: 1.16rem;
+  line-height: 1.5;
+}
+
+.vf-portal__preview-address {
+  margin: 0;
+  color: #999;
+  font-size: 0.95rem;
+}
+
+[dir='rtl'] .vf-portal__preview,
+:lang(ar) .vf-portal__preview {
+  font-family: inherit;
+}
+
+@media (max-width: 767px) {
+  .vf-portal__preview-inner {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+/* ---------------------------------------------------------- compositing
+   Everything that changes per frame is its own composited layer, so a frame only moves and
+   fades textures: nothing inside the wall (the copied page) or the portal is ever repainted.
+   Removed with the overlay. */
+.vf-portal__glare,
+.vf-portal__glowmap,
+.vf-portal__shade,
+.vf-portal__seep,
+.vf-portal__haze,
+.vf-portal__wash,
+.vf-portal__underside,
+.vf-portal__spill,
+.vf-portal__glow,
+.vf-portal__frame,
+.vf-portal__veil {
+  will-change: opacity;
+}
+
+.vf-portal__pulse,
+.vf-portal__mist,
+.vf-portal__light,
+.vf-portal__floor-shadow,
+.vf-portal__reflection,
+.vf-portal__redlight {
+  will-change: transform, opacity;
+}
+
+.vf-portal__track,
+.vf-portal__line,
+.vf-portal__trail,
+.vf-portal__spark {
+  will-change: transform, opacity;
+}

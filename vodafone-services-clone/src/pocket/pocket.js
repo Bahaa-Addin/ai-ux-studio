@@ -19,6 +19,7 @@
 
 import { createCurl, cornerReach, fullTurn, tween, ease, lerp } from './curl.js'
 import { createPocketActors } from './pocket-actors.js'
+import { initPocketPortal } from './portal/portal.js'
 import { countItems, t } from '../i18n.js'
 
 const STORE_KEY = 'aixc.pocket.v1'
@@ -181,7 +182,7 @@ const loadIds = () => {
 
 /* -------------------------------------------------------------- controller */
 
-export const initPocket = ({ adapter, regions, composer = null }) => {
+export const initPocket = ({ adapter, regions, composer = null, portal: portalOptions = {} }) => {
   const { sourceRoot, outputRoot, viewbar, header, main } = regions
   const pageShell = main.closest('.page-shell') ?? document.querySelector('.page-shell')
   const { model } = adapter.extractContent(sourceRoot)
@@ -271,6 +272,22 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
   const viewChanged = (view) => pocketRoot.dispatchEvent(new CustomEvent('pocket:view', { detail: view }))
   main.append(pocketRoot)
   document.body.append(planeLayer, liftLayer, peekButton, live)
+
+  /**
+   * Leaving the Pocket page through the portal (./portal/portal.js, ADR-0005). Optional: if it
+   * cannot start, links behave exactly as before. `open` is late-bound (defined further down).
+   */
+  let portal = { enabled: false }
+  try {
+    portal = initPocketPortal({
+      options: portalOptions,
+      isPocketPage: () => state.view === 'pocket' && !state.busy,
+      openPocket: (options) => openPocket(options),
+      viewEvents: pocketRoot,
+    })
+  } catch {
+    portal = { enabled: false }
+  }
 
   /** Mascot and drone. Optional: if they cannot start, the pocket works exactly as before. */
   let actors = null
@@ -697,7 +714,14 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
           'div',
           { class: 'pocket-sticker__actions' },
           link
-            ? make('a', { class: 'pocket-sticker__cta', href: link.href, target: '_blank', rel: 'noopener noreferrer' }, link.label, icon('external', 'pocket-sticker__cta-icon'), make('span', { class: 'aixc-sr-only' }, ' (opens in a new tab)'))
+            ? // With the portal (./portal/portal.js) the link leaves through it, in this tab; without it, a new tab as before.
+              make(
+                'a',
+                { class: 'pocket-sticker__cta', href: link.href, target: portal.enabled ? null : '_blank', rel: 'noopener noreferrer' },
+                link.label,
+                icon('external', 'pocket-sticker__cta-icon'),
+                portal.enabled ? null : make('span', { class: 'aixc-sr-only' }, ' (opens in a new tab)'),
+              )
             : make('span'),
           remove,
         ),
@@ -797,7 +821,8 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     return [sourceRoot, outputRoot, viewbar, note].filter(Boolean)
   }
 
-  const openPocket = async () => {
+  /** `instant`: no page turn (Back from a page the portal opened returns straight to the album). */
+  const openPocket = async ({ instant = false } = {}) => {
     if (state.busy || state.view !== 'page' || (!state.ids.length && !openableEmpty())) return
     state.busy = true
     actors?.openRequested()
@@ -828,7 +853,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     const from = { x: peek.rig.state?.x ?? peekX(), phi: peek.phi, R: peek.R }
     const toR = pageRadius(sheet)
     await tween(
-      reducedMotion() ? 0 : 1150,
+      reducedMotion() || instant ? 0 : 1150,
       (e, t) => {
         const phi = lerp(from.phi, TURNED_PHI, ease.inOutSine(t))
         const R = lerp(from.R, toR, ease.inOutSine(t))
@@ -908,7 +933,7 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     }
   }
 
-  peekButton.addEventListener('click', openPocket)
+  peekButton.addEventListener('click', () => openPocket())
   backButton.addEventListener('click', closePocket)
   emptyBack.addEventListener('click', closePocket)
   pocketRoot.addEventListener('keydown', (event) => {
@@ -944,6 +969,10 @@ export const initPocket = ({ adapter, regions, composer = null }) => {
     openWhenEmpty: (fn) => {
       openableEmpty = fn
     },
-    destroy: () => actors?.destroy(),
+    portal,
+    destroy: () => {
+      actors?.destroy()
+      portal.destroy?.()
+    },
   }
 }

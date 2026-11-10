@@ -36,6 +36,7 @@ const AR = {
   'Your pocket is empty.': 'جيبك فاضي.',
   'Your pocket, {count}.': 'جيبك، {count}.',
   'Play with the Pocket drone': 'العب مع درون الجيب',
+  'Opening {title}': 'بنفتح {title}',
   // Reimagine this page (the composer)
   'Reimagine this page': 'غيّر شكل الصفحة',
   'Describe how you’d like to experience this page…': 'اوصف إزاي تحب تشوف الصفحة…',

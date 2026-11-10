@@ -336,18 +336,58 @@ src/pocket/
                      (mascot-model, drone-model), SVG renderer, motion (physics, gait, drone-flight,
                      clips), flight geometry (motion), timing, cleanup scope; assets/ holds the decal
                      sheets and manifest.json
+  portal/            leaving the Pocket through the portal (ADR-0005): portal.js (wiring, always loaded),
+                     interceptor, controller (lifecycle and clock), wall, environment (glowing white, mist or
+                     hall), gate (the page and its traced red line), handoff, history (Back), motion (pure),
+                     config, portal.css
 tests/
   pocket-curl.test.mjs     curl geometry (npm test)
   pocket-actors.test.mjs   actor states, physics, the ride, flight, the modelled eye, 3D projection, assets (npm test)
   e2e/pocket_e2e.py        210 browser checks: every flow, keyboard, reduced motion, mobile, persistence,
                            and the actors (occlusion, the catch, the reveal, quiet reading, drone, 7 viewports,
                            hidden while the corner is tucked in the reimagined view, ADR-0044)
+  pocket-portal.test.mjs   the portal's camera, fall, approach, interceptor rules, config (npm test)
+  e2e/portal_e2e.py        56 browser checks of the portal, same origin (replay) and cross origin
 ```
 
 **Implementation notes for a production build.** Clones are made from the rendered DOM, so
 anything a clone cannot reproduce (a playing video, a canvas) would freeze in the turning page.
 Pocketing is local to the browser; a real version would link each sticker to a product ID and
 an account so the pocket follows the customer across devices.
+
+### Leaving the Pocket through the portal
+
+A sticker's link does not just navigate (`src/pocket/portal/`,
+[ADR-0005](docs/adr/0005-pocket-portal-transition.md)). On the click, light seeps in at the
+page's edges and you start to move in on the page, easing in; closing in, you push the whole
+Pocket page over and it falls backwards like a wall, hinged on its bottom edge, into a glowing,
+dreamlike white space (no mist), while you go through where it stood. Far away, out of the light
+behind it, the destination page stands like a door; as you go toward it, it comes toward you too,
+rising a little off the floor, while two lights trace a thin, soft red line round it from
+opposite corners and then circle it slowly. Then a long, soft ease-out, as long as the way in,
+until the page is the screen, about 3.3 s after the click. The real navigation then happens under that last frame, which is the
+page itself.
+(`?portal-world=mist` shows the earlier misty void, `?portal-world=hall` a gleaming hall of
+light; `?portal-camera=still` keeps you still and brings the page to you instead.)
+
+- **The real page** is shown when it is on the same origin, which is the case in the demo
+  (`npm run demo:trail` serves this clone at `web.vodafone.com.eg/en/services` beside the saved
+  pages) and on Vodafone's own site. It loads in a sandboxed iframe with no scripts. Vodafone
+  forbids framing from other sites (`X-Frame-Options: SAMEORIGIN`), so on this standalone server
+  the portal shows the sticker's own preview (picture, title, copy, address) instead.
+- **Links now leave in this tab.** Ctrl/⌘-click and the middle button still open a tab, Back
+  returns to the open Pocket, and with reduced motion the link just navigates. Escape skips to
+  the destination. `?portal=off` brings back the old new-tab links.
+- **Knobs** are in `src/pocket/portal/config.js` (how far and how fast you move in, and the push,
+  under `camera` (`travel`, `ease`, `push`); the destination's own approach and the ease-out under
+  `portal.ease`; the red line under
+  `portal.frame`, `line`, `trace` and `flow`; the glowing white under `glow`, the misty void's
+  under `mist`). For a demo, `?portal-speed=0.5` plays it in slow motion, `?portal-world=hall`
+  switches the look, and `?portal-debug` logs each phase.
+
+```bash
+python tests/e2e/portal_e2e.py http://127.0.0.1:5200/   # 56 checks; uses ../voice-guide/fixtures/replay
+```
 
 ### Your journey (with the Voice Guide)
 
