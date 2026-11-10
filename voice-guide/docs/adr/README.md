@@ -48,6 +48,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0043](0043-arabic-services-clone-and-journey-host-by-language.md) | An Arabic Services clone at /ar/services; the journey's host page follows the page's language (`{lang}` in `hostUrl`) | UI, demo | Accepted for the prototype; amends 0040 |
 | [0044](0044-pocket-corner-tucks-in-during-the-reimagine-view.md) | In the Reimagine view the Pocket corner tucks in and the right-hand column stays lifted | UI, floating controls | Accepted |
 | [0045](0045-tips-walkthrough-of-the-four-demos.md) | Tips: an Apple Tips-style walkthrough of the four demos in the Services clone, with "Try it" coach marks on the real controls; the button bottom-left | UI, onboarding, floating controls | Proposed |
+| [0046](0046-all-demos-live-on-vodafone-pages.md) | All five demos run on Vodafone's real pages as one experience layer injected beside the guide (live adapter, Pocket-hosted journey, real demo kit); the clone is retired | Architecture, delivery, demo | Direction accepted 2026-11-10; design proposed; supersedes 0040 and 0043 at phase 9 |
 
 ## Changes to the demo plan these decisions made
 
