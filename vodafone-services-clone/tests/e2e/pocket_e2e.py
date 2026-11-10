@@ -283,6 +283,24 @@ async def open_and_settle(page):
     await page.wait_for_function("['home-hover', 'hidden'].includes(document.querySelector('.pocket-drone')?.dataset.droneState)", timeout=6000)
 
 
+# Whether the mascot can be seen: no hidden ancestor, opacity above 5%, on screen; and where it is
+# against the Pocket button (dx: centres; dy: its feet against the button's middle).
+MASCOT_SEEN = """() => {
+  const m = document.querySelector('.pocket-mascot'), b = document.querySelector('.pocket-peek')
+  if (!m || !b) return { visible: false, missing: true }
+  let opacity = 1, hidden = false
+  for (let n = m; n && n.nodeType === 1; n = n.parentElement) {
+    const s = getComputedStyle(n)
+    opacity *= parseFloat(s.opacity)
+    if (s.display === 'none' || s.visibility === 'hidden') hidden = true
+  }
+  const r = m.getBoundingClientRect(), p = b.getBoundingClientRect()
+  const onScreen = r.width > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth
+  return { visible: !hidden && opacity > 0.05 && onScreen, state: m.dataset.mascotState, opacity: +opacity.toFixed(2),
+           dx: Math.round(r.left + r.width / 2 - p.left - p.width / 2), dy: Math.round(r.bottom - p.top - p.height / 2) }
+}"""
+
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -872,6 +890,32 @@ async def main():
         check("mobile (board): the mascot on its board covers nothing", not col["hits"], col)
         check("no page errors (mobile)", not page.errors, page.errors)
         await ctx.close()
+
+        # ------------------------- ADR-0044 with the actors: the corner tucks in, the mascot hides
+        for width, height, label in ((1366, 860, "desktop"), (375, 812, "phone")):
+            ctx, page = await new_page(browser, width=width, height=height, actors=True, pocket=["roaming"])
+            cta = page.locator(".pocket-cta:visible").first
+            await cta.scroll_into_view_if_needed()
+            await cta.click()
+            out = True
+            try:
+                await page.wait_for_function(f"({MASCOT_SEEN})().visible", timeout=6000)
+            except Exception:
+                out = False
+            check(f"tucked ({label}): after pocketing, the mascot is out beside the Pocket button", out, await page.evaluate(MASCOT_SEEN))
+            if await page.is_visible(".aixc-launcher"):
+                await page.click(".aixc-launcher")
+            else:
+                await page.click(".aixc-viewbar__actions button >> nth=0")
+            await page.click(".aixc-template[data-template=coverflow]")
+            await page.wait_for_selector("#experience-output [data-experience=coverflow]")
+            seen = []
+            for _ in range(5):
+                await page.wait_for_timeout(500)
+                seen.append(await page.evaluate(MASCOT_SEEN))
+            check(f"tucked ({label}): in the reimagined view the mascot never shows (ADR-0044)", not any(s["visible"] for s in seen), seen)
+            check(f"no page errors (tucked, {label})", not page.errors, page.errors)
+            await ctx.close()
 
         await browser.close()
 

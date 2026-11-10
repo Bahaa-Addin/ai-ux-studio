@@ -98,7 +98,7 @@ npm test             # validator, content model and template unit tests (Node bu
 pip install playwright && python -m playwright install chromium
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
-python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket and its actors: 204 checks
+python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket and its actors: 210 checks
 python tests/e2e/tips_e2e.py http://127.0.0.1:5200/     # Tips, the walkthrough: 87 checks
 ```
 
@@ -339,8 +339,9 @@ src/pocket/
 tests/
   pocket-curl.test.mjs     curl geometry (npm test)
   pocket-actors.test.mjs   actor states, physics, the ride, flight, the modelled eye, 3D projection, assets (npm test)
-  e2e/pocket_e2e.py        204 browser checks: every flow, keyboard, reduced motion, mobile, persistence,
-                           and the actors (occlusion, the catch, the reveal, quiet reading, drone, 7 viewports)
+  e2e/pocket_e2e.py        210 browser checks: every flow, keyboard, reduced motion, mobile, persistence,
+                           and the actors (occlusion, the catch, the reveal, quiet reading, drone, 7 viewports,
+                           hidden while the corner is tucked in the reimagined view, ADR-0044)
 ```
 
 **Implementation notes for a production build.** Clones are made from the rendered DOM, so
