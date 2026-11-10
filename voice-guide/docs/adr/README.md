@@ -49,6 +49,7 @@ Each ADR ends with **Pilot knobs** (what can be tuned without code) and **Revisi
 | [0044](0044-pocket-corner-tucks-in-during-the-reimagine-view.md) | In the Reimagine view the Pocket corner tucks in and the right-hand column stays lifted | UI, floating controls | Accepted |
 | [0045](0045-tips-walkthrough-of-the-four-demos.md) | Tips: an Apple Tips-style walkthrough of the four demos in the Services clone, with "Try it" coach marks on the real controls; the button bottom-left | UI, onboarding, floating controls | Proposed |
 | [0046](0046-all-demos-live-on-vodafone-pages.md) | All five demos run on Vodafone's real pages as one experience layer injected beside the guide (live adapter, Pocket-hosted journey, real demo kit); the clone is retired | Architecture, delivery, demo | Direction accepted 2026-11-10; design proposed; supersedes 0040 and 0043 at phase 9 |
+| [0047](0047-voicetut-speaks-for-the-guide.md) | VoiceTut speaks the guide's replies through the gateway (synthesised ahead, cached, first sentence first), with the browser voice as the fallback; owner's demos only | Speech output, privacy, demo | Direction accepted 2026-11-10; design proposed |
 
 ## Changes to the demo plan these decisions made
 

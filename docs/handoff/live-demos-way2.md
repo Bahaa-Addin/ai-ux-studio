@@ -2,10 +2,10 @@
 
 - Written: 2026-11-10 (Cairo), for the next Claude Code session **on the Mac** (real macOS shell, Google Chrome, microphone, push to GitHub).
 - Owner: Bahaà Addin Balashoni. Decision (2026-11-10): "ditch the cloned pages approach and have everything (all 5 demos) run live on Way 2 of real Vodafone pages ... while keeping the option for the user to click a button and fill the page with real demo data where applicable to give the user a quick start."
-- Architecture decision: [ADR-0046](../../voice-guide/docs/adr/0046-all-demos-live-on-vodafone-pages.md). This file is how to build it.
+- Architecture decisions: [ADR-0046](../../voice-guide/docs/adr/0046-all-demos-live-on-vodafone-pages.md) (the demos live) and [ADR-0047](../../voice-guide/docs/adr/0047-voicetut-speaks-for-the-guide.md) (VoiceTut is the guide's voice; added 2026-11-10 after the owner resolved Modal's billing). This file is how to build them.
 - Start from `integration/main` at the commit that adds this file (after 695df1d) or later. Work on a new branch `feature/live-way2`.
 
-**The five demos:** (1) voice guide / page agent, (2) Pocket (with its actors and the portal), (3) Reimagine this page, (4) Exploration Trail ("Your journey"), (5) Your RED world. Page watch and Tips come along: page watch moves to its phase 1 form, Tips becomes the hub for the quick start.
+**The five demos:** (1) voice guide / page agent, speaking with VoiceTut's Egyptian Arabic and English voice, (2) Pocket (with its actors and the portal), (3) Reimagine this page, (4) Exploration Trail ("Your journey"), (5) Your RED world. Page watch and Tips come along: page watch moves to its phase 1 form, Tips becomes the hub for the quick start.
 
 Work through the phases in order. Every phase ends with checks. If a check fails, stop, record it (bug log or open issue), and fix it before the next phase.
 
@@ -16,9 +16,10 @@ Work through the phases in order. Every phase ends with checks. If a check fails
 ### Read
 
 - Repository root `README.md`; `voice-guide/AGENTS.md`, `voice-guide/CLAUDE.md`, `voice-guide/docs/handoff/HANDOFF.md`.
-- `voice-guide/docs/adr/README.md`, then ADR-0020 (one shadow root), ADR-0023 (page watch on the platform), ADR-0026 and ADR-0031 (demo browser), ADR-0035 to ADR-0040 (trail), ADR-0041, ADR-0043 to ADR-0046.
+- `voice-guide/docs/adr/README.md`, then ADR-0020 (one shadow root), ADR-0023 (page watch on the platform), ADR-0026 and ADR-0031 (demo browser), ADR-0035 to ADR-0040 (trail), ADR-0041, ADR-0042 (the agent preset, the model for ADR-0047's demo-only rule), ADR-0043 to ADR-0047.
 - `vodafone-services-clone/README.md` (every demo's behaviour, including "Tips" and "Your RED world"), `vodafone-services-clone/docs/design-system.md`, `docs/wiki/Your RED world (demo 5).md`.
 - The clone-local ADRs on the feature branches: `vodafone-services-clone/docs/adr/0001`–`0004` (actors, on `feature/pocket-actors-live`) and `0005` (portal, on `feature/pocket-portal`).
+- `experiments/voicetut/README.md` (VoiceTut: API, measurements, licence) and `experiments/voicetut/modal_app.py`.
 - Project docs `page-watch-phase1.md` and `page-watch-adrs.md` (claude.ai project "AIXC").
 
 ### Rules that bind every step (owner's, they override defaults)
@@ -28,7 +29,7 @@ Work through the phases in order. Every phase ends with checks. If a check fails
 - **Design:** Vodafone's design language everywhere (red `#E60000`, Vodafone's own fonts, which are already loaded on the live pages). New UI must look native.
 - **Floating controls never overlap**, desktop and phone, English and Arabic.
 - **Prove, don't claim.** Measure, record numbers with date and conditions, say what was not verified.
-- **Every architecture decision gets an ADR** (next: 0047). Every fixed bug gets a test that failed before the fix. Keep the runbook, bug log, open issues and handoff current.
+- **Every architecture decision gets an ADR** (next: 0048). Every fixed bug gets a test that failed before the fix. Keep the runbook, bug log, open issues and handoff current.
 - **Code:** voice-guide is TypeScript run by Node (tabs, single quotes, no semicolons, `.ts` imports, no enums, namespaces, decorators or parameter properties). The demos' modules are plain ES modules in JavaScript with 2-space indentation; keep each file's own style. No framework. Every failure is caught and never reaches Vodafone's page.
 
 ### Baseline
@@ -50,6 +51,7 @@ Work through the phases in order. Every phase ends with checks. If a check fails
 | What they read | A hand-typed content file (`src/content/vodafone-services*.js`) rendered by `src/adapters/vodafone-services.js` | Vodafone's markup, read by a live adapter into the same content model |
 | The page frame | The clone's shell (`src/shell.js`): header, `#source-content`, `#experience-output`, `#aixc-viewbar` | `PageHost` over Vodafone's DOM: `#main-content` is the source; output and view bar are inserted beside it |
 | Your journey | Opens on the Services clone (`trail.hostUrl`) | Opens in the Pocket on the page you are on |
+| The guide's voice | The browser's system voice (`speechSynthesis`) | VoiceTut (Egyptian Arabic and English) through the gateway, cached and synthesised ahead; the system voice as the fallback |
 | Demo data | The RED world's three sample customers (`?pz=`) | "Fill with demo data" and "Reset demo" for every demo, from a demo kit captured from real pages |
 | Offline fallback and tests | Replay of 14 saved pages with the clone mounted | Replay of saved real pages (refreshed), with the experience layer on them |
 | `vodafone-services-clone/` | The demo | Moved to `experiences/` (modules kept, page and shell deleted at phase 9) |
@@ -90,6 +92,8 @@ Code:
 - Page watch today is server-side (ADR-0023: a checker reads a rendered section on a schedule). Scheduled checks of production count as scheduled crawling, which is paused. The phase 1 direction (browser-only, check-on-visit, topic watches) is written up but **its ADR is waiting for the owner's go-ahead**.
 - The knowledge base (`config/kb/vodafone-eg.manifest.json`, `20261023-122606-5b2080`): 46 pages, 524 destinations, 30 collections, 165 visuals. Section destinations use positional selectors (`#layout-column_column-1 > div.portlet-boundary.portlet-static:nth-of-type(4) > …`); collections have no `keyAttr`.
 - Module sizes (JS and CSS, unminified, gzip -9, 2026-11-10): `aixc` 26 KB, `aixc/experiences` 82 KB, `pocket` 44 KB, `pocket/actors` 28 KB, `personalization` 76 KB, `tips` 40 KB. About 296 KB in all, so the layer must load in pieces.
+- **The guide's voice today** is the browser's: `Speech.speak()` in `packages/sdk/src/speech.ts` (`speechSynthesis`, tags `ar-EG` and `en-US` from `speech.tts`). `#say(text, { wait })` in `packages/sdk/src/guide.ts` waits at most 2.5 s before a `navigate` step; lines come from `plan.say` and step texts (`packages/sdk/src/executor.ts`), and some carry live values read in the browser. The demo browser runs Chrome with `--autoplay-policy=no-user-gesture-required`.
+- **VoiceTut** (`experiments/voicetut/README.md`): a Gradio API with `info` and `synthesize` (client in `vodafone-services-clone/src/voicetut/client.js`); 19 voices, 24 kHz; on the author's hosted GPU a 2.8 s clip took 1.7 s of model time and 3.0 s in all, before network and queue. The owner's Modal app (`experiments/voicetut/modal_app.py`): one L4, `min_containers=0`, `max_containers=1`, `scaledown_window=60`. **On 2026-11-10 at 10:08 UTC the endpoint answered `404 modal-http: invalid function call`: billing is fixed but the app is not deployed.** OmniVoice weights are CC-BY-NC.
 - The RED world's data (`src/personalization/data.js`) is illustrative by design: two plans, a catalogue and three sample customers (`ahmed`, `mariam`, `karim`), ranked by a local rules engine that says why (owner decisions in the wiki page).
 
 Not verified yet (do these early): the live header element and how the layer should find it; the adapter on the 38 knowledge-base pages that are not in the replay fixture (it holds 8 of the 46); OneTrust consent categories and whether Tealium would load the layer; the actors' frame rate on live pages; a real phone (the demo browser emulates phones).
@@ -102,11 +106,11 @@ Not verified yet (do these early): the live header element and how the layer sho
 flowchart LR
   subgraph Mac["Demo Mac"]
     DB["Demo browser<br/>(Google Chrome, Playwright)"]
-    GW["Gateway :4400<br/>/sdk/guide.js, /sdk/aixc/*<br/>/v1/* services"]
+    GW["Gateway :4400<br/>/sdk/guide.js, /sdk/aixc/*<br/>/v1/* services, /v1/speech"]
   end
   subgraph Page["web.vodafone.com.eg page (Vodafone's DOM)"]
     L["Loader (init script)"]
-    G["guide.js<br/>voice guide, trail, watch chunk"]
+    G["guide.js<br/>voice guide, trail, watch chunk,<br/>voice-out chunk"]
     A["aixc.js core<br/>PageHost, live adapter, launchers"]
     C["chunks on intent<br/>pocket, actors, portal, reimagine,<br/>experience-*, red-world, tips, demo-kit"]
   end
@@ -117,11 +121,12 @@ flowchart LR
   G <-->|/__vg/v1/*| GW
   A -->|/__vg/sdk/aixc/*| GW
   A <-->|"vg:trail-ready, vg:trail-open,<br/>voiceGuide.trailHost"| G
+  GW -->|"Gradio info, synthesize<br/>(server to server)"| VT["VoiceTut on Modal<br/>(L4 GPU)"]
 ```
 
 ### 3.1 Delivery
 
-- The loader (`loaderScript` in `tools/demo-browser.ts`) adds, after `guide.js`, `<script type="module" src="<origin>/__vg/sdk/aixc/aixc.js" data-aixc-demo="1">` when the site's `experiences.enabled` is on and the path is allowed. It also adds `<meta name="vg-trail-host" content="pocket">` at document start, so the trail is hosted from its first moment (or make `hosted` a getter the layer can switch on; choose in phase 1 and write it into ADR-0047).
+- The loader (`loaderScript` in `tools/demo-browser.ts`) adds, after `guide.js`, `<script type="module" src="<origin>/__vg/sdk/aixc/aixc.js" data-aixc-demo="1">` when the site's `experiences.enabled` is on and the path is allowed. It also adds `<meta name="vg-trail-host" content="pocket">` at document start, so the trail is hosted from its first moment (or make `hosted` a getter the layer can switch on; choose in phase 1 and write it into ADR-0048).
 - The gateway serves `voice-guide/dist/sdk/aixc/` at `/sdk/aixc/` (same route family as `guide.js`).
 - Build: one more step in `packages/sdk/build.ts` (or `experiences/build.mjs` called from it): esbuild, `format: 'esm'`, `splitting: true`, `minify`, `loader: { '.css': 'text' }`, entry `experiences/src/host/index.js`, chunk names stable (`aixc/[name]-[hash].js`). ES modules because the chunks share code (`make()` from `pocket.js`, `i18n.js`), which the trail's separate IIFE files cannot share.
 - Mode A later (Vodafone's tag manager) adds the same two tags. Nothing in the layer may depend on the demo browser except `data-aixc-demo`.
@@ -129,7 +134,7 @@ flowchart LR
 ### 3.2 Repository layout
 
 - `git mv vodafone-services-clone experiences` (after phase 0). Inside: `src/aixc`, `src/pocket`, `src/personalization`, `src/tips`, `src/i18n.js`, `src/rtl.css` stay; **new** `src/host/` (entry, `page-host.js`, `live-adapter.js`, `recognisers.js`, `loader.js` for chunks, `styles.js` that injects a chunk's CSS once, `demo-kit.js`); the clone page (`index.html`, `ar/index.html`, `src/shell.js`, `src/main.js`, `src/adapters/`, `src/content/`, `src/style.css`, `public/assets/`, `scripts/serve.mjs`) stays until phase 9, then goes.
-- `src/voicetut/` and `src/page-agent-demo.js` are not part of the five demos on live. The guide's agent fallback (ADR-0042) already covers the page agent. Leave VoiceTut behind its flag on the clone and retire it with the clone unless the owner says otherwise (decision D7).
+- VoiceTut moves into the guide: its client becomes the gateway's speech-out service (section 3.11), and the clone's VoiceTut panel and "Read this section" buttons retire with the clone. `src/page-agent-demo.js` is not part of the five demos on live; the guide's agent fallback (ADR-0042) covers the page agent (decision D7).
 
 ### 3.3 PageHost: the regions on Vodafone's DOM
 
@@ -159,7 +164,7 @@ flowchart LR
 
 | Demo | What changes for live | Offered on |
 |---|---|---|
-| **1. Voice guide / page agent** | Nothing in `guide.js`. Reimagined cards carry `data-vg-destination`, so answers spotlight them. The agent stays the replaceable preset (ADR-0042). | Every allowed page (already) |
+| **1. Voice guide / page agent** | Speaks with VoiceTut (section 3.11). Otherwise nothing in `guide.js`. Reimagined cards carry `data-vg-destination`, so answers spotlight them. The agent stays the replaceable preset (ADR-0042). | Every allowed page (already) |
 | **2. Pocket** (peel, album, actors, portal) | "Pocket it" on live cards (from `data-aixc-item`); the page curl turns `#main-content` (protected header and footer stay put); the album, the actors and the portal as built. The portal's same-origin iframe is allowed (`X-Frame-Options: SAMEORIGIN`). Stickers from any page share one Pocket (`aixc.pocket.v1`), each with its source page. | CMS pages where Pocket coverage passes |
 | **3. Reimagine this page** | Composer and the 13 experiences read the live model; the reimagined view hides `#main-content` and shows `#aixc-output`; "Original" restores it exactly (scroll position too). Images load from Vodafone's URLs. | Pages where Reimagine coverage passes and there are at least 2 sections with 3 or more items (Services, bundles, RED, home to be measured) |
 | **4. Exploration Trail** | Hosted by the Pocket on every page: "Your journey" opens the Pocket on the journey page in place; `hostUrl` goes. Recording, consent, Pause and Clear unchanged. | Every allowed page |
@@ -209,12 +214,37 @@ Extend `tools/demo-walkthrough.ts` and the overlap test (`tests/e2e/reimagine-fl
 
 - Nothing new leaves the browser. The Pocket, the RED world, Tips and watch baselines stay in `localStorage` / IndexedDB; the trail keeps its consent, 24-hour expiry, Pause and Clear.
 - The demo kit is captured signed out, masked by the trail's own sanitiser, and contains only public content.
-- Speech: server recognition is allowed for the owner's own demos only (O15).
+- Speech in: server recognition is allowed for the owner's own demos only (O15).
+- Speech out (ADR-0047): only the guide's own reply text goes to VoiceTut on Modal (outside Egypt), never the person's audio, transcript or typed words. Say so in the runbook and the X-ray. Owner's demos only (CC-BY-NC weights).
 
 ### 3.10 Size budgets
 
 - `aixc.js` core gets a gzip budget in `tests/unit/sdk-size.test.ts`, set from the first minified build "a little above measured" (as ADR-0035 did). Every chunk gets one too. The core must not load any demo's code before intent, except the Pocket's "Pocket it" chips and the launchers.
 - Fonts: use Vodafone's own font families on the page; ship no font files.
+
+### 3.11 The guide's voice: VoiceTut (ADR-0047)
+
+- **Path:** the guide → `POST /__vg/v1/speech { text, lang }` → the gateway's new speech-out service (`services/speech-out/`, a handler map, ADR-0009) → VoiceTut's Gradio `synthesize` on Modal, server to server → a WAV in `data/speech/` (git-ignored) → `{ url: '/v1/speech/<hash>.wav', engine, cached, ms }` → played in the page from its own origin. The endpoint comes from `VG_VOICETUT_URL`, never from the page or the repository.
+- **Ahead of time:** when the router has made a plan (`services/router/handlers.ts`, after `planner.plan`), the service starts synthesising its known lines (`plan.say`, step `text` and `message`). Lines with live values are synthesised when the page asks. The cache key is a hash of engine, model version (from `info`), voice, mode, steps, speed, normalisation and text.
+- **First sentence first:** split a reply into sentences; play the first as soon as it is ready, queue the rest.
+- **Fallback:** if the first sentence is not ready within `firstAudioMs` (2500 to start with), or VoiceTut fails, speak that line with `speechSynthesis` as today. Never silent.
+- **In the page:** a `voice-out.js` chunk (loaded at session start when `speech.out.engine` is `voicetut`) gives `speak(text, lang) → Promise` and `cancelSpeech()` with the same contract as `Speech` today; the microphone press stops playback at once (barge-in). The voice UI's "speaking" state and halo follow the audio element (a Web Audio analyser can drive the halo). `guide.js` has 79 bytes left: move the system-voice code into the same chunk if needed, and measure.
+- **Warm:** while a demo session is active the service calls `info` every 45 s; `npm run speech:warm` (new) wakes the GPU and synthesises the fixed phrases of `packages/sdk/src/i18n.ts` and the answers of the router tuning set in both languages.
+- **Config** (`config/sites/vodafone-eg.yaml`):
+
+  ```yaml
+  speech:
+    out:
+      engine: voicetut          # or system
+      voice: { ar: Mohammed, en: Mohammed }   # compare Yasmin and others by ear (D9)
+      mode: { ar: arz, en: en } # VoiceTut's language mode; arz handles mixed Arabic and English
+      steps: 16                 # 16 faster, 32 balanced
+      speed: 1
+      normalize: true           # numbers and abbreviations; check prices by ear
+      firstAudioMs: 2500
+      keepWarmSeconds: 45
+  ```
+- **X-ray:** a "speak" row per line: engine, cache hit, synthesis ms, time to first audio, fallback reason.
 
 ---
 
@@ -228,7 +258,9 @@ Extend `tools/demo-walkthrough.ts` and the overlap test (`tests/e2e/reimagine-fl
 | D4 | RED world in Arabic, and whether its catalogue comes from the live RED page | Arabic yes; catalogue from the live page, customer stays a labelled sample | Phase 5 |
 | D5 | Merge order of the in-flight branches before the move | actors → portal → template credits, each checked (phase 0) | Phase 0 |
 | D6 | Phones: the demo browser only emulates phones. Is a real phone needed (needs a Chrome extension or Vodafone's tag manager)? | Not for this round | — |
-| D7 | VoiceTut and the clone's Page Agent panel: retire with the clone? | Yes (the guide's agent fallback covers the page agent; VoiceTut's backends were down, O18) | Phase 9 |
+| D7 | Retire the clone's Page Agent panel and the VoiceTut panel with the clone (VoiceTut itself moves into the guide)? | Yes (the guide's agent fallback covers the page agent) | Phase 9 |
+| D8 | Deploy the Modal app again (`modal deploy experiments/voicetut/modal_app.py` with your Modal login) and set its spending limit; keep `scaledown_window=60` with the keep-warm loop, or raise it | Deploy now; keep 60 s plus keep-warm; a spending limit you are comfortable with | Phase 1b |
+| D9 | Which VoiceTut voice for Arabic and for English | Choose by ear in phase 1b from 3 candidates on the same 10 lines | Phase 1b |
 
 ---
 
@@ -248,7 +280,7 @@ Checks: all suites green after each merge; `git log --follow experiences/src/poc
 ### Phase 1: the layer reaches the live page and does nothing harmful
 
 1. `experiences/src/host/index.js`: reads its settings from its own script tag (module scripts have no `document.currentScript`: find the tag by its `src`, or use `import.meta.url`), builds `PageHost`, logs, exposes `window.__aixc` with `?aixc-debug`. No demo yet.
-2. Build step and gateway route (section 3.1); loader change in `tools/demo-browser.ts`; `experiences:` block in `config/sites/vodafone-eg.yaml` (enabled, allowed paths, demo switches); the trail-host meta (or dynamic `hosted`), written up as **ADR-0047**.
+2. Build step and gateway route (section 3.1); loader change in `tools/demo-browser.ts`; `experiences:` block in `config/sites/vodafone-eg.yaml` (enabled, allowed paths, demo switches); the trail-host meta (or dynamic `hosted`), written up as **ADR-0048**.
 3. Failure isolation and the kill switches (section 3.8).
 4. Find the live header and footer selectors; fill `PageHost`.
 
@@ -256,6 +288,18 @@ Checks:
 - `npm run demo:live` (live) and `npm run demo:live -- --replay` (saved pages) both load `aixc.js` on every page of the replay fixture and on 10 live pages in both languages, with no console errors from the layer and no layout shift of Vodafone's content (compare screenshots with the layer on and `?aixc=off`).
 - Size test for `aixc.js` core in `sdk-size.test.ts`.
 - The isolation e2e test (throw from init → page identical to `?aixc=off`).
+
+### Phase 1b: VoiceTut speaks for the guide (ADR-0047; independent of phases 2–7)
+
+1. Owner (D8): `modal deploy experiments/voicetut/modal_app.py`; confirm `POST <endpoint>/gradio_api/call/info` returns 19 voices and `mock: false`.
+2. `services/speech-out/`: the VoiceTut client in TypeScript (port `client.js`: job call, streamed `complete`/`error` events, audio-host check), the disk cache, synthesis ahead from the router, keep-warm, `POST /v1/speech` and `GET /v1/speech/:hash.wav` in the gateway. A stand-in VoiceTut server in `tests/helpers/` (like the mock vision model) for the tests.
+3. `voice-out.js` chunk in the SDK build, with a size budget; `#say` uses it when `speech.out.engine` is `voicetut`; fallback and barge-in as in section 3.11.
+4. `npm run speech:warm`; the X-ray "speak" row; runbook steps (deploy, warm, listen).
+
+Checks:
+- Unit and integration tests against the stand-in: cache hit and miss, the hash changes with any setting, sentence order, a slow first sentence falls back to the system voice within `firstAudioMs` and the audio is cached for next time, a failure falls back, barge-in stops playback, nothing but the reply text is sent (assert the request bodies).
+- `sdk-size.test.ts`: `guide.js` still at or under 20,480 bytes; `voice-out.js` under its new budget.
+- On the Mac, live: time to first audio for 10 uncached and 10 cached lines in each language (median and worst), warm and after a scale-down, written to the runbook with date and conditions; the owner picks the voices by ear (D9).
 
 ### Phase 2: the live adapter
 
@@ -310,7 +354,7 @@ Checks: on a fresh Chrome profile, "Fill" then a walkthrough of all five demos w
 
 1. `tools/demo-walkthrough.ts` rewritten for live: the five demos in sequence on live pages, English and Arabic, desktop and phone, with video; the same on the saved pages offline.
 2. `npm run check:live` (new): opens each demo page live, runs the adapter, reports coverage and any overlap; the runbook's demo-day list runs it first.
-3. The owner's voice pass in Google Chrome with the real microphone (still owed from 2026-11-07), now on the live demos.
+3. The owner's voice pass in Google Chrome with the real microphone (still owed from 2026-11-07), now on the live demos, with VoiceTut speaking; note any line that fell back to the system voice and why (X-ray "speak" row).
 
 Checks: CI green (typecheck, `npm test`, `test:e2e`, size budgets); the walkthrough's checks and videos in `output/`; numbers in the runbook with date and conditions.
 
@@ -330,7 +374,8 @@ Checks: CI green (typecheck, `npm test`, `test:e2e`, size budgets); the walkthro
 | `pocket_e2e.py`, `portal_e2e.py`, `aixc_e2e.py`, `tips_e2e.py`, `arabic_e2e.py` (Python, against the clone) | Playwright TS in `voice-guide/tests/e2e/` against the saved real pages, sharing `vodafone-pocket.ts` |
 | `tests/e2e/pocket-journey`, `reimagine-floating`, `tips` (clone mounted in replay) | Same tests on saved real pages with the layer |
 | `tests/live/vodafone-live.live.test.ts` (guide only) | Plus adapter coverage, Pocket peel, a reimagined view and the journey in the Pocket, all opt-in with `VG_LIVE=1` |
-| `sdk-size.test.ts` | Plus `aixc.js` core and chunk budgets |
+| `sdk-size.test.ts` | Plus `aixc.js` core and chunk budgets, and `voice-out.js` |
+| (new) | `tests/unit/speech-out.test.ts`, `tests/integration/speech-out.test.ts` against a stand-in VoiceTut; `tests/live/voicetut.live.test.ts` (opt-in) against the Modal endpoint |
 
 ---
 
@@ -342,6 +387,8 @@ Checks: CI green (typecheck, `npm test`, `test:e2e`, size budgets); the walkthro
 - **The cookie banner** sits on top on a first visit. Answer it once in the demo profile before an audience; never automate the answer.
 - **Merges in phase 0** touch `pocket.js` three ways. Take them one at a time with tests between.
 - **Mode A** (Vodafone's tag manager) is not tested by this plan. ADR-0046 says what to revisit.
+- **VoiceTut is slow or cold.** A scale-down costs minutes; an uncached line costs seconds. Keep-warm, `speech:warm` before an audience, synthesis ahead and the system-voice fallback. Measure in phase 1b before relying on it.
+- **VoiceTut's licence** (CC-BY-NC weights) keeps it to the owner's demos.
 
 ---
 
@@ -353,6 +400,8 @@ Checks: CI green (typecheck, `npm test`, `test:e2e`, size budgets); the walkthro
 | `npm run demo:live -- --replay` | The same on the saved real pages, offline |
 | `node tools/demo-kit.ts --site vodafone-eg` | Capture the demo kit (new, phase 7) |
 | `npm run check:live` | Adapter coverage and overlaps on the demo pages, live (new, phase 8) |
+| `modal deploy experiments/voicetut/modal_app.py` | Deploy VoiceTut on Modal (owner's login) |
+| `npm run speech:warm` | Wake VoiceTut and fill the speech cache (new, phase 1b) |
 | `VG_LIVE=1 node --test --test-timeout=150000 tests/live/*.live.test.ts` | Live smoke tests |
 | `node tools/demo-walkthrough.ts <dir> --lang <en or ar> [--phone] [--video]` | The recorded walkthrough |
 
