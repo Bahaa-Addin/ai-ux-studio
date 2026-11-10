@@ -210,3 +210,10 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** anchor texts are collected from the pages in URL order (`jobs/kb-builder/build.ts`). Labels already on the page (title, h1) still come first.
 - **Test:** `tests/unit/vodafone-kb.test.ts`, "builder: the same pages crawled in another order build the same manifest hash" (failed before: `0b3871806a3c29ba` against `0647a5a01212e611`). Full unit and integration run after the fix: 154/154 (2026-11-07, Ubuntu 22.04 arm64 VM, Node 22.23.4, Postgres 16).
 
+## B-26 The RED world's hidden "See everything" invitation animated forever from page load, and the Reimagine browser checks crashed on it
+
+- **Found:** 2026-11-10, baseline for the live plan on `integration/main` (3b6a823), on the owner's Mac (macOS, Python Playwright 1.58, Chromium): `vodafone-services-clone/tests/e2e/aixc_e2e.py` stopped after 175 checks with `InvalidStateError: Cannot finish Animation with an infinite target effect end`. It had passed 292/292 before the RED world landed (695df1d), whose commit records no run of it.
+- **Cause:** the icon of `.pz-explore` (the floating "See everything for you" button) carried `animation: pz-nudge-down … infinite` whether or not the button was shown, so a looping animation ran off-screen from page load on every visit. The streaming check skips its intro with `document.getAnimations().forEach(a => a.finish())`, and `finish()` throws on an endless animation.
+- **Fix:** the nudge runs only on `.pz-explore.is-shown` (`vodafone-services-clone/src/personalization/extension.css`); reduced motion still turns it off. The streaming check now finishes only animations that can finish, so a later slip is reported by the check below instead of crashing the suite.
+- **Test:** `aixc_e2e.py`, "no animation runs forever on the untouched page" (failed before: `['pz-nudge-down']`, 292/293). After the fix: `aixc_e2e` 293/293, `arabic_e2e` 71/71, `pocket_e2e` 119/119, `tips_e2e` 87/87, clone `npm test` 116/116; shown, the invitation still nudges (one `pz-nudge-down` animation), and none under reduced motion (2026-11-10, macOS, Python 3.9.6, Playwright 1.58.0).
+

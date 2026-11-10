@@ -512,7 +512,8 @@ async def streaming_checks(browser):
       return { ok: beside(fly) && beside(slot) && markLand < 1, markLand }
     }""")
     check("streaming: Vodafone mark sits left of the word and flies with it as one lockup", lockup["ok"], lockup)
-    await page.evaluate("document.getAnimations().forEach(a => a.finish())")
+    # Skip the intro: finish what can finish (an endless animation throws on finish(), B-26).
+    await page.evaluate("document.getAnimations().forEach(a => { if (a.effect?.getComputedTiming().endTime !== Infinity) a.finish() })")
     await page.wait_for_function(ready, timeout=5000)
     check("streaming: intro clears and the logo shows", await page.is_hidden(".st-intro") and await page.is_hidden(".st-skip") and await page.evaluate("getComputedStyle(document.querySelector('.st-brand')).opacity") == "1")
     check("streaming: wordmark reads VODAFONE in Roboto", await page.evaluate("document.querySelector('.st-brand .st-word').textContent === 'VODAFONE' && getComputedStyle(document.querySelector('.st-brand .st-word')).fontFamily.startsWith('Roboto')"))
@@ -575,6 +576,9 @@ async def main():
         orig = await page.eval_on_selector_all("#source-content [data-aixc-item]", "els => els.map(e => e.dataset.aixcItem)")
         check("original view renders every model item", sorted(orig) == sorted(ids), set(ids) ^ set(orig))
         check("content model has 29 services + 1 promotion", len(ids) == 30, len(ids))
+        # B-26: an off-screen invitation looped its icon forever from page load.
+        endless = await page.evaluate("document.getAnimations().filter(a => a.effect && a.effect.getComputedTiming().endTime === Infinity).map(a => a.animationName || a.id)")
+        check("no animation runs forever on the untouched page", endless == [], endless)
         launcher = await page.evaluate("(() => { const b = document.querySelector('.aixc-launcher'); const r = b.getBoundingClientRect(); return { name: b.textContent.trim(), inView: r.bottom <= innerHeight && r.top >= 0 } })()")
         check("launcher is labelled and visible in the first viewport", launcher["name"] == "Reimagine this page" and launcher["inView"], launcher)
         check("launcher is outside the extraction root", await page.evaluate("!document.querySelector('#source-content').contains(document.querySelector('.aixc-launcher'))"))

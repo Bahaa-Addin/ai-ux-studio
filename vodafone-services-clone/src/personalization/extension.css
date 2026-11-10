@@ -616,6 +616,10 @@
 .pz-explore__icon {
   width: 20px;
   height: 20px;
+}
+
+/* Only while it is shown: hidden, it would loop off-screen from page load (B-26). */
+.pz-explore.is-shown .pz-explore__icon {
   animation: pz-nudge-down 2s var(--pz-ease-standard) 1s infinite;
 }
 
