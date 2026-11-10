@@ -225,8 +225,9 @@ async def main():
         check("turned page is cleaned up", await page.evaluate("document.querySelector('.pocket-layer--plane').childElementCount") == 0)
         stickers = await page.evaluate("[...document.querySelectorAll('.pocket-grid__item')].map(n => n.dataset.pocketId)")
         check("album shows every pocketed service, newest first", stickers == ["mo-salah-world", "roaming", "calls-services"], stickers)
+        # The link leaves through the portal, in this tab (ADR-0005; portal_e2e.py covers it, and ?portal=off brings back the new tab).
         check("sticker keeps the real title, copy and link", await page.evaluate(
-            "(() => { const s = document.querySelector('[data-pocket-id=\"roaming\"]'); return /Roaming Services/.test(s.textContent) && /best rates/.test(s.textContent) && s.querySelector('a').href === 'https://web.vodafone.com.eg/spa/roaming' && s.querySelector('a').target === '_blank' })()"))
+            "(() => { const s = document.querySelector('[data-pocket-id=\"roaming\"]'); return /Roaming Services/.test(s.textContent) && /best rates/.test(s.textContent) && s.querySelector('a').href === 'https://web.vodafone.com.eg/spa/roaming' && s.querySelector('a').target === '' })()"))
         check("sticker without its own link uses the section's link", await page.evaluate(
             "document.querySelector('[data-pocket-id=\"mo-salah-world\"] a').href") == "https://vf.eg/anavodafone")
         check("AIXC launcher hidden in the pocket", await page.evaluate(
