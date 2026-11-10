@@ -1,20 +1,25 @@
 /**
- * Pocket actors: the mascot and drone state machines, the 3D models and their projection,
- * the pose animator, the flight geometry, the cleanup scope and the asset interface. Time is driven by a fake clock, randomness by a fixed seed, so every
- * threshold is checked exactly. The DOM side is covered by tests/e2e/pocket_e2e.py.
+ * Pocket actors: the mascot and drone state machines, the motion physics (springs, the ride,
+ * the drone's flight), the 3D models and their projection, the pose animator, the flight
+ * geometry, the cleanup scope and the asset interface. Time is driven by a fake clock,
+ * randomness by a fixed seed, so every threshold is checked exactly. The DOM side is covered
+ * by tests/e2e/pocket_e2e.py.
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, stat } from 'node:fs/promises'
 import { TIMING, seededRandom, pick, withTiming } from '../src/pocket/actors/timing.js'
 import { createMascotBrain, MASCOT_STATES, PRIORITY, priorityOf } from '../src/pocket/actors/mascot-brain.js'
-import { createDroneBrain } from '../src/pocket/actors/drone-brain.js'
+import { createDroneBrain, DRONE_STATES, DRONE_WATCHED, DRONE_GROUNDED } from '../src/pocket/actors/drone-brain.js'
 import { createScope } from '../src/pocket/actors/scope.js'
-import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, BLINK, createPoseAnimator } from '../src/pocket/actors/clips.js'
-import { createCamera, orientation, apply, rotateY, projectEllipsoid, capsulePath, v3, dot, length } from '../src/pocket/actors/space.js'
-import { mascotFrame, restPose, POSE_KEYS } from '../src/pocket/actors/mascot-model.js'
+import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, TRACK_LAG, createPoseAnimator } from '../src/pocket/actors/clips.js'
+import { createCamera, orientation, apply, rotateY, projectEllipsoid, capsulePath, convexHull, v3, dot, length } from '../src/pocket/actors/space.js'
+import { mascotFrame, restPose, POSE_KEYS, reachToward, holdRemote, remoteGrip, REMOTE, BOARD } from '../src/pocket/actors/mascot-model.js'
 import { droneFrame } from '../src/pocket/actors/drone-model.js'
-import { gazeOffset, smoothToward, curlSide, oppositeSide, heartFlight, samplePath, rect, rectsOverlap, contains, chooseAnchor, planHeart } from '../src/pocket/actors/motion.js'
+import { gazeOffset, smoothToward, curlSide, oppositeSide, heartFlight, samplePath, sampleFlight, rect, rectsOverlap, contains, chooseAnchor, planHeart } from '../src/pocket/actors/motion.js'
+import { createSpring, stepSpring, stepAngleSpring, resetSpring, springSettled, angleDelta, createWander } from '../src/pocket/actors/physics.js'
+import { planRide, ridePoint, shuffle } from '../src/pocket/actors/gait.js'
+import { createFlight, stepFlight, followPoint, kick, flightSettled, command, sticksFor, spool, FLIGHT, BOARD_FLIGHT } from '../src/pocket/actors/drone-flight.js'
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -49,338 +54,362 @@ const fakeClock = () => {
   }
 }
 
-const mascotHarness = ({ reduced = false, seed = 42, timing = TIMING } = {}) => {
+const mascotHarness = ({ reduced = false, timing = TIMING, parkFor = () => 0 } = {}) => {
   const clock = fakeClock()
   const log = []
-  const brain = createMascotBrain({ clock, random: seededRandom(seed), timing, reduced: () => reduced, onChange: (state, previous, info) => log.push({ state, previous, info, at: clock.now() }) })
+  const brain = createMascotBrain({ clock, timing, parkFor, reduced: () => reduced, onChange: (state, previous, info) => log.push({ state, previous, info, at: clock.now() }) })
   return { clock, brain, log, states: () => log.map((entry) => entry.state) }
 }
 
-/** Opens the pocket and lets the "caught" sequence finish: the mascot rests in its corner. */
-const settleInCorner = ({ clock, brain }) => {
-  brain.revealStart({ from: 'right' })
-  brain.revealProgress(0.7)
-  clock.advance(TIMING.startle + TIMING.run + TIMING.recover)
-  assert.equal(brain.state, 'corner-idle')
+/** Opens the pocket with a short ride and lets it finish: the mascot is idle under the drone. */
+const settleInAlbum = ({ clock, brain }, rideFor = 900) => {
+  assert.equal(brain.revealStart({ rideFor }), 'ride')
+  assert.equal(brain.state, 'riding')
+  clock.advance(rideFor)
+  assert.equal(brain.state, 'idle')
 }
 
-/* --------------------------------------------------------- mascot: greeting */
+const LEAD = TIMING.emerge + TIMING.grabLead
 
-test('greeting: hidden while the corner opens, rises, waves, ducks back, on the brief timeline', () => {
-  const { clock, brain } = mascotHarness()
-  assert.equal(brain.greet(), 'started')
-  clock.advance(219)
+/* --------------------------------------------------------- mascot: the save */
+
+test('save: hidden while the item flies, comes out behind the button, holds it open, catches, sinks back', () => {
+  const { clock, brain, states, log } = mascotHarness()
+  assert.equal(brain.greet({ landsIn: 1900 }), 'started')
+  clock.advance(1900 - LEAD - 1)
+  assert.equal(brain.state, 'hidden', 'nothing while the item is still being peeled')
+  clock.advance(1)
+  assert.equal(brain.state, 'emerging')
+  clock.advance(TIMING.emerge)
+  assert.equal(brain.state, 'holding', 'it has the pocket open before the item arrives')
+  assert.equal(clock.now(), 1900 - TIMING.grabLead)
+  clock.advance(TIMING.grabLead)
+  brain.landed()
+  assert.equal(brain.state, 'catching')
+  clock.advance(TIMING.catch)
+  assert.equal(brain.state, 'slipping')
+  clock.advance(TIMING.slip)
   assert.equal(brain.state, 'hidden')
-  clock.advance(1) // 220 ms
-  assert.equal(brain.state, 'peeking')
-  clock.advance(280) // 500 ms
-  assert.equal(brain.state, 'waving')
-  clock.advance(849) // 1349 ms
-  assert.equal(brain.state, 'waving')
-  clock.advance(1) // 1350 ms
-  assert.equal(brain.state, 'retreating')
-  clock.advance(350) // 1700 ms
+  assert.deepEqual(states(), ['emerging', 'holding', 'catching', 'slipping', 'hidden'])
+  assert.equal(log.find((entry) => entry.state === 'holding').info.landsIn, TIMING.grabLead)
+  assert.ok(1900 + TIMING.catch + TIMING.slip <= 2700, 'gone within about 0.8 s of the landing')
+})
+
+test('save: every save gets the catch, not only the first', () => {
+  const { clock, brain, states } = mascotHarness()
+  for (let save = 0; save < 4; save += 1) {
+    assert.equal(brain.greet({ landsIn: 1900 }), 'started')
+    clock.advance(1900)
+    brain.landed()
+    clock.advance(TIMING.catch + TIMING.slip)
+    assert.equal(brain.state, 'hidden')
+  }
+  assert.equal(states().filter((state) => state === 'catching').length, 4)
+  assert.equal(brain.greetings, 4)
+})
+
+test('save: if the landing is never reported, it holds on a little longer and then lets go', () => {
+  const { clock, brain } = mascotHarness()
+  brain.greet({ landsIn: 1900 })
+  clock.advance(1900)
+  assert.equal(brain.state, 'holding')
+  clock.advance(TIMING.greetLanding)
+  assert.equal(brain.state, 'slipping')
+  clock.advance(TIMING.slip)
   assert.equal(brain.state, 'hidden')
   assert.equal(brain.pendingTimers, 0)
 })
 
-test('greeting: rapid saves coalesce into one greeting (no overlapping waves)', () => {
+test('save: saves that follow while it is out keep it holding the button open', () => {
   const { clock, brain, states } = mascotHarness()
-  brain.greet()
-  assert.equal(brain.greet(), 'coalesced') // still waiting to rise
-  clock.advance(600)
-  assert.equal(brain.greet(), 'coalesced') // mid-wave
-  assert.equal(states().filter((state) => state === 'peeking').length, 1)
-  clock.advance(800) // retreating now
-  assert.equal(brain.state, 'retreating')
-  assert.equal(brain.greet(), 'resumed') // another save while ducking: pops back up
-  assert.equal(brain.state, 'peeking')
+  brain.greet({ landsIn: 1900 })
+  clock.advance(1700)
+  assert.equal(brain.state, 'holding')
+  assert.equal(brain.greet({ landsIn: 1900 }), 'extended')
+  assert.equal(brain.pending, 2)
+  clock.advance(200)
+  brain.landed()
+  assert.equal(brain.state, 'catching')
+  clock.advance(TIMING.catch)
+  assert.equal(brain.state, 'holding', 'another item is on its way: it takes hold again')
+  clock.advance(1700 - TIMING.catch)
+  brain.landed()
+  clock.advance(TIMING.catch)
+  assert.equal(brain.state, 'slipping')
+  clock.advance(TIMING.slip)
+  assert.equal(brain.state, 'hidden')
+  assert.equal(states().filter((state) => state === 'catching').length, 2)
+  // A save while it sinks back: it reaches up again.
+  brain.greet({ landsIn: 1900 })
+  clock.advance(1900)
+  brain.landed()
+  clock.advance(TIMING.catch + 50)
+  assert.equal(brain.state, 'slipping')
+  assert.equal(brain.greet({ landsIn: 1900 }), 'extended')
+  assert.equal(brain.state, 'holding')
 })
 
-test('greeting: opening the pocket mid-wave cuts it short cleanly', () => {
+test('save: an item that lands while the last one is being caught gets its own catch', () => {
+  const { clock, brain, states } = mascotHarness()
+  brain.greet({ landsIn: 1900 })
+  clock.advance(250)
+  assert.equal(brain.greet({ landsIn: 1900 }), 'extended')
+  clock.advance(1650)
+  brain.landed()
+  clock.advance(250)
+  assert.equal(brain.state, 'catching')
+  brain.landed()
+  assert.equal(brain.state, 'catching')
+  clock.advance(TIMING.catch)
+  assert.equal(brain.state, 'slipping')
+  assert.equal(states().filter((state) => state === 'catching').length, 2)
+  assert.equal(states().filter((state) => state === 'emerging').length, 1)
+})
+
+test('save: opening the pocket mid-hold lets go at once', () => {
   const { clock, brain, log } = mascotHarness()
-  brain.greet()
-  clock.advance(700)
-  assert.equal(brain.state, 'waving')
+  brain.greet({ landsIn: 1900 })
+  clock.advance(1800)
+  assert.equal(brain.state, 'holding')
   brain.interruptGreeting()
-  assert.equal(brain.state, 'retreating')
+  assert.equal(brain.state, 'slipping')
   assert.equal(log.at(-1).info.quick, true)
-  clock.advance(TIMING.quickDuck)
+  clock.advance(TIMING.quickSlip)
   assert.equal(brain.state, 'hidden')
-  // A pending (not yet risen) greeting is simply cancelled.
-  brain.greet()
+  // Before it came out: the scheduled appearance is cancelled.
+  brain.greet({ landsIn: 1900 })
   brain.interruptGreeting()
-  clock.advance(1000)
+  clock.advance(5000)
   assert.equal(brain.state, 'hidden')
   assert.equal(brain.pendingTimers, 0)
 })
 
-/* --------------------------------------------------------- mascot: page turn */
+/* ------------------------------------------------------- mascot: the album */
 
-test('page turn: hidden until ~60% revealed, then startled, runs, recovers, settles in the corner', () => {
+test('page turn: it rides for as long as the ride takes, then lives under the drone', () => {
   const { clock, brain, log } = mascotHarness()
-  brain.revealStart({ from: 'right' })
-  assert.equal(brain.state, 'page-reveal-hidden')
-  assert.equal(brain.context, 'pocket')
-  brain.revealProgress(0.4)
-  brain.revealProgress(0.59)
-  assert.equal(brain.state, 'page-reveal-hidden')
-  brain.revealProgress(0.6)
-  assert.equal(brain.state, 'startled')
-  assert.equal(log.at(-1).info.side, 'right')
-  clock.advance(TIMING.startle)
-  assert.equal(brain.state, 'running')
-  clock.advance(TIMING.run)
-  assert.equal(brain.state, 'recovering')
-  clock.advance(TIMING.recover)
-  assert.equal(brain.state, 'corner-idle')
-  assert.ok(TIMING.run >= 550 && TIMING.run <= 750, 'run lasts 550-750 ms')
-  assert.ok(TIMING.revealAt >= 0.55 && TIMING.revealAt <= 0.7, 'reveal at 55-70%')
-})
-
-test('page turn: if the turn ends before the threshold is reported, the reveal still happens', () => {
-  const { brain } = mascotHarness()
-  brain.revealStart()
+  brain.revealStart({ rideFor: 750 })
+  assert.equal(brain.state, 'riding')
+  assert.equal(log.at(-1).info.rideFor, 750)
+  brain.revealProgress(0.9) // the ride does not depend on the turn
   brain.revealComplete()
-  assert.equal(brain.state, 'startled')
-  brain.revealComplete() // idempotent
-  assert.equal(brain.state, 'startled')
-})
-
-test('closing cancels everything and resets to hidden; reopening starts clean', () => {
-  const { clock, brain, states } = mascotHarness()
-  settleInCorner({ clock, brain })
-  brain.cardEnter('pointer')
-  assert.equal(brain.state, 'jumping')
-  brain.closeStart()
-  assert.equal(brain.state, 'closing')
-  clock.advance(TIMING.closeDuck)
-  assert.equal(brain.state, 'hidden')
-  brain.closeComplete()
-  assert.equal(brain.context, 'page')
-  assert.equal(brain.pendingTimers, 0)
-  clock.advance(60000) // nothing left to fire
-  assert.equal(brain.state, 'hidden')
-  const before = states().length
-  brain.revealStart()
-  assert.equal(brain.state, 'page-reveal-hidden')
-  assert.equal(states().length, before + 1)
-})
-
-test('closing while still caught (mid-run) goes straight to hidden', () => {
-  const { clock, brain } = mascotHarness()
-  brain.revealStart()
-  brain.revealProgress(0.65)
-  clock.advance(TIMING.startle + 100)
-  assert.equal(brain.state, 'running')
-  brain.closeStart()
-  assert.equal(brain.state, 'closing')
-  brain.closeComplete()
-  assert.equal(brain.state, 'hidden')
-  assert.equal(brain.pendingTimers, 0)
-})
-
-/* ------------------------------------------------------- mascot: idle ladder */
-
-test('idle ladder: impatient at exactly 2 s, apple and sleep inside their seeded bounds', () => {
-  const { clock, brain } = mascotHarness({ seed: 7 })
-  settleInCorner({ clock, brain })
-  const { eatAt, sleepAt } = brain.thresholds
-  assert.ok(eatAt >= 8000 && eatAt <= 12000, `eatAt ${eatAt}`)
-  assert.ok(sleepAt >= 18000 && sleepAt <= 28000, `sleepAt ${sleepAt}`)
-  clock.advance(1999)
-  assert.notEqual(brain.state, 'impatient')
+  clock.advance(749)
+  assert.equal(brain.state, 'riding')
   clock.advance(1)
-  assert.equal(brain.state, 'impatient')
-  clock.advance(TIMING.impatient)
-  assert.ok(['corner-idle', 'glancing'].includes(brain.state))
-  clock.advance(eatAt - 2000 - TIMING.impatient - 1)
-  assert.notEqual(brain.state, 'eating')
-  clock.advance(1)
-  assert.equal(brain.state, 'eating')
-  clock.advance(sleepAt - eatAt - 1)
-  assert.notEqual(brain.state, 'yawning')
-  clock.advance(1)
-  assert.equal(brain.state, 'yawning')
-  clock.advance(TIMING.yawn)
-  assert.equal(brain.state, 'sleeping')
+  assert.equal(brain.state, 'idle')
+  // Already on the line (nowhere to ride): idle at once; covered: tucked; reduced: instant.
+  const there = mascotHarness()
+  assert.equal(there.brain.revealStart({ rideFor: 0 }), 'there')
+  assert.equal(there.brain.state, 'idle')
+  const covered = mascotHarness()
+  covered.brain.revealStart({ rideFor: 0, covered: true })
+  assert.equal(covered.brain.state, 'tucked')
+  const reduced = mascotHarness({ reduced: true })
+  assert.equal(reduced.brain.revealStart({ rideFor: 900 }), 'instant')
+  assert.equal(reduced.brain.state, 'idle')
+  assert.equal(reduced.log.at(-1).info.instant, true)
 })
 
-test('idle ladder: test overrides make every threshold exact and deterministic', () => {
-  const timing = withTiming({ eatAt: 3000, sleepAt: 5000, eat: 800, impatient: 600 })
-  const { clock, brain } = mascotHarness({ timing })
-  settleInCorner({ clock, brain })
-  clock.advance(2000)
-  assert.equal(brain.state, 'impatient')
-  clock.advance(1000)
-  assert.equal(brain.state, 'eating')
-  clock.advance(2000)
-  assert.equal(brain.state, 'yawning')
+test('closing: it rides off toward the corner; with nowhere to ride it simply goes; teardown leaves nothing', () => {
+  const h = mascotHarness()
+  settleInAlbum(h)
+  h.brain.closeStart({ rideFor: 120 })
+  assert.equal(h.brain.state, 'leaving')
+  h.brain.closeComplete()
+  assert.equal(h.brain.state, 'hidden')
+  assert.equal(h.brain.context, 'page')
+  assert.equal(h.log.at(-1).info.reset, true)
+  assert.equal(h.brain.pendingTimers, 0)
+  const still = mascotHarness()
+  settleInAlbum(still)
+  still.brain.closeStart({ rideFor: 0 })
+  assert.equal(still.brain.state, 'hidden')
+  assert.equal(still.log.at(-1).info.instant, true)
 })
 
-test('activity resets the ladder from zero and interrupts idle business gently', () => {
-  const { clock, brain } = mascotHarness()
-  settleInCorner({ clock, brain })
-  clock.advance(2100)
-  assert.equal(brain.state, 'impatient')
-  clock.advance(900) // 3000 ms
-  brain.activity()
-  assert.equal(brain.state, 'corner-idle')
-  clock.advance(1999)
-  assert.notEqual(brain.state, 'impatient')
-  clock.advance(1)
-  assert.equal(brain.state, 'impatient')
+test('idle: alive but no performance; the one payoff is a doze at 60 s', () => {
+  const h = mascotHarness()
+  settleInAlbum(h)
+  h.clock.advance(TIMING.sleepAt - 1)
+  assert.equal(h.brain.state, 'idle')
+  h.clock.advance(1)
+  assert.equal(h.brain.state, 'yawning')
+  h.clock.advance(TIMING.yawn)
+  assert.equal(h.brain.state, 'sleeping')
+  assert.deepEqual(h.states().slice(-3), ['idle', 'yawning', 'sleeping'])
 })
 
-test('activity wakes a sleeping mascot, which then restarts the ladder', () => {
-  const timing = withTiming({ eatAt: 3000, sleepAt: 4000, eat: 500, impatient: 500 })
-  const { clock, brain } = mascotHarness({ timing })
-  settleInCorner({ clock, brain })
-  clock.advance(4000 + timing.yawn)
-  assert.equal(brain.state, 'sleeping')
-  brain.activity()
-  assert.equal(brain.state, 'waking')
-  brain.activity() // more input while waking does not restart it
-  assert.equal(brain.state, 'waking')
-  clock.advance(timing.wake)
-  assert.equal(brain.state, 'corner-idle')
-  clock.advance(2000)
-  assert.equal(brain.state, 'impatient')
+test('idle: activity restarts the clock; input wakes a sleeping mascot gently', () => {
+  const h = mascotHarness()
+  settleInAlbum(h)
+  h.clock.advance(TIMING.sleepAt - 100)
+  h.brain.activity()
+  h.clock.advance(TIMING.sleepAt - 1)
+  assert.equal(h.brain.state, 'idle')
+  h.clock.advance(1 + TIMING.yawn)
+  assert.equal(h.brain.state, 'sleeping')
+  h.brain.activity()
+  assert.equal(h.brain.state, 'waking')
+  h.brain.activity() // more input while waking changes nothing
+  h.clock.advance(TIMING.wake)
+  assert.equal(h.brain.state, 'idle')
+  h.clock.advance(TIMING.sleepAt - 1)
+  assert.equal(h.brain.state, 'idle', 'the clock restarted after waking')
 })
 
-/* ----------------------------------------------------- mascot: reactions */
-
-test('card hover jumps once; repeated crossings inside the debounce are ignored', () => {
-  const { clock, brain } = mascotHarness()
-  settleInCorner({ clock, brain })
-  assert.equal(brain.cardEnter('pointer'), true)
-  assert.equal(brain.state, 'jumping')
-  assert.equal(brain.cardEnter('pointer'), false)
-  clock.advance(TIMING.jump)
-  assert.equal(brain.state, 'corner-idle')
-  assert.ok(TIMING.jump >= 420 && TIMING.jump <= 560)
-  clock.advance(TIMING.cardDebounce - TIMING.jump - 1)
-  assert.equal(brain.cardEnter('pointer'), false)
-  clock.advance(1)
-  assert.equal(brain.cardEnter('pointer'), true)
+test('pilot: before it dozes it lands the drone (parking), then yawns; no drone to land, it simply dozes', () => {
+  const park = TIMING.droneLand + 250
+  const h = mascotHarness({ parkFor: () => park })
+  settleInAlbum(h)
+  h.clock.advance(TIMING.sleepAt)
+  assert.equal(h.brain.state, 'parking')
+  h.clock.advance(park - 1)
+  assert.equal(h.brain.state, 'parking')
+  h.clock.advance(1)
+  assert.equal(h.brain.state, 'yawning')
+  h.clock.advance(TIMING.yawn)
+  assert.equal(h.brain.state, 'sleeping')
+  assert.deepEqual(h.states().slice(-4), ['idle', 'parking', 'yawning', 'sleeping'])
+  // The drone is down early: it dozes at once.
+  const early = mascotHarness({ parkFor: () => park })
+  settleInAlbum(early)
+  early.clock.advance(TIMING.sleepAt)
+  early.brain.parked()
+  assert.equal(early.brain.state, 'yawning')
+  // Nothing to land: straight to the doze, as before.
+  const none = mascotHarness({ parkFor: () => 0 })
+  settleInAlbum(none)
+  none.clock.advance(TIMING.sleepAt)
+  assert.equal(none.brain.state, 'yawning')
 })
 
-test('keyboard focus and touch get the reduced reaction (no jump)', () => {
-  const { clock, brain } = mascotHarness()
-  settleInCorner({ clock, brain })
-  assert.equal(brain.cardEnter('keyboard'), true)
-  assert.equal(brain.state, 'beaming')
-  clock.advance(TIMING.cardDebounce)
-  assert.equal(brain.cardEnter('touch'), true)
-  assert.equal(brain.state, 'beaming')
+test('pilot: input while it lands the drone brings it back to idle and restarts the clock; a hidden tab lets it sleep', () => {
+  const park = TIMING.droneLand + 250
+  const h = mascotHarness({ parkFor: () => park })
+  settleInAlbum(h)
+  h.clock.advance(TIMING.sleepAt + 300)
+  assert.equal(h.brain.state, 'parking')
+  h.brain.activity()
+  assert.equal(h.brain.state, 'idle')
+  assert.equal(h.log.at(-1).info.from, 'parking')
+  h.clock.advance(park)
+  assert.equal(h.brain.state, 'idle', 'the old parking timer is gone')
+  h.clock.advance(TIMING.sleepAt - park)
+  assert.equal(h.brain.state, 'parking', 'the idle clock restarted from the input')
+  h.brain.suspend()
+  assert.equal(h.brain.state, 'sleeping')
+  h.brain.destroy()
+  assert.equal(h.brain.pendingTimers, 0)
 })
 
-test('priority: page transitions outrank reactions, reactions outrank idle, idle outranks ambient', () => {
-  assert.ok(priorityOf('running') < priorityOf('tucked'))
-  assert.ok(priorityOf('tucked') < priorityOf('jumping'))
-  assert.ok(priorityOf('jumping') < priorityOf('eating'))
-  assert.ok(priorityOf('eating') < priorityOf('glancing'))
-  assert.ok(priorityOf('glancing') < priorityOf('corner-idle'))
-  for (const [state, level] of Object.entries(MASCOT_STATES)) assert.ok(level in PRIORITY, state)
-
-  const { clock, brain } = mascotHarness()
-  brain.revealStart()
-  brain.revealProgress(0.7)
-  clock.advance(TIMING.startle)
-  assert.equal(brain.state, 'running')
-  assert.equal(brain.cardEnter('pointer'), false) // no jumping mid-sprint
-  brain.activity()
-  assert.equal(brain.state, 'running')
-  brain.setTucked(true) // content in the corner: decided once it has landed
-  assert.equal(brain.state, 'running')
-  clock.advance(TIMING.run + TIMING.recover)
-  assert.equal(brain.state, 'tucked')
-  assert.equal(brain.cardEnter('pointer'), false) // tucked away: no pop-up over content
-  brain.setTucked(false)
-  assert.equal(brain.state, 'corner-idle')
+test('cards: a card someone rests on turns the body toward it, only while it is idle', () => {
+  const h = mascotHarness()
+  assert.equal(h.brain.cardDwell(), false, 'not on the Services page')
+  h.brain.revealStart({ rideFor: 500 })
+  assert.equal(h.brain.cardDwell(), false, 'not while it rides')
+  h.clock.advance(500)
+  assert.equal(h.brain.cardDwell(), 'look')
+  assert.equal(h.brain.state, 'idle', 'turning toward a card is not a state of its own')
+  h.clock.advance(TIMING.sleepAt + TIMING.yawn)
+  assert.equal(h.brain.cardDwell(), false, 'not while it dozes')
 })
 
-test('glances: only from corner-idle, every 6-10 s, identical for identical seeds', () => {
-  const run = (seed) => {
-    const { clock, brain, log } = mascotHarness({ seed, timing: withTiming({ impatientAt: 1e9, eatAt: 1e9, sleepAt: 1e9 }) })
-    settleInCorner({ clock, brain })
-    const start = clock.now()
-    clock.advance(60000)
-    return log.filter((entry) => entry.state === 'glancing').map((entry) => entry.at - start)
-  }
-  const a = run(3)
-  assert.deepEqual(a, run(3))
-  assert.notDeepEqual(a, run(4))
-  assert.ok(a.length >= 5, `${a.length} glances in a minute`)
-  const glanceLength = TIMING.glance.reduce((sum, part) => sum + part, 0)
-  let previous = 0
-  for (const at of a) {
-    const gap = at - previous
-    assert.ok(gap >= 6000 && gap <= 10000 + glanceLength, `gap ${gap}`)
-    previous = at
-  }
+test('ripple: a click\'s ring of light makes it flinch, once, and only while idle', () => {
+  const h = mascotHarness()
+  assert.equal(h.brain.ripple(), false)
+  settleInAlbum(h)
+  assert.equal(h.brain.ripple(), true)
+  assert.equal(h.brain.state, 'flinching')
+  assert.equal(h.brain.ripple(), false, 'not again mid-flinch')
+  h.clock.advance(TIMING.flinch)
+  assert.equal(h.brain.state, 'idle')
+  h.clock.advance(TIMING.sleepAt + TIMING.yawn)
+  assert.equal(h.brain.state, 'sleeping')
+  assert.equal(h.brain.ripple(), false, 'a ripple does not wake it (input does)')
+})
+
+test('priority: transitions outrank the constraint, which outranks reactions, then idle, then rest', () => {
+  assert.ok(priorityOf('holding') < priorityOf('tucked'))
+  assert.ok(priorityOf('tucked') < priorityOf('flinching'))
+  assert.ok(priorityOf('flinching') < priorityOf('sleeping'))
+  assert.ok(priorityOf('sleeping') < priorityOf('idle'))
+  for (const state of Object.keys(MASCOT_STATES)) assert.ok(priorityOf(state) in { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }, state)
+  assert.deepEqual(Object.keys(PRIORITY), ['transition', 'constraint', 'reaction', 'idle', 'rest'])
+  // Retired performances stay retired.
+  for (const state of ['impatient', 'eating', 'waving', 'jumping', 'glancing', 'startled', 'running', 'peeking', 'glimpsing']) assert.ok(!(state in MASCOT_STATES), state)
+})
+
+test('tucked: content where it stands sends it under the floor; it comes back when clear', () => {
+  const h = mascotHarness()
+  settleInAlbum(h)
+  h.brain.setTucked(true)
+  assert.equal(h.brain.state, 'tucked')
+  h.clock.advance(TIMING.sleepAt * 2)
+  assert.equal(h.brain.state, 'tucked', 'no doze while tucked away')
+  h.brain.setTucked(false)
+  assert.equal(h.brain.state, 'idle')
+  assert.equal(h.log.at(-1).info.from, 'tucked')
 })
 
 test('pick draws inside its range and is repeatable for a seed', () => {
-  const r1 = seededRandom(9)
-  const r2 = seededRandom(9)
-  for (let index = 0; index < 200; index += 1) {
-    const value = pick([6000, 10000], r1)
-    assert.equal(value, pick([6000, 10000], r2))
-    assert.ok(value >= 6000 && value < 10000)
+  const a = seededRandom(7)
+  const b = seededRandom(7)
+  for (let index = 0; index < 50; index += 1) {
+    const value = pick([20000, 40000], a)
+    assert.ok(value >= 20000 && value <= 40000)
+    assert.equal(value, pick([20000, 40000], b))
   }
-  assert.equal(pick(2000, r1), 2000)
+  assert.equal(pick(5, a), 5)
+  assert.equal(withTiming({ sleepAt: 10, nonsense: 1 }).sleepAt, 10)
+  assert.equal('nonsense' in withTiming({ nonsense: 1 }), false)
 })
 
-/* ------------------------------------------------- mascot: reduced motion etc. */
-
-test('reduced motion: no greeting, no journey, no ladder; the corner pose is immediate', () => {
-  const { clock, brain, log } = mascotHarness({ reduced: true })
-  assert.equal(brain.greet(), 'skipped')
-  brain.revealStart()
-  assert.equal(brain.state, 'corner-idle')
-  assert.equal(log.at(-1).info.instant, true)
-  assert.equal(brain.pendingTimers, 0)
-  assert.equal(brain.cardEnter('pointer'), false)
-  brain.activity()
-  clock.advance(60000)
-  assert.equal(brain.state, 'corner-idle')
-  assert.equal(log.filter((entry) => entry.state !== 'corner-idle').length, 0)
-  brain.closeStart()
-  assert.equal(brain.state, 'hidden')
+test('reduced motion: no save beat, no ride, no doze, no reactions', () => {
+  const h = mascotHarness({ reduced: true })
+  assert.equal(h.brain.greet({ landsIn: 1900 }), 'skipped')
+  h.clock.advance(5000)
+  assert.equal(h.brain.state, 'hidden')
+  h.brain.revealStart({ rideFor: 900 })
+  assert.equal(h.brain.state, 'idle')
+  h.clock.advance(TIMING.sleepAt * 2)
+  assert.equal(h.brain.state, 'idle')
+  assert.equal(h.brain.cardDwell(), false)
+  assert.equal(h.brain.ripple(), false)
+  assert.equal(h.brain.pendingTimers, 0)
 })
 
 test('hidden document: transient work settles at once and nothing stale replays', () => {
-  const { clock, brain, log } = mascotHarness()
-  brain.revealStart()
-  brain.revealProgress(0.7)
-  clock.advance(TIMING.startle + 50)
-  assert.equal(brain.state, 'running')
-  brain.suspend()
-  assert.equal(brain.state, 'corner-idle')
-  assert.equal(log.at(-1).info.instant, true)
-  assert.equal(brain.pendingTimers, 0)
-  clock.advance(5000)
-  assert.equal(brain.state, 'corner-idle') // no recovering/impatient while hidden
-  brain.resume()
-  clock.advance(2000)
-  assert.equal(brain.state, 'impatient') // ladder restarted from zero on return
-  // A greeting in progress on the page simply ends.
-  const page = mascotHarness()
-  page.brain.greet()
-  page.clock.advance(600)
-  page.brain.suspend()
-  assert.equal(page.brain.state, 'hidden')
-  assert.equal(page.brain.greet(), 'skipped')
+  const h = mascotHarness()
+  h.brain.greet({ landsIn: 1900 })
+  h.clock.advance(1800)
+  h.brain.suspend()
+  assert.equal(h.brain.state, 'hidden')
+  assert.equal(h.brain.greet({ landsIn: 1900 }), 'skipped')
+  h.clock.advance(10000)
+  assert.equal(h.brain.state, 'hidden')
+  h.brain.resume()
+  const album = mascotHarness()
+  album.brain.revealStart({ rideFor: 800 })
+  album.brain.suspend()
+  assert.equal(album.brain.state, 'idle')
+  album.clock.advance(TIMING.sleepAt * 2)
+  assert.equal(album.brain.state, 'idle', 'no doze while the tab is hidden')
+  album.brain.resume()
+  album.clock.advance(TIMING.sleepAt)
+  assert.equal(album.brain.state, 'yawning')
 })
 
 test('destroy leaves no timers behind', () => {
-  const { clock, brain } = mascotHarness()
-  settleInCorner({ clock, brain })
-  assert.ok(brain.pendingTimers > 0)
-  brain.destroy()
-  assert.equal(brain.pendingTimers, 0)
-  assert.equal(clock.pending, 0)
+  const h = mascotHarness()
+  h.brain.greet({ landsIn: 1900 })
+  h.brain.destroy()
+  assert.equal(h.brain.pendingTimers, 0)
+  assert.equal(h.clock.pending, 0)
+  const album = mascotHarness()
+  settleInAlbum(album)
+  album.brain.destroy()
+  assert.equal(album.brain.pendingTimers, 0)
+  assert.equal(album.clock.pending, 0)
 })
 
 /* ------------------------------------------------------------------ drone */
@@ -392,31 +421,185 @@ const droneHarness = ({ reduced = false } = {}) => {
   return { clock, brain, log }
 }
 
-test('drone: one heart per opening, then home', () => {
-  const { clock, brain, log } = droneHarness()
+test('drone: it hovers when the pocket opens; no heart on open', () => {
+  const { brain, log } = droneHarness()
   brain.open()
   assert.equal(brain.state, 'entering')
   brain.revealed()
+  assert.equal(brain.state, 'home-hover')
+  brain.revealed() // a second "revealed" (focus restore, resize) changes nothing
+  assert.equal(log.filter((entry) => entry.state === 'drawing-heart').length, 0)
+  assert.equal(brain.busy, false)
+  for (const state of log.map((entry) => entry.state)) assert.ok(DRONE_STATES.includes(state))
+})
+
+test('drone: the pilot lands it and flies it up again; it can open parked; nothing to play with on the ground', () => {
+  const { clock, brain, log } = droneHarness()
+  brain.open()
+  brain.revealed()
+  assert.equal(brain.park(), true)
+  assert.equal(brain.state, 'landing')
+  assert.ok(brain.watched && brain.grounded)
+  clock.advance(TIMING.droneLand)
+  assert.equal(brain.state, 'landed')
+  assert.equal(brain.watched, false, 'parked: the pilot does not watch it')
+  assert.equal(brain.poke({ heart: true }), false)
+  assert.equal(brain.hoverEnter(), false)
+  assert.equal(brain.pointerDown(0, 0), false)
+  assert.equal(brain.ripple(), false)
+  assert.equal(brain.follow(), false)
+  assert.equal(brain.takeOff(), true)
+  assert.equal(brain.state, 'taking-off')
+  assert.equal(brain.takeOff(), false, 'already on its way up')
+  clock.advance(TIMING.droneTakeOff)
+  assert.equal(brain.state, 'home-hover')
+  assert.equal(brain.heartDrawn, false, 'landing and taking off used no clicks')
+  // Opening with a free spot beside the mascot: it waits parked until it is flown up.
+  const parked = droneHarness()
+  parked.brain.open({ parked: true })
+  assert.equal(parked.brain.state, 'landed')
+  assert.equal(parked.log.at(-1).info.from, 'open')
+  parked.brain.revealed()
+  assert.equal(parked.brain.state, 'landed', 'the page finishing its turn does not lift it')
+  parked.brain.takeOff()
+  parked.clock.advance(TIMING.droneTakeOff)
+  assert.equal(parked.brain.state, 'home-hover')
+  for (const state of [...log, ...parked.log].map((entry) => entry.state)) assert.ok(DRONE_STATES.includes(state))
+  for (const state of DRONE_GROUNDED) assert.ok(DRONE_STATES.includes(state))
+  for (const state of DRONE_WATCHED) assert.ok(DRONE_STATES.includes(state))
+})
+
+test('drone: it only lands from a calm flight; a hidden tab finishes the landing; reduced motion never lands', () => {
+  const { clock, brain } = droneHarness()
+  brain.open()
+  brain.revealed()
+  brain.poke({ heart: true })
   assert.equal(brain.state, 'drawing-heart')
-  assert.ok(TIMING.droneHeart >= 1300 && TIMING.droneHeart <= 1800)
+  assert.equal(brain.park(), false, 'not in the middle of the heart')
+  clock.advance(TIMING.droneHeart + TIMING.droneReturn)
+  assert.equal(brain.state, 'home-hover')
+  brain.pointerDown(0, 0)
+  brain.pointerMove(20, 0)
+  assert.equal(brain.state, 'dragging')
+  assert.equal(brain.park(), false, 'not while someone holds it')
+  brain.pointerUp()
+  assert.equal(brain.park(), true, 'flying home is calm enough')
+  brain.suspend()
+  assert.equal(brain.state, 'landed')
+  brain.suspend()
+  assert.equal(brain.state, 'landed')
+  const reduced = droneHarness({ reduced: true })
+  reduced.brain.open({ parked: true })
+  assert.equal(reduced.brain.state, 'home-hover')
+  assert.equal(reduced.brain.park(), false)
+})
+
+test('drone: the first click of a page load draws the heart; later clicks hop; reopening never redraws it', () => {
+  const { clock, brain, log } = droneHarness()
+  brain.open()
+  brain.revealed()
+  assert.equal(brain.poke({ heart: true }), 'heart')
+  assert.equal(brain.state, 'drawing-heart')
+  assert.equal(brain.busy, true)
   clock.advance(TIMING.droneHeart)
   assert.equal(brain.state, 'returning-home')
+  assert.equal(log.at(-1).info.from, 'heart')
   clock.advance(TIMING.droneReturn)
   assert.equal(brain.state, 'home-hover')
-  brain.revealed() // a second "revealed" (focus restore, resize) never redraws
-  assert.equal(log.filter((entry) => entry.state === 'drawing-heart').length, 1)
+  assert.equal(brain.poke({ heart: true }), 'hop')
+  assert.equal(brain.state, 'evading')
+  clock.advance(TIMING.droneHop)
+  assert.equal(brain.state, 'home-hover')
   brain.close()
   brain.closeComplete()
   brain.open()
   brain.revealed()
-  assert.equal(log.filter((entry) => entry.state === 'drawing-heart').length, 2)
+  clock.advance(TIMING.dronePokeCooldown)
+  assert.equal(brain.poke({ heart: true }), 'hop')
+  assert.equal(log.filter((entry) => entry.state === 'drawing-heart').length, 1)
+  const cramped = droneHarness()
+  cramped.brain.open()
+  cramped.brain.revealed()
+  assert.equal(cramped.brain.poke({ heart: false }), 'hop')
 })
 
-test('drone: no room for the heart means it just hovers home', () => {
-  const { brain } = droneHarness()
+test('drone: the pointer makes it curious; it goes back to hovering 400 ms after the pointer leaves', () => {
+  const { clock, brain } = droneHarness()
   brain.open()
-  brain.revealed({ withHeart: false })
+  brain.revealed()
+  assert.equal(brain.hoverEnter(), true)
+  assert.equal(brain.state, 'curious')
+  brain.hoverLeave()
+  clock.advance(TIMING.droneSettle - 1)
+  assert.equal(brain.state, 'curious')
+  brain.hoverEnter() // back before it settled: stays curious, no new transition
+  clock.advance(TIMING.droneSettle)
+  assert.equal(brain.state, 'curious')
+  brain.hoverLeave()
+  clock.advance(TIMING.droneSettle)
   assert.equal(brain.state, 'home-hover')
+  brain.hoverEnter()
+  assert.equal(brain.poke({ heart: true }), 'heart')
+})
+
+test('drone: it keeps a slow cursor company, goes home when told or when it tires of it', () => {
+  const { clock, brain, log } = droneHarness()
+  brain.open()
+  assert.equal(brain.follow(), false, 'not while the page is still turning')
+  brain.revealed()
+  assert.equal(brain.follow(), true)
+  assert.equal(brain.state, 'following')
+  assert.equal(brain.follow(), false)
+  assert.equal(brain.unfollow(), true)
+  assert.equal(brain.state, 'returning-home')
+  clock.advance(TIMING.droneSpringBack)
+  assert.equal(brain.state, 'home-hover')
+  brain.follow()
+  clock.advance(TIMING.droneFollowFor)
+  assert.equal(brain.state, 'returning-home')
+  assert.equal(log.at(-1).info.cause, 'bored')
+  clock.advance(TIMING.droneSpringBack)
+  // While following, the pointer can still reach it, click it or drag it.
+  brain.follow()
+  assert.equal(brain.hoverEnter(), true)
+  assert.equal(brain.state, 'curious')
+  clock.advance(TIMING.dronePokeCooldown)
+  brain.hoverLeave()
+  clock.advance(TIMING.droneSettle)
+  brain.follow()
+  assert.equal(brain.poke({ heart: true }), 'heart')
+  // Escape and a relayout bring it home.
+  const other = droneHarness()
+  other.brain.open()
+  other.brain.revealed()
+  other.brain.follow()
+  assert.equal(other.brain.escape(), true)
+  assert.equal(other.brain.state, 'returning-home')
+  other.clock.advance(TIMING.droneSpringBack)
+  other.brain.follow()
+  other.brain.relayout()
+  assert.equal(other.brain.state, 'returning-home')
+})
+
+test('drone: a ripple shoves it aside; it recovers to what it was doing; never during the heart', () => {
+  const { clock, brain } = droneHarness()
+  brain.open()
+  brain.revealed()
+  assert.equal(brain.ripple(), true)
+  assert.equal(brain.state, 'dodging')
+  clock.advance(TIMING.droneDodge)
+  assert.equal(brain.state, 'returning-home')
+  clock.advance(TIMING.droneSpringBack)
+  assert.equal(brain.state, 'home-hover')
+  brain.follow()
+  brain.ripple()
+  clock.advance(TIMING.droneDodge)
+  assert.equal(brain.state, 'following', 'it goes back to keeping the cursor company')
+  brain.unfollow()
+  clock.advance(TIMING.droneSpringBack)
+  brain.poke({ heart: true })
+  assert.equal(brain.ripple(), false)
+  assert.equal(brain.state, 'drawing-heart')
 })
 
 test('drone: dragging is impossible while entering or drawing the heart', () => {
@@ -424,6 +607,7 @@ test('drone: dragging is impossible while entering or drawing the heart', () => 
   brain.open()
   assert.equal(brain.pointerDown(0, 0), false)
   brain.revealed()
+  brain.poke({ heart: true })
   assert.equal(brain.pointerDown(0, 0), false)
   assert.equal(brain.pointerMove(50, 50), false)
   assert.equal(brain.state, 'drawing-heart')
@@ -432,14 +616,16 @@ test('drone: dragging is impossible while entering or drawing the heart', () => 
 test('drone: a small movement is a click, past the threshold it is a drag; release springs home', () => {
   const { clock, brain } = droneHarness()
   brain.open()
-  brain.revealed({ withHeart: false })
+  brain.revealed()
   assert.equal(brain.pointerDown(100, 100), true)
   assert.equal(brain.pointerMove(103, 102), false)
   assert.equal(brain.state, 'home-hover')
   assert.equal(brain.pointerUp(), false) // a click: the caller pokes instead
-  brain.pointerDown(100, 100)
+  brain.hoverEnter()
+  brain.pointerDown(100, 100) // from curious too
   assert.equal(brain.pointerMove(100 + TIMING.droneDragThreshold, 100), true)
   assert.equal(brain.state, 'dragging')
+  assert.equal(brain.busy, true)
   assert.equal(brain.pointerUp(), true)
   assert.equal(brain.state, 'returning-home')
   clock.advance(TIMING.droneSpringBack)
@@ -449,7 +635,7 @@ test('drone: a small movement is a click, past the threshold it is a drag; relea
 test('drone: pointer cancel, Escape and relayout all bring it home; Escape at home is not consumed', () => {
   const { clock, brain, log } = droneHarness()
   brain.open()
-  brain.revealed({ withHeart: false })
+  brain.revealed()
   for (const end of ['cancel', 'escape', 'relayout']) {
     brain.pointerDown(0, 0)
     brain.pointerMove(30, 30)
@@ -463,54 +649,38 @@ test('drone: pointer cancel, Escape and relayout all bring it home; Escape at ho
     assert.equal(brain.state, 'home-hover')
   }
   assert.equal(brain.escape(), false) // lets the pocket's own Escape (close) happen
+  brain.hoverEnter()
+  brain.relayout()
+  assert.equal(brain.state, 'home-hover')
 })
 
-test('drone: hover dodges once per entry and is throttled; drag interrupts a dodge', () => {
+test('drone: clicks are throttled; reduced motion rests at home with nothing to perform', () => {
   const { clock, brain } = droneHarness()
   brain.open()
-  brain.revealed({ withHeart: false })
-  assert.equal(brain.hoverEnter(), true)
-  assert.equal(brain.state, 'evading')
-  assert.equal(brain.hoverEnter(), false) // still inside: no repeat
-  clock.advance(TIMING.droneEvade)
-  assert.equal(brain.state, 'home-hover')
-  brain.hoverLeave()
-  assert.equal(brain.hoverEnter(), false) // re-entered inside the cooldown
-  brain.hoverLeave()
-  clock.advance(TIMING.droneEvadeCooldown)
-  assert.equal(brain.hoverEnter(), true)
-  brain.pointerDown(0, 0)
-  brain.pointerMove(20, 0)
-  assert.equal(brain.state, 'dragging')
-})
-
-test('drone: click, tap, Enter or Space pokes it (the single-pointer alternative)', () => {
-  const { clock, brain } = droneHarness()
-  brain.open()
-  brain.revealed({ withHeart: false })
-  assert.equal(brain.poke(), true)
-  assert.equal(brain.state, 'evading')
-  clock.advance(TIMING.droneEvade)
-  clock.advance(TIMING.dronePokeCooldown)
-  assert.equal(brain.poke(), true)
-})
-
-test('drone: reduced motion rests at home with nothing to perform', () => {
-  const { brain, log } = droneHarness({ reduced: true })
-  brain.open()
-  assert.equal(brain.state, 'home-hover')
-  assert.equal(log.at(-1).info.instant, true)
   brain.revealed()
+  assert.equal(brain.poke(), 'hop')
+  clock.advance(TIMING.droneHop)
   assert.equal(brain.state, 'home-hover')
-  assert.equal(brain.poke(), false)
-  assert.equal(brain.hoverEnter(), false)
-  assert.equal(brain.pointerDown(0, 0), false)
+  clock.advance(TIMING.dronePokeCooldown)
+  assert.equal(brain.poke(), 'hop')
+
+  const reduced = droneHarness({ reduced: true })
+  reduced.brain.open()
+  assert.equal(reduced.brain.state, 'home-hover')
+  assert.equal(reduced.log.at(-1).info.instant, true)
+  reduced.brain.revealed()
+  assert.equal(reduced.brain.poke({ heart: true }), false)
+  assert.equal(reduced.brain.hoverEnter(), false)
+  assert.equal(reduced.brain.follow(), false)
+  assert.equal(reduced.brain.ripple(), false)
+  assert.equal(reduced.brain.pointerDown(0, 0), false)
 })
 
 test('drone: closing mid-flight cancels it and leaves no timers', () => {
   const { clock, brain } = droneHarness()
   brain.open()
   brain.revealed()
+  brain.poke({ heart: true })
   clock.advance(400)
   brain.close()
   assert.equal(brain.state, 'closing')
@@ -518,6 +688,121 @@ test('drone: closing mid-flight cancels it and leaves no timers', () => {
   assert.equal(brain.state, 'hidden')
   assert.equal(brain.pendingTimers, 0)
   assert.equal(clock.pending, 0)
+})
+
+/* ---------------------------------------------------------------- physics */
+
+test('springs: critical damping settles without overshoot; less damping wobbles; any frame rate is stable', () => {
+  const critical = createSpring(0, { frequency: 2, damping: 1 })
+  let peak = 0
+  for (let frame = 0; frame < 120; frame += 1) peak = Math.max(peak, stepSpring(critical, 16, 10))
+  assert.ok(peak <= 10 + 1e-6 && springSettled(critical, 0.01))
+  const wobbly = createSpring(0, { frequency: 2, damping: 0.3 })
+  peak = 0
+  for (let frame = 0; frame < 120; frame += 1) peak = Math.max(peak, stepSpring(wobbly, 16, 10))
+  assert.ok(peak > 12, 'an under-damped spring overshoots (the flame tip, the drone)')
+  // A long gap (a background tab) is capped and stays finite.
+  const jumpy = createSpring(0, { frequency: 8, damping: 0.5 })
+  stepSpring(jumpy, 5000, 100)
+  assert.ok(Number.isFinite(jumpy.x) && Math.abs(jumpy.x) < 200)
+  resetSpring(jumpy, 3)
+  assert.equal(jumpy.x, 3)
+  assert.equal(jumpy.v, 0)
+})
+
+test('springs: an angle spring turns the short way round', () => {
+  assert.equal(angleDelta(170, -170), 20)
+  assert.equal(angleDelta(-170, 170), -20)
+  const heading = createSpring(170, { frequency: 2, damping: 1 })
+  for (let frame = 0; frame < 120; frame += 1) stepAngleSpring(heading, 16, -170, 2, 1)
+  assert.ok(Math.abs(heading.x - 190) < 0.1, `took the short way: ${heading.x.toFixed(1)}`)
+})
+
+test('wander: bounded, smooth and repeatable for a seed', () => {
+  const a = createWander(seededRandom(3))
+  const b = createWander(seededRandom(3))
+  let last = a(0)
+  for (let ms = 0; ms < 60000; ms += 16) {
+    const value = a(ms)
+    assert.ok(Math.abs(value) <= 1)
+    assert.ok(Math.abs(value - last) < 0.04, 'no jumps between frames')
+    assert.equal(value, b(ms))
+    last = value
+  }
+})
+
+/* ----------------------------------------------------------- the hoverboard */
+
+test('ride: the board chases its path on the flight model: it lags, banks into the ride, brakes nose up, overshoots a little and settles', () => {
+  const plan = planRide({ from: 120, to: 0, timing: TIMING.ride })
+  assert.equal(plan.dir, -1)
+  assert.equal(plan.duration, 450 + 120 * 4)
+  assert.equal(planRide({ from: 0, to: 1, timing: TIMING.ride }), null, 'nowhere to go')
+  assert.equal(planRide({ from: 900, to: 0, timing: TIMING.ride }).duration, TIMING.ride[3], 'never longer than the cap')
+  const board = createFlight(0)
+  board.x = 120
+  board.y = -BOARD.hover
+  let early = 0
+  let late = 0
+  let past = 0
+  let lag = 0
+  for (let ms = 16; ms <= plan.duration + 2000; ms += 16) {
+    const { x } = ridePoint(plan, ms)
+    stepFlight(board, 16, { x, y: -BOARD.hover, z: 0 }, 0, BOARD_FLIGHT)
+    if (ms < plan.duration / 2) early = Math.max(early, board.roll.x)
+    else late = Math.min(late, board.roll.x)
+    past = Math.min(past, board.x)
+    if (Math.abs(ms - plan.duration / 2) < 8) lag = board.x - x
+    if (Math.abs(ms - (plan.duration + TIMING.rideSettle)) < 8) assert.ok(Math.abs(board.x) < 1.5, `at rest when the remote comes up: ${board.x}`)
+  }
+  // Riding toward -x: the leading end dips as it speeds up (+roll lifts the +x end), lifts as it brakes.
+  assert.ok(early > 4 && early <= BOARD_FLIGHT.maxTilt, `banks into the ride: ${early}`)
+  assert.ok(late < -4 && late > -BOARD_FLIGHT.maxTilt * 1.2, `flares as it brakes: ${late}`)
+  assert.ok(lag > 8, `lags behind its path: ${lag}`)
+  assert.ok(past < -0.5 && past > -4, `overshoots a little: ${past}`)
+  assert.ok(Math.abs(board.x) < 0.05 && Math.abs(board.roll.x) < 0.1)
+  // Leaving, it speeds up and never brakes: a quarter of the time in, it is only 1/64 of the way.
+  const away = planRide({ from: 0, to: 200, timing: TIMING.ride, away: true })
+  assert.ok(Math.abs(ridePoint(away, away.duration / 4).x - 200 / 64) < 1e-9)
+  assert.equal(ridePoint(away, away.duration).done, true)
+  assert.deepEqual(shuffle(100, 0), {})
+  assert.ok(shuffle(100, 1).legL > 0)
+})
+
+/* ---------------------------------------------------------- the drone's flight */
+
+test('flight: it reaches its target and settles, banking into the move and levelling out', () => {
+  const flight = createFlight(22)
+  let maxBank = 0
+  for (let frame = 0; frame < 400; frame += 1) {
+    stepFlight(flight, 16, { x: 120, y: 0, z: 0 }, 22)
+    maxBank = Math.min(maxBank, flight.roll.x)
+  }
+  assert.ok(flightSettled(flight, { x: 120, y: 0, z: 0 }, 0.5), `at ${flight.x.toFixed(2)}`)
+  assert.ok(maxBank < -8, 'it banked into the move to the right')
+  assert.ok(Math.abs(flight.roll.x) < 0.5, 'and levelled out')
+  assert.ok(flight.rpm.x < 2.3, 'rotors back to hovering speed')
+})
+
+test('flight: thrust is limited; a shove moves it and it comes back; a scripted path still banks', () => {
+  const flight = createFlight(22)
+  stepFlight(flight, 16, { x: 5000, y: 0, z: 0 }, 22)
+  assert.ok(Math.abs(flight.ax) <= 2600 + 1e-6)
+  const shoved = createFlight(22)
+  kick(shoved, 400, 0)
+  let furthest = 0
+  for (let frame = 0; frame < 300; frame += 1) {
+    stepFlight(shoved, 16, { x: 0, y: 0, z: 0 }, 22)
+    furthest = Math.max(furthest, shoved.x)
+  }
+  assert.ok(furthest > 20 && flightSettled(shoved, { x: 0, y: 0, z: 0 }, 0.5))
+  const path = createFlight(22)
+  for (let frame = 1; frame <= 40; frame += 1) followPoint(path, 16, { x: 3 * frame * frame * 0.05, y: 0 }, 22)
+  assert.ok(path.roll.x < -2, 'speeding up to the right banks right')
+  // The heading drifts the short way round.
+  const turning = createFlight(170)
+  for (let frame = 0; frame < 300; frame += 1) stepFlight(turning, 16, { x: 0, y: 0 }, -170)
+  assert.ok(Math.abs(turning.yaw.x - 190) < 1)
 })
 
 /* --------------------------------------------------------------- geometry */
@@ -569,6 +854,40 @@ test('heart flight: leaves home, draws the heart inside its box, comes home', ()
   assert.ok(inside.length >= 90, 'the heart itself stays in its box')
   for (let index = 0; index <= 50; index += 1) assert.ok(Number.isFinite(samplePath(flight, index / 50).angle))
   assert.match(flight.d, /^M[\d.]+ [\d.]+C/)
+})
+
+test('heart flight: only the heart is inked, and the pen slows into the notch and the tip', () => {
+  const home = { x: 600, y: 120 }
+  const box = { x: 420, y: 70, w: 96, h: 86 }
+  const flight = heartFlight({ home, box })
+  const { heart, points, lengths, times } = flight
+  assert.match(heart.d, /^M[\d.]+ [\d.]+C/)
+  assert.ok(heart.start > 0 && heart.end < flight.length, 'the approach and the return are not part of the line')
+  const inked = points.slice(heart.from, heart.to + 1)
+  for (const p of inked) assert.ok(p.x >= box.x - 2 && p.x <= box.x + box.w + 2 && p.y >= box.y - 2 && p.y <= box.y + box.h + 2)
+  assert.deepEqual(inked[0], inked.at(-1), 'the line closes where it began')
+  // Time runs 0..1 in order; the flight starts and ends at home.
+  for (let index = 1; index < times.length; index += 1) assert.ok(times[index] >= times[index - 1])
+  assert.equal(times.at(-1), 1)
+  for (const tau of [0, 1]) {
+    const point = sampleFlight(flight, tau)
+    assert.ok(Math.hypot(point.x - home.x, point.y - home.y) < 1e-6)
+  }
+  // Pen speed (px per unit of time) at the notch and the tip vs an open curve (the left lobe).
+  const speed = (index) => (lengths[index + 1] - lengths[index]) / (times[index + 1] - times[index])
+  const quarter = (heart.to - heart.from) / 4
+  const notch = speed(heart.from + quarter)
+  const lobe = speed(heart.from + 2 * quarter)
+  const tip = speed(heart.from + 3 * quarter)
+  assert.ok(notch < lobe * 0.6, `notch ${notch.toFixed(0)} vs lobe ${lobe.toFixed(0)}`)
+  assert.ok(tip < lobe * 0.6, `tip ${tip.toFixed(0)} vs lobe ${lobe.toFixed(0)}`)
+  // Arc length grows with time.
+  let last = -1
+  for (let index = 0; index <= 40; index += 1) {
+    const { s } = sampleFlight(flight, index / 40)
+    assert.ok(s >= last)
+    last = s
+  }
 })
 
 test('anchors: first clear candidate wins, null when everything collides', () => {
@@ -693,15 +1012,136 @@ test('mascot model: a closed, finite silhouette from every angle, ending in the 
   assert.ok(top.x > 75 && top.y < 20, `tip at ${top.x.toFixed(1)}, ${top.y.toFixed(1)}`)
 })
 
-test('mascot model: the face turns with the body and hides behind it', () => {
+test('mascot model: the eye turns with the body and hides behind it', () => {
   const camera = mascotCamera()
-  const facing = (yaw) => mascotFrame({ yaw }, camera).decals.eye.facing
+  const facing = (yaw) => mascotFrame({ yaw }, camera).eye.facing
   assert.ok(facing(0) > 0.95)
   assert.ok(facing(50) > 0.4 && facing(50) < 0.8)
   assert.ok(facing(180) < -0.9)
+  assert.equal(mascotFrame({ yaw: 180 }, camera).eye.visible, false)
   // The eye slides toward the side the body turns to.
-  const eyeX = (yaw) => mascotFrame({ yaw }, camera).decals.eye.matrix[4]
+  const eyeX = (yaw) => mascotFrame({ yaw }, camera).eye.centre.x
   assert.ok(eyeX(40) > eyeX(0) + 10 && eyeX(-40) < eyeX(0) - 10)
+})
+
+/** Is a point inside a closed polygon (even-odd)? */
+const insidePolygon = (point, polygon) => {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const a = polygon[i]
+    const b = polygon[j]
+    if (a.y > point.y !== b.y > point.y && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside
+  }
+  return inside
+}
+
+test('mascot model: the eye wraps round the body as it turns; its centre stays inside the outline to 60° (the renderer clips the rest)', () => {
+  const camera = mascotCamera()
+  for (let yaw = -60; yaw <= 60; yaw += 5) {
+    const frame = mascotFrame({ yaw }, camera)
+    assert.ok(insidePolygon(frame.eye.centre, frame.body.outline), `eye centre inside the body at yaw ${yaw}`)
+    assert.match(frame.eye.sclera, /^M.*Z$/)
+    if (Math.abs(yaw) <= 40) assert.ok(insidePolygon({ x: frame.eye.iris.cx, y: frame.eye.iris.cy }, frame.body.outline), `iris inside at yaw ${yaw}`)
+  }
+  // Seen from the side the eye is narrower than from the front (it is on a curved surface).
+  const width = (yaw) => {
+    const hull = convexHull(mascotFrame({ yaw }, camera).eye.sclera.match(/-?[\d.]+ -?[\d.]+/g).map((pair) => {
+      const [x, y] = pair.split(' ').map(Number)
+      return { x, y }
+    }))
+    return Math.max(...hull.map((p) => p.x)) - Math.min(...hull.map((p) => p.x))
+  }
+  assert.ok(width(-60) < width(0) * 0.7)
+})
+
+test('mascot model: the iris looks where it is told, within the eye; the glints stay with the light', () => {
+  const camera = mascotCamera()
+  const front = mascotFrame({}, camera).eye
+  const right = mascotFrame({ gazeX: 10 }, camera).eye
+  const up = mascotFrame({ gazeY: 10 }, camera).eye
+  assert.ok(right.iris.cx > front.iris.cx + 3, 'gazeX + looks to the viewer\'s right')
+  assert.ok(up.iris.cy < front.iris.cy - 3, 'gazeY + looks up')
+  const far = mascotFrame({ gazeX: 80 }, camera).eye
+  const limit = mascotFrame({ gazeX: 11 }, camera).eye
+  assert.ok(Math.abs(far.iris.cx - limit.iris.cx) < 0.05, 'the gaze is capped at the eye\'s travel')
+  assert.ok(Math.abs(right.glints[0].cx - front.glints[0].cx) < 1e-6, 'glints do not follow the iris')
+  // The light moves the glints, the body's highlight and the shadow.
+  const lit = mascotFrame({}, camera, { light: { x: 0.7, y: 0.3, z: 0.65 } })
+  assert.ok(lit.eye.glints[0].cx > front.glints[0].cx)
+  assert.ok(lit.body.highlight.x > mascotFrame({}, camera).body.highlight.x)
+  assert.ok(lit.shadow.cx < mascotFrame({}, camera).shadow.cx, 'the shadow falls away from the light')
+})
+
+test('mascot model: the lid closes from the top; the contented closed eye is an arch; the brow shows on demand', () => {
+  const camera = mascotCamera()
+  assert.equal(mascotFrame({}, camera).eye.lid, undefined)
+  const half = mascotFrame({ lid: 0.5 }, camera).eye
+  assert.match(half.lid, /^M.*Z$/)
+  assert.match(half.lidLine, /^M/)
+  assert.equal(mascotFrame({ lid: 1.05 }, camera).eye.lidLine, '', 'fully closed: no lid edge left inside the eye')
+  const closed = mascotFrame({ closed: 1 }, camera).eye
+  assert.equal(closed.closed, true)
+  assert.match(closed.arch, /^M/)
+  assert.equal(closed.iris, undefined)
+  assert.equal(mascotFrame({}, camera).eye.brow, undefined)
+  const raised = mascotFrame({ brow: 1 }, camera).eye
+  const lowered = mascotFrame({ brow: -1 }, camera).eye
+  const browY = (eye) => Number(eye.brow.match(/M[\d.]+ ([\d.]+)/)[1])
+  assert.ok(browY(raised) < browY(lowered), 'raised is higher')
+})
+
+test('mascot model: arms reach for a point on screen (the pocket button\'s rim)', () => {
+  const camera = mascotCamera()
+  const pose = { yaw: -10, pitch: -4 }
+  for (const [side, key, target] of [[-1, 'L', { x: 30, y: 110 }], [1, 'R', { x: 90, y: 110 }]]) {
+    const reach = reachToward(pose, camera, side, target)
+    const frame = mascotFrame({ ...pose, [`arm${key}a`]: reach.abduct, [`arm${key}f`]: reach.flex, [`arm${key}r`]: reach.reach }, camera)
+    const hand = frame.hands[`hand${key}`]
+    assert.ok(Math.hypot(hand.x - target.x, hand.y - target.y) < 2.5, `hand ${key} at ${hand.x.toFixed(1)}, ${hand.y.toFixed(1)}`)
+  }
+})
+
+test('mascot model: the hands hold the remote\'s grips in any pose; the remote turns with the body', () => {
+  const camera = mascotCamera()
+  for (const extra of [{}, { yaw: -40, pitch: -8 }, { yaw: 30, roll: 3, bend: 6, nod: -4 }, { droop: 1 }, { remoteX: 2, remoteY: 3, remoteRoll: 12 }, { sx: 1.05, sy: 0.95 }]) {
+    const pose = { ...restPose(), remote: 1, shoulderL: REMOTE.shoulder, shoulderR: REMOTE.shoulder, ...extra }
+    Object.assign(pose, holdRemote(pose))
+    const frame = mascotFrame(pose, camera)
+    for (const [side, key] of [[-1, 'armL'], [1, 'armR']]) {
+      const gap = length(v3(...['x', 'y', 'z'].map((axis) => frame.limbs[key].endModel[axis] - remoteGrip(pose, side)[axis])))
+      assert.ok(Math.abs(gap - 4) < 0.6, `${key} wrist ${gap.toFixed(2)} from its grip (${JSON.stringify(extra)})`)
+    }
+    assert.ok(frame.remote.case && frame.remote.sticks.length === 2 && frame.remote.thumbs.length === 2)
+    assert.ok(!/NaN/.test(frame.remote.case + frame.remote.antenna + frame.remote.thumbs.join('')))
+  }
+  assert.equal(mascotFrame({}, camera).remote, null, 'no remote at rest')
+  // It turns with the body: its centre swings toward the side the body turns to.
+  const turned = (yaw) => mascotFrame({ yaw, remote: 1 }, camera).remote.centre.x
+  assert.ok(turned(30) > turned(0) && turned(-30) < turned(0))
+  // A stick pushed across moves its tip across the remote.
+  const tip = (stickLX) => mascotFrame({ remote: 1, stickLX }, camera).remote.sticks[0].tip.cx
+  assert.ok(tip(1) > tip(0) + 1 && tip(-1) < tip(0) - 1)
+})
+
+test('flight: the sticks show the command (Mode 2), lead the drone, and saturate softly', () => {
+  const at = createFlight(22)
+  const still = command(at, { x: 0, y: 0, z: 0 })
+  assert.deepEqual([still.ax, still.ay, still.az].map((v) => Math.abs(v) < 1e-9), [true, true, true])
+  const right = command(at, { x: 120, y: 0, z: 0 })
+  assert.ok(right.ax > 0 && Math.hypot(right.ax, right.ay, right.az) <= FLIGHT.maxAccel + 1e-6)
+  const up = sticksFor(command(at, { x: 0, y: -60, z: 0 }))
+  assert.ok(up.climb > 0.5, 'climbing is the throttle pushed forward')
+  const across = sticksFor({ ax: 200 })
+  assert.ok(across.across > 0 && across.across < 1)
+  const full = sticksFor({ ax: -1e5, ay: 1e5, az: 1e5 }, 400)
+  for (const value of Object.values(full)) assert.ok(Math.abs(value) <= 1 && Math.abs(value) > 0.99)
+  // Commanded first, moved later: the command is non-zero before the drone has moved at all.
+  assert.equal(at.x, 0)
+  // On the ground the rotors run down to a stop and it levels out.
+  const ground = createFlight(22)
+  ground.roll.x = 8
+  for (let i = 0; i < 200; i += 1) spool(ground, 16, 0)
+  assert.ok(ground.rpm.x < 0.01 && Math.abs(ground.roll.x) < 0.05)
 })
 
 test('mascot model: limbs swap in front of and behind the body as it turns', () => {
@@ -714,6 +1154,7 @@ test('mascot model: limbs swap in front of and behind the body as it turns', () 
   assert.ok(raised.limbs.armR.end.y < raised.limbs.armR.root.y - 15, 'a raised arm points up')
   const jump = mascotFrame({ y: 26 }, camera)
   assert.ok(near(jump.shadow.cy, front.shadow.cy, 0.5), 'the shadow stays on the ground')
+  assert.ok(jump.lift > 20, 'the contact shadow can fade as it leaves the ground')
 })
 
 test('drone model: four rotor units and a hull, ordered by depth, banking in 3D', () => {
@@ -729,6 +1170,8 @@ test('drone model: four rotor units and a hull, ordered by depth, banking in 3D'
   assert.ok(right.pod.cy > left.pod.cy, 'rolling right drops the right side')
   // Rotors spin: blade matrices change with the spin angle.
   assert.notDeepEqual(droneFrame({}, camera, 0).units[0].blades[0], droneFrame({}, camera, 40).units[0].blades[0])
+  // Its highlight follows the light.
+  assert.ok(droneFrame({}, camera, 0, { light: { x: 0.8, y: 0.4, z: 0.45 } }).hull.light.x > level.hull.light.x)
 })
 
 test('pose animator: tracks play on time, interruptions blend, untouched keys settle to rest', () => {
@@ -745,18 +1188,29 @@ test('pose animator: tracks play on time, interruptions blend, untouched keys se
   assert.equal(animator.tick(900).active, false)
   assert.ok(near(animator.pose.yaw, 0, 1e-6), 'yaw settled back to rest')
   assert.ok(near(animator.pose.pitch, 20, 1e-6))
-  // A finished twirl does not unwind: 360 folds back to 0 before the next clip.
-  animator.play({ pose: { yaw: [[0, 0], [1, 360]] } }, 1000, 100)
-  animator.tick(1100)
-  animator.play({ pose: { roll: [[1, 5]] } }, 1100, 100)
-  animator.tick(1150)
-  assert.ok(Math.abs(animator.pose.yaw) < 1e-6)
   // Loops keep running; hold() sets a still pose at once.
   animator.play({ loop: true, duration: 1000, pose: { sy: [[0, 1], [0.5, 1.02], [1, 1]] } }, 2000)
   assert.equal(animator.tick(4500).looping, true)
   animator.hold({ yaw: 12 })
   assert.equal(animator.pose.yaw, 12)
   assert.equal(animator.tick(5000).looping, false)
+})
+
+test('pose animator: the arms trail the body (overlapping action); freeze holds the pose', () => {
+  const animator = createPoseAnimator({ blend: 0, settle: 180 })
+  animator.play({ pose: { pitch: [[0, 0], [1, 30, 'linear']], armLa: [[0, 0], [1, 10, 'linear']] } }, 0, 400)
+  animator.tick(200)
+  assert.ok(near(animator.pose.pitch, 15, 1e-6))
+  assert.ok(animator.pose.armLa > 0 && animator.pose.armLa < 5, 'the arm trails the body')
+  assert.equal(animator.tick(400).active, true, 'the trailing arm is still finishing')
+  assert.equal(animator.tick(400 + TRACK_LAG.armLa).active, false)
+  assert.ok(near(animator.pose.armLa, 10, 1e-6))
+  animator.play({ pose: { roll: [[0, 0], [1, 6]] } }, 1000, 300)
+  animator.tick(1150)
+  const held = { ...animator.pose }
+  animator.freeze()
+  assert.equal(animator.tick(2000).active, false)
+  assert.deepEqual({ ...animator.pose }, held)
 })
 
 /* ------------------------------------------------------------- the assets */
@@ -777,15 +1231,19 @@ test('asset interface: the models and decal sheets provide every part the manife
   // The brief's minimum: separately controllable eye/pupil, eyelid, body, arms, legs, mouth, apple, sleep.
   const frame = mascotFrame({}, mascotCamera())
   for (const part of ['armL', 'armR', 'legL', 'legR']) assert.ok(frame.limbs[part].d, part)
-  for (const part of Object.keys(mascot.modelParts)) assert.ok(part === 'body' ? frame.body.d : frame.limbs[part] || frame.feet[part] || frame[part], `model part ${part}`)
-  for (const part of ['eye', 'iris', 'lid', 'mouth', 'apple', 'zzz']) assert.ok(attributeValues(mascotSvg, 'data-part').has(part), part)
+  const holding = mascotFrame({ remote: 1, board: 1, hover: BOARD.hover }, mascotCamera())
+  for (const part of Object.keys(mascot.modelParts)) assert.ok(part === 'body' ? frame.body.d : frame.limbs[part] || frame.feet[part] || frame[part] || holding[part], `model part ${part}`)
+  for (const part of ['mouth', 'apple', 'zzz']) assert.ok(attributeValues(mascotSvg, 'data-part').has(part), part)
+  // The eye, iris, lid and brow are modelled now, not drawn in the sheet.
+  assert.ok(frame.eye.sclera && frame.eye.iris && frame.eye.pupil && frame.eye.glints.length === 2)
+  assert.ok(!attributeValues(mascotSvg, 'data-decal').has('eye'))
   for (const shape of mascot.expressions.mouth) assert.match(mascotSvg, new RegExp(`data-mouth-shape="${shape}"`))
   for (const name of Object.keys(MASCOT_CLIPS)) assert.ok(mascot.clips.includes(name), `clip ${name} in manifest`)
 })
 
 test('clips: pose tracks use known keys with ordered times; decal tracks resolve in the sheet', async () => {
   const mascotSvg = await readFile(assetUrl('mascot.svg'), 'utf8')
-  const params = { duration: 600, look: 200, from: { x: -40, y: -30 }, to: { x: -40, y: -30 }, originX: 900, endX: -14, hideY: 110, dir: -1, phases: TIMING.glance }
+  const params = { duration: 600, cycles: 2 }
   const rest = restPose()
   for (const [name, make] of Object.entries(MASCOT_CLIPS)) {
     const clip = make(params)
@@ -805,10 +1263,20 @@ test('clips: pose tracks use known keys with ordered times; decal tracks resolve
     }
     for (const [at] of clip.beats ?? []) assert.ok(at >= 0 && at <= params.duration, `${name}: beat inside the clip`)
   }
-  assert.ok(BLINK.every((frame) => frame.offset > 0 && frame.offset < 1), 'blink starts and ends at the resting lid')
+  // Where the body faces is the look controller's (a spring toward what it looks at): no clip
+  // turns it, and nothing moves the box (the walk and the travel are physical).
+  for (const [name, make] of Object.entries(MASCOT_CLIPS)) {
+    const clip = make(params)
+    assert.ok(!('yaw' in (clip.pose ?? {})), `${name} leaves the heading alone`)
+    assert.ok(!('mover' in clip), `${name} does not move the box`)
+    for (const [, target] of clip.gaze ?? []) assert.ok(['cursor', 'sticker', 'button', 'cards', 'ripple', 'drone', 'viewer', 'ride'].includes(target), `${name}: gaze ${target}`)
+  }
+  // The Zs drift up a set number of times, then stop.
+  for (const track of MASCOT_CLIPS.sleep({ cycles: 2 }).decals) assert.equal(track.iterations, 2)
 })
 
-test('budget: the whole actor layer (models, decals, JS, CSS) stays well under 250 KB', async () => {
+// 250 KB until ADR-0004: the hoverboard took the layer's source past it (about 1.8 KB gzipped in the build).
+test('budget: the whole actor layer (models, decals, motion, cursor, JS, CSS) stays under 270 KB of source', async () => {
   const files = [
     '../src/pocket/actors/assets/mascot.svg',
     '../src/pocket/actors/assets/drone.svg',
@@ -822,10 +1290,15 @@ test('budget: the whole actor layer (models, decals, JS, CSS) stays well under 2
     '../src/pocket/actors/mascot-model.js',
     '../src/pocket/actors/drone-model.js',
     '../src/pocket/actors/renderer.js',
+    '../src/pocket/actors/physics.js',
+    '../src/pocket/actors/gait.js',
+    '../src/pocket/actors/drone-flight.js',
     '../src/pocket/pocket-actors.js',
     '../src/pocket/pocket-actors.css',
+    '../src/pocket/pocket-cursor.js',
+    '../src/pocket/pocket-cursor.css',
   ]
   let total = 0
   for (const file of files) total += (await stat(new URL(file, import.meta.url))).size
-  assert.ok(total < 250 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
+  assert.ok(total < 270 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
 })

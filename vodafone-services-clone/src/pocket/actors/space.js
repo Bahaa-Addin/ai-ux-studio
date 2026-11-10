@@ -180,3 +180,25 @@ export const ringPoints = (camera, c, u, v, r, from, to, steps = 18) =>
   })
 
 export const polyline = (points) => points.map((p, index) => `${index ? 'L' : 'M'}${+p.x.toFixed(2)} ${+p.y.toFixed(2)}`).join('')
+
+/** A closed polygon through screen points, as an SVG path. */
+export const polygon = (points) => (points.length > 2 ? `${polyline(points)}Z` : '')
+
+/** Convex hull of screen points (monotone chain), counter-clockwise in screen space. */
+export const convexHull = (points) => {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y)
+  if (sorted.length < 3) return sorted
+  const turn = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower = []
+  for (const p of sorted) {
+    while (lower.length >= 2 && turn(lower.at(-2), lower.at(-1), p) <= 0) lower.pop()
+    lower.push(p)
+  }
+  const upper = []
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const p = sorted[index]
+    while (upper.length >= 2 && turn(upper.at(-2), upper.at(-1), p) <= 0) upper.pop()
+    upper.push(p)
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)]
+}

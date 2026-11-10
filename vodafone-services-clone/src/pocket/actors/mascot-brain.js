@@ -1,101 +1,96 @@
 /**
  * The mascot's state machine: what it is doing, for how long, and what may interrupt it.
- * No DOM here. Time comes from an injected clock and variation from an injected random
- * source, so tests can drive every transition deterministically. The DOM side
- * (pocket-actors.js) listens to `onChange` and plays the matching animation clip.
+ * No DOM here. Time comes from an injected clock, so tests can drive every transition
+ * deterministically. The DOM side (pocket-actors.js) listens to `onChange` and moves the
+ * character.
+ *
+ * Direction: "live stage" (docs/adr/0002-pocket-actors-live-stage.md).
  *
  * Contexts
- *   page    the Services page: the mascot lives under the page-tip curl and only appears
- *           for the save greeting (peeking → waving → retreating → hidden)
- *   pocket  the album: caught by the page turn (page-reveal-hidden → startled → running →
- *           recovering), then a living presence in the opposite corner (corner-idle) with
- *           reactions, an idle ladder and ambient glances
+ *   page    the Services page. The mascot hides behind the pocket button, under the paper.
+ *           Every save: it comes out (emerging), takes hold of the button and pulls it open
+ *           (holding) until the peeled item lands (catching), then lets go and sinks back
+ *           (slipping → hidden). Saves that follow while it is out keep it holding on.
+ *   pocket  the album. Every opening: it rides its hoverboard a short way from the corner to
+ *           stand under the drone (riding), then lives there (idle): breathing, shifting its weight, its body
+ *           turned toward the saved cards. It flies the drone with a remote (ADR-0003): its eye
+ *           is on the drone while the drone does something, on the cursor otherwise. A ripple
+ *           makes it flinch; after 60 s without input it first lands the drone beside it
+ *           (parking, when there is a drone and a free spot) and then dozes. "Back to
+ *           Services": it rides off toward the corner (leaving) as the page covers it.
  *
  * Priority (lower number wins; a state only interrupts states it outranks):
- *   1 transition    page opening/closing, the greeting, teardown
- *   2 constraint    tucked away because content is under its corner
- *   3 reaction      card hover/focus, waking
- *   4 idle          impatient, eating, yawning, sleeping
- *   5 ambient       glancing (pointer tracking runs inside corner-idle)
- *   6 rest          hidden, corner-idle
+ *   1 transition    the save, riding in and out, teardown
+ *   2 constraint    tucked away because content is where it stands
+ *   3 reaction      flinching, waking
+ *   4 idle          parking, yawning, sleeping
+ *   5 rest          hidden, idle
  */
 
-import { TIMING, pick } from './timing.js'
+import { TIMING } from './timing.js'
 
-export const PRIORITY = { transition: 1, constraint: 2, reaction: 3, idle: 4, ambient: 5, rest: 6 }
+export const PRIORITY = { transition: 1, constraint: 2, reaction: 3, idle: 4, rest: 5 }
 
 export const MASCOT_STATES = {
   hidden: 'rest',
-  peeking: 'transition',
-  waving: 'transition',
-  retreating: 'transition',
-  'page-reveal-hidden': 'transition',
-  startled: 'transition',
-  running: 'transition',
-  recovering: 'transition',
-  closing: 'transition',
+  emerging: 'transition',
+  holding: 'transition',
+  catching: 'transition',
+  slipping: 'transition',
+  riding: 'transition',
+  leaving: 'transition',
   tucked: 'constraint',
-  jumping: 'reaction',
-  beaming: 'reaction',
+  flinching: 'reaction',
   waking: 'reaction',
-  impatient: 'idle',
-  eating: 'idle',
+  parking: 'idle',
   yawning: 'idle',
   sleeping: 'idle',
-  glancing: 'ambient',
-  'corner-idle': 'rest',
+  idle: 'rest',
 }
 
 export const priorityOf = (state) => PRIORITY[MASCOT_STATES[state]]
 
-const GREETING = new Set(['peeking', 'waving'])
-const REVEAL = new Set(['page-reveal-hidden', 'startled', 'running', 'recovering'])
+const GREETING = new Set(['emerging', 'holding', 'catching', 'slipping'])
 
 /**
  * @param {object} options
  * @param {{ now(): number, setTimeout(fn, ms): any, clearTimeout(id): void }} options.clock
- * @param {() => number} options.random  floats in [0, 1)
  * @param {object} [options.timing]      see ./timing.js
  * @param {() => boolean} [options.reduced] prefers-reduced-motion
  * @param {(state, previous, info) => void} [options.onChange]
+ * @param {() => number} [options.parkFor]  how long landing the drone takes before it dozes (0: none)
  */
-export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = () => false, onChange = () => {} }) => {
+export const createMascotBrain = ({ clock, timing = TIMING, reduced = () => false, onChange = () => {}, parkFor = () => 0 }) => {
   let state = 'hidden'
   let context = 'page'
-  let side = 'right' // the side the page curl came from; the run starts there
   let tuckWanted = false
   let suspended = false
   let lastActivity = clock.now()
-  let lastCard = -Infinity
-  let thresholds = null // this ladder cycle's { impatientAt, eatAt, sleepAt }
+  let landingAt = 0 // when the last item on its way is expected to land
+  let pending = 0 // items on their way that have not landed yet
+  let greetings = 0 // saves greeted on this page load
 
   let stateTimer = null
   let greetTimer = null
-  let glanceTimer = null
-  const ladderTimers = new Set()
+  let sleepTimer = null
 
   /* ------------------------------------------------------------ timers */
   const clearStateTimer = () => {
     if (stateTimer !== null) clock.clearTimeout(stateTimer)
     stateTimer = null
   }
-  const clearLadder = () => {
-    for (const id of ladderTimers) clock.clearTimeout(id)
-    ladderTimers.clear()
-  }
-  const clearGlance = () => {
-    if (glanceTimer !== null) clock.clearTimeout(glanceTimer)
-    glanceTimer = null
-  }
   const clearGreet = () => {
     if (greetTimer !== null) clock.clearTimeout(greetTimer)
     greetTimer = null
   }
+  const clearSleep = () => {
+    if (sleepTimer !== null) clock.clearTimeout(sleepTimer)
+    sleepTimer = null
+  }
   const clearAll = () => {
     clearStateTimer()
-    clearLadder()
-    clearGlance()
     clearGreet()
+    clearSleep()
   }
 
   /* ------------------------------------------------------------ states */
@@ -104,7 +99,7 @@ export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = ()
     clearStateTimer()
     const previous = state
     state = next
-    onChange(next, previous, { context, side, ...info })
+    onChange(next, previous, { context, ...info })
     if (duration !== null && then) {
       stateTimer = clock.setTimeout(() => {
         stateTimer = null
@@ -120,184 +115,188 @@ export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = ()
   const rest = (info = {}) => {
     if (context === 'page') return enter('hidden', { info })
     if (tuckWanted) return enter('tucked', { info })
-    return enter('corner-idle', { info })
+    return enter('idle', { info })
   }
 
-  /* ------------------------------------------------- idle ladder and glances */
+  /* -------------------------------------------------------- the doze */
   const ambientAllowed = () => context === 'pocket' && !suspended && !reduced()
 
-  const scheduleGlance = () => {
-    clearGlance()
-    if (!ambientAllowed()) return
-    glanceTimer = clock.setTimeout(() => {
-      glanceTimer = null
-      if (state === 'corner-idle') {
-        const duration = timing.glance.reduce((sum, part) => sum + part, 0)
-        enter('glancing', { duration, then: () => state === 'glancing' && rest() })
-      }
-      scheduleGlance()
-    }, pick(timing.glanceEvery, random))
-  }
-
-  const ladderStep = (stage) => {
-    const from = state
-    const settled = from === 'corner-idle' || from === 'glancing'
-    if (stage === 'impatient' && settled) {
-      enter('impatient', { duration: timing.impatient, then: () => state === 'impatient' && rest() })
-    } else if (stage === 'eating' && (settled || from === 'impatient')) {
-      enter('eating', { duration: timing.eat, then: () => state === 'eating' && rest() })
-    } else if (stage === 'yawning' && (settled || from === 'impatient' || from === 'eating')) {
-      enter('yawning', { duration: timing.yawn, then: () => state === 'yawning' && enter('sleeping') })
-    }
-  }
-
-  /** Starts the idle ladder from zero (any meaningful activity does this). */
-  const restartLadder = () => {
-    clearLadder()
+  /** Starts the idle clock from zero (any input does this): a doze at `sleepAt`. */
+  const restartSleep = () => {
+    clearSleep()
     lastActivity = clock.now()
     if (!ambientAllowed()) return
-    thresholds = { impatientAt: pick(timing.impatientAt, random), eatAt: pick(timing.eatAt, random), sleepAt: pick(timing.sleepAt, random) }
-    const at = (ms, stage) => {
-      const id = clock.setTimeout(() => {
-        ladderTimers.delete(id)
-        ladderStep(stage)
-      }, ms)
-      ladderTimers.add(id)
-    }
-    at(thresholds.impatientAt, 'impatient')
-    at(thresholds.eatAt, 'eating')
-    at(thresholds.sleepAt, 'yawning')
+    sleepTimer = clock.setTimeout(() => {
+      sleepTimer = null
+      if (state !== 'idle') return
+      // A pilot lands its drone first (beside it), then dozes.
+      const park = Math.max(0, Number(parkFor()) || 0)
+      if (park > 0) enter('parking', { duration: park, then: () => state === 'parking' && doze() })
+      else doze()
+    }, timing.sleepAt)
   }
 
-  /** After a page transition: rest in the corner and start living there. */
-  const settleInCorner = (info = {}) => {
+  const doze = () => enter('yawning', { duration: timing.yawn, then: () => state === 'yawning' && enter('sleeping') })
+
+  /** The drone is down (or cannot land after all): it dozes now. */
+  const parked = () => {
+    if (state === 'parking') doze()
+  }
+
+  const settle = (info = {}) => {
     rest(info)
-    restartLadder()
-    scheduleGlance()
+    restartSleep()
   }
 
-  /* ----------------------------------------------------------- greeting */
-  const rise = () =>
-    enter('peeking', {
-      duration: timing.rise,
-      then: () =>
-        enter('waving', {
-          duration: timing.wave + timing.look,
-          then: () => enter('retreating', { duration: timing.duck, then: () => enter('hidden') }),
-        }),
-    })
+  /* -------------------------------------------------------------- the save */
+  const sink = ({ quick = false } = {}) => {
+    pending = 0
+    enter('slipping', { duration: quick ? timing.quickSlip : timing.slip, then: () => enter('hidden'), info: { quick } })
+  }
+
+  /** Holds the button open until the item lands (or a little past when it should have). */
+  const hold = () => {
+    const wait = Math.max(0, landingAt - clock.now()) + timing.greetLanding
+    enter('holding', { duration: wait, then: () => state === 'holding' && sink(), info: { landsIn: Math.max(0, landingAt - clock.now()) } })
+  }
+
+  const emerge = () => enter('emerging', { duration: timing.emerge, then: () => state === 'emerging' && hold() })
+
+  const catchIt = () => {
+    pending = Math.max(0, pending - 1)
+    enter('catching', { duration: timing.catch, then: () => (pending > 0 ? hold() : sink()) })
+  }
 
   /**
-   * An item was pocketed (not restored): peek out from under the curl, wave, duck back.
-   * Rapid saves coalesce into the greeting already under way.
+   * An item was pocketed (not restored). `landsIn` is how long until it lands in the button.
+   * Every save gets the catch; a save while the mascot is out keeps it holding the button
+   * open. Returns 'started', 'extended' or 'skipped'.
    */
-  const greet = () => {
+  const greet = ({ landsIn = 1900 } = {}) => {
     if (context !== 'page' || suspended || reduced()) return 'skipped'
-    if (greetTimer !== null || GREETING.has(state)) return 'coalesced'
-    if (state === 'retreating') {
-      rise()
-      return 'resumed'
+    greetings += 1
+    pending += 1
+    landingAt = Math.max(landingAt, clock.now() + landsIn)
+    if (state === 'emerging' || state === 'holding' || state === 'catching') {
+      if (state === 'holding') hold() // wait for the newest landing
+      return 'extended'
     }
+    if (state === 'slipping') {
+      hold() // it reaches back up
+      return 'extended'
+    }
+    if (greetTimer !== null) return 'extended'
+    const lead = timing.emerge + timing.grabLead
     greetTimer = clock.setTimeout(() => {
       greetTimer = null
-      if (context === 'page' && state === 'hidden') rise()
-    }, timing.greetDelay)
+      if (context === 'page' && state === 'hidden') emerge()
+    }, Math.max(0, landsIn - lead))
     return 'started'
   }
 
-  /** The pocket is about to open: cut the greeting short. */
+  /** An item has landed in the button: the beat the catch is timed to (each item gets one). */
+  const landed = () => {
+    if (state === 'holding' || state === 'emerging' || state === 'catching') catchIt()
+    else pending = Math.max(0, pending - 1)
+  }
+
+  /** The pocket is about to open: let go at once. */
   const interruptGreeting = () => {
     clearGreet()
-    if (GREETING.has(state)) enter('retreating', { duration: timing.quickDuck, then: () => enter('hidden'), info: { quick: true } })
+    pending = 0
+    if (GREETING.has(state) && state !== 'slipping') sink({ quick: true })
   }
 
   /* --------------------------------------------------------- page turn */
-  const startle = () =>
-    enter('startled', {
-      duration: timing.startle,
-      then: () =>
-        enter('running', {
-          duration: timing.run,
-          then: () => enter('recovering', { duration: timing.recover, then: () => settleInCorner() }),
-        }),
-    })
-
-  /** The page starts turning away. `from` is the side of the sheet the curl comes from. */
-  const revealStart = ({ from = 'right' } = {}) => {
+  /**
+   * The page starts turning away. `rideFor` is how long its ride to the drone's line takes
+   * (0: it is already there); `covered` says content already sits where it stands.
+   */
+  const revealStart = ({ rideFor = 0, covered = false } = {}) => {
     clearAll()
     context = 'pocket'
-    side = from
-    tuckWanted = false
-    if (reduced()) {
-      enter('corner-idle', { info: { instant: true } })
-      return
+    pending = 0
+    tuckWanted = Boolean(covered)
+    if (reduced() || suspended) {
+      enter(tuckWanted ? 'tucked' : 'idle', { info: { instant: true } })
+      return 'instant'
     }
-    enter('page-reveal-hidden')
+    if (rideFor > 0) {
+      enter('riding', { duration: rideFor, then: () => state === 'riding' && settle({ from: 'riding' }), info: { rideFor } })
+      return 'ride'
+    }
+    settle({ quiet: true })
+    return 'there'
   }
 
-  const revealProgress = (t) => {
-    if (state === 'page-reveal-hidden' && !suspended && t >= timing.revealAt) startle()
-  }
+  /** Kept for the lifecycle API: the ride does not depend on how far the page has turned. */
+  const revealProgress = () => {}
+  const revealComplete = () => {}
 
-  const revealComplete = () => {
-    if (state === 'page-reveal-hidden' && !suspended) startle()
-  }
-
-  /** "Back to Services": duck before the returning page covers the corner. */
-  const closeStart = () => {
+  /** "Back to Services": it rides off toward the corner while the page covers it. */
+  const closeStart = ({ rideFor = 0 } = {}) => {
     clearAll()
     if (context !== 'pocket' || state === 'hidden') return
-    if (reduced() || suspended || state === 'page-reveal-hidden') {
+    if (reduced() || suspended || state === 'tucked' || rideFor <= 0) {
       enter('hidden', { info: { instant: true } })
       return
     }
-    enter('closing', { duration: timing.closeDuck, then: () => enter('hidden') })
+    enter('leaving', { info: { rideFor } })
   }
 
   const closeComplete = () => {
     clearAll()
     context = 'page'
     tuckWanted = false
+    pending = 0
     enter('hidden', { info: { instant: true, reset: true } })
   }
 
   /* ---------------------------------------------------------- reactions */
-  /** Meaningful user activity: wake gently, drop idle business, restart the ladder. */
+  /** Meaningful user activity: wake gently, restart the idle clock. */
   const activity = () => {
     if (context !== 'pocket' || suspended) return
     lastActivity = clock.now()
     if (reduced()) return
     if (state === 'sleeping' || state === 'yawning') {
-      clearLadder()
-      enter('waking', { duration: timing.wake, then: () => state === 'waking' && settleInCorner() })
+      clearSleep()
+      enter('waking', { duration: timing.wake, then: () => state === 'waking' && settle() })
       return
     }
-    if (state === 'impatient' || state === 'eating') rest({ interrupted: true })
-    if (state !== 'waking') restartLadder()
+    if (state === 'parking') {
+      settle({ from: 'parking' })
+      return
+    }
+    if (state === 'waking') return
+    restartSleep()
   }
 
-  /** A pocket card was entered: `input` is 'pointer' (jump), 'keyboard' or 'touch' (beam). */
-  const cardEnter = (input = 'pointer') => {
+  /**
+   * A pointer rested on a card (or a card got keyboard focus, or a tap): the body turns toward
+   * it. Returns 'look' when it can, false when it cannot (hidden, riding, asleep, reduced).
+   */
+  const cardDwell = () => {
     if (context !== 'pocket' || suspended || reduced()) return false
-    const now = clock.now()
-    if (now - lastCard < timing.cardDebounce) return false
-    const next = input === 'pointer' ? 'jumping' : 'beaming'
-    if (!outranks(next)) return false
-    lastCard = now
-    enter(next, { duration: input === 'pointer' ? timing.jump : timing.beam, then: () => state === next && rest(), info: { input } })
+    return state === 'idle' || state === 'flinching' ? 'look' : false
+  }
+
+  /** A click's ripple reached it: a small flinch. Returns true if it flinched. */
+  const ripple = () => {
+    if (context !== 'pocket' || suspended || reduced()) return false
+    if (state !== 'idle' || !outranks('flinching')) return false
+    enter('flinching', { duration: timing.flinch, then: () => state === 'flinching' && rest() })
     return true
   }
 
-  /** Content scrolled under the mascot's corner (or cleared again). */
+  /** Content moved over where it stands (or cleared again). */
   const setTucked = (value) => {
     tuckWanted = Boolean(value)
-    if (context !== 'pocket' || REVEAL.has(state) || state === 'closing' || state === 'hidden') return
+    if (context !== 'pocket' || state === 'riding' || state === 'leaving' || state === 'hidden') return
     if (tuckWanted && state !== 'tucked') {
-      clearLadder()
-      clearGlance()
+      clearSleep()
       enter('tucked')
     } else if (!tuckWanted && state === 'tucked') {
-      settleInCorner({ from: 'tucked' })
+      settle({ from: 'tucked' })
     }
   }
 
@@ -307,10 +306,13 @@ export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = ()
     if (suspended) return
     suspended = true
     clearAll()
+    pending = 0
     if (context === 'page') {
       if (state !== 'hidden') enter('hidden', { info: { instant: true } })
+    } else if (state === 'parking') {
+      enter('sleeping', { info: { instant: true } })
     } else if (state !== 'sleeping' && state !== 'hidden') {
-      enter(tuckWanted ? 'tucked' : 'corner-idle', { info: { instant: true } })
+      enter(tuckWanted ? 'tucked' : 'idle', { info: { instant: true } })
     }
   }
 
@@ -322,8 +324,7 @@ export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = ()
       activity()
       return
     }
-    restartLadder()
-    scheduleGlance()
+    restartSleep()
   }
 
   const destroy = () => {
@@ -334,6 +335,7 @@ export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = ()
 
   return {
     greet,
+    landed,
     interruptGreeting,
     revealStart,
     revealProgress,
@@ -341,7 +343,9 @@ export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = ()
     closeStart,
     closeComplete,
     activity,
-    cardEnter,
+    parked,
+    cardDwell,
+    ripple,
     setTucked,
     suspend,
     resume,
@@ -352,18 +356,18 @@ export const createMascotBrain = ({ clock, random, timing = TIMING, reduced = ()
     get context() {
       return context
     },
-    get side() {
-      return side
-    },
-    get thresholds() {
-      return thresholds
-    },
     get lastActivity() {
       return lastActivity
     },
+    get greetings() {
+      return greetings
+    },
+    get pending() {
+      return pending
+    },
     /** Timers still pending (tests check that teardown leaves none). */
     get pendingTimers() {
-      return ladderTimers.size + (stateTimer !== null) + (greetTimer !== null) + (glanceTimer !== null)
+      return (stateTimer !== null) + (greetTimer !== null) + (sleepTimer !== null)
     },
   }
 }

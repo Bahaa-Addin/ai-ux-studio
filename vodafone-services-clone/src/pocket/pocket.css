@@ -236,13 +236,16 @@
 
 /* While the corner peeks, it owns the bottom-right: Vodafone's accessibility button and the
    Voice Guide's microphone (--vg-lift, voice-guide launcher.ts) move up the same column, clear
-   of the curl (also when it lifts further on hover) and the mascot that pops up under it. */
-body:has(.pocket-peek[data-state='shown']) {
+   of the curl (also when it lifts further on hover) and the mascot behind the button. In the
+   open pocket the mascot stands in the bottom-right too (under the drone), so they stay up. */
+body:has(.pocket-peek[data-state='shown']),
+body[data-pocket-view='open'] {
   --pocket-corner-lift: 230px;
 }
 
 @media (max-width: 767px) {
-  body:has(.pocket-peek[data-state='shown']) {
+  body:has(.pocket-peek[data-state='shown']),
+  body[data-pocket-view='open'] {
     --pocket-corner-lift: 150px;
   }
 }
@@ -280,6 +283,7 @@ body:not([data-pocket-view]):has(#experience-output:not([hidden])) .pocket-peek 
 }
 
 body:has(.pocket-peek[data-state='shown']) vg-guide,
+body[data-pocket-view='open'] vg-guide,
 body:not([data-pocket-view]):has(#experience-output:not([hidden])) vg-guide {
   --vg-lift: var(--pocket-corner-lift);
 }
@@ -289,6 +293,7 @@ body:not([data-pocket-view]):has(#experience-output:not([hidden])) vg-guide {
 }
 
 body:has(.pocket-peek[data-state='shown']) #vodafone-aw-icon,
+body[data-pocket-view='open'] #vodafone-aw-icon,
 body:not([data-pocket-view]):has(#experience-output:not([hidden])) #vodafone-aw-icon {
   bottom: calc(20px + var(--pocket-corner-lift)) !important;
   z-index: 10 !important; /* above the curl's shadow */

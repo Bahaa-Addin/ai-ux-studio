@@ -53,9 +53,14 @@ const quad = (from, via, to, n) =>
  * The drone's flight: from `home` it swoops down to the heart's right lobe, traces the heart
  * (over the right lobe, through the notch, round the left lobe, down to the tip and back up),
  * then rises home again. `box` is where the heart is drawn. Points carry a slight, repeatable
- * wobble so the trail reads as hand-drawn rather than geometric.
+ * wobble so the line reads as drawn by hand rather than plotted.
+ *
+ * Only the heart is inked: `heart` holds its own path (`d`) and where it starts and ends along
+ * the flight (arc lengths `start`, `end`), so the approach and return leave no trail. `times`
+ * paces the flight like a pen: it slows into sharp turns (the notch and the tip) and runs on
+ * the open curves; sample it with sampleFlight().
  */
-export const heartFlight = ({ home, box, samples = 96, wobble = 0.9 }) => {
+export const heartFlight = ({ home, box, samples = 96, wobble = 0.35, slow = 2.4 }) => {
   const raw = Array.from({ length: samples + 1 }, (_, index) => heartAt(Math.PI / 2 - (index / samples) * 2 * Math.PI))
   const xs = raw.map((p) => p.x)
   const ys = raw.map((p) => p.y)
@@ -66,9 +71,10 @@ export const heartFlight = ({ home, box, samples = 96, wobble = 0.9 }) => {
   const heart = raw.map((p, index) => {
     const x = box.x + ((p.x - minX) / (maxX - minX)) * box.w
     const y = box.y + ((p.y - minY) / (maxY - minY)) * box.h
-    const jitter = wobble * (0.6 * Math.sin(index * 1.7) + 0.4 * Math.sin(index * 0.63 + 1.1))
+    const jitter = index === samples ? 0 : wobble * (0.6 * Math.sin(index * 1.7) + 0.4 * Math.sin(index * 0.63 + 1.1))
     return { x: x + jitter, y: y - jitter * 0.6 }
   })
+  heart[samples] = { ...heart[0] } // the line closes exactly where it began
   const entry = heart[0]
   const span = Math.hypot(home.x - entry.x, home.y - entry.y)
   const mid = { x: (home.x + entry.x) / 2, y: (home.y + entry.y) / 2 }
@@ -76,6 +82,8 @@ export const heartFlight = ({ home, box, samples = 96, wobble = 0.9 }) => {
   const leadIn = quad(home, { x: mid.x + span * 0.1, y: mid.y + span * 0.36 }, entry, 14)
   const leadOut = quad(entry, { x: mid.x - span * 0.05, y: mid.y - span * 0.2 }, home, 14)
   const points = [{ ...home }, ...leadIn, ...heart.slice(1), ...leadOut]
+  const heartFrom = leadIn.length // index of the heart's first point (the entry)
+  const heartTo = heartFrom + samples
 
   const lengths = [0]
   for (let index = 1; index < points.length; index += 1) {
@@ -83,7 +91,64 @@ export const heartFlight = ({ home, box, samples = 96, wobble = 0.9 }) => {
     const b = points[index]
     lengths.push(lengths[index - 1] + Math.hypot(b.x - a.x, b.y - a.y))
   }
-  return { points, lengths, length: lengths[lengths.length - 1], d: smoothPath(points) }
+
+  // Pen pacing: each segment's time grows with how sharply the path turns around it.
+  const turnAt = points.map((p, index) => {
+    if (index === 0 || index === points.length - 1) return 0
+    const a = points[index - 1]
+    const b = points[index + 1]
+    const d = Math.abs(Math.atan2(b.y - p.y, b.x - p.x) - Math.atan2(p.y - a.y, p.x - a.x))
+    return Math.min(1, Math.min(d, 2 * Math.PI - d) / (Math.PI / 2))
+  })
+  const eased = turnAt.map((_, index) => {
+    let sum = 0
+    let weight = 0
+    for (let k = -3; k <= 3; k += 1) {
+      const value = turnAt[index + k]
+      if (value === undefined) continue
+      const w = 4 - Math.abs(k)
+      sum += value * w
+      weight += w
+    }
+    return sum / weight
+  })
+  const times = [0]
+  for (let index = 1; index < points.length; index += 1) {
+    const segment = lengths[index] - lengths[index - 1]
+    times.push(times[index - 1] + segment * (1 + slow * Math.max(eased[index - 1], eased[index])))
+  }
+  const total = times[times.length - 1] || 1
+  for (let index = 0; index < times.length; index += 1) times[index] /= total
+
+  const heartPoints = points.slice(heartFrom, heartTo + 1)
+  return {
+    points,
+    lengths,
+    times,
+    length: lengths[lengths.length - 1],
+    d: smoothPath(points),
+    heart: { d: smoothPath(heartPoints), start: lengths[heartFrom], end: lengths[heartTo], from: heartFrom, to: heartTo },
+  }
+}
+
+/**
+ * Position, heading (radians) and arc length `s` a fraction `tau` of the way through a flight's
+ * time (see heartFlight's `times`): slower where the path turns sharply.
+ */
+export const sampleFlight = ({ points, lengths, times }, tau) => {
+  const target = clamp(tau, 0, 1)
+  let low = 0
+  let high = times.length - 1
+  while (high - low > 1) {
+    const middle = (low + high) >> 1
+    if (times[middle] < target) low = middle
+    else high = middle
+  }
+  const a = points[low]
+  const b = points[high]
+  const span = times[high] - times[low] || 1
+  const t = clamp((target - times[low]) / span, 0, 1)
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), angle: Math.atan2(b.y - a.y, b.x - a.x), s: lerp(lengths[low], lengths[high], t) }
 }
 
 /** Position and heading (radians) a fraction `u` of the way along a flight by arc length. */
