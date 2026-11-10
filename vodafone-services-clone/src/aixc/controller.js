@@ -324,13 +324,21 @@ export const initComposer = ({ adapter, regions }) => {
   }
 
   /* ----------------------------------------------------------------- views */
+  // Where the page was when each view was left. The two views differ in height, so the browser
+  // clamps the scroll when a shorter one shows; coming back puts the page where it was (B-28), which
+  // the scroll-driven experiences (spotlight, split, coverflow) read as the card that was showing.
+  const leftAt = { original: null, reimagined: null }
+
   const showView = (view, { focusContent = false } = {}) => {
     if (view === 'reimagined' && !state.lastValidSchema) return
     const hiddenRoot = view === 'original' ? outputRoot : sourceRoot
     const focusWasInside = hiddenRoot.contains(document.activeElement)
+    const switching = view !== state.view
+    if (switching) leftAt[state.view] = window.scrollY
 
     sourceRoot.hidden = view !== 'original'
     outputRoot.hidden = view !== 'reimagined'
+    if (switching && !focusContent && leftAt[view] !== null) window.scrollTo({ top: leftAt[view], behavior: 'auto' })
     state.view = view
     // Timers and scroll listeners only run while the experience is on screen.
     if (view === 'reimagined') state.activeExperience?.mount()
@@ -365,6 +373,7 @@ export const initComposer = ({ adapter, regions }) => {
     state.activeExperience?.unmount()
     outputRoot.replaceChildren(experience.element)
     state.activeExperience = experience
+    leftAt.reimagined = null // a new experience starts at its own top
     if (state.view === 'reimagined') experience.mount()
 
     state.lastValidSchema = result.schema
