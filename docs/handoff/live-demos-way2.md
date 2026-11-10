@@ -354,6 +354,6 @@ Checks: CI green (typecheck, `npm test`, `test:e2e`, size budgets); the walkthro
 | `node tools/demo-kit.ts --site vodafone-eg` | Capture the demo kit (new, phase 7) |
 | `npm run check:live` | Adapter coverage and overlaps on the demo pages, live (new, phase 8) |
 | `VG_LIVE=1 node --test --test-timeout=150000 tests/live/*.live.test.ts` | Live smoke tests |
-| `node tools/demo-walkthrough.ts <dir> --lang en|ar [--phone] [--video]` | The recorded walkthrough |
+| `node tools/demo-walkthrough.ts <dir> --lang <en or ar> [--phone] [--video]` | The recorded walkthrough |
 
 Ports: 4400 gateway, 4401 trail fixture, 5173 clone dev server (until phase 9), 5200 clone e2e (until the e2e move), 54329 Postgres.
