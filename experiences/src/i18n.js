@@ -291,7 +291,6 @@ const AR = {
   Home: 'الرئيسية',
   Services: 'الخدمات',
   // the coach marks ("Try it")
-  Close: 'اقفل',
   Skip: 'تخطّي',
   'Got it': 'تمام',
   'Back to tips': 'ارجع للنصايح',
