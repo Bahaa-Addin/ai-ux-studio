@@ -95,7 +95,7 @@ Or click **Pocket it** on any card (see [Pocket](#pocket-peel-it-off-keep-it-tur
 npm test             # validator, content model and template unit tests (Node built-in runner)
 
 # Optional browser checks (292 checks across all experiences; Gemini is mocked, no key needed):
-pip install playwright && python -m playwright install chromium
+pip install playwright pillow && python -m playwright install chromium   # Pillow: the portal's screenshot checks
 npm run serve -- --port 5200 &
 python tests/e2e/aixc_e2e.py http://127.0.0.1:5200/
 python tests/e2e/pocket_e2e.py http://127.0.0.1:5200/   # Pocket and its actors: 210 checks

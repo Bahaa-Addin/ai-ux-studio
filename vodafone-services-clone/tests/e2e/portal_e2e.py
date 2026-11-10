@@ -339,7 +339,8 @@ async def main():
         page = await new_page(ctx, f"{ORIGIN}/en/services")
         await open_album(page)
         async with ctx.expect_page() as popup:
-            await page.click(CASH, modifiers=["Control"])
+            # ⌘ on macOS (where Ctrl-click is a right click), Ctrl elsewhere.
+            await page.click(CASH, modifiers=["ControlOrMeta"])
         tab = await popup.value
         check("Ctrl-click opens a new tab natively, no transition", not await page.evaluate("!!document.querySelector('.vf-portal')") and tab is not None)
         await tab.close()
