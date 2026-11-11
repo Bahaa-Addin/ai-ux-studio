@@ -219,6 +219,13 @@ Manifest: data/reports/vodafone-eg-<version>.manifest.json
 
 A held version is stored but not active. Read `data/reports/sync-vodafone-eg-<time>.md`: if the changes are real (Vodafone redesigned a page), update `config/curated/vodafone-eg.yaml` for the pages involved and sync again, or activate the held version with the command printed in the report. `--force` activates despite the gate; use it only after reading the report.
 
+**The first sync after 2026-11-11 will be held** (ADR-0049 §6). The crawler now starts a locator at Vodafone's portlet (`#p_p_id_…_INSTANCE_… > …`) instead of at the column's nth portlet, so most destinations change: estimated from the committed knowledge base, 356 of 524 (68%; the check allows 15%). The sync report's churn row shows it as about 126 removed and 230 re-targeted. The removed ones are new names, not lost places; the ingest report (`data/reports/vodafone-eg-<version>.md`, "Changes since") lists them, each with an added counterpart:
+
+- 44 destinations named after a hash of their locator (`web.….x0cee7a`, sections and pictures without an English label): a new hash;
+- 11 card lists named after the column (`web.wireless-net.layout-column_column-1`, `-2`, …) and their 71 items: now named after their English headings (`web.wireless-net.home-wireless-bundles`, `.0`, `.1`, …), or after a hash where a list has none (4 lists and 39 items: `web.short-numbers`, `web.kart-el-korout` and two on an Arabic-only page).
+
+If the removed ids are those, and the counts are near these, activate the held version with the command the report prints, then rebuild the experience profile, which names all of them: `npm run experience -- --site vodafone-eg --activate`. Removed ids of another kind (a page, or a section named after its heading) are a real change on Vodafone's side: read them as usual. After this one sync, the names and locators stay put when an editor adds a section.
+
 ### 5.2 From a browser tab (when the machine running npm cannot reach the site)
 
 This is how the content pages of the 2026-10-23 crawl were taken ([ADR-0032](../adr/0032-in-browser-crawler-public-pages-only.md)). Same rules, same output, one origin per run.

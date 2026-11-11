@@ -93,10 +93,17 @@ function addTo(list: I18nList, lang: string, ...values: (string | undefined)[]) 
 	list[lang] = uniq([...(list[lang] || []), ...v])
 }
 
+/**
+ * A Liferay portlet's id (`p_p_id_<portlet>_INSTANCE_<id>_`): the crawler starts locators there
+ * (ADR-0049 §6), but it is no name for a destination (about 100 characters, the same for every card
+ * list in the portlet).
+ */
+const isPortletId = (id: string) => /^p_p_id_/i.test(id)
+
 /** Fragment for ids: the element id when the locator is an id, else a slug of a label. */
 function fragmentFor(css: string, labels: I18nList): string {
 	const id = /^#([A-Za-z][\w-]*)$/.exec(css)?.[1]
-	if (id) return id.toLowerCase()
+	if (id && !isPortletId(id)) return id.toLowerCase()
 	const en = labels.en?.[0]
 	const s = en ? asciiSlug(en) : ''
 	return s || `x${shortHash(css)}`
@@ -311,8 +318,9 @@ export function buildManifest(input: BuildInput): BuildOutput {
 			const ref = vs.find((v) => v.lang === site.defaultLanguage) || vs[0]
 			const labels: I18nList = {}
 			for (const v of vs) addTo(labels, v.lang, v.c.heading)
+			// The id the container's locator starts at names the list (`#mi-bundles > …`), unless it is a portlet's.
 			const containerId = /^#([A-Za-z][\w-]*)/.exec(css)?.[1]
-			const id = uniqueId(usedDest, `${page.id}.${containerId ? containerId.toLowerCase() : fragmentFor(css, labels)}`)
+			const id = uniqueId(usedDest, `${page.id}.${containerId && !isPortletId(containerId) ? containerId.toLowerCase() : fragmentFor(css, labels)}`)
 			const col: Collection = {
 				id,
 				pageId: page.id,

@@ -20,7 +20,11 @@ export function extractPage(opts: ExtractOptions): Omit<PageSnap, 'status' | 'sn
 
 	const clean = (s: string | null | undefined, max = 400) => (s || '').replace(/\s+/g, ' ').trim().slice(0, max)
 	const esc = (s: string) => (window as any).CSS.escape(s)
-	const isStableId = (id: string) => /^[A-Za-z][\w-]{0,63}$/.test(id) && !/\d{4,}|^(ember|react|ng-|mui|radix|headlessui|__)/i.test(id)
+	// A Liferay portlet's id (`p_p_id_<portlet>_INSTANCE_<id>_`) is set when an editor places it and stays
+	// the same across days and languages, whatever its length or digits: locators start there rather than
+	// at the column's nth portlet, which shifts when a section is added above (ADR-0049 §6).
+	const isPortletId = (id: string) => /^p_p_id_\w{1,160}_INSTANCE_[A-Za-z0-9]{4,32}_?$/.test(id)
+	const isStableId = (id: string) => isPortletId(id) || (/^[A-Za-z][\w-]{0,63}$/.test(id) && !/\d{4,}|^(ember|react|ng-|mui|radix|headlessui|__)/i.test(id))
 	const stableClasses = (el: Element) =>
 		[...el.classList].filter((c) => /^[A-Za-z][\w-]{1,40}$/.test(c) && !/\d{3,}|^(is-|has-|js-)|^(active|selected|open|hover|focus|visible|hidden|show)$|--[a-z0-9]{5,}$/i.test(c))
 	const unique = (sel: string, el: Element) => {
