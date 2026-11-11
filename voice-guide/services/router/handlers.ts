@@ -3,7 +3,7 @@
  * Stateless: the session comes in with the request and the patch goes back
  * out; the gateway writes it through the sessions service.
  */
-import { Plan, type SuggestedQuestion } from '#kb'
+import { knownLines, Plan, type SuggestedQuestion } from '#kb'
 import { agentModelConfigured, type PlatformConfig, type SiteConfig } from '#shared/config.ts'
 import { type ExperienceCache, verifiedHint } from '#shared/experience.ts'
 import { HttpError } from '#shared/http.ts'
@@ -54,6 +54,8 @@ export interface RouterDeps {
 	tracer: Tracer
 	/** Tests inject deciders; production builds them from site config. */
 	deciderFor?: (site: SiteConfig) => Decider | undefined
+	/** The speech-out service's client (ADR-0047): a plan's own words are made ahead for the guide's voice. */
+	speech?: { prepare(input: { siteId: string; lang: string; lines: string[] }, ctx: RpcContext): Promise<unknown> }
 }
 
 export function createRouter(deps: RouterDeps) {
@@ -135,6 +137,8 @@ export function createRouter(deps: RouterDeps) {
 				throw new HttpError(500, 'planner produced an invalid plan', 'bad_plan')
 			}
 			await deps.tracer.event(tctx, 'planner.plan', { route: plan.meta.route, steps: plan.steps.map((s) => s.op), say: plan.say }, performance.now() - t0)
+			// The guide's voice makes the plan's own words before the page asks (ADR-0047); never waited for.
+			if (deps.speech) void deps.speech.prepare({ siteId: site.id, lang: plan.lang, lines: knownLines(plan) }, { trace: tctx }).catch(() => {})
 
 			const turn: Turn = { id: turnId, utterance, lang: u.lang, intent: plan.meta.intent, route: plan.meta.route, destinationId: plan.meta.destinationId, at: new Date().toISOString() }
 			if (plan.meta.route === 'clarify') turn.options = u.alternatives.map((a) => a.id)

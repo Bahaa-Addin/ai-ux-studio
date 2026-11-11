@@ -36,6 +36,8 @@ export interface PlatformConfig {
 	laya: { baseUrl?: string; apiKey?: string; timeoutMs: number }
 	llm: { baseUrl?: string; apiKey?: string; model?: string; fallbackBaseUrl?: string; fallbackApiKey?: string; fallbackModel?: string; timeoutMs: number; preset?: string; body?: Record<string, unknown>; sendOrigin?: boolean }
 	vision: { baseUrl?: string; apiKey?: string; model?: string }
+	/** VoiceTut for the guide's voice (ADR-0047): the endpoint stays out of the page and the repository. */
+	voicetut: { url?: string; infoTimeoutMs: number; synthTimeoutMs: number }
 	agentQuota: { stepsPerSession: number; tokensPerSession: number; tokensPerSiteDay: number }
 	vapid: { subject: string; keyFile: string }
 	sitesDir: string
@@ -58,6 +60,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 			sessions: env.VG_SESSIONS_URL,
 			agent: env.VG_AGENT_URL,
 			watch: env.VG_WATCH_URL,
+			speechOut: env.VG_SPEECH_OUT_URL,
 		},
 		rpcTimeoutMs: num(env.VG_RPC_TIMEOUT_MS, 4000),
 		secret: env.VG_SECRET || 'dev-only-secret-change-me',
@@ -83,6 +86,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 			timeoutMs: num(env.VG_LLM_TIMEOUT_MS, 30000),
 		},
 		vision: { baseUrl: env.VG_VISION_BASE_URL, apiKey: env.VG_VISION_API_KEY, model: env.VG_VISION_MODEL },
+		voicetut: { url: env.VG_VOICETUT_URL || undefined, infoTimeoutMs: num(env.VG_VOICETUT_INFO_TIMEOUT_MS, 300_000), synthTimeoutMs: num(env.VG_VOICETUT_SYNTH_TIMEOUT_MS, 120_000) },
 		agentQuota: {
 			stepsPerSession: num(env.VG_AGENT_STEPS_PER_SESSION, 60),
 			tokensPerSession: num(env.VG_AGENT_TOKENS_PER_SESSION, 400_000),
@@ -96,6 +100,19 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 }
 
 const I18n = z.record(z.string(), z.string())
+
+const SpeechOut = z
+	.object({
+		engine: z.enum(['system', 'voicetut']).default('system'),
+		voice: I18n.default({ ar: 'Mohammed', en: 'Mohammed' }),
+		mode: I18n.default({ ar: 'arz', en: 'en' }),
+		steps: z.union([z.literal(16), z.literal(32), z.literal(48)]).default(16),
+		speed: z.union([z.literal(0.85), z.literal(1), z.literal(1.15)]).default(1),
+		normalize: z.boolean().default(true),
+		firstAudioMs: z.number().int().min(500).max(10_000).default(2500),
+		keepWarmSeconds: z.number().int().min(0).max(600).default(45),
+	})
+	.default({ engine: 'system', voice: { ar: 'Mohammed', en: 'Mohammed' }, mode: { ar: 'arz', en: 'en' }, steps: 16, speed: 1, normalize: true, firstAudioMs: 2500, keepWarmSeconds: 45 })
 
 export const SiteConfig = z.object({
 	id: z.string(),
@@ -168,8 +185,15 @@ export const SiteConfig = z.object({
 			tts: I18n.default({}),
 			/** On-device recognition (SPEC-02 §6): prefer it when the browser has the language pack. */
 			onDevice: z.enum(['prefer', 'require', 'off']).default('prefer'),
+			/**
+			 * The guide's voice (ADR-0047): the browser's own (`system`), or VoiceTut through the gateway
+			 * (`voicetut`, used only when VG_VOICETUT_URL is set; otherwise the browser's own). Settings are
+			 * VoiceTut's own: a voice and a language mode per language, steps, speed, number normalisation;
+			 * firstAudioMs is how long the page waits for a sentence before the browser voice speaks it.
+			 */
+			out: SpeechOut,
 		})
-		.default({ stt: {}, tts: {}, onDevice: 'prefer' }),
+		.default({ stt: {}, tts: {}, onDevice: 'prefer', out: SpeechOut.parse({}) }),
 	ui: z
 		.object({
 			accent: z.string().optional(),

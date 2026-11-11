@@ -24,7 +24,7 @@ import { SPEECH_STUB } from './browser.ts'
 
 const PORT = 4475
 const V = 'https://web.vodafone.com.eg'
-const platform = loadPlatformConfig({ ...process.env, VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}` })
+const platform = loadPlatformConfig({ ...process.env, VG_VOICETUT_URL: '', VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}` })
 const site = loadSiteConfig(path.join(platform.sitesDir, 'vodafone-eg.yaml'))
 const REPLAY = path.join(ROOT, 'fixtures/replay/vodafone-eg')
 const DEMOS = Object.entries(site.experiences.demos)

@@ -38,7 +38,7 @@ export interface LaunchOptions {
 
 /** Starts the gateway for this test file (before) and stops it (after); returns the browser launcher. */
 export function vodafonePocket(PORT: number): { launch: (o?: LaunchOptions) => Promise<Run> } {
-	const platform = loadPlatformConfig({ ...process.env, VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}`, VG_RATE_TURNS_PER_MIN: '600', VG_RATE_BURST: '60' })
+	const platform = loadPlatformConfig({ ...process.env, VG_VOICETUT_URL: '', VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}`, VG_RATE_TURNS_PER_MIN: '600', VG_RATE_BURST: '60' })
 	const site = loadSiteConfig(path.join(platform.sitesDir, 'vodafone-eg.yaml'))
 	const CONSENTED = `try { if (location.origin === '${V}' && !localStorage.getItem('vg-trail:${site.siteKey}:consent')) localStorage.setItem('vg-trail:${site.siteKey}:consent', JSON.stringify({ v: 1, state: 'granted', at: 1, retentionHours: 24 })) } catch {}`
 

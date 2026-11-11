@@ -52,3 +52,48 @@ Constraints:
 - Time to first audio for uncached replies stays above the budget in the pilot (switch the default to cached lines only, or a smaller model).
 - The licence or the data rules change, or a host in Egypt becomes available.
 - A browser-side model (the Supertonic 3 evaluation in `experiments/voicetut/BROWSER-EVALUATION.md`) becomes good enough to drop the network call.
+
+## Built (2026-11-11, phase 1b, against a stand-in VoiceTut)
+
+- **Service** `services/speech-out/`:
+  - `voicetut.ts`, the client, with the endpoint only from `VG_VOICETUT_URL`;
+  - `cache.ts`;
+  - `queue.ts`, one synthesis at a time, in three lanes served in order: `now` for the page, `ahead` for a plan's own words, `warm` for the warm-up;
+  - `handlers.ts`.
+- **Router:** reaches the service through its client. After planning it sends `prepare` with the plan's known lines (`knownLines` in `packages/kb/src/plan.ts`: `plan.say`, and the say, confirm and ask steps) and never waits for it.
+- **Gateway:**
+  - `POST /v1/speech` and `GET /v1/speech/<hash>.wav?k=<site key>`; an audio element cannot send the key as a header.
+  - `/v1/session` reports the effective engine: `voicetut` only when the site asks for it and `VG_VOICETUT_URL` is set.
+- **Site config:** `speech.out` accepts only VoiceTut's own values (steps 16, 32 or 48; speed 0.85, 1 or 1.15).
+- **Narrower than Decision 2, for AGENTS.md §4.3:** only lines known ahead are cached on disk. A sentence the page asks for without it having been prepared stays in a bounded memory cache: a value read on the page (a price), or an agent's line. Traces carry hashes, sizes and timings, never text.
+- **Page:**
+  - `voice-out.js` (`packages/sdk/src/voice/out.ts`, `voice-out-chunk.ts`, `voice/sentences.ts`) takes over the guide's speak, cancel and speaking.
+  - Each sentence is asked at once and played in order. A later sentence that was not ready is asked again when its turn comes.
+  - The browser voice speaks from the first sentence that is not ready within `firstAudioMs`, fails, cannot play (`blocked`), or would carry personal data (`private`, never sent).
+- **Sizes:** `guide.js` grew by 31 bytes gzipped (the gate, measured on the Mac). `voice-out.js` is 1,969 bytes after the review fixes (2026-11-11).
+- **X-ray:** "speak" rows for `speech.prepare`, `speech.synth` and `sdk.speak`, without text. The page's own report goes to the session's latest turn.
+- **`npm run speech:warm`** fills the cache: fixed phrases, page titles, and the tuning sets' plans. On 2026-11-11 that came to 293 lines and 391 sentences in Arabic and English.
+- **Tests:**
+  - `tests/unit/speech-out.test.ts` (22) and `tests/unit/voice-out.test.ts` (17);
+  - `tests/integration/speech-out.test.ts` (4, Postgres);
+  - `tests/e2e/voice-out.e2e.test.ts` (3, Chromium on the saved pages): the reply is played from the page's origin; slow VoiceTut means the browser voice speaks in time; the microphone stops the audio within 100 ms;
+  - the stand-in is `tests/helpers/mock-voicetut.ts`.
+- **Not built:** the halo driven by the audio itself. The CSS ring shows while speaking.
+- **Not verified:**
+  - the real Modal endpoint (not deployed yet, O18);
+  - time to first audio, warm and cold;
+  - the voices (D9).
+- **After the review (2026-11-11).** A three-lens adversarial review of the diff confirmed 16 findings, and a recheck of the fixes found 7 more gaps. All are fixed, with tests:
+  - **Personal data:** a line counts as private only when a masking rule matches. Before, Arabic-Indic digits alone made every Arabic price private. The check also covers the line normalised (a number broken over lines) and each sentence as sent (a number that a hard cut leaves standing alone).
+  - **Queue limit:** the service refuses new work for the page when 8 jobs are already waiting. The browser voice speaks, so the queue in front of the GPU cannot grow without bound.
+  - **Model version:** it is re-checked against VoiceTut. A version known from an earlier run is used at once for cached lines, and checked once in the background. Any new synthesis waits for that check. The keep-warm call adopts what it hears, and `speech:warm` always asks first. So a new model rebuilds the cache, nothing is made by a mock model, and a mock model is asked again at most once a minute.
+  - **New work only:** the queue limit counts new work only. A sentence already queued or being made is joined and moved up.
+  - **Gateway engine:** it also says `voicetut` when a separate speech-out service is configured (`VG_SPEECH_OUT_URL`), since that service holds the endpoint.
+  - **`speech:warm`** exits 1 when VoiceTut does not answer.
+  - **No redirects:** neither the Gradio calls nor the audio download follow redirects, so the reply text goes to the configured host only.
+  - **Audio size:** the download is read in pieces and cut off past 8 MB, with or without a length header.
+  - **Audio player:** each play owns its settle, so a late rejection from an earlier play cannot end the next one.
+  - **Voice UI:** `speaking` stays true while a line waits for its next sentence's audio, so the UI does not drop to idle mid-reply.
+  - **One service:** with `VG_SPEECH_OUT_URL`, every process uses the one speech-out (`node services/run-service.ts speechOut`), so VoiceTut sees a single queue.
+  - **Test suites:** the existing Vodafone suites pin `VG_VOICETUT_URL` to empty.
+- **Known limit:** a synthesis the page asked for (not made ahead) is traced without a turn id, so its `speech.synth` row is not in the X-ray. The page's own `sdk.speak` row for that line is there.

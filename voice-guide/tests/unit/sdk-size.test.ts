@@ -75,3 +75,21 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	for (const f of eager) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-peek|aixc-composer|pz-world|tips-coach|vf-portal/, `no demo code in the core (${f})`)
 	assert.doesNotMatch(fs.readFileSync(path.join(dist, 'guide.js'), 'utf8'), /experience-output|aixc-viewbar|__aixc/, 'nothing of the layer in guide.js')
 })
+
+/**
+ * The guide's voice from VoiceTut (ADR-0047): its own on-demand chunk. guide.js only loads it when
+ * the session says so (the gate cost 31 bytes gzipped on the Mac, 2026-11-10). voice-out.js measured
+ * 1,969 bytes gzipped on 2026-11-11 (after the review fixes); budget a little above.
+ */
+const VOICE_OUT_BUDGET = 2304
+
+test('the VoiceTut voice is its own chunk; guide.js only knows when to load it', async () => {
+	await buildSdk({ minify: true })
+	const dist = path.join(ROOT, 'packages/sdk/dist')
+	const gz = gzipSync(fs.readFileSync(path.join(dist, 'voice-out.js')), { level: 9 }).length
+	assert.ok(gz <= VOICE_OUT_BUDGET, `voice-out.js is ${gz} bytes gzipped, over ${VOICE_OUT_BUDGET}`)
+	const guide = fs.readFileSync(path.join(dist, 'guide.js'), 'utf8')
+	assert.match(guide, /voice-out/, 'guide.js names the chunk')
+	assert.doesNotMatch(guide, /\/v1\/speech|__vgVoiceOut/, 'no VoiceTut playback code in guide.js')
+	assert.match(fs.readFileSync(path.join(dist, 'voice-out.js'), 'utf8'), /\/v1\/speech/)
+})

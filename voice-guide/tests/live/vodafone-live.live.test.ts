@@ -39,7 +39,7 @@ before(async () => {
 	const wav = path.join(tmp, 'voice.wav')
 	writeVoiceWav(wav)
 	await buildSdk({ minify: true })
-	const platform = loadPlatformConfig({ ...process.env, VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}` })
+	const platform = loadPlatformConfig({ ...process.env, VG_VOICETUT_URL: '', VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}` })
 	const site = loadSiteConfig(path.join(ROOT, 'config/sites/vodafone-eg.yaml'))
 	services = await createServices({ platform })
 	const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/kb/vodafone-eg.manifest.json'), 'utf8')) as Manifest

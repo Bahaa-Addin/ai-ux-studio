@@ -112,6 +112,30 @@ Not in this build: the shop (`eshop.vodafone.com.eg`) was not crawled, so moment
 4. If the bar says "Speech recognition is not available here right now. You can type instead.", Chrome's speech service is not reachable: check the internet connection, then Chrome's version. Typing in the panel still works.
 5. On a first visit, Vodafone's cookie banner covers the page, the microphone included; answer it yourself (the guide never does). Then ask "إيه أرخص باقة نت" on the live site. If the spotlight lands on the wrong element or nothing happens, Vodafone may have changed the page: run a sync (§5) and read its report.
 
+## 3a. The guide's voice: VoiceTut (ADR-0047; the owner's demos only)
+
+The guide speaks with VoiceTut, an Egyptian Arabic and English voice, when `VG_VOICETUT_URL` is set. Otherwise it uses the browser's own voice (§1), and it falls back to that voice for any sentence VoiceTut has not made within 2.5 s. VoiceTut's weights are CC-BY-NC: never for customers.
+
+1. **Deploy** (the owner, with his Modal login; once, and again after changing the app): `pip install modal`, `modal token new`, `modal deploy experiments/voicetut/modal_app.py`. Set a spending limit in Modal. Modal prints the endpoint.
+2. **Point the demo at it** in the shell that runs the demo: `export VG_VOICETUT_URL=<the endpoint>`, an HTTPS origin with no path. Never commit it.
+3. **Before an audience**, run `npm run speech:warm`. It covers both languages, about 390 sentences: the guide's fixed phrases, "Taking you to …" for every page, and the plans for the tuning questions. The first call after Modal has scaled down can take minutes. Run it again after changing the model or a voice setting, because both are part of the cache key. `--dry-run` only counts the lines.
+4. **Check it.** Run `npm run demo:live -- --xray open` and ask something. The X-ray's "speak" rows say whether VoiceTut or the browser voice spoke, with the time to first audio.
+5. **When the browser voice speaks instead**, the row gives the reason:
+
+   | Reason | What happened | What to do |
+   |---|---|---|
+   | `budget` | VoiceTut was not ready in time | Warm it up (step 3) |
+   | `error` | VoiceTut failed | Check `VG_VOICETUT_URL` and Modal |
+   | `blocked` | Chrome would not play the audio | — |
+   | `private` | The line held personal data, so it was never sent | — |
+
+   Values the page reads aloud (the cheapest bundle and its price) cannot be made ahead. When VoiceTut is not ready in time, the browser voice says them (O28).
+6. **What leaves the machine:** only the guide's reply text, which goes to VoiceTut on Modal, outside Egypt. Never the person's voice, transcript or anything typed.
+7. **What is stored:**
+   - Known lines are kept in `data/speech/` (git-ignored), keyed by settings and text, with no text in the files.
+   - Values read on the page stay in memory only.
+   - Settings are in `config/sites/vodafone-eg.yaml` under `speech.out`: a voice per language (pick by ear, D9), steps 16, 32 or 48, speed 0.85, 1 or 1.15, and `firstAudioMs`.
+
 ## 4. Knowledge base
 
 The knowledge base says where things are on the site (pages, sections, tabs, card lists, pictures, buttons), never values. `npm run demo:live` takes the first of:

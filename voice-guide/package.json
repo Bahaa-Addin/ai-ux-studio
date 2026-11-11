@@ -37,7 +37,8 @@
     "measure:trail": "node tools/trail-measure.ts",
     "live-crawl:import": "node tools/live-crawl/import.ts",
     "live-crawl:bundle": "node tools/live-crawl/bundle.ts",
-    "experience": "node jobs/experience.ts"
+    "experience": "node jobs/experience.ts",
+    "speech:warm": "node tools/speech-warm.ts"
   },
   "dependencies": {
     "pg": "8.23.1",

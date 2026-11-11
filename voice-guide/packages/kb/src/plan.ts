@@ -67,3 +67,18 @@ export type ItemSelect = z.infer<typeof ItemSelect>
 export type CollectionRef = z.infer<typeof CollectionRef>
 export type PlanStep = z.infer<typeof PlanStep>
 export type Plan = z.infer<typeof Plan>
+
+/**
+ * What a plan will say in its own words, known when it is made: its opening line and its say,
+ * confirm and ask steps. Values the page reads aloud later (a spotlight's reading) are not here.
+ * The guide's voice makes these ahead (ADR-0047 §2).
+ */
+export function knownLines(plan: Plan): string[] {
+	const lines = [plan.say]
+	for (const s of plan.steps) {
+		if (s.op === 'say') lines.push(s.text)
+		else if (s.op === 'confirm') lines.push(s.message)
+		else if (s.op === 'ask') lines.push(s.question)
+	}
+	return lines.filter((l): l is string => typeof l === 'string' && l.trim() !== '')
+}

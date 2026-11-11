@@ -102,6 +102,16 @@ export class XrayModel {
 				case 'agent.quota':
 					push('agent', ev.name === 'agent.quota' ? `budget reached (${a.scope})` : `model error: ${a.error}`, undefined, 'err')
 					break
+				// The guide's voice (ADR-0047): sizes, timings and reasons, never the words.
+				case 'speech.prepare':
+					push('speak', `made ahead: ${a.sentences} sentence(s), ${a.cached} already cached`)
+					break
+				case 'speech.synth':
+					push('speak', `VoiceTut · ${a.chars} chars · ${a.lane}${a.kept ? ` · kept in ${a.kept}` : ''}${a.error ? ` · ${a.error}` : ''}`, ev.durationMs, a.error ? 'err' : '')
+					break
+				case 'sdk.speak':
+					push('speak', `${a.fallback ? `browser voice (${a.fallback})` : 'VoiceTut'} · ${a.played}/${a.sentences} sentences${a.firstAudioMs != null ? ` · first audio ${a.firstAudioMs} ms` : ''} · ${a.fallback === 'private' ? 'not sent (personal data)' : 'reply text → VoiceTut (Modal)'}`, ev.durationMs, a.fallback && a.fallback !== 'private' ? 'err' : '')
+					break
 				case 'watch.created':
 					push('watch', `watching "${a.label}" via ${a.channel}, every ${a.intervalSec}s`)
 					break

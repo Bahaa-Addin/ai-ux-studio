@@ -36,7 +36,7 @@ interface SessionResponse {
 		id: string
 		languages: string[]
 		defaultLanguage: string
-		speech: { stt: Record<string, string>; tts: Record<string, string>; onDevice?: 'prefer' | 'require' | 'off'; phrases?: string[] }
+		speech: { stt: Record<string, string>; tts: Record<string, string>; onDevice?: 'prefer' | 'require' | 'off'; phrases?: string[]; out?: { engine: 'system' | 'voicetut'; firstAudioMs: number } }
 		ui: { accent?: string; xray: string; theme?: 'page' | 'vodafone'; voiceFirst?: boolean }
 		agent: { enabled: boolean; maxSteps: number; timeoutSec: number }
 		watch: { enabled: boolean }
@@ -162,6 +162,8 @@ export class Guide {
 		this.#followRoutes()
 		// The Exploration Trail is a separate chunk, fetched after start-up only where the site enables it (ADR-0035).
 		if (this.session.site.trail?.enabled) setTimeout(() => this.#chunk('trail').then((m) => m.start(this)).catch((e) => console.warn('[voice-guide] trail', e)), 600)
+		// The guide's voice from VoiceTut, when the gateway says so (ADR-0047); the browser voice otherwise.
+		if (this.session.site.speech.out?.engine === 'voicetut') this.#chunk('voice-out').then((m) => m.start(this)).catch(() => {})
 
 		let wasOpen = false
 		try {

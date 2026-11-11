@@ -125,6 +125,18 @@ speech:
   stt: { ar: ar-EG, en: en-US }
   tts: { ar: ar-EG, en: en-US }
   onDevice: prefer
+  # The guide's voice (ADR-0047): VoiceTut, an Egyptian Arabic and English model, through the gateway
+  # when VG_VOICETUT_URL is set (the owner's demos only: CC-BY-NC weights); the browser's own voice
+  # otherwise, and whenever VoiceTut is not ready within firstAudioMs. Voices are picked by ear (D9).
+  out:
+    engine: voicetut
+    voice: { ar: Mohammed, en: Mohammed }
+    mode: { ar: arz, en: en }
+    steps: 16
+    speed: 1
+    normalize: true
+    firstAudioMs: 2500
+    keepWarmSeconds: 45
 
 ui:
   # Fixed Vodafone tokens (ADR-0029) and the microphone launcher (ADR-0027).

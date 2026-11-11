@@ -7,6 +7,7 @@ import { createKnowledge } from './knowledge/handlers.ts'
 import type { Decider } from './router/deciders.ts'
 import { createRouter } from './router/handlers.ts'
 import { createSessions } from './sessions/handlers.ts'
+import { createSpeechOut } from './speech-out/handlers.ts'
 import type { PlatformConfig, SiteConfig } from './shared/config.ts'
 import { loadSites } from './shared/config.ts'
 import { ExperienceCache } from './shared/experience.ts'
@@ -33,12 +34,20 @@ export async function createServices(opts: PlatformOptions) {
 	const experience = new ExperienceCache(store)
 	const tracer = (name: string) => new Tracer(store, name)
 
+	// The guide's voice (ADR-0047): built first, so the router can reach it through its client. With
+	// VG_SPEECH_OUT_URL every process (router, gateway) uses the one speech-out service there, so there
+	// is one queue in front of VoiceTut (run it with `node services/run-service.ts speechOut`).
+	const speechOut = createSpeechOut({ platform, sites, tracer: tracer('speech-out') })
+	const speechUrl = platform.serviceUrls.speechOut
+	const speech: Client<typeof speechOut & Record<string, any>> = speechUrl ? httpClient(speechUrl, platform.rpcTimeoutMs) : localClient(speechOut as any)
+
 	const local = {
-		router: createRouter({ platform, sites, kb, experience, tracer: tracer('router'), deciderFor: opts.deciderFor }),
+		router: createRouter({ platform, sites, kb, experience, tracer: tracer('router'), deciderFor: opts.deciderFor, speech }),
 		sessions: createSessions({ platform, store, tracer: tracer('sessions') }),
 		knowledge: createKnowledge({ store, kb, sites, experience }),
 		agent: createAgentProxy({ platform, store, sites, tracer: tracer('agent'), fetchImpl: opts.fetchImpl }),
 		watch: createWatchService({ platform, store, sites, tracer: tracer('watch'), checker: opts.watchChecker, fetchImpl: opts.fetchImpl }),
+		speechOut,
 	}
 	type L = typeof local
 	const bind = <K extends keyof L>(name: K): Client<L[K] & Record<string, any>> => {
@@ -59,8 +68,10 @@ export async function createServices(opts: PlatformOptions) {
 		knowledge: bind('knowledge'),
 		agent: bind('agent'),
 		watch: bind('watch'),
+		speechOut: speech,
 		async close() {
 			await local.watch.close()
+			await speechOut.close()
 			if (!opts.store) await store.close()
 		},
 	}

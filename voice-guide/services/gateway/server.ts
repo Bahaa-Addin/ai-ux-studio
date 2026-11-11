@@ -53,6 +53,14 @@ export function createGateway(opts: GatewayOptions) {
 	const agentLimiter = new RateLimiter(platform.rateLimit.turnsPerMinute * 4, platform.rateLimit.burst * 4)
 	// Approved aggregation only (ADR-0037 §6): one batch per address and site every ten minutes.
 	const contributionLimiter = new RateLimiter(0.1, 1)
+	// The guide's voice asks per sentence, a few per reply (ADR-0047).
+	const speechLimiter = new RateLimiter(platform.rateLimit.turnsPerMinute * 10, platform.rateLimit.burst * 10)
+	/**
+	 * VoiceTut speaks only when the site asks for it and it is configured: VG_VOICETUT_URL here, or a
+	 * separate speech-out service (VG_SPEECH_OUT_URL), which holds the endpoint itself. Otherwise the
+	 * browser voice. A speech-out service without an endpoint answers "off" and the browser voice speaks.
+	 */
+	const speechEngine = (site: SiteConfig): 'voicetut' | 'system' => (site.speech.out.engine === 'voicetut' && (platform.voicetut.url || platform.serviceUrls.speechOut) ? 'voicetut' : 'system')
 	const metrics = new Metrics()
 	const router = new Router()
 
@@ -129,7 +137,7 @@ export function createGateway(opts: GatewayOptions) {
 			agent: session.agent ?? null,
 			agentToken: agentOn ? agentToken(site.id, session.id) : null,
 			page,
-			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { ...site.speech, phrases: (page as { phrases?: string[] }).phrases || [] }, ui: site.ui, agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled }, trail: trailSettings(site, platform.trailAggregation) },
+			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { stt: site.speech.stt, tts: site.speech.tts, onDevice: site.speech.onDevice, phrases: (page as { phrases?: string[] }).phrases || [], out: { engine: speechEngine(site), firstAudioMs: site.speech.out.firstAudioMs } }, ui: site.ui, agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled }, trail: trailSettings(site, platform.trailAggregation) },
 			push: site.watch.enabled ? s.local.watch.publicKey() : null,
 		})
 	})
@@ -153,6 +161,28 @@ export function createGateway(opts: GatewayOptions) {
 		sendJson(res, 200, { turnId, plan: out.plan, kbVersion: out.kbVersion, understanding: { lang: out.understanding.lang, intent: out.understanding.intent, confidence: out.understanding.decision.confidence, provider: out.understanding.decision.provider } })
 	})
 
+	// ---- the guide's voice (ADR-0047): one sentence of a reply, and its audio ----
+	router.on('POST', '/v1/speech', async (req, res, _p, url) => {
+		const site = siteFor(req, url)
+		const body = await readJson(req, 16 * 1024)
+		if (!speechLimiter.take(`${site.id}:${clientIp(req)}`)) throw new HttpError(429, 'too many requests', 'rate_limited')
+		const ctx = ctxFor(req, site, String(body.sessionId || 'speech'), typeof body.turnId === 'string' ? body.turnId : undefined)
+		const two = String(body.lang || '').slice(0, 2)
+		const lang = site.languages.includes(two) ? two : site.defaultLanguage
+		const r = await s.speechOut.speak({ siteId: site.id, lang, text: String(body.text || '').slice(0, 600) }, ctx)
+		sendJson(res, 200, { ...r, url: r.ready && r.hash ? `/v1/speech/${r.hash}.wav` : null })
+	})
+	router.on('GET', '/v1/speech/:file', async (req, res, p, url) => {
+		const site = siteFor(req, url)
+		const m = /^([a-f0-9]{64})\.wav$/.exec(p.file)
+		if (!m) throw new HttpError(404, 'not found')
+		const a = await s.speechOut.audio({ hash: m[1] }, ctxFor(req, site, 'speech'))
+		if (!('base64' in a)) throw new HttpError(404, 'not made yet', 'speech_missing')
+		const wav = Buffer.from(a.base64, 'base64')
+		res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': String(wav.length), 'Cache-Control': 'private, max-age=86400, immutable' })
+		res.end(wav)
+	})
+
 	// ---- progress through a plan, and SDK-side events for the X-ray panel ----
 	router.on('POST', '/v1/progress', async (req, res, _p, url) => {
 		const site = siteFor(req, url)
@@ -163,10 +193,16 @@ export function createGateway(opts: GatewayOptions) {
 			Number(body.cursor) < 0
 				? { ok: true }
 				: await s.sessions.progress({ siteId: site.id, sessionId: body.sessionId, turnId: body.turnId, cursor: Number(body.cursor) || 0, awaitingNavigation: body.awaitingNavigation, done: body.done, item: body.item }, ctx)
-		if (Number(body.cursor) < 0) await s.sessions.get({ siteId: site.id, sessionId: String(body.sessionId || '') }, ctx)
+		let evCtx = ctx
+		if (Number(body.cursor) < 0) {
+			const sess = await s.sessions.get({ siteId: site.id, sessionId: String(body.sessionId || '') }, ctx)
+			// Events sent without a turn (the guide's voice, ADR-0047) belong to the session's latest turn.
+			const latest = body.turnId ? undefined : sess.turns?.at(-1)?.id
+			if (latest) evCtx = ctxFor(req, site, String(body.sessionId || ''), latest)
+		}
 		for (const ev of (Array.isArray(body.events) ? body.events : []).slice(0, 20)) {
 			if (typeof ev?.name !== 'string' || !/^(sdk|agent)\.[\w.]+$/.test(ev.name)) continue
-			await s.tracer('sdk').event(ctx.trace, ev.name, typeof ev.attrs === 'object' && ev.attrs ? ev.attrs : {}, typeof ev.ms === 'number' ? ev.ms : undefined)
+			await s.tracer('sdk').event(evCtx.trace, ev.name, typeof ev.attrs === 'object' && ev.attrs ? ev.attrs : {}, typeof ev.ms === 'number' ? ev.ms : undefined)
 			if (ev.name === 'sdk.first_motion') metrics.observe('first_motion', Number(ev.ms) || 0)
 		}
 		sendJson(res, 200, r)
