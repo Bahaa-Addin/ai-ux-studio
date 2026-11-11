@@ -53,11 +53,13 @@ test('the trail adds only a gate to guide.js; rrweb lives in its own on-demand c
 
 /**
  * The experience layer (ADR-0048): its own script beside guide.js, ES modules. The core is aixc.js
- * and every chunk it imports statically (the browser loads those with it); it measured 1,791 bytes
- * gzipped on 2026-11-10 (phase 1: settings, PageHost, guard); budget set a little above, raised on
- * purpose when a phase adds to the core. Demos load on intent (dynamic imports), never in it.
+ * and every chunk it imports statically (the browser loads those with it). Measured: 1,791 bytes
+ * gzipped on 2026-11-10 (phase 1: settings, PageHost, guard); 5,343 on 2026-11-11 (phase 2 adds the
+ * live adapter and its recognisers, which decide what the layer can offer on a page). The budget is
+ * set a little above and raised on purpose when a phase adds to the core. Demos load on intent
+ * (dynamic imports), never in it.
  */
-const AIXC_CORE_BUDGET = 2 * 1024
+const AIXC_CORE_BUDGET = 6 * 1024
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
 	const sizes = await buildSdk({ minify: true })

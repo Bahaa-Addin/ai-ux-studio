@@ -2,8 +2,9 @@
  * aixc.js: the experience layer on Vodafone's real pages (voice-guide ADR-0046, ADR-0048), added
  * beside guide.js by the same loader (the demo browser today, Vodafone's tag manager later).
  *
- * Phase 1 of the live plan: the layer reads its settings, finds the page, builds its regions
- * (hidden) and waits. The demos load on intent in later phases, as chunks of this bundle.
+ * Phases 1 and 2 of the live plan: the layer reads its settings, finds the page, builds its regions
+ * (hidden), reads Vodafone's cards into the content model (./live-adapter.js) and tags them, and
+ * waits. The demos load on intent in later phases, as chunks of this bundle.
  * Everything runs through one guard (./guard.js): any error removes the layer and leaves the page
  * as Vodafone served it.
  *
@@ -11,6 +12,7 @@
  * (no demo-data actions even where the loader marks the page as a demo).
  */
 import { createGuard } from './guard.js'
+import { createLiveAdapter } from './live-adapter.js'
 import { createPageHost } from './page-host.js'
 
 const params = new URLSearchParams(location.search)
@@ -42,7 +44,7 @@ const start = () => {
   const guard = createGuard()
   // Stopped, the layer leaves no trace, not even the tag the loader added for it.
   guard.onStop(() => tag?.remove())
-  const layer = { state: 'starting', settings, host: null, problem: null, guard }
+  const layer = { state: 'starting', settings, host: null, problem: null, guard, adapter: null, model: null, coverage: null }
   if (settings.debug) {
     window.__aixc = layer
     guard.onStop((reason) => {
@@ -63,8 +65,17 @@ const start = () => {
     layer.host = host
     guard.onStop(() => host.destroy())
     checkpoint('host')
+    const adapter = createLiveAdapter({ doc: document })
+    const { model, problems, coverage } = adapter.extractContent()
+    adapter.tag()
+    guard.onStop(() => adapter.untag())
+    layer.adapter = adapter
+    layer.model = model
+    layer.coverage = coverage
+    if (problems.length) console.warn(`[AIXC] reading the page: ${problems.join(' ')}`)
+    checkpoint('read')
     layer.state = 'ready'
-    if (settings.debug) console.info(`[AIXC] ready (${host.lang}, ${host.dir})`)
+    if (settings.debug) console.info(`[AIXC] ready (${host.lang}, ${host.dir}): ${model?.sections.length ?? 0} sections, coverage ${coverage.ratio}`)
     checkpoint('ready')
   })
 }

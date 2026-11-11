@@ -108,6 +108,8 @@ const layerState = (page: Page) =>
 			failure: w.__aixc?.failure?.step ?? null,
 			regions: { output: out ? { hidden: out.hidden, afterMain: out.previousElementSibling?.id === 'main-content', marked: out.hasAttribute('data-aixc') && out.hasAttribute('data-vg') } : null, viewbar: bar ? { hidden: bar.hidden, beforeMain: bar.nextElementSibling?.id === 'main-content' } : null },
 			added: document.querySelectorAll('[data-aixc]').length,
+			tags: document.querySelectorAll('[data-aixc-item], [data-aixc-section]').length,
+			coverage: (w.__aixc as { coverage?: { ratio: number } } | undefined)?.coverage?.ratio ?? null,
 			mainHidden: document.getElementById('main-content')?.hidden ?? null,
 		}
 	})
@@ -139,6 +141,12 @@ test('aixc.js loads on every saved CMS page in both languages and builds its hid
 			assert.equal(s.dir, lang === 'ar' ? 'rtl' : 'ltr', `${pathname}: direction`)
 			assert.deepEqual(s.regions, { output: { hidden: true, afterMain: true, marked: true }, viewbar: { hidden: true, beforeMain: true } }, `${pathname}: regions beside #main-content, hidden`)
 			assert.equal(s.mainHidden, false, `${pathname}: Vodafone's content is shown`)
+			// Phase 2: the layer read the page's cards and tagged them (the FAQ-only page has none to read).
+			if (/wireless-net/.test(pathname)) assert.equal(s.tags, 0, `${pathname}: nothing to tag`)
+			else {
+				assert.ok(s.tags > 0, `${pathname}: Vodafone's cards tagged`)
+				assert.ok((s.coverage ?? 0) >= 0.9, `${pathname}: coverage ${s.coverage}`)
+			}
 			assert.equal(s.demo, true, `${pathname}: the loader marks the page as a demo`)
 			assert.deepEqual(s.demos, DEMOS, `${pathname}: the enabled demos reach the layer`)
 		}
@@ -176,7 +184,7 @@ test('the layer shifts nothing of Vodafone\'s page (geometry with it and with ?a
 })
 
 test('a failure at any step removes the layer and leaves the page as with ?aixc=off, with no page error', async () => {
-	for (const step of ['start', 'host', 'ready']) {
+	for (const step of ['start', 'host', 'read', 'ready']) {
 		const b = await launch([`window.__AIXC_TEST__ = { failAt: ${JSON.stringify(step)} }`])
 		try {
 			const seen = watch(b.page)
@@ -188,6 +196,7 @@ test('a failure at any step removes the layer and leaves the page as with ?aixc=
 			assert.equal(s.tag, false, `${step}: even the loader's tag for it is gone`)
 			assert.equal(s.failure, 'start', `${step}: the failure is reported against the start`)
 			assert.equal(s.added, 0, `${step}: nothing of the layer is left`)
+			assert.equal(s.tags, 0, `${step}: no tag left on Vodafone's cards`)
 			assert.equal(s.mainHidden, false, `${step}: Vodafone's content is shown`)
 			assert.deepEqual(await geometry(b.page), without, `${step}: the page is as without the layer`)
 			assert.deepEqual(seen.pageErrors, [], `${step}: no error reached the page`)

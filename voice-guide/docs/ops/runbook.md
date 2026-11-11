@@ -136,6 +136,26 @@ The guide speaks with VoiceTut, an Egyptian Arabic and English voice, when `VG_V
    - Values read on the page stay in memory only.
    - Settings are in `config/sites/vodafone-eg.yaml` under `speech.out`: a voice per language (pick by ear, D9), steps 16, 32 or 48, speed 0.85, 1 or 1.15, and `firstAudioMs`.
 
+## 3b. What the experience layer reads on a page (live adapter, ADR-0046 §3)
+
+The layer reads Vodafone's cards into the demos' content model: `experiences/src/host/live-adapter.js`, with one row per Vodafone component in `recognisers.js`. A demo is offered on a page only when coverage is above its threshold: Reimagine 0.9, Pocket 0.6. Coverage is the share of cards with a title and an action, either a link or one of the page's own dialogs.
+
+Coverage on the saved pages of 2026-10-23 (`tests/integration/live-adapter.test.ts` prints this table). English and Arabic agree on every page.
+
+| Page | Portlets | Sections read | Items | Coverage |
+|---|---|---|---|---|
+| `/{en,ar}/services` | 8 | 6 (and the hero, the app band) | 30 | 1 |
+| `/{en,ar}/mobile-internet-bundles` | 6 | 2 | 20 (21 in Arabic) | 1 |
+| `/{en,ar}/vodafone-red1` | 6 | 1 (the plans; partner logos are not cards) | 5 | 1 |
+| `/{en,ar}/home` | 4 | 3 | 8 | 1 |
+| `/{en,ar}/vodafone-cash` | 9 | 1 | 8 | 1 |
+| `/en/promotions` | 2 | 1 | 2 | 1 |
+| `/{en,ar}/wireless-net` | 10 | 0 (FAQ and text only) | 0 | 0 |
+
+- **Item ids:** each id is the first candidate unique on the page, from the link path, then the picture's file name, then the English title, then the tab, then the section's place. Services: 28 of 30 ids are the same in English and Arabic; the two others are slips on Vodafone's Arabic page.
+- **Not checked yet:** the live pages (O29), and the 33 knowledge-base pages that are not in the replay.
+- **If Vodafone renames a class:** coverage drops on that page, and the demo is no longer offered there. Fix the row in `recognisers.js`.
+
 ## 4. Knowledge base
 
 The knowledge base says where things are on the site (pages, sections, tabs, card lists, pictures, buttons), never values. `npm run demo:live` takes the first of:
