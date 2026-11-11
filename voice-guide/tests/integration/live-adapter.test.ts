@@ -153,3 +153,73 @@ test('Owl\'s copies of cards are never read; reading changes nothing; tags come 
 		await page.close()
 	}
 })
+
+/** The knowledge base's map of a page, as GET /v1/page-map serves it (services/knowledge pageMap). */
+const pageMapOf = (pageId: string) => {
+	const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/kb/vodafone-eg.manifest.json'), 'utf8')) as { destinations: { id: string; pageId: string; kind: string; commit?: boolean; target?: { css: string[] }; labels?: Record<string, string[]> }[] }
+	return {
+		sections: m.destinations
+			.filter((d) => d.pageId === pageId && ['section', 'collection', 'faq'].includes(d.kind) && !d.commit && d.target)
+			.map((d) => ({ id: d.id, kind: d.kind, css: d.target!.css, title: Object.fromEntries(Object.entries(d.labels || {}).map(([l, v]) => [l, v[0]])) })),
+	}
+}
+
+test('each Services section knows its knowledge destination (the ones the clone hand-mapped), in both languages', async () => {
+	const page = await browser.newPage()
+	try {
+		// The clone's hand-made map (experiences/src/main.js GUIDE_DESTINATIONS), now found from the page.
+		const expected = { umh7uxmmgjvk: 'web.services.vodafone-cash', w9jro8tdb1vh: 'web.services.test', xsg0av63s0tv: 'web.services.call-connect-abroad', fkwenp1q3ubi: 'web.services.great-entertainment', crxwnpmfox6c: 'web.services.shokran-services', wfhgzwfxieab: 'web.services.enjoy-other-services' }
+		for (const p of ['/en/services', '/ar/services']) {
+			await page.route('**/*', (route) => route.abort())
+			await page.setContent(htmlOf(savedAt(p)).replace(/<script\b[\s\S]*?<\/script>/gi, ''), { waitUntil: 'domcontentloaded' })
+			await page.addScriptTag({ content: bundle })
+			const before = await page.evaluate(() => document.documentElement.outerHTML)
+			const sections = await page.evaluate(([origin, path, map]) => (window as any).__live.readPage(document, { origin, path, pageMap: map }).model.sections.map((s: { id: string; destinationId?: string }) => [s.id, s.destinationId ?? null]), [ORIGIN, p, pageMapOf('web.services')] as const)
+			assert.deepEqual(Object.fromEntries(sections), expected, `${p}: the Great Entertainment portlet gets its own destination, not the one mislabelled from its dialog`)
+			assert.equal(await page.evaluate(() => document.documentElement.outerHTML), before, `${p}: reading writes nothing`)
+			// What the layer does (createLiveAdapter, then tag()): its own marks only, never a destination on Vodafone's elements.
+			const tagged = await page.evaluate(([origin, path, map]) => {
+				const a = (window as any).__live.createLiveAdapter({ doc: document, origin, path, pageMap: map })
+				const named = a.extractContent().model.sections.filter((s: { destinationId?: string }) => s.destinationId).length
+				a.tag()
+				const out = { named, destinations: document.querySelectorAll('[data-vg-destination]').length, marked: document.querySelectorAll('[data-aixc-section]').length > 0 }
+				a.untag()
+				return out
+			}, [ORIGIN, p, pageMapOf('web.services')] as const)
+			assert.deepEqual(tagged, { named: 6, destinations: 0, marked: true }, `${p}: six sections named on the model; tag() marks the sections but puts no data-vg-destination on the page`)
+			assert.equal(await page.evaluate(() => document.documentElement.outerHTML), before, `${p}: untag() leaves the page as it was`)
+		}
+	} finally {
+		await page.close()
+	}
+})
+
+test('the destinations hold when Vodafone rewords or drops a heading the knowledge base still has', async () => {
+	const page = await browser.newPage()
+	try {
+		/** The page's sections and their destinations, after `change` ran on the page's section headings. */
+		const named = async (p: string, pageId: string, change: 'reword' | 'drop') => {
+			await page.route('**/*', (route) => route.abort())
+			await page.setContent(htmlOf(savedAt(p)).replace(/<script\b[\s\S]*?<\/script>/gi, ''), { waitUntil: 'domcontentloaded' })
+			await page.addScriptTag({ content: bundle })
+			return Object.fromEntries(
+				await page.evaluate(
+					([origin, path, map, change]) => {
+						for (const h of document.querySelectorAll('#main-content .section-title h2, #main-content .section-title h3')) {
+							if (change === 'drop') h.remove()
+							else h.textContent = `${h.textContent} (new)`
+						}
+						return (window as any).__live.readPage(document, { origin, path, pageMap: map }).model.sections.map((x: { id: string; destinationId?: string }) => [x.id, x.destinationId ?? null])
+					},
+					[ORIGIN, p, pageMapOf(pageId), change] as const,
+				),
+			)
+		}
+		// Great Entertainment's portlet also holds the dialog's section, located as the whole portlet: the inner one wins.
+		for (const p of ['/en/services', '/ar/services']) assert.equal((await named(p, 'web.services', 'reword')).fkwenp1q3ubi, 'web.services.great-entertainment', `${p}: reworded heading, still its own destination`)
+		// No heading: never an unlabelled card list in place of the section's own destination.
+		for (const p of ['/en/mobile-internet-bundles', '/ar/mobile-internet-bundles']) assert.equal((await named(p, 'web.mobile-internet-bundles', 'drop')).evw9yawjuhob, 'web.mobile-internet-bundles.vodafone-plus-2', `${p}: no heading, the section destination`)
+	} finally {
+		await page.close()
+	}
+})

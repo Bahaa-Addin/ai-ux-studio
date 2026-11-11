@@ -102,6 +102,22 @@ export function createKnowledge(deps: KnowledgeDeps) {
 			}
 		},
 
+		/**
+		 * Where a page's sections are, for the experience layer (ADR-0049): each section, collection or
+		 * FAQ destination with its locators and titles, so the layer can say which knowledge destination
+		 * each of the page's portlets is. Public knowledge only (no commit points, no page values); gated
+		 * on the site's `experiences`, not on the trail.
+		 */
+		async pageMap(input: { siteId: string; url: string }) {
+			const kb = await deps.kb.get(input.siteId)
+			const hit = kb?.pageFor(input.url)
+			if (!kb || !hit) return { kbVersionId: kb?.versionId ?? null, pageId: null, sections: [] }
+			const sections = kb.manifest.destinations
+				.filter((d) => d.pageId === hit.pageId && ['section', 'collection', 'faq'].includes(d.kind) && !d.commit && d.target)
+				.map((d) => ({ id: d.id, kind: d.kind, css: d.target!.css, title: titles(d.labels) }))
+			return { kbVersionId: kb.versionId, pageId: hit.pageId, sections: sections.slice(0, 100) }
+		},
+
 		async versions(input: { siteId: string }) {
 			return { versions: await deps.store.listKbVersions(input.siteId) }
 		},

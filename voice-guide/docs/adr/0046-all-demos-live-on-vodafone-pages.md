@@ -1,6 +1,6 @@
 # ADR-0046: All five demos run on Vodafone's real pages, as one experience layer injected beside the guide; the clone is retired
 
-- Status: Accepted as the direction (owner, 2026-11-10); the design below is proposed and is confirmed phase by phase (handoff `docs/handoff/live-demos-way2.md` at the repository root)
+- Status: Accepted as the direction (owner, 2026-11-10); the design below is proposed and is confirmed phase by phase (handoff `docs/handoff/live-demos-way2.md` at the repository root); §3 amended by [ADR-0049](0049-live-adapter-ids-coverage-and-page-map.md) (no `data-vg-destination` on Vodafone's elements; ids and coverage as built)
 - Date: 2026-11-10
 - Area: architecture, delivery, demo; supersedes ADR-0040 and ADR-0043 when phase 9 of the handoff lands (until then they stay in force for `npm run demo:trail`)
 - Owner decision: 2026-11-10, "ditch the cloned pages approach and have everything (all 5 demos) run live on Way 2 of real Vodafone pages ... while keeping the option for the user to click a button and fill the page with real demo data where applicable"

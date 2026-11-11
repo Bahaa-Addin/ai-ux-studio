@@ -7,10 +7,12 @@
  *   (`..._INSTANCE_w9Jro8TDb1vH_` → `w9jro8tdb1vh`), which stays the same across days and languages.
  * - Items are the cards the recognisers (./recognisers.js) find; Owl's copies, dialogs, FAQ entries
  *   and the like are never read.
- * - An item's id must survive a re-crawl and work in both languages, so it comes from, in order:
- *   its link's path, its picture's file name, its English title, its tab and title, its place in the
- *   section; the first of these that is unique on the page wins (the plan's path-only rule collided
- *   on real pages: six Shokran cards share one link, all bundles link /spa/miManagement; O26).
+ * - An item's id should survive a re-crawl and, where the page allows, be the same in both
+ *   languages, so it comes from, in order: its link's path, its picture's file name, its title's
+ *   Latin letters and digits, its tab and title, its place in the section; the first of these that
+ *   is unique on the page wins (the plan's path-only rule collided on real pages: six Shokran cards
+ *   share one link, all bundles link /spa/miManagement; there the titles decide, so English and
+ *   Arabic ids differ; O26, ADR-0049).
  * - Coverage: how many of the cards found have a title and an action (a link, or one of the page's
  *   own dialogs). A demo is offered on a page only above its threshold.
  *
@@ -93,8 +95,49 @@ const candidates = ({ href, image, title, el, sectionId, origin }) => {
   return out.filter(Boolean).concat(`${sectionId}-item`)
 }
 
-/** Reads the page. `origin` resolves relative links and pictures. */
-export function readPage(doc, { origin = doc.defaultView?.location.origin || 'https://web.vodafone.com.eg', path = doc.defaultView?.location.pathname || '/' } = {}) {
+/**
+ * Which knowledge destination each portlet is (the guide's own names for the page's sections): a
+ * destination's first locator that finds exactly one element, inside one portlet. Where several land on
+ * the same portlet: section destinations before card lists and FAQs; among those, the one whose title
+ * is the section's (both titled); else the innermost (a locator for the whole portlet gives way to one
+ * for the section inside it, as the trail's resolver does, deepest first). Kept on the model
+ * (`section.destinationId`), never tagged on Vodafone's portlets: a tag there would make the whole
+ * portlet the trail's target and hide its cards and pictures (ADR-0049).
+ */
+const matchDestinations = (doc, pageMap, sections, portletOf, lang) => {
+  const norm = (t) => clean(t).toLowerCase()
+  const titleOf = (d) => norm(d.title?.[lang] || d.title?.en)
+  const found = []
+  for (const d of pageMap?.sections || []) {
+    const el = (d.css || [])
+      .filter((c) => !/data-vg-destination/.test(c))
+      .map((c) => {
+        try {
+          const all = doc.querySelectorAll(c)
+          return all.length === 1 ? all[0] : null
+        } catch {
+          return null
+        }
+      })
+      .find(Boolean)
+    const pb = el && (el.closest('#layout-column_column-1 > .portlet-boundary') || el.closest('.portlet-boundary'))
+    if (pb && !(el !== pb && el.contains(pb))) found.push({ d, el, pb })
+  }
+  for (const section of sections) {
+    const pb = portletOf.get(section.id)
+    const here = found.filter((f) => f.pb === pb)
+    const own = here.filter((f) => f.d.kind === 'section')
+    const pool = own.length ? own : here
+    const title = norm(section.title)
+    const titled = title ? pool.find((f) => titleOf(f.d) === title) : null
+    const innermost = pool.find((f) => !pool.some((g) => g.el !== f.el && f.el.contains(g.el)))
+    const pick = titled || innermost || pool[0]
+    if (pick) section.destinationId = pick.d.id
+  }
+}
+
+/** Reads the page. `origin` resolves relative links and pictures; `pageMap` (GET /v1/page-map) names the sections. */
+export function readPage(doc, { origin = doc.defaultView?.location.origin || 'https://web.vodafone.com.eg', path = doc.defaultView?.location.pathname || '/', pageMap = null } = {}) {
   const problems = []
   const main = doc.getElementById('main-content')
   if (!main) return { model: null, problems: ['No #main-content on this page.'], coverage: { ratio: 0, cards: 0, usable: 0, sections: [] }, tags: [] }
@@ -104,6 +147,7 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
   const page = { pageId: toId(path) || 'page', sourceUrl: `${origin}${path}`, title: null, intro: null, heroImage: null, sections: [], closingPromotion: null }
   const raw = []
   const coverage = { ratio: 0, cards: 0, usable: 0, sections: [] }
+  const portletOf = new Map()
 
   portlets.forEach((pb, index) => {
     const instance = /_INSTANCE_([A-Za-z0-9]+)_?$/.exec(pb.id || '')?.[1]
@@ -150,6 +194,7 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
     }
 
     const section = { id: sectionId, title: sectionTitle, description: textOf(subtitleEl) || null, cta: null, aside: null, items: [] }
+    portletOf.set(sectionId, pb)
     const sectionCover = { id: sectionId, title: sectionTitle, cards: cards.length, usable: 0 }
     const sectionLink = first(pb, '.section-title a.btn[href]')
     if (sectionLink) section.cta = { label: textOf(sectionLink) || null, href: absolute(sectionLink.getAttribute('href'), origin) }
@@ -209,6 +254,7 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
     page.sections.find((s) => s.id === r.sectionId)?.items.push(r.item)
   }
   page.sections = page.sections.filter((s) => s.items.length)
+  matchDestinations(doc, pageMap, page.sections, portletOf, /^\/ar(\/|$)/.test(path) ? 'ar' : 'en')
   coverage.ratio = coverage.cards ? Math.round((coverage.usable / coverage.cards) * 1000) / 1000 : 0
 
   const { model, problems: modelProblems } = normalizeContentModel(page)
@@ -226,10 +272,10 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
  * (nothing to draw: the page is Vodafone's) and extractContent() (the model, read once). tag() marks
  * what was read on Vodafone's elements; untag() takes every mark off again (the guard's clean-up).
  */
-export function createLiveAdapter({ doc = document, origin, path } = {}) {
+export function createLiveAdapter({ doc = document, origin, path, pageMap = null } = {}) {
   let read = null
   const tagged = []
-  const result = () => (read ??= readPage(doc, { origin, path }))
+  const result = () => (read ??= readPage(doc, { origin, path, pageMap }))
   return {
     get pageId() {
       return result().model?.pageId ?? 'page'

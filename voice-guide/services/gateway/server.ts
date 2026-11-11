@@ -218,6 +218,14 @@ export function createGateway(opts: GatewayOptions) {
 		sendJson(res, 200, map, { 'Cache-Control': 'private, max-age=120' })
 	})
 
+	// ---- the experience layer (ADR-0049): which knowledge destination each section of a page is ----
+	router.on('GET', '/v1/page-map', async (req, res, _p, url) => {
+		const site = siteFor(req, url)
+		if (!site.experiences.enabled) throw new HttpError(404, 'the experience layer is not enabled for this site', 'experiences_off')
+		const map = await s.knowledge.pageMap({ siteId: site.id, url: String(url.searchParams.get('url') || '') }, ctxFor(req, site, 'page-map'))
+		sendJson(res, 200, map, { 'Cache-Control': 'private, max-age=300' })
+	})
+
 	router.on('POST', '/v1/experience/contributions', async (req, res, _p, url) => {
 		const site = siteFor(req, url)
 		if (!site.trail.enabled || !site.trail.aggregation.enabled || !platform.trailAggregation) throw new HttpError(404, 'aggregation is disabled', 'aggregation_off')

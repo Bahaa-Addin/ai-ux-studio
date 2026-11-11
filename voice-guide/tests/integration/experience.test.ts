@@ -10,7 +10,9 @@ import { after, before, test } from 'node:test'
 import { buildExperienceProfile } from '#jobs/experience/build.ts'
 import { createGateway } from '#services/gateway/server.ts'
 import { createServices } from '#services/index.ts'
+import { createKnowledge } from '#services/knowledge/handlers.ts'
 import type { SiteConfig } from '#shared/config.ts'
+import { buildKbIndex } from '#shared/kb-index.ts'
 
 import { fixtureManifest } from '../helpers/kb.ts'
 import { startPlatform, type TestPlatform } from '../helpers/platform.ts'
@@ -107,6 +109,45 @@ test('a chip turn: the hint reaches the router, is checked against the profile a
 	const junk = await call(p.url, '/v1/turn', { sessionId: s.sessionId, utterance: q.text, page: { url: `${ORIGIN}/en/bundles.html` }, hint: { source: 'other', destinationId: '<script>' } })
 	assert.equal(junk.status, 200)
 	assert.equal((await p.store.listTrace(s.sessionId)).some((e) => e.turnId === junk.body.turnId && e.name === 'router.hint'), false)
+})
+
+test('the page map for the experience layer (ADR-0049): off unless the site turns the layer on; then the page\'s sections, never a commit point', async () => {
+	const url = `${ORIGIN}/en/bundles.html`
+	const off = await call(p.url, `/v1/page-map?url=${encodeURIComponent(url)}`)
+	assert.equal(off.status, 404)
+	assert.equal(off.body.code, 'experiences_off', 'the fixture telco does not turn the layer on')
+	const sites = new Map(p.services.sites)
+	const site = structuredClone(sites.get('demo-telco')!) as SiteConfig
+	site.experiences.enabled = true
+	sites.set('demo-telco', site)
+	const services = await createServices({ platform: p.platform, store: p.store, sites })
+	const gw = createGateway({ services })
+	await gw.listen(4483)
+	try {
+		const r = await call('http://localhost:4483', `/v1/page-map?url=${encodeURIComponent(url)}`)
+		assert.equal(r.status, 200)
+		assert.match(r.headers.get('cache-control') || '', /private, max-age=300/)
+		const m = fixtureManifest()
+		assert.equal(r.body.kbVersionId, m.version.id)
+		assert.equal(r.body.pageId, 'web.bundles')
+		const expected = m.destinations.filter((d) => d.pageId === 'web.bundles' && ['section', 'collection', 'faq'].includes(d.kind) && !d.commit && d.target).map((d) => d.id)
+		assert.ok(expected.length > 0)
+		assert.deepEqual(r.body.sections.map((x: { id: string }) => x.id), expected)
+		for (const x of r.body.sections) assert.deepEqual(Object.keys(x).sort(), ['css', 'id', 'kind', 'title'], 'locators and titles only')
+		assert.deepEqual((await call('http://localhost:4483', `/v1/page-map?url=${encodeURIComponent(`${ORIGIN}/en/unknown.html`)}`)).body.sections, [], 'a page the knowledge base does not know: nothing')
+	} finally {
+		await gw.close()
+		await services.close()
+	}
+	// A commit point that passes every other rule (a section, with a target, on the page) is still left out.
+	const m = fixtureManifest()
+	const checkout = m.destinations.find((d) => d.id === 'web.subscribe.checkout')!
+	assert.equal(checkout.kind, 'section')
+	const marked = { ...m, destinations: [...m.destinations.map((d) => (d.id === checkout.id ? { ...d, commit: true } : d))] }
+	const knowledge = createKnowledge({ store: null as never, kb: { get: async () => buildKbIndex(marked) } as never, sites: new Map() })
+	const subscribe = `${ORIGIN}/en/subscribe.html`
+	assert.deepEqual((await createKnowledge({ store: null as never, kb: { get: async () => buildKbIndex(m) } as never, sites: new Map() }).pageMap({ siteId: 'demo-telco', url: subscribe })).sections.map((x) => x.id), ['web.subscribe.checkout'], 'the checkout section, while it is not a commit point')
+	assert.deepEqual((await knowledge.pageMap({ siteId: 'demo-telco', url: subscribe })).sections, [], 'marked a commit point: never in the page map')
 })
 
 test('aggregation is off by default: the endpoint does not exist for this deployment', async () => {

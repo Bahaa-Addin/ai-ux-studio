@@ -136,7 +136,7 @@ The guide speaks with VoiceTut, an Egyptian Arabic and English voice, when `VG_V
    - Values read on the page stay in memory only.
    - Settings are in `config/sites/vodafone-eg.yaml` under `speech.out`: a voice per language (pick by ear, D9), steps 16, 32 or 48, speed 0.85, 1 or 1.15, and `firstAudioMs`.
 
-## 3b. What the experience layer reads on a page (live adapter, ADR-0046 §3)
+## 3b. What the experience layer reads on a page (live adapter, ADR-0046 §3, ADR-0049)
 
 The layer reads Vodafone's cards into the demos' content model: `experiences/src/host/live-adapter.js`, with one row per Vodafone component in `recognisers.js`. A demo is offered on a page only when coverage is above its threshold: Reimagine 0.9, Pocket 0.6. Coverage is the share of cards with a title and an action, either a link or one of the page's own dialogs.
 
@@ -152,9 +152,10 @@ Coverage on the saved pages of 2026-10-23 (`tests/integration/live-adapter.test.
 | `/en/promotions` | 2 | 1 | 2 | 1 |
 | `/{en,ar}/wireless-net` | 10 | 0 (FAQ and text only) | 0 | 0 |
 
-- **Item ids:** each id is the first candidate unique on the page, from the link path, then the picture's file name, then the English title, then the tab, then the section's place. Services: 28 of 30 ids are the same in English and Arabic; the two others are slips on Vodafone's Arabic page.
-- **Not checked yet:** the live pages (O29), and the 33 knowledge-base pages that are not in the replay.
+- **Item ids:** each id is the first candidate unique on the page, from the link path, then the picture's file name, then the title's Latin letters and digits, then the tab, then the section's place. The same in English and Arabic: Services 28 of 30 (the two others are slips on Vodafone's Arabic page), home 8 of 8, RED 5 of 5, Vodafone Cash 8 of 8, the bundles page only 2 of 20 (one shared link, no picture that tells the cards apart, so the titles decide; O26).
+- **Not checked yet:** the live pages (O29), and the 38 knowledge-base pages that are not in the replay (34 of them `/en/` or `/ar/` pages).
 - **If Vodafone renames a class:** coverage drops on that page, and the demo is no longer offered there. Fix the row in `recognisers.js`.
+- **Knowledge destinations:** the layer asks `GET /v1/page-map` (only when the site config's `experiences.enabled` is on) and keeps each section's destination on its model (`section.destinationId`); it tags nothing on Vodafone's portlets for this (ADR-0049). On the saved Services pages all six sections are named, in both languages. To see them: open a page with `?aixc-debug` and read `window.__aixc.model.sections` in the console (in replay, start with `npm run demo:live -- --replay --clone off`: by default the clone is mounted on Services and the layer stays off there). If no section is named, read `window.__aixc.pageMap`: `null` means the map did not come (the gateway, the site key, or `experiences.enabled`; the layer waits 2 s and logs nothing). If the map came but one section is not named, the knowledge base's locator for it no longer finds exactly one element: refresh the knowledge base (§5).
 
 ## 4. Knowledge base
 

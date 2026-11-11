@@ -67,6 +67,7 @@ test('the loader adds aixc.js after guide.js on a matching web page with #main-c
 	assert.equal(m.type, 'module')
 	assert.equal(m.dataset.aixcDemo, '1')
 	assert.equal(m.dataset.aixcDemos, 'pocket tips')
+	assert.equal(m.dataset.aixcSiteKey, 'k', 'the public site key, for the layer\'s own requests (GET /v1/page-map)')
 	assert.ok(layer(load(`${WEB}/ar/vodafone-red1?x=1`)), 'Arabic pages too')
 })
 

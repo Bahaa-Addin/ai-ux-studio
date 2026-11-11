@@ -133,6 +133,7 @@ export function loaderScript(o: { siteKey: string; origins: string[]; xray?: str
 		m.src = location.origin + '/__vg/sdk/aixc/aixc.js'
 		m.dataset.aixcDemo = '1'
 		m.dataset.aixcDemos = x.demos.join(' ')
+		m.dataset.aixcSiteKey = ${JSON.stringify(o.siteKey)}
 		;(document.head || document.documentElement).appendChild(m)
 	}
 	const both = () => {

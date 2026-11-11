@@ -3,8 +3,9 @@
  * beside guide.js by the same loader (the demo browser today, Vodafone's tag manager later).
  *
  * Phases 1 and 2 of the live plan: the layer reads its settings, finds the page, builds its regions
- * (hidden), reads Vodafone's cards into the content model (./live-adapter.js) and tags them, and
- * waits. The demos load on intent in later phases, as chunks of this bundle.
+ * (hidden), reads Vodafone's cards into the content model (./live-adapter.js) and tags them, names
+ * each section's knowledge destination on the model (GET /v1/page-map, ADR-0049), and waits. The
+ * demos load on intent in later phases, as chunks of this bundle.
  * Everything runs through one guard (./guard.js): any error removes the layer and leaves the page
  * as Vodafone served it.
  *
@@ -25,8 +26,20 @@ const settingsFrom = (tag) => ({
   debug: params.has('aixc-debug'),
   demo: tag?.dataset.aixcDemo === '1' && params.get('aixc-demo') !== 'off',
   demos: (tag?.dataset.aixcDemos ?? '').split(/\s+/).filter(Boolean),
+  siteKey: tag?.dataset.aixcSiteKey || null,
   gateway: import.meta.url.replace(/\/sdk\/aixc\/[^/]*$/, ''),
 })
+
+/**
+ * Which knowledge destination each section is (GET /v1/page-map, ADR-0049); the page is read without it
+ * if it does not come. Only the page's address goes, never its query or fragment (not even as a referrer).
+ */
+const pageMapFor = (settings) =>
+  settings.siteKey
+    ? fetch(`${settings.gateway}/v1/page-map?url=${encodeURIComponent(location.origin + location.pathname)}`, { headers: { 'x-vg-site-key': settings.siteKey }, referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(2000) })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+    : Promise.resolve(null)
 
 /** Test-only: throws at a named step (window.__AIXC_TEST__ = { failAt }), to prove the guard. */
 const checkpoint = (step) => {
@@ -44,7 +57,7 @@ const start = () => {
   const guard = createGuard()
   // Stopped, the layer leaves no trace, not even the tag the loader added for it.
   guard.onStop(() => tag?.remove())
-  const layer = { state: 'starting', settings, host: null, problem: null, guard, adapter: null, model: null, coverage: null }
+  const layer = { state: 'starting', settings, host: null, problem: null, guard, adapter: null, model: null, coverage: null, pageMap: null }
   if (settings.debug) {
     window.__aixc = layer
     guard.onStop((reason) => {
@@ -53,7 +66,7 @@ const start = () => {
     })
   }
 
-  guard.run('start', () => {
+  guard.run('start', async () => {
     checkpoint('start')
     const { host, problem } = createPageHost(document)
     if (!host) {
@@ -65,7 +78,11 @@ const start = () => {
     layer.host = host
     guard.onStop(() => host.destroy())
     checkpoint('host')
-    const adapter = createLiveAdapter({ doc: document })
+    const pageMap = await pageMapFor(settings)
+    if (guard.stopped) return
+    // Which map the sections were named from (null: it did not come, so none are named).
+    layer.pageMap = pageMap ? { kbVersionId: pageMap.kbVersionId ?? null, pageId: pageMap.pageId ?? null, sections: pageMap.sections?.length ?? 0 } : null
+    const adapter = createLiveAdapter({ doc: document, pageMap })
     const { model, problems, coverage } = adapter.extractContent()
     adapter.tag()
     guard.onStop(() => adapter.untag())
@@ -75,7 +92,8 @@ const start = () => {
     if (problems.length) console.warn(`[AIXC] reading the page: ${problems.join(' ')}`)
     checkpoint('read')
     layer.state = 'ready'
-    if (settings.debug) console.info(`[AIXC] ready (${host.lang}, ${host.dir}): ${model?.sections.length ?? 0} sections, coverage ${coverage.ratio}`)
+    const named = model?.sections.filter((x) => x.destinationId).length ?? 0
+    if (settings.debug) console.info(`[AIXC] ready (${host.lang}, ${host.dir}): ${model?.sections.length ?? 0} sections, coverage ${coverage.ratio}, ${layer.pageMap ? `${named} named from the page map` : 'no page map'}`)
     checkpoint('ready')
   })
 }

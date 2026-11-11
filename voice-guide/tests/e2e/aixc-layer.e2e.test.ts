@@ -4,7 +4,9 @@
  * - aixc.js loads beside guide.js on every saved CMS page in both languages and finds its page
  *   (#main-content, language, regions inserted and hidden); not on the /spa/ app, not with ?aixc=off;
  * - it shifts nothing of Vodafone's page (geometry with the layer and with ?aixc=off);
- * - a failure at any step removes it and leaves the page as with ?aixc=off, with no page error.
+ * - a failure at any step removes it and leaves the page as with ?aixc=off, with no page error;
+ * - it names the sections from GET /v1/page-map (ADR-0049), sending only the page's address, and reads
+ *   the page without the map when it fails or does not come.
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -110,6 +112,8 @@ const layerState = (page: Page) =>
 			added: document.querySelectorAll('[data-aixc]').length,
 			tags: document.querySelectorAll('[data-aixc-item], [data-aixc-section]').length,
 			coverage: (w.__aixc as { coverage?: { ratio: number } } | undefined)?.coverage?.ratio ?? null,
+			destinations: ((w.__aixc as { model?: { sections: { destinationId?: string }[] } } | undefined)?.model?.sections ?? []).filter((x) => x.destinationId).length,
+			pageMap: (w.__aixc as { pageMap?: { pageId: string | null; sections: number } | null } | undefined)?.pageMap ?? null,
 			mainHidden: document.getElementById('main-content')?.hidden ?? null,
 		}
 	})
@@ -147,6 +151,7 @@ test('aixc.js loads on every saved CMS page in both languages and builds its hid
 				assert.ok(s.tags > 0, `${pathname}: Vodafone's cards tagged`)
 				assert.ok((s.coverage ?? 0) >= 0.9, `${pathname}: coverage ${s.coverage}`)
 			}
+			if (/\/services$/.test(pathname)) assert.equal(s.destinations, 6, `${pathname}: every section named by the knowledge base (GET /v1/page-map)`)
 			assert.equal(s.demo, true, `${pathname}: the loader marks the page as a demo`)
 			assert.deepEqual(s.demos, DEMOS, `${pathname}: the enabled demos reach the layer`)
 		}
@@ -160,6 +165,59 @@ test('aixc.js loads on every saved CMS page in both languages and builds its hid
 		const off = await layerState(b.page)
 		assert.equal(off.tag, false, '?aixc=off: the loader leaves it out')
 		assert.equal(off.added, 0)
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+		assert.deepEqual(seen.layer.filter((l) => !l.startsWith('info:')), [], 'the layer logged no warning or error')
+	} finally {
+		await b.close()
+	}
+})
+
+test('the page map (ADR-0049): only the page\'s address is sent; without it (an error, no network, no answer in 2 s) the page is read all the same', async () => {
+	const b = await launch()
+	try {
+		const seen = watch(b.page)
+		const asked: string[] = []
+		const referrers: (string | undefined)[] = []
+		b.page.on('request', (r) => {
+			if (new URL(r.url()).pathname !== '/__vg/v1/page-map') return
+			asked.push(r.url())
+			referrers.push(r.headers().referer)
+		})
+		await open(b.page, '/en/services', '?aixc-debug&utm_source=mail&msisdn=0100#offers')
+		let s = await layerState(b.page)
+		assert.equal(s.destinations, 6)
+		assert.equal(s.pageMap?.pageId, 'web.services', 'the layer says which map it used')
+		assert.equal(asked.length, 1, 'one request')
+		const sent = new URL(asked[0])
+		assert.equal(sent.searchParams.get('url'), `${V}/en/services`, 'the page\'s address only: no query, no fragment')
+		assert.deepEqual([...sent.searchParams.keys()], ['url'])
+		assert.deepEqual(referrers, [undefined], 'no referrer either (it would carry the query)')
+		const ready = async (pathname: string) => {
+			const t0 = Date.now()
+			await b.page.goto(`${V}${pathname}?aixc-debug`, { waitUntil: 'load' })
+			await b.page.waitForFunction(() => (window as unknown as { __aixc?: { state: string } }).__aixc?.state === 'ready', null, { timeout: 8_000 })
+			return Date.now() - t0
+		}
+		const cases: [string, Parameters<Page['route']>[1]][] = [
+			['a server error', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' })],
+			['a 404 (the layer off for the site)', (route) => route.fulfill({ status: 404, contentType: 'application/json', body: '{"code":"experiences_off"}' })],
+			['not JSON', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<html>' })],
+			['no network', (route) => route.abort()],
+		]
+		for (const [name, handler] of cases) {
+			await b.page.route('**/__vg/v1/page-map**', handler)
+			await ready('/en/services')
+			s = await layerState(b.page)
+			assert.deepEqual([s.state, s.destinations, s.tags > 0, s.coverage, s.pageMap], ['ready', 0, true, 1, null], `${name}: the page is read without the map`)
+			await b.page.unroute('**/__vg/v1/page-map**')
+		}
+		// No answer: the layer waits 2 s at most.
+		await b.page.route('**/__vg/v1/page-map**', () => {})
+		const took = await ready('/en/services')
+		s = await layerState(b.page)
+		assert.deepEqual([s.state, s.destinations, s.tags > 0, s.pageMap], ['ready', 0, true, null], 'no answer: read without the map')
+		assert.ok(took >= 2000 && took < 6000, `ready after the 2 s limit (${took} ms)`)
+		await b.page.unroute('**/__vg/v1/page-map**')
 		assert.deepEqual(seen.pageErrors, [], 'no page errors')
 		assert.deepEqual(seen.layer.filter((l) => !l.startsWith('info:')), [], 'the layer logged no warning or error')
 	} finally {
