@@ -8,6 +8,8 @@ tags:
   - way-2
   - live
   - adr-0046
+paths:
+  - experiences/src/host/**
 ---
 The five demos (voice guide, Pocket, Reimagine this page, Exploration Trail, and demo 5) move off the hand-made Services clone and run on Vodafone's real pages, as one experience layer (`aixc.js`) loaded beside the guide. The direction is ADR-0046 (`voice-guide/docs/adr/0046-all-demos-live-on-vodafone-pages.md`); VoiceTut as the guide's voice is ADR-0047. The phase-by-phase plan is the owner's edited handoff, `docs/handoff/live-demos-way2.md` at the repository root. Work happens on the branch `feature/live-way2`.
 
@@ -26,6 +28,15 @@ The five demos (voice guide, Pocket, Reimagine this page, Exploration Trail, and
 [On Vodafone's live pages Reimagine offers only its ready-made experiences and the built-in layout: no Gemini call and no key field, and the streaming experience uses Vodafone's own bold face instead of Google Fonts.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-10 over="typed prompts to Gemini through the gateway; calling Gemini from the page as on the clone"} [BB](https://console.nimbalyst.com/app/cite/claude-code/ada43762-6be1-4320-adb7-6f662fece6a2/answer/toolu_019UwtrYaZmxYNSLzKybukAo%7E3 "by='Bahaà Addin Balashoni' email=bahaa.addin@hotmail.com at=2026-11-10T19:29:35.611Z ctx='answering Reimagine%27s typed prompts go from the browser to Google Gemini with the page%27s…' quote='Templates only on live %28Recommended%29'") A typed prompt would otherwise send the page's content from Vodafone's origin to Google, against the plan's rule that nothing new leaves the browser.
 
 What demo 5 becomes is on [Your RED world (demo 5)](Your%20RED%20world%20(demo%205).md "id=01M6ZZKVJGC8VJ25Y9SBQZ62HN").
+
+## Built differently from the plan in phase 2 (2026-11-11)
+
+These are the agent's design choices, not the owner's decisions; they are recorded in ADR-0049 (`voice-guide/docs/adr/0049-live-adapter-ids-coverage-and-page-map.md`, Proposed until the live checks pass).
+
+- The plan's §3.4 said to tag Vodafone's portlets with `data-vg-destination`. Instead each section's knowledge destination is kept on the layer's own model, because the trail's resolver takes such a tag before anything else and a tag on a whole portlet would hide the cards and pictures inside it. The layer asks a new gateway endpoint, `GET /v1/page-map`, which answers only when the site config turns the layer on.
+- Item ids come from the first unique of link, picture name, title, tab and place, not the link alone, because links collide on real pages. On the bundles page only 2 of 20 ids are the same in English and Arabic, so a Pocket item saved there does not carry across languages (open issue O26).
+
+**The next knowledge refresh will be held for review, and that is expected.** The crawler now starts its locators at Vodafone's portlets instead of the column's nth portlet, so the first `npm run sync` changes about two thirds of the destinations and renames 126 of them. The runbook's §5 (`voice-guide/docs/ops/runbook.md`) says what the reports should show, and that the experience profile must be rebuilt after activating.
 
 ## Still open
 
