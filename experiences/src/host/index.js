@@ -4,8 +4,9 @@
  *
  * Phases 1 and 2 of the live plan: the layer reads its settings, finds the page, builds its regions
  * (hidden), reads Vodafone's cards into the content model (./live-adapter.js) and tags them, names
- * each section's knowledge destination on the model (GET /v1/page-map, ADR-0049), and waits. The
- * demos load on intent in later phases, as chunks of this bundle.
+ * each section's knowledge destination on the model (GET /v1/page-map, ADR-0049), reads the page
+ * again whenever Vodafone's content changes (an `aixc:model` event on the document says the model
+ * changed), and waits. The demos load on intent in later phases, as chunks of this bundle.
  * Everything runs through one guard (./guard.js): any error removes the layer and leaves the page
  * as Vodafone served it.
  *
@@ -57,7 +58,7 @@ const start = () => {
   const guard = createGuard()
   // Stopped, the layer leaves no trace, not even the tag the loader added for it.
   guard.onStop(() => tag?.remove())
-  const layer = { state: 'starting', settings, host: null, problem: null, guard, adapter: null, model: null, coverage: null, pageMap: null }
+  const layer = { state: 'starting', settings, host: null, problem: null, guard, adapter: null, model: null, coverage: null, pageMap: null, reads: 0 }
   if (settings.debug) {
     window.__aixc = layer
     guard.onStop((reason) => {
@@ -89,6 +90,18 @@ const start = () => {
     layer.adapter = adapter
     layer.model = model
     layer.coverage = coverage
+    layer.reads = 1
+    // Vodafone's page changes after it loads (carousels, lazy sections): read it again when it does.
+    const stopWatching = adapter.watch(
+      (next) => {
+        layer.model = next.model
+        layer.coverage = next.coverage
+        layer.reads++
+        if (next.changed) document.dispatchEvent(new CustomEvent('aixc:model', { detail: { model: next.model, coverage: next.coverage } }))
+      },
+      { run: (fn) => guard.run('re-read', fn) },
+    )
+    guard.onStop(stopWatching)
     if (problems.length) console.warn(`[AIXC] reading the page: ${problems.join(' ')}`)
     checkpoint('read')
     layer.state = 'ready'

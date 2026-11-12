@@ -224,6 +224,23 @@ test('a sentence: one info, one synthesis with only the text and VoiceTut\'s set
 	await s.close()
 })
 
+test('a line with personal data never reaches VoiceTut, whoever asks: the service checks again (AIXC-31)', async () => {
+	fresh()
+	const s = service()
+	for (const text of ['Your number is 010 1234 5678.', 'رقمك ٠١٠ ١٢٣٤ ٥٦٧٨', 'Send it to a.b@example.com.', 'The card 4111 1111 1111 1111 was declined.']) {
+		const r = await s.speak({ siteId: vodafone.id, lang: /[\u0600-\u06ff]/.test(text) ? 'ar' : 'en', text, waitMs: 2000 }, ctx)
+		assert.deepEqual([r.ready, r.reason, r.hash], [false, 'private', null], text)
+	}
+	// Lines made ahead are checked the same way: the private one is left out, the other is made.
+	const p = await s.prepare({ siteId: vodafone.id, lang: 'en', lines: ['Call us on +20 10 1234 5678.', 'Here are the bundles.'] }, ctx)
+	assert.equal(p.queued, 1)
+	await s.drain()
+	const sent = vt.calls.filter((c) => c.endpoint === 'synthesize').map((c) => String(c.data[0]))
+	assert.deepEqual(sent, ['Here are the bundles.'], 'only the line without personal data was sent')
+	assert.ok(!JSON.stringify(events).includes('1234'), 'and no trace carries the number')
+	await s.close()
+})
+
 test('slow: the page gets "not ready" within its wait, the synthesis goes on and the next ask is cached', async () => {
 	fresh()
 	const s = service()

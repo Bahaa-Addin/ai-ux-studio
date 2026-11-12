@@ -16,6 +16,22 @@ test('masking: Egyptian mobiles, national IDs, cards, emails, long numbers, in b
 	assert.match(out, /37\.5 EGP, 1400 MB/, 'prices and amounts stay')
 })
 
+test('masking: a mobile number written in groups, with spaces, dashes, dots or a country code, in both digit systems (AIXC-31)', () => {
+	const grouped = ['010 1234 5678', '٠١٠ ١٢٣٤ ٥٦٧٨', '0101-234-5678', '+20 10 1234 5678', '+20-100-123-4567', '0020 100 123 4567', '010.1234.5678', '010\u00a01234\u00a05678', '011 – 1234 – 5678', '+20 (10) 1234 5678', '(010) 1234 5678']
+	for (const n of grouped) {
+		const hits: string[] = []
+		const out = maskContent(`Your number is ${n}.`, (k) => hits.push(k))
+		assert.deepEqual(hits, ['[phone]'], `${n} is masked as a phone: ${out}`)
+		assert.equal(out, 'Your number is [phone].')
+	}
+	// Not phone numbers: years, prices, sizes, short codes, a number that only starts like one.
+	for (const text of ['Offers in 2011 2012 2013 and 2014', 'Bundles at 100 200 300 EGP', '1400 MB for 25 EGP, 3000 MB for 50 EGP', 'Dial 868 or *880#', 'Call 16888', '20 10 5 GB', '010 1234 567 is too short']) {
+		const hits: string[] = []
+		maskContent(text, (k) => hits.push(k))
+		assert.deepEqual(hits, [], `nothing masked in "${text}"`)
+	}
+})
+
 test('the proxy masks page content with the same rules and leaves the request itself alone', () => {
 	const body = '<user_request>type my number 01012345678</user_request><browser_state>[3]<input value=29001011234567 /> ٠١٢٢٣٤٥٦٧٨٩</browser_state>'
 	const r = maskPageContent(body)

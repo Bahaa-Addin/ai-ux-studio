@@ -24,6 +24,7 @@ import type { Store } from '#shared/store/index.ts'
 
 import { normalizeUrl } from './crawler/url.ts'
 import { type IngestReport, runIngest } from './ingest-lib.ts'
+import { diffKb } from './kb-diff.ts'
 
 export interface SyncOptions {
 	site: SiteConfig
@@ -151,10 +152,12 @@ export async function runSync(opts: SyncOptions): Promise<SyncReport> {
 
 	if (active) {
 		const c = destinationChurn(active, manifest)
+		const d = diffKb(active, manifest)
 		report.gate.push({
 			name: 'destination churn',
 			ok: c.churn <= site.sync.gate.maxDestinationChurn,
-			detail: `${(c.churn * 100).toFixed(1)}% (limit ${(site.sync.gate.maxDestinationChurn * 100).toFixed(0)}%): ${c.removed.length} removed, ${c.retargeted.length} re-targeted`,
+			// "renamed" are the same places under new ids; "lost" have no counterpart in the new version.
+			detail: `${(c.churn * 100).toFixed(1)}% (limit ${(site.sync.gate.maxDestinationChurn * 100).toFixed(0)}%): ${c.removed.length} removed (${d.renamed.length} renamed, ${d.lost.length} lost), ${c.retargeted.length} re-targeted`,
 		})
 	}
 

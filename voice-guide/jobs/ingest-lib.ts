@@ -15,6 +15,7 @@ import type { Store } from '#shared/store/index.ts'
 import { crawlSite, loadCrawl } from './crawler/crawl.ts'
 import { makeInScope } from './crawler/url.ts'
 import { describeCrawl } from './describer/describe.ts'
+import { diffKb, diffLines, type KbDiff } from './kb-diff.ts'
 import { buildManifest, type BuildStats } from './kb-builder/build.ts'
 import { loadOverlay } from './kb-builder/overlay.ts'
 
@@ -41,7 +42,7 @@ export interface IngestReport {
 	describe: { visionCalls: number; cacheHits: number }
 	stats?: BuildStats
 	issues: Issue[]
-	diff?: { added: string[]; removed: string[]; previous?: string }
+	diff?: KbDiff & { previous?: string }
 	reportFile?: string
 	manifest?: Manifest
 }
@@ -86,9 +87,7 @@ export async function runIngest(opts: IngestOptions): Promise<IngestReport> {
 	report.versionId = m.version.id
 	const active = await store.getActiveKb(site.id)
 	if (active) {
-		const before = new Set(active.destinations.map((d) => d.id))
-		const after = new Set(m.destinations.map((d) => d.id))
-		report.diff = { previous: active.version.id, added: [...after].filter((x) => !before.has(x)), removed: [...before].filter((x) => !after.has(x)) }
+		report.diff = { previous: active.version.id, ...diffKb(active, m) }
 		report.unchanged = active.version.hash === m.version.hash
 	}
 	if (!opts.dryRun && !report.unchanged) {
@@ -122,7 +121,7 @@ function writeReport(platform: PlatformConfig, r: IngestReport): string {
 		`- Visuals: ${JSON.stringify(r.stats?.visuals || {})}; vision calls ${r.describe.visionCalls}, cache hits ${r.describe.cacheHits}`,
 		`- Destinations: ${JSON.stringify(r.stats?.destinations || {})}; collections ${r.stats?.collections ?? 0}; flows ${r.stats?.flows ?? 0}; curated entries ${r.stats?.curated ?? 0}`,
 		'',
-		r.diff ? `## Changes since ${r.diff.previous}\n\n- Added: ${r.diff.added.join(', ') || 'none'}\n- Removed: ${r.diff.removed.join(', ') || 'none'}\n` : '',
+		r.diff ? `## Changes since ${r.diff.previous}\n\n${diffLines(r.diff).join('\n')}\n` : '',
 		`## Errors (${errors.length})`,
 		...errors.map((i) => `- ${i.path}: ${i.message}`),
 		'',

@@ -69,6 +69,28 @@ export const RECOGNISERS = [
     link: 'a[href]',
   },
   {
+    // The home page's banner slides: a heading, a line, a button and a picture each.
+    kind: 'banner-slide',
+    match: '.carousel-item',
+    when: (el) => !!el.querySelector('.carousel-content'),
+    title: '.carousel-content-title, .carousel-content h2, .carousel-content h3',
+    description: '.carousel-content p',
+    image: '.carousel-img img.img-desktop, .carousel-img img',
+    link: '.carousel-content a[href]',
+    linkLabel: '.carousel-content a.btn, .carousel-content a',
+  },
+  {
+    // A picture beside a statement and a link (the RED page's three benefit rows).
+    kind: 'feature-row',
+    match: '.row',
+    when: (el) => !!el.querySelector(':scope > [class*="col"] > picture, :scope > [class*="col"] > img') && !!el.querySelector(':scope > [class*="col"] > h2, :scope > [class*="col"] > h3, :scope > [class*="col"] > h4') && !!el.querySelector(':scope > [class*="col"] > a[href]'),
+    title: 'h2, h3, h4',
+    description: 'p',
+    image: 'picture img, img',
+    link: 'a[href]',
+    linkLabel: 'a[href]',
+  },
+  {
     kind: 'ticket',
     match: 'a.ticket',
     // Sign-in links are not content.

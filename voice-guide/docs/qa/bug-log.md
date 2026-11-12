@@ -231,3 +231,38 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** the composer remembers where the page was when each view was left and puts it back when that view shows again (`showView`, `vodafone-services-clone/src/aixc/controller.js`); a new experience starts at its own top. The live plan asks the same of "Original" on Vodafone's pages.
 - **Test:** `aixc_e2e.py`, new "spotlight: back on Reimagined, the page is where it was left" (failed before: 3,601 then 3,265) and the existing card check (failed before: 18 then 16). After: `aixc_e2e` 298/298, `arabic_e2e` 71/71, `pocket_e2e` 210/210, `portal_e2e` 56/56, `tips_e2e` 87/87, clone `npm test` 163/163, voice-guide pocket-journey, reimagine-floating and tips e2e 10/10 (2026-11-10, macOS).
 
+## B-29 Card links on Arabic pages pointed at the English site or nowhere
+
+- **Found:** 2026-11-12, independent review of the live plan's phases 1 to 2 (Plane AIXC-29).
+- **Cause:** the live adapter resolved a card's link against the site root (`new URL(href, origin + '/')`). Vodafone writes links relative to the page (`href="vodafone-cash"` on `/ar/services` means `/ar/vodafone-cash`), so 5 of 8 home cards, 4 Services cards, 2 bundles cards and all 8 Vodafone Cash cards lost their `/en/` or `/ar/`. Ids were not affected (the language is stripped from them), which is why every check stayed green.
+- **Fix:** links and pictures resolve against the page's own address, or its `<base href>` when it has one (`absolute`, `baseOf` in `experiences/src/host/live-adapter.js`). A link into the same page keeps the id its fragment gave it.
+- **Test:** `tests/integration/live-adapter.test.ts`, "links are the ones the browser would follow" (every card link on four saved pages is one the browser resolves; `vodafone-cash` stays in the page's language; a `<base>` and a `#fragment` link). Ids and pictures compared before and after on all 13 saved pages: unchanged.
+
+## B-30 The coverage gate stayed at 1 when a card class was renamed
+
+- **Found:** 2026-11-12, the same review (AIXC-30).
+- **Cause:** coverage was "usable cards over cards a recogniser row matched". A class Vodafone renames stops matching, so its cards left both sides and the ratio did not move; ADR-0049 and the runbook promised the opposite. The count also hid content no row read at all: the home page's three banner slides and the RED page's three picture rows.
+- **Fix:** card-like blocks no row read count against coverage (`unreadCards`: three or more siblings of one shape, each with words, a picture or a button, and something to press; `coverage.unread`, and `unread` per section). Two recogniser rows added for what the count found (`banner-slide`, `feature-row`), so the home page reads 10 items and RED 8, with no existing id changed.
+- **Test:** "coverage falls when Vodafone renames a card class" (the 17 service cards renamed: coverage under 0.6, the three sections named; nothing unread on any saved page).
+
+## B-31 The layer read the page once; a carousel's copies could carry its marks
+
+- **Found:** 2026-11-12, the same review, by two reviewers (AIXC-28). The live plan's phase 2 step 1 asked for a re-read when the page changes; it was not built and no document said so.
+- **Cause:** `createLiveAdapter` read and tagged once. Owl Carousel rebuilds its copies from the cards' own markup (on a resize), so a copy made after tagging carries `data-aixc-item`; `untag()` only knew the elements it had tagged, so those marks would have stayed on Vodafone's page.
+- **Fix:** `refresh()` reads again with the same ids; `tag()` now also takes the layer's marks off everything it does not mean to mark; `untag()` sweeps the whole page; `watch()` re-reads 250 ms after Vodafone's content under `#main-content` changes (not for the layer's own nodes), through the guard. The layer keeps `window.__aixc.model` current and sends `aixc:model` on the document when the model changed (ADR-0049 §7).
+- **Test:** `live-adapter.test.ts`, "the page changes after load" (copies made from marked cards lose the marks, a new card is read and marked, ids stay, the layer's own nodes cause no re-read, untag leaves the page as it was); `tests/e2e/aixc-layer.e2e.test.ts`, the same in the real layer, and nothing watched or marked once the guard stops. Not exercised against the live site's own Owl script (O29).
+
+## B-32 A phone number written in groups was not masked
+
+- **Found:** 2026-11-12, the same review; the Opus tie-break upheld it (AIXC-31). AGENTS.md §4.4.
+- **Cause:** the masking rules (`packages/sdk/src/agent-mask.ts`) needed unbroken digits for a mobile number, so "010 1234 5678", "0101-234-5678", "+20 10 1234 5678" and the Arabic-Indic forms passed. They are the only gate before reply text goes to VoiceTut, and the same rules mask page content for the agent's model. The speech service did not check again.
+- **Fix:** a rule for a mobile written in groups (spaces, dashes, dots, brackets, `+20` or `0020`), placed before the card rule and refusing a longer run of digits. The speech-out service checks every line itself (`isPrivate` in `services/speech-out/handlers.ts`): `speak` answers `private` and sends nothing, `prepare` leaves such a line out.
+- **Test:** `tests/unit/safety.test.ts`, "a mobile number written in groups" (eleven forms masked; years, prices, sizes and short codes left alone); `tests/unit/speech-out.test.ts`, "a line with personal data never reaches VoiceTut, whoever asks". Both failed before.
+
+## B-33 A held sync's reports could not tell a renamed destination from a lost one
+
+- **Found:** 2026-11-12, the same review, crawler and knowledge-base reviewer (AIXC-45).
+- **Cause:** the ingest report printed two unpaired lists (Added, Removed) and the sync gate one count. The first sync after ADR-0049 §6 renames about 126 destinations; a section really lost in the same crawl would have looked the same, and the runbook told the operator to activate if "the counts are near these".
+- **Fix:** `jobs/kb-diff.ts` pairs a removed id with an added one on the same page and of the same kind: by label, by its place in a renamed list, or (no label, or the very same labels) by the same locator inside its portlet when as many went as came. The ingest report lists "Renamed", "Removed with no counterpart" and "Added with no counterpart"; the sync's churn row says `N removed (R renamed, L lost)`. Two different labels are never paired.
+- **Test:** `tests/unit/kb-diff.test.ts` (renames paired three ways, a real loss and a real addition left unpaired, no guess when it cannot tell); `tests/integration/sync.test.ts` (the held sync's two reports carry the counts). On the saved pages, old crawler and builder against new: 26 removed, 26 paired; with one renamed section taken out of the new version, it is reported lost.
+

@@ -9,13 +9,15 @@
  *   page speaks it with the browser voice; the synthesis goes on and is cached for next time).
  * - audio: the WAV of a hash the service made.
  *
- * Privacy (ADR-0047 §8, AGENTS.md §4.3): only the guide's reply text goes to VoiceTut, never the
- * person's audio, transcript or anything typed. Lines the service knows ahead are cached on disk;
+ * Privacy (ADR-0047 §8, AGENTS.md §4.3, §4.4): only the guide's reply text goes to VoiceTut, never the
+ * person's audio, transcript or anything typed, and never a line the masking rules find personal
+ * data in (reason `private`; the page's own voice says it). Lines the service knows ahead are cached on disk;
  * any other line (a value read on the page, an agent's words) only in memory. Traces carry sizes,
  * timings and hashes, never text. Off (engine `system`, or no VG_VOICETUT_URL): every call is a no-op.
  */
 import path from 'node:path'
 
+import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
 import { splitSentences } from '../../packages/sdk/src/voice/sentences.ts'
 import type { PlatformConfig, SiteConfig } from '../shared/config.ts'
 import type { RpcContext } from '../shared/rpc.ts'
@@ -33,7 +35,18 @@ export interface SpeechOutDeps {
 	cacheDir?: string
 }
 
-export type SpeechReason = 'off' | 'budget' | 'error' | 'empty'
+export type SpeechReason = 'off' | 'budget' | 'error' | 'empty' | 'private'
+
+/**
+ * True when a line holds personal data by the masking rules the page uses (ADR-0018): such a line is
+ * never sent to VoiceTut, whoever asks. The page checks first; this is the second gate, for any
+ * caller that does not.
+ */
+const isPrivate = (text: string): boolean => {
+	let hit = false
+	maskContent(text, () => (hit = true))
+	return hit
+}
 
 export interface SpeakReply {
 	engine: 'voicetut' | 'system'
@@ -195,7 +208,7 @@ export function createSpeechOut(deps: SpeechOutDeps) {
 			const site = on(input.siteId)
 			if (!site) return { queued: 0, cached: 0, skipped: 'off' }
 			keepWarm()
-			const sentences = (input.lines || []).filter((l) => typeof l === 'string').map((l) => splitSentences(l))
+			const sentences = (input.lines || []).filter((l) => typeof l === 'string' && !isPrivate(l)).map((l) => splitSentences(l))
 			// First sentences first (the page plays those first), then the rest, in order.
 			const order = [...sentences.map((s) => s.slice(0, 1)), ...sentences.map((s) => s.slice(1))].flat()
 			let queued = 0
@@ -235,6 +248,10 @@ export function createSpeechOut(deps: SpeechOutDeps) {
 			if (!site) return { engine: 'system', hash: null, ready: false, cached: false, ms: ms(), reason: 'off' }
 			const text = String(input.text || '').trim()
 			if (!text) return { engine: 'voicetut', hash: null, ready: false, cached: false, ms: ms(), reason: 'empty' }
+			if (isPrivate(text)) {
+				await deps.tracer.event(ctx.trace, 'speech.private', { chars: text.length })
+				return { engine: 'voicetut', hash: null, ready: false, cached: false, ms: ms(), reason: 'private' }
+			}
 			keepWarm()
 			const budget = Math.max(0, Math.min(input.waitMs ?? site.speech.out.firstAudioMs - 150, platform.rpcTimeoutMs - 500))
 			const timeout = <T>(p: Promise<T>) => Promise.race([p, new Promise<'late'>((r) => setTimeout(() => r('late'), Math.max(0, budget - ms())).unref?.())])

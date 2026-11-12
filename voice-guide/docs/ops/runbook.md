@@ -127,7 +127,7 @@ The guide speaks with VoiceTut, an Egyptian Arabic and English voice, when `VG_V
    | `budget` | VoiceTut was not ready in time | Warm it up (step 3) |
    | `error` | VoiceTut failed | Check `VG_VOICETUT_URL` and Modal |
    | `blocked` | Chrome would not play the audio | — |
-   | `private` | The line held personal data, so it was never sent | — |
+   | `private` | The line held personal data (a phone number in any grouping, an email, a card or ID number), so it was never sent; the page checks and the service checks again | — |
 
    Values the page reads aloud (the cheapest bundle and its price) cannot be made ahead. When VoiceTut is not ready in time, the browser voice says them (O28).
 6. **What leaves the machine:** only the guide's reply text, which goes to VoiceTut on Modal, outside Egypt. Never the person's voice, transcript or anything typed.
@@ -146,15 +146,17 @@ Coverage on the saved pages of 2026-10-23 (`tests/integration/live-adapter.test.
 |---|---|---|---|---|
 | `/{en,ar}/services` | 8 | 6 (and the hero, the app band) | 30 | 1 |
 | `/{en,ar}/mobile-internet-bundles` | 6 | 2 | 20 (21 in Arabic) | 1 |
-| `/{en,ar}/vodafone-red1` | 6 | 1 (the plans; partner logos are not cards) | 5 | 1 |
-| `/{en,ar}/home` | 4 | 3 | 8 | 1 |
+| `/{en,ar}/vodafone-red1` | 6 | 2 (the plans, the three picture rows; partner logos are not cards) | 8 | 1 |
+| `/{en,ar}/home` | 4 | 3 (with the three banner slides) | 10 | 1 |
 | `/{en,ar}/vodafone-cash` | 9 | 1 | 8 | 1 |
 | `/en/promotions` | 2 | 1 | 2 | 1 |
 | `/{en,ar}/wireless-net` | 10 | 0 (FAQ and text only) | 0 | 0 |
 
 - **Item ids:** each id is the first candidate unique on the page, from the link path, then the picture's file name, then the title's Latin letters and digits, then the tab, then the section's place. The same in English and Arabic: Services 28 of 30 (the two others are slips on Vodafone's Arabic page), home 8 of 8, RED 5 of 5, Vodafone Cash 8 of 8, the bundles page only 2 of 20 (one shared link, no picture that tells the cards apart, so the titles decide; O26).
 - **Not checked yet:** the live pages (O29), and the 38 knowledge-base pages that are not in the replay (34 of them `/en/` or `/ar/` pages).
-- **If Vodafone renames a class:** coverage drops on that page, and the demo is no longer offered there. Fix the row in `recognisers.js`.
+- **If Vodafone renames a class:** the cards no row reads still count (as `unread`), so coverage drops on that page and the demo is no longer offered there. With `?aixc-debug`, `window.__aixc.coverage.sections` names the sections with unread blocks. Fix the row in `recognisers.js`, or add one for a new component.
+- **Links** in the model are the ones the browser would follow: relative to the page, so an Arabic page's cards stay under `/ar/`.
+- **The page changing after it loads** (carousels, lazy sections): the layer reads it again a quarter of a second later, keeps the same ids, and keeps its marks off carousel copies. `window.__aixc.reads` counts the reads.
 - **Knowledge destinations:** the layer asks `GET /v1/page-map` (only when the site config's `experiences.enabled` is on) and keeps each section's destination on its model (`section.destinationId`); it tags nothing on Vodafone's portlets for this (ADR-0049). On the saved Services pages all six sections are named, in both languages. To see them: open a page with `?aixc-debug` and read `window.__aixc.model.sections` in the console (in replay, start with `npm run demo:live -- --replay --clone off`: by default the clone is mounted on Services and the layer stays off there). If no section is named, read `window.__aixc.pageMap`: `null` means the map did not come (the gateway, the site key, or `experiences.enabled`; the layer waits 2 s and logs nothing). If the map came but one section is not named, the knowledge base's locator for it no longer finds exactly one element: refresh the knowledge base (§5).
 
 ## 4. Knowledge base
@@ -219,12 +221,12 @@ Manifest: data/reports/vodafone-eg-<version>.manifest.json
 
 A held version is stored but not active. Read `data/reports/sync-vodafone-eg-<time>.md`: if the changes are real (Vodafone redesigned a page), update `config/curated/vodafone-eg.yaml` for the pages involved and sync again, or activate the held version with the command printed in the report. `--force` activates despite the gate; use it only after reading the report.
 
-**The first sync after 2026-11-11 will be held** (ADR-0049 §6). The crawler now starts a locator at Vodafone's portlet (`#p_p_id_…_INSTANCE_… > …`) instead of at the column's nth portlet, so most destinations change: estimated from the committed knowledge base, 356 of 524 (68%; the check allows 15%). The sync report's churn row shows it as about 126 removed and 230 re-targeted. The removed ones are new names, not lost places; the ingest report (`data/reports/vodafone-eg-<version>.md`, "Changes since") lists them, each with an added counterpart:
+**The first sync after 2026-11-11 will be held** (ADR-0049 §6). The crawler now starts a locator at Vodafone's portlet (`#p_p_id_…_INSTANCE_… > …`) instead of at the column's nth portlet, so most destinations change: estimated from the committed knowledge base, 356 of 524 (68%; the check allows 15%). The sync report's churn row shows it as about `126 removed (126 renamed, 0 lost), 230 re-targeted`. The ingest report (`data/reports/vodafone-eg-<version>.md`, "Changes since") lists each renamed id with its new one and how they were matched (label, parent list, or locator), then "Removed with no counterpart" and "Added with no counterpart". The renames to expect:
 
 - 44 destinations named after a hash of their locator (`web.….x0cee7a`, sections and pictures without an English label): a new hash;
 - 11 card lists named after the column (`web.wireless-net.layout-column_column-1`, `-2`, …) and their 71 items: now named after their English headings (`web.wireless-net.home-wireless-bundles`, `.0`, `.1`, …), or after a hash where a list has none (4 lists and 39 items: `web.short-numbers`, `web.kart-el-korout` and two on an Arabic-only page).
 
-If the removed ids are those, and the counts are near these, activate the held version with the command the report prints, then rebuild the experience profile, which names all of them: `npm run experience -- --site vodafone-eg --activate`. Removed ids of another kind (a page, or a section named after its heading) are a real change on Vodafone's side: read them as usual. After this one sync, the names and locators stay put when an editor adds a section.
+**Read "Removed with no counterpart" first.** Every id there is a place the new version no longer has: a real change on Vodafone's side, or a section the crawl did not see. If it is empty, or you have checked each id on the site, activate the held version with the command the report prints, then rebuild the experience profile, which names all the renamed ids: `npm run experience -- --site vodafone-eg --activate`. A few ids may stay unpaired because the report will not guess (several unlabelled pictures in one portlet, fewer after than before): check those on the page. After this one sync, the names and locators stay put when an editor adds a section.
 
 ### 5.2 From a browser tab (when the machine running npm cannot reach the site)
 

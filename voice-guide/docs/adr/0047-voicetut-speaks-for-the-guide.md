@@ -97,3 +97,10 @@ Constraints:
   - **One service:** with `VG_SPEECH_OUT_URL`, every process uses the one speech-out (`node services/run-service.ts speechOut`), so VoiceTut sees a single queue.
   - **Test suites:** the existing Vodafone suites pin `VG_VOICETUT_URL` to empty.
 - **Known limit:** a synthesis the page asked for (not made ahead) is traced without a turn id, so its `speech.synth` row is not in the X-ray. The page's own `sdk.speak` row for that line is there.
+
+## Amended 2026-11-12: the service checks for personal data itself
+
+The independent review of phases 1 to 2 found that the page's masking rules were the only gate before a line went to VoiceTut, and that they missed a mobile number written in groups ("010 1234 5678", "+20 10 1234 5678"; bug log B-32). The rules now cover those forms, and the speech-out service applies the same rules to every line it is asked for: `speak` answers `private` and sends nothing, `prepare` leaves the line out. So a caller that is not `voice-out.js` (a demo chunk reading a section aloud, a tool) cannot send personal data either. Tests: `tests/unit/safety.test.ts`, `tests/unit/speech-out.test.ts`.
+
+Still open from the same review (Plane AIXC-34 to AIXC-39, AIXC-49): this ADR's address of the Modal endpoint in its Context, the `voicetut` engine in the one site config, the line before a navigation, the audio download's budget, the chunk not awaited on a resumed plan, keep-warm's interval, and tests for no-redirects and keep-warm.
+

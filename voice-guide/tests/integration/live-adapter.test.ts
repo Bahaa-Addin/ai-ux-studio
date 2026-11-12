@@ -43,7 +43,7 @@ after(async () => {
 interface Read {
 	model: { pageId: string; title: string | null; sections: { id: string; title: string | null; items: { id: string; title: string; description: string | null; image: { src: string } | null; cta: { label: string | null; href: string | null } | null }[] }[]; closingPromotion: { id: string } | null } | null
 	problems: string[]
-	coverage: { ratio: number; cards: number; usable: number; sections: { id: string; cards: number; usable: number }[] }
+	coverage: { ratio: number; cards: number; usable: number; unread: number; sections: { id: string; cards: number; usable: number; unread: number }[] }
 	portlets: number
 }
 
@@ -223,3 +223,113 @@ test('the destinations hold when Vodafone rewords or drops a heading the knowled
 		await page.close()
 	}
 })
+
+test('links are the ones the browser would follow: relative to the page, so an Arabic page keeps /ar/ (AIXC-29)', async () => {
+	const page = await browser.newPage()
+	try {
+		for (const [p, lang] of [['/ar/services', 'ar'], ['/en/services', 'en'], ['/ar/home', 'ar'], ['/ar/vodafone-cash', 'ar']] as const) {
+			const html = htmlOf(savedAt(p))
+			const r = await read(page, html, p)
+			const hrefs = r.model!.sections.flatMap((x) => x.items.map((i) => i.cta?.href)).filter((h): h is string => !!h && h.startsWith(ORIGIN))
+			// What the browser makes of every card link on the page, given the page's own address.
+			const expected = await page.evaluate(([base]) => [...document.querySelectorAll('#main-content a[href]')].map((a) => { try { return new URL(a.getAttribute('href')!.trim(), base).href } catch { return '' } }), [`${ORIGIN}${p}`])
+			for (const h of hrefs) assert.ok(expected.includes(h), `${p}: ${h} is a link of the page`)
+			const cash = r.model!.sections.flatMap((x) => x.items).find((i) => i.id === 'vodafone-cash')
+			if (cash) assert.equal(cash.cta?.href, `${ORIGIN}/${lang}/vodafone-cash`, `${p}: href="vodafone-cash" stays in the page's language`)
+			assert.ok(!hrefs.some((h) => /^https:\/\/web\.vodafone\.com\.eg\/(?!en\/|ar\/|spa\/|documents\/|web\/|o\/)[a-z]/.test(h)), `${p}: no link lost its language`)
+		}
+		// A <base>, a link into the page itself, and the ids they give.
+		const card = (href: string, title: string) => `<div class="card-action"><a href="${href}"><div class="card-action-body"><h4>${title}</h4></div></a></div>`
+		const html = `<html><head><base href="/en/hub/"></head><body><div id="main-content"><div id="layout-column_column-1"><div class="portlet-boundary" id="p_p_id_x_INSTANCE_AbCdEf123456_">${card('offers', 'Offers')}${card('#plans', 'Plans')}${card('/ar/roaming', 'Roaming')}</div></div></div></body></html>`
+		const r = await read(page, html, '/en/test')
+		assert.deepEqual(r.model!.sections[0].items.map((i) => [i.id, i.cta?.href]), [['hub-offers', `${ORIGIN}/en/hub/offers`], ['hub-plans', `${ORIGIN}/en/hub/#plans`], ['roaming', `${ORIGIN}/ar/roaming`]], 'resolved against the page\'s <base>')
+	} finally {
+		await page.close()
+	}
+})
+
+test('coverage falls when Vodafone renames a card class: the cards no row reads still count (AIXC-30)', async () => {
+	const page = await browser.newPage()
+	try {
+		const html = htmlOf(savedAt('/en/services'))
+		const before = await read(page, html, '/en/services')
+		assert.deepEqual([before.coverage.ratio, before.coverage.unread], [1, 0])
+		// The 17 service cards get another class: no recogniser row matches them any more.
+		const renamed = await read(page, html.replace(/\bcard-subscription\b/g, 'card-offer'), '/en/services')
+		assert.equal(renamed.model!.sections.flatMap((x) => x.items).length, 13, 'only the action cards and the band are read')
+		assert.ok(renamed.coverage.unread >= 15, `the renamed cards are seen as unread (${renamed.coverage.unread})`)
+		assert.ok(renamed.coverage.ratio < 0.6, `coverage ${renamed.coverage.ratio} is under the Pocket's 0.6 and Reimagine's 0.9: the demos are not offered`)
+		assert.deepEqual(renamed.coverage.sections.filter((x) => x.unread).map((x) => x.id).sort(), ['crxwnpmfox6c', 'wfhgzwfxieab', 'xsg0av63s0tv'], 'the three sections that lost their cards are named')
+		// Nothing on any saved page is unread today (the home page's banner slides and RED's picture rows have rows now).
+		for (const p of saved) {
+			const pathname = new URL(p.url).pathname
+			assert.equal((await read(page, htmlOf(p), pathname)).coverage.unread, 0, `${pathname}: nothing card-like left unread`)
+		}
+	} finally {
+		await page.close()
+	}
+})
+
+test('the page changes after load: a carousel\'s new copies lose the layer\'s marks, a new card is read, ids stay (AIXC-28)', async () => {
+	const page = await browser.newPage()
+	try {
+		const card = (n: number) => `<div class="owl-item"><div class="carousel-item"><div class="card-plan card-collapsing"><div class="card-plan-header"><div class="card-plan-header-type"><h3>Plan ${n}</h3></div><p class="text-2x">EGP ${n}00</p></div><a class="btn btn-primary" href="/en/plan-${n}">Buy now</a></div></div></div>`
+		const html = `<html><body><div id="main-content"><div id="layout-column_column-1"><div class="portlet-boundary" id="p_p_id_x_INSTANCE_AbCdEf123456_"><div class="section-title"><h2>Plans</h2></div><div class="owl-carousel"><div class="owl-stage-outer"><div class="owl-stage">${[1, 2, 3].map(card).join('')}</div></div></div></div></div></div></body></html>`
+		await page.route('**/*', (route) => route.abort())
+		await page.setContent(html, { waitUntil: 'domcontentloaded' })
+		await page.addScriptTag({ content: bundle })
+		const out = await page.evaluate(async (fourth) => {
+			const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+			const marks = (sel: string) => document.querySelectorAll(sel).length
+			const stage = document.querySelector('.owl-stage')!
+			const pristine = document.documentElement.outerHTML
+			const a = (window as any).__live.createLiveAdapter({ doc: document, origin: 'https://web.vodafone.com.eg', path: '/en/test' })
+			const ids = () => a.extractContent().model.sections.flatMap((x: any) => x.items.map((i: any) => i.id))
+			const first = ids()
+			a.tag()
+			const calls: boolean[] = []
+			const stop = a.watch((next: { changed: boolean }) => calls.push(next.changed), { delay: 60 })
+			// Owl refreshes (a resize): its copies are rebuilt from the cards' own markup, marks and all.
+			const copies = () => {
+				stage.querySelectorAll('.owl-item.cloned').forEach((c) => c.remove())
+				const real = [...stage.querySelectorAll('.owl-item:not(.cloned)')]
+				for (const el of real.slice(0, 2)) stage.insertAdjacentHTML('beforeend', el.outerHTML.replace('class="owl-item"', 'class="owl-item cloned"'))
+				stage.insertAdjacentHTML('afterbegin', real.at(-1)!.outerHTML.replace('class="owl-item"', 'class="owl-item cloned"'))
+			}
+			copies()
+			const copied = marks('.cloned [data-aixc-item]')
+			await wait(250)
+			const afterCopies = { onCopies: marks('.cloned [data-aixc-item]'), onCards: marks('.owl-item:not(.cloned) [data-aixc-item]'), calls: [...calls], ids: ids() }
+			// Vodafone adds a card (a lazy section, an editor's change): it is read and marked; the others keep their ids.
+			stage.querySelector('.owl-item:not(.cloned):last-of-type')
+			;[...stage.querySelectorAll('.owl-item:not(.cloned)')].at(-1)!.insertAdjacentHTML('afterend', fourth)
+			copies()
+			await wait(250)
+			const afterCard = { onCopies: marks('.cloned [data-aixc-item]'), onCards: marks('.owl-item:not(.cloned) [data-aixc-item]'), calls: [...calls], ids: ids() }
+			// The layer's own nodes coming and going are not Vodafone's page changing.
+			const own = Object.assign(document.createElement('div'), { textContent: 'ours' })
+			own.setAttribute('data-aixc', '')
+			document.getElementById('main-content')!.append(own)
+			await wait(200)
+			const afterOwn = calls.length
+			own.remove()
+			stop()
+			stage.querySelectorAll('.owl-item.cloned').forEach((c) => c.remove())
+			;[...stage.querySelectorAll('.owl-item')].at(-1)!.remove()
+			await wait(200)
+			a.untag()
+			return { first, copied, afterCopies, afterCard, afterOwn, callsAtEnd: calls.length, marksLeft: marks('[data-aixc-item], [data-aixc-section]'), restored: document.documentElement.outerHTML === pristine }
+		}, card(4))
+		assert.deepEqual(out.first, ['plan-1', 'plan-2', 'plan-3'])
+		assert.equal(out.copied, 3, 'the copies do carry the marks at first: Owl copies the cards\' markup')
+		assert.deepEqual(out.afterCopies, { onCopies: 0, onCards: 3, calls: [false], ids: ['plan-1', 'plan-2', 'plan-3'] }, 're-read once: marks off the copies, on the cards, same model')
+		assert.deepEqual(out.afterCard, { onCopies: 0, onCards: 4, calls: [false, true], ids: ['plan-1', 'plan-2', 'plan-3', 'plan-4'] }, 'the new card is read and marked; the others keep their ids')
+		assert.equal(out.afterOwn, 2, 'the layer\'s own nodes do not cause a re-read')
+		assert.equal(out.callsAtEnd, 2, 'stopped: no more re-reads')
+		assert.equal(out.marksLeft, 0, 'untag() leaves no mark anywhere')
+		assert.equal(out.restored, true, 'and the page is as it was')
+	} finally {
+		await page.close()
+	}
+})
+

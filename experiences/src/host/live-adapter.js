@@ -41,12 +41,27 @@ const toId = (s) => {
   return ID_PATTERN.test(id) ? id : ''
 }
 
-const absolute = (href, origin) => {
+/**
+ * A link or picture address as the browser resolves it: against the page's own address (Vodafone
+ * writes `href="vodafone-cash"` on /ar/services and means /ar/vodafone-cash), or the page's <base>.
+ */
+const absolute = (href, base) => {
   if (!href || /^(javascript:|#$|mailto:|tel:)/i.test(href.trim())) return null
   try {
-    return new URL(href.trim(), `${origin}/`).href
+    return new URL(href.trim(), base).href
   } catch {
     return null
+  }
+}
+
+/** The address relative links resolve against: the page's <base href> when it has one, else its own. */
+const baseOf = (doc, origin, path) => {
+  const own = `${origin}${path}`
+  const declared = doc.querySelector('base[href]')?.getAttribute('href')
+  try {
+    return declared ? new URL(declared, own).href : own
+  } catch {
+    return own
   }
 }
 
@@ -57,9 +72,9 @@ const first = (root, selector) => {
   return null
 }
 
-const imageOf = (img, origin) => {
+const imageOf = (img, base) => {
   if (!img) return null
-  const src = absolute(img.getAttribute('data-src') || img.getAttribute('src'), origin)
+  const src = absolute(img.getAttribute('data-src') || img.getAttribute('src'), base)
   if (!src || src.startsWith('data:')) return null
   const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null)
   return { src, width: n(img.naturalWidth) || n(img.getAttribute('width')), height: n(img.naturalHeight) || n(img.getAttribute('height')), alt: clean(img.getAttribute('alt')) || null }
@@ -79,12 +94,14 @@ const fileName = (src) => {
 }
 
 /** Id candidates for a card, most stable first. */
-const candidates = ({ href, image, title, el, sectionId, origin }) => {
+const candidates = ({ href, image, title, el, sectionId, origin, path }) => {
   const out = []
   if (href) {
     try {
       const u = new URL(href)
-      if (u.origin === origin || /vodafone/.test(u.hostname)) out.push(toId(`${u.pathname.replace(/^\/(en|ar)(\/|$)/, '/')}${u.hash}`))
+      // A link into this same page is known by its fragment alone.
+      const where = u.origin === origin && u.pathname === path && u.hash ? '/' : u.pathname.replace(/^\/(en|ar)(\/|$)/, '/')
+      if (u.origin === origin || /vodafone/.test(u.hostname)) out.push(toId(`${where}${u.hash}`))
     } catch {}
   }
   const file = image?.src && /\/documents\//.test(image.src) ? fileName(image.src) : ''
@@ -136,17 +153,53 @@ const matchDestinations = (doc, pageMap, sections, portletOf, lang) => {
   }
 }
 
+/** Never counted as an unread card: what we never read, and navigation furniture. */
+const NOT_CARDS = `${SKIP}, nav, .nav, [role="tablist"], .owl-dots, .owl-nav, .breadcrumb, .pagination, form, table`
+
+/**
+ * Card-like blocks in a portlet that no recogniser row read: three or more siblings of one shape,
+ * each with words, a picture or a button, and something to press. They count against coverage, so a
+ * card class Vodafone renames (which simply stops matching) lowers the ratio instead of leaving it at
+ * 1 with the cards gone (ADR-0049 §3).
+ */
+const unreadCards = (pb, claimed) => {
+  const read = [...claimed]
+  const taken = (el) => read.some((c) => c === el || c.contains(el) || el.contains(c))
+  const cardLike = (el) =>
+    !/^(P|BR|SCRIPT|STYLE|OPTION)$/.test(el.tagName) &&
+    !el.closest(NOT_CARDS) &&
+    !!el.querySelector('img, picture, .btn, button') &&
+    !!el.querySelector('a[href], button, [data-toggle]') &&
+    clean(el.textContent).length > 0
+  const found = []
+  for (const parent of pb.querySelectorAll('*')) {
+    if (parent.children.length < 3 || parent.closest(NOT_CARDS) || found.some((f) => f.contains(parent))) continue
+    const shapes = new Map()
+    for (const child of parent.children) {
+      const shape = `${child.tagName}.${child.classList[0] || ''}`
+      shapes.set(shape, [...(shapes.get(shape) || []), child])
+    }
+    for (const group of shapes.values()) {
+      if (group.length < 3) continue
+      const members = group.filter((m) => cardLike(m) && !taken(m))
+      if (members.length >= 3) found.push(...members)
+    }
+  }
+  return found
+}
+
 /** Reads the page. `origin` resolves relative links and pictures; `pageMap` (GET /v1/page-map) names the sections. */
 export function readPage(doc, { origin = doc.defaultView?.location.origin || 'https://web.vodafone.com.eg', path = doc.defaultView?.location.pathname || '/', pageMap = null } = {}) {
   const problems = []
   const main = doc.getElementById('main-content')
-  if (!main) return { model: null, problems: ['No #main-content on this page.'], coverage: { ratio: 0, cards: 0, usable: 0, sections: [] }, tags: [] }
+  if (!main) return { model: null, problems: ['No #main-content on this page.'], coverage: { ratio: 0, cards: 0, usable: 0, unread: 0, sections: [] }, tags: [] }
   const boundaries = [...main.querySelectorAll('#layout-column_column-1 > .portlet-boundary')]
   const portlets = boundaries.length ? boundaries : [...main.querySelectorAll('.portlet-boundary')].filter((b) => !b.parentElement?.closest('.portlet-boundary'))
 
+  const base = baseOf(doc, origin, path)
   const page = { pageId: toId(path) || 'page', sourceUrl: `${origin}${path}`, title: null, intro: null, heroImage: null, sections: [], closingPromotion: null }
   const raw = []
-  const coverage = { ratio: 0, cards: 0, usable: 0, sections: [] }
+  const coverage = { ratio: 0, cards: 0, usable: 0, unread: 0, sections: [] }
   const portletOf = new Map()
 
   portlets.forEach((pb, index) => {
@@ -169,24 +222,26 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
     const sectionTitle = textOf(titleEl) || null
     const hero = pb.querySelector('.hello')
 
-    if (hero && !cards.length) {
+    const unread = unreadCards(pb, claimed)
+
+    if (hero && !cards.length && !unread.length) {
       page.title = textOf(first(pb, '.hello-title')) || textOf(first(pb, 'h1')) || sectionTitle
       page.intro = textOf(first(pb, '.hello p, .hello h4')) || null
-      page.heroImage = imageOf(first(pb, '.section-img-wrapper img, img'), origin)
+      page.heroImage = imageOf(first(pb, '.section-img-wrapper img, img'), base)
       return
     }
     const stores = [...pb.querySelectorAll(STORES)].filter((a) => !a.closest('.modal'))
-    if (stores.length && !cards.length) {
+    if (stores.length && !cards.length && !unread.length) {
       page.closingPromotion = {
         id: toId(sectionTitle || 'download-app') || 'download-app',
         title: sectionTitle,
         lead: null,
         description: textOf(first(pb, 'p')) || null,
         storesLabel: null,
-        stores: stores.map((a) => ({ label: clean(a.getAttribute('aria-label') || a.getAttribute('title') || a.textContent) || new URL(a.href, `${origin}/`).hostname, icon: null, href: absolute(a.getAttribute('href'), origin) })),
+        stores: stores.map((a) => ({ label: clean(a.getAttribute('aria-label') || a.getAttribute('title') || a.textContent) || new URL(a.href, base).hostname, icon: null, href: absolute(a.getAttribute('href'), base) })),
         qr: (() => {
           const img = [...pb.querySelectorAll('img')].find((i) => /qr/i.test(`${i.getAttribute('alt')} ${i.getAttribute('data-src') || i.getAttribute('src')}`))
-          return img ? { title: clean(img.getAttribute('alt')) || null, image: imageOf(img, origin) } : null
+          return img ? { title: clean(img.getAttribute('alt')) || null, image: imageOf(img, base) } : null
         })(),
       }
       raw.push({ kind: 'promotion', el: pb, sectionId, sectionEl: pb, item: null })
@@ -195,16 +250,17 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
 
     const section = { id: sectionId, title: sectionTitle, description: textOf(subtitleEl) || null, cta: null, aside: null, items: [] }
     portletOf.set(sectionId, pb)
-    const sectionCover = { id: sectionId, title: sectionTitle, cards: cards.length, usable: 0 }
+    // `cards` counts what looks like a card, read or not; `unread` says how many no row matched.
+    const sectionCover = { id: sectionId, title: sectionTitle, cards: cards.length + unread.length, usable: 0, unread: unread.length }
     const sectionLink = first(pb, '.section-title a.btn[href]')
-    if (sectionLink) section.cta = { label: textOf(sectionLink) || null, href: absolute(sectionLink.getAttribute('href'), origin) }
+    if (sectionLink) section.cta = { label: textOf(sectionLink) || null, href: absolute(sectionLink.getAttribute('href'), base) }
 
     for (const { el, row } of cards) {
       const titleNode = first(el, row.title)
-      const image = imageOf(row.image ? first(el, row.image) : null, origin)
+      const image = imageOf(row.image ? first(el, row.image) : null, base)
       const title = textOf(titleNode) || image?.alt || ''
       const linkEl = row.link === ':self' ? el : first(el, row.link) || el.closest('a[href]')
-      const href = absolute(linkEl?.getAttribute('href'), origin)
+      const href = absolute(linkEl?.getAttribute('href'), base)
       const label = row.linkLabel ? textOf(first(el, row.linkLabel)) || null : null
       const descriptionParts =
         row.kind === 'card-plan'
@@ -217,21 +273,22 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
       const cta = href ? { label, href } : opensDialog ? { label, href: null, opens: 'dialog' } : label ? { label, href: null } : null
       if (title && (href || opensDialog)) sectionCover.usable++
       if (!href && opensDialog) sectionCover.dialogs = (sectionCover.dialogs || 0) + 1
-      raw.push({ kind: row.kind, el, sectionId, sectionEl: pb, item: { title, description, image, cta }, cand: candidates({ href, image, title, el, sectionId, origin }) })
+      raw.push({ kind: row.kind, el, sectionId, sectionEl: pb, item: { title, description, image, cta }, cand: candidates({ href, image, title, el, sectionId, origin, path }) })
     }
 
     // A section with no cards but a heading, a picture and a button reads as one item (a promo band).
-    if (!cards.length && sectionTitle) {
+    if (!cards.length && !unread.length && sectionTitle) {
       const btn = first(pb, 'a.btn[href]')
-      const image = imageOf(first(pb, 'img'), origin)
+      const image = imageOf(first(pb, 'img'), base)
       if (btn && (image || subtitleEl)) {
-        const href = absolute(btn.getAttribute('href'), origin)
-        raw.push({ kind: 'band', el: pb, sectionId, sectionEl: pb, item: { title: sectionTitle, description: textOf(subtitleEl) || null, image, cta: { label: textOf(btn) || null, href } }, cand: candidates({ href, image, title: sectionTitle, el: pb, sectionId, origin }) })
+        const href = absolute(btn.getAttribute('href'), base)
+        raw.push({ kind: 'band', el: pb, sectionId, sectionEl: pb, item: { title: sectionTitle, description: textOf(subtitleEl) || null, image, cta: { label: textOf(btn) || null, href } }, cand: candidates({ href, image, title: sectionTitle, el: pb, sectionId, origin, path }) })
       }
     }
     if (sectionCover.cards) coverage.sections.push(sectionCover)
     coverage.cards += sectionCover.cards
     coverage.usable += sectionCover.usable
+    coverage.unread += sectionCover.unread
     page.sections.push(section)
   })
 
@@ -267,16 +324,30 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
   return { model, problems, coverage, tags }
 }
 
+/** The marks the layer puts on Vodafone's elements, as dataset names and as a selector. */
+const MARKS = ['aixcItem', 'aixcSection']
+const MARKED = '[data-aixc-item], [data-aixc-section]'
+
+/** True when a change to the page is only the layer's own nodes coming or going. */
+const ours = (node) => node.nodeType !== 1 || node.hasAttribute('data-aixc') || !!node.closest?.('[data-aixc]')
+
 /**
  * The adapter the demos take (src/aixc/page-adapters.js contract): pageId, label, renderOriginal()
- * (nothing to draw: the page is Vodafone's) and extractContent() (the model, read once). tag() marks
- * what was read on Vodafone's elements; untag() takes every mark off again (the guard's clean-up).
+ * (nothing to draw: the page is Vodafone's) and extractContent() (the model as last read).
+ *
+ * tag() marks what was read on Vodafone's elements and takes the marks off everything else: a
+ * carousel builds its copies from the cards' own markup, so a copy made after tagging carries the
+ * mark until the next tag(). untag() takes every mark off the page (the guard's clean-up).
+ *
+ * The page changes after it loads (carousels, lazy sections, an editor's banner): refresh() reads
+ * it again, with the same ids for the same cards, and watch() does so whenever Vodafone's own
+ * content under #main-content changes (ADR-0049 §7).
  */
 export function createLiveAdapter({ doc = document, origin, path, pageMap = null } = {}) {
   let read = null
-  const tagged = []
+  let tagging = false
   const result = () => (read ??= readPage(doc, { origin, path, pageMap }))
-  return {
+  const adapter = {
     get pageId() {
       return result().model?.pageId ?? 'page'
     },
@@ -289,14 +360,52 @@ export function createLiveAdapter({ doc = document, origin, path, pageMap = null
       return { model, problems, coverage }
     },
     tag() {
-      for (const { el, name, value } of result().tags) {
-        if (el.dataset[name] === value) continue
-        el.dataset[name] = value
-        tagged.push({ el, name })
-      }
+      tagging = true
+      const wanted = new Map()
+      for (const { el, name, value } of result().tags) wanted.set(el, { ...(wanted.get(el) || {}), [name]: value })
+      for (const [el, marks] of wanted) for (const [name, value] of Object.entries(marks)) if (el.dataset[name] !== value) el.dataset[name] = value
+      for (const el of doc.querySelectorAll(MARKED)) for (const name of MARKS) if (name in el.dataset && !(name in (wanted.get(el) || {}))) delete el.dataset[name]
     },
     untag() {
-      for (const { el, name } of tagged.splice(0)) delete el.dataset[name]
+      tagging = false
+      for (const el of doc.querySelectorAll(MARKED)) for (const name of MARKS) delete el.dataset[name]
+    },
+    /** Reads the page again; true when the model is not what it was. Re-tags if the page is tagged. */
+    refresh() {
+      const before = JSON.stringify(read?.model ?? null)
+      read = null
+      const changed = JSON.stringify(result().model ?? null) !== before
+      if (tagging) adapter.tag()
+      return changed
+    },
+    /**
+     * Re-reads when Vodafone's content under #main-content changes, `delay` ms after the last change.
+     * `onChange({ model, problems, coverage, changed })` is called after each re-read, through
+     * `run` (the layer's guard). Returns the function that stops watching.
+     */
+    watch(onChange, { delay = 250, run = (fn) => fn() } = {}) {
+      const main = doc.getElementById('main-content')
+      const Observer = doc.defaultView?.MutationObserver
+      if (!main || !Observer) return () => {}
+      let timer = 0
+      const observer = new Observer((records) => {
+        if (records.every((r) => [...r.addedNodes, ...r.removedNodes].every(ours))) return
+        clearTimeout(timer)
+        timer = setTimeout(
+          () =>
+            run(() => {
+              const changed = adapter.refresh()
+              onChange?.({ ...adapter.extractContent(), changed })
+            }),
+          delay,
+        )
+      })
+      observer.observe(main, { childList: true, subtree: true })
+      return () => {
+        clearTimeout(timer)
+        observer.disconnect()
+      }
     },
   }
+  return adapter
 }

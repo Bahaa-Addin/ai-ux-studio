@@ -15,6 +15,10 @@ const RULES: [RegExp, string][] = [
 	[/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]'],
 	// Egyptian national ID: 14 digits, century digit 2 or 3.
 	[/(?<![\w\d])[23]\d{13}(?![\w\d])/g, '[national-id]'],
+	// An Egyptian mobile written in groups ("010 1234 5678", "+20 10 1234 5678", "0101-234-5678"):
+	// spaces, dashes, dots or brackets between the digits, and no further digits after it (a longer
+	// run is a card or an account number, below).
+	[/(?<![\w\d])(?:\(?(?:\+|00)20\)?[ \u00a0\u202f.\-–—]{0,3}\(?1[0125]\)?|\(?01[0125]\)?)(?:[ \u00a0\u202f.\-–—]{0,3}\d){8}(?![\w\d])(?![ \u00a0\u202f.\-–—]{1,3}\d)/g, '[phone]'],
 	[/(?<![\w\d])(?:\d[ -]?){13,19}(?![\w\d])/g, '[card]'],
 	[/(?<![\w\d])(?:\+?20|0)1[0125]\d{8}(?![\w\d])/g, '[phone]'],
 	// Any other long number (account and line numbers); prices and amounts are shorter.

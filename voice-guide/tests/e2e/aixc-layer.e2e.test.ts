@@ -225,6 +225,40 @@ test('the page map (ADR-0049): only the page\'s address is sent; without it (an 
 	}
 })
 
+test('Vodafone\'s page changes after load: the layer reads it again and keeps its marks off carousel copies (AIXC-28)', async () => {
+	const b = await launch()
+	try {
+		const seen = watch(b.page)
+		await open(b.page, '/en/services', '?aixc-debug')
+		const state = () =>
+			b.page.evaluate(() => {
+				const l = (window as unknown as { __aixc: { state: string; reads: number; model: { sections: { items: unknown[] }[] } } }).__aixc
+				return { state: l.state, reads: l.reads, items: l.model.sections.flatMap((x) => x.items).length, onCopies: document.querySelectorAll('.cloned [data-aixc-item]').length, marks: document.querySelectorAll('[data-aixc-item]').length }
+			})
+		const first = await state()
+		assert.deepEqual([first.state, first.reads, first.onCopies], ['ready', 1, 0])
+		// What Owl does on the live site: copies of the cards, made from their markup, in .owl-item.cloned wrappers.
+		const copied = await b.page.evaluate(() => {
+			const cards = [...document.querySelectorAll('#main-content [data-aixc-item]')].slice(0, 3)
+			for (const c of cards) c.insertAdjacentHTML('afterend', `<div class="owl-item cloned">${c.outerHTML}</div>`)
+			return document.querySelectorAll('.cloned [data-aixc-item]').length
+		})
+		assert.equal(copied, 3)
+		await b.page.waitForFunction(() => (window as unknown as { __aixc: { reads: number } }).__aixc.reads >= 2, null, { timeout: 5_000 })
+		const second = await state()
+		assert.deepEqual([second.state, second.items, second.onCopies, second.marks], ['ready', first.items, 0, first.marks], 'same model, no mark on a copy')
+		// Stopped, it watches nothing and leaves no mark.
+		await b.page.evaluate(() => (window as unknown as { __aixc: { guard: { stop(): void } } }).__aixc.guard.stop())
+		await b.page.evaluate(() => document.querySelector('#main-content .card-action')!.insertAdjacentHTML('afterend', '<div class="card-action"><a href="/en/x"><div class="card-action-body"><h4>X</h4></div></a></div>'))
+		await b.page.waitForTimeout(600)
+		assert.deepEqual(await b.page.evaluate(() => [(window as unknown as { __aixc: { reads: number } }).__aixc.reads, document.querySelectorAll('[data-aixc-item], [data-aixc-section]').length]), [second.reads, 0])
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+		assert.deepEqual(seen.layer.filter((l) => !l.startsWith('info:')), [], 'the layer logged no warning or error')
+	} finally {
+		await b.close()
+	}
+})
+
 test('the layer shifts nothing of Vodafone\'s page (geometry with it and with ?aixc=off)', async () => {
 	const b = await launch()
 	try {
