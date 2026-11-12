@@ -231,8 +231,13 @@ test('a line with personal data never reaches VoiceTut, whoever asks: the servic
 		const r = await s.speak({ siteId: vodafone.id, lang: /[\u0600-\u06ff]/.test(text) ? 'ar' : 'en', text, waitMs: 2000 }, ctx)
 		assert.deepEqual([r.ready, r.reason, r.hash], [false, 'private', null], text)
 	}
-	// Lines made ahead are checked the same way: the private one is left out, the other is made.
-	const p = await s.prepare({ siteId: vodafone.id, lang: 'en', lines: ['Call us on +20 10 1234 5678.', 'Here are the bundles.'] }, ctx)
+	// What is checked is what would be sent: a number broken over lines or tabs is one number once the line is tidied.
+	for (const text of ['Call us on\n010\n1234\n5678.', '010\t1234\t5678', 'Your line 010 1234 5678 5 GB left']) {
+		const r = await s.speak({ siteId: vodafone.id, lang: 'en', text, waitMs: 2000 }, ctx)
+		assert.equal(r.reason, 'private', JSON.stringify(text))
+	}
+	// Lines made ahead are checked the same way: the private ones are left out, the other is made.
+	const p = await s.prepare({ siteId: vodafone.id, lang: 'en', lines: ['Call us on +20 10 1234 5678.', 'Call us on\n010\n1234\n5678.', 'Here are the bundles.'] }, ctx)
 	assert.equal(p.queued, 1)
 	await s.drain()
 	const sent = vt.calls.filter((c) => c.endpoint === 'synthesize').map((c) => String(c.data[0]))

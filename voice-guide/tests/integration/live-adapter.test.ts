@@ -243,6 +243,11 @@ test('links are the ones the browser would follow: relative to the page, so an A
 		const html = `<html><head><base href="/en/hub/"></head><body><div id="main-content"><div id="layout-column_column-1"><div class="portlet-boundary" id="p_p_id_x_INSTANCE_AbCdEf123456_">${card('offers', 'Offers')}${card('#plans', 'Plans')}${card('/ar/roaming', 'Roaming')}</div></div></div></body></html>`
 		const r = await read(page, html, '/en/test')
 		assert.deepEqual(r.model!.sections[0].items.map((i) => [i.id, i.cta?.href]), [['hub-offers', `${ORIGIN}/en/hub/offers`], ['hub-plans', `${ORIGIN}/en/hub/#plans`], ['roaming', `${ORIGIN}/ar/roaming`]], 'resolved against the page\'s <base>')
+		// A page opened with a query: a link into the page keeps it, as in the browser.
+		await page.setContent(html.replace('<base href="/en/hub/">', ''), { waitUntil: 'domcontentloaded' })
+		await page.addScriptTag({ content: bundle })
+		const q = await page.evaluate(([origin]) => (window as any).__live.readPage(document, { origin, path: '/en/test', search: '?promo=1' }).model.sections[0].items.map((i: { id: string; cta: { href: string } }) => [i.id, i.cta.href]), [ORIGIN])
+		assert.deepEqual(q, [['offers', `${ORIGIN}/en/offers`], ['plans', `${ORIGIN}/en/test?promo=1#plans`], ['roaming', `${ORIGIN}/ar/roaming`]])
 	} finally {
 		await page.close()
 	}
@@ -260,11 +265,30 @@ test('coverage falls when Vodafone renames a card class: the cards no row reads 
 		assert.ok(renamed.coverage.unread >= 15, `the renamed cards are seen as unread (${renamed.coverage.unread})`)
 		assert.ok(renamed.coverage.ratio < 0.6, `coverage ${renamed.coverage.ratio} is under the Pocket's 0.6 and Reimagine's 0.9: the demos are not offered`)
 		assert.deepEqual(renamed.coverage.sections.filter((x) => x.unread).map((x) => x.id).sort(), ['crxwnpmfox6c', 'wfhgzwfxieab', 'xsg0av63s0tv'], 'the three sections that lost their cards are named')
-		// Nothing on any saved page is unread today (the home page's banner slides and RED's picture rows have rows now).
+		// Every kind of card, on every saved page it is on: renamed, it is seen as unread and the page falls under Reimagine's 0.9.
+		// (The first rule missed cards that are themselves the link, cards without a picture or a button, and cards one to a column.)
+		const kinds = ['card-action', 'card-subscription', 'card-plan', 'card-horizontal', 'tiles', 'ticket', 'carousel-item']
+		let checked = 0
 		for (const p of saved) {
 			const pathname = new URL(p.url).pathname
-			assert.equal((await read(page, htmlOf(p), pathname)).coverage.unread, 0, `${pathname}: nothing card-like left unread`)
+			const source = htmlOf(p)
+			const asIs = await read(page, source, pathname)
+			// Nothing is unread today, except on the home-wireless page, whose router offer and price table no row reads (it is not offered there).
+			if (/wireless-net/.test(pathname)) assert.deepEqual([asIs.coverage.ratio, asIs.coverage.unread > 0], [0, true], pathname)
+			else assert.equal(asIs.coverage.unread, 0, `${pathname}: nothing card-like left unread`)
+			for (const kind of kinds) {
+				const cls = new RegExp(`(class="[^"]*?)\\b${kind}\\b(?![-\\w])`, 'g')
+				if (!cls.test(source)) continue
+				const r = await read(page, source.replace(new RegExp(`(class="[^"]*?)\\b${kind}\\b(?![-\\w])`, 'g'), `$1${kind}-x`), pathname)
+				if (r.coverage.usable === asIs.coverage.usable) continue
+				checked++
+				assert.ok(r.coverage.ratio < 0.9, `${pathname}: ${kind} renamed, ${asIs.coverage.usable - r.coverage.usable} cards gone, coverage ${r.coverage.ratio} (unread ${r.coverage.unread})`)
+				assert.equal(r.coverage.usable + r.coverage.unread, r.coverage.cards)
+			}
 		}
+		assert.equal(checked, 19, `renames checked: ${checked}`)
+		// A card left out on purpose (the sign-in ticket on the bundles page) is not an unread one.
+		assert.equal((await read(page, htmlOf(savedAt('/en/mobile-internet-bundles')), '/en/mobile-internet-bundles')).coverage.unread, 0)
 	} finally {
 		await page.close()
 	}
@@ -306,10 +330,19 @@ test('the page changes after load: a carousel\'s new copies lose the layer\'s ma
 			copies()
 			await wait(250)
 			const afterCard = { onCopies: marks('.cloned [data-aixc-item]'), onCards: marks('.owl-item:not(.cloned) [data-aixc-item]'), calls: [...calls], ids: ids() }
+			// Only words change (a price, a late title): Vodafone's content changed all the same.
+			stage.querySelector('.owl-item:not(.cloned) h3')!.textContent = 'Plan One'
+			await wait(250)
+			const afterWords = { calls: [...calls], title: a.extractContent().model.sections[0].items[0].title }
+			;(stage.querySelector('.owl-item:not(.cloned) h3')!.firstChild as Text).data = 'Plan 1'
+			await wait(250)
+			const afterData = { calls: calls.length, title: a.extractContent().model.sections[0].items[0].title }
 			// The layer's own nodes coming and going are not Vodafone's page changing.
 			const own = Object.assign(document.createElement('div'), { textContent: 'ours' })
 			own.setAttribute('data-aixc', '')
 			document.getElementById('main-content')!.append(own)
+			await wait(200)
+			own.textContent = 'ours, changed'
 			await wait(200)
 			const afterOwn = calls.length
 			own.remove()
@@ -318,14 +351,16 @@ test('the page changes after load: a carousel\'s new copies lose the layer\'s ma
 			;[...stage.querySelectorAll('.owl-item')].at(-1)!.remove()
 			await wait(200)
 			a.untag()
-			return { first, copied, afterCopies, afterCard, afterOwn, callsAtEnd: calls.length, marksLeft: marks('[data-aixc-item], [data-aixc-section]'), restored: document.documentElement.outerHTML === pristine }
+			return { first, copied, afterCopies, afterCard, afterWords, afterData, afterOwn, callsAtEnd: calls.length, marksLeft: marks('[data-aixc-item], [data-aixc-section]'), restored: document.documentElement.outerHTML === pristine }
 		}, card(4))
 		assert.deepEqual(out.first, ['plan-1', 'plan-2', 'plan-3'])
 		assert.equal(out.copied, 3, 'the copies do carry the marks at first: Owl copies the cards\' markup')
 		assert.deepEqual(out.afterCopies, { onCopies: 0, onCards: 3, calls: [false], ids: ['plan-1', 'plan-2', 'plan-3'] }, 're-read once: marks off the copies, on the cards, same model')
 		assert.deepEqual(out.afterCard, { onCopies: 0, onCards: 4, calls: [false, true], ids: ['plan-1', 'plan-2', 'plan-3', 'plan-4'] }, 'the new card is read and marked; the others keep their ids')
-		assert.equal(out.afterOwn, 2, 'the layer\'s own nodes do not cause a re-read')
-		assert.equal(out.callsAtEnd, 2, 'stopped: no more re-reads')
+		assert.deepEqual(out.afterWords, { calls: [false, true, true], title: 'Plan One' }, 'a title replaced: read again, the model has the new words')
+		assert.deepEqual(out.afterData, { calls: 4, title: 'Plan 1' }, 'a text node edited in place: read again')
+		assert.equal(out.afterOwn, 4, 'the layer\'s own nodes, and words inside them, do not cause a re-read')
+		assert.equal(out.callsAtEnd, 4, 'stopped: no more re-reads')
 		assert.equal(out.marksLeft, 0, 'untag() leaves no mark anywhere')
 		assert.equal(out.restored, true, 'and the page is as it was')
 	} finally {

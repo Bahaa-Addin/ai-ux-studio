@@ -51,15 +51,16 @@ test('a held sync: renamed places are paired with their old ids; only what has n
 			'web.page.layout-column_column-1.0 → web.page.home-wireless-bundles.0 (parent)',
 			'web.page.layout-column_column-1.1 → web.page.home-wireless-bundles.1 (parent)',
 			'web.page.x0cee7a → web.page.x075a02 (label)',
-			'web.page.x111111.visual → web.page.xaaaaaa.visual (locator)',
-			'web.page.x222222.visual → web.page.xbbbbbb.visual (locator)',
+			'web.page.x111111.visual → web.page.xaaaaaa.visual (position)',
+			'web.page.x222222.visual → web.page.xbbbbbb.visual (position)',
 		],
 		'six of them are the same places under new names',
 	)
 	assert.deepEqual(d.lost.sort(), ['web.other.x999999', 'web.page.ramadan-offer'], 'two places are really gone')
 	assert.deepEqual(d.fresh, ['web.page.new-year-offer'], 'one is really new')
 	const lines = diffLines(d).join('\n')
-	assert.match(lines, /Renamed \(6;/)
+	assert.match(lines, /Renamed \(4;/)
+	assert.match(lines, /Paired by position only \(2;[^\n]*check each on the site[^\n]*x111111\.visual → web\.page\.xaaaaaa\.visual/)
 	assert.match(lines, /Removed with no counterpart \(2;[^\n]*web\.page\.ramadan-offer/)
 	assert.match(lines, /Added with no counterpart \(1\): web\.page\.new-year-offer/)
 })
@@ -79,7 +80,37 @@ test('when it cannot tell which is which, it pairs nothing: more gone than come,
 		manifest([dest('web.page.layout-column_column-1', 'collection', OLD(1, list), { en: ['Bundles'] }), dest('web.page.layout-column_column-1-2', 'collection', OLD(2, list), { en: ['Bundles'] })]),
 		manifest([dest('web.page.bundles', 'collection', NEW('A', list), { en: ['Bundles'] }), dest('web.page.bundles-2', 'collection', NEW('B', list), { en: ['Bundles'] })]),
 	)
-	assert.deepEqual(pairOfLists.renamed.map((r) => `${r.from} → ${r.to}`), ['web.page.layout-column_column-1 → web.page.bundles', 'web.page.layout-column_column-1-2 → web.page.bundles-2'])
+	assert.deepEqual(pairOfLists.renamed.map((r) => `${r.from} → ${r.to} (${r.by})`), ['web.page.layout-column_column-1 → web.page.bundles (position)', 'web.page.layout-column_column-1-2 → web.page.bundles-2 (position)'], 'paired, and marked as told by place only')
 	// Nothing changed: nothing reported.
 	assert.deepEqual(diffKb(active, active), { added: [], removed: [], renamed: [], lost: [], fresh: [] })
 })
+
+test('a card that left a renamed list is lost, not renamed to the card that moved into its place', () => {
+	const list = 'section.portlet > div.list'
+	const card = (id: string, n: number, name: string, css: string) => dest(`${id}.${n}`, 'item', `${css} > div.card:nth-of-type(${n + 1})`, { en: [name] })
+	const active = manifest([dest('web.page.layout-column_column-1', 'collection', OLD(3, list), { en: ['RED EXCLUSIVE'] }), ...['START+', 'PLUS+', 'PRIME+', 'ADVANCE+', 'ESSENTIAL+'].map((n, i) => card('web.page.layout-column_column-1', i, n, OLD(3, list)))])
+	// PRIME+ is gone; the cards after it moved up one place.
+	const without = manifest([dest('web.page.red-exclusive', 'collection', NEW('C', list), { en: ['RED EXCLUSIVE'] }), ...['START+', 'PLUS+', 'ADVANCE+', 'ESSENTIAL+'].map((n, i) => card('web.page.red-exclusive', i, n, NEW('C', list)))])
+	const d = diffKb(active, without)
+	assert.deepEqual(d.lost, ['web.page.layout-column_column-1.2'], 'PRIME+ is the one lost')
+	assert.ok(d.renamed.some((r) => r.from === 'web.page.layout-column_column-1.3' && r.to === 'web.page.red-exclusive.2' && r.by === 'parent'), 'ADVANCE+ follows its name to its new place')
+	assert.deepEqual(d.fresh, [])
+	// PRIME+ gone and a new card at the end: one lost, one new; not five renames.
+	const swapped = diffKb(active, manifest([dest('web.page.red-exclusive', 'collection', NEW('C', list), { en: ['RED EXCLUSIVE'] }), ...['START+', 'PLUS+', 'ADVANCE+', 'ESSENTIAL+', 'RED ULTRA'].map((n, i) => card('web.page.red-exclusive', i, n, NEW('C', list)))]))
+	assert.deepEqual([swapped.lost, swapped.fresh], [['web.page.layout-column_column-1.2'], ['web.page.red-exclusive.4']])
+})
+
+test('pictures are told by their own words, not by "banner" or "picture", which every picture has', () => {
+	const generic = { en: ['banner', 'image', 'picture'], ar: ['البانر', 'الصورة'] }
+	const pic = (id: string, css: string, alt?: string) => dest(id, 'visual', css, { en: [...(alt ? [alt] : []), ...generic.en], ar: generic.ar })
+	// A campaign picture swapped for another in the same template, in another portlet: one lost, one new.
+	const d = diffKb(manifest([pic('web.page.x4db272.visual', OLD(2, 'section.portlet > img'), 'Ramadan offers')]), manifest([pic('web.page.znewpic.visual', NEW('Z', 'section.portlet > img'), 'Black Friday')]))
+	assert.deepEqual([d.renamed, d.lost, d.fresh], [[], ['web.page.x4db272.visual'], ['web.page.znewpic.visual']])
+	// The same picture under a new hash: told by its own alt text.
+	const same = diffKb(manifest([pic('web.page.x4db272.visual', OLD(2, 'section.portlet > img'), 'Ramadan offers')]), manifest([pic('web.page.x9a7b86.visual', NEW('Z', 'section.portlet > img'), 'Ramadan offers')]))
+	assert.deepEqual(same.renamed, [{ from: 'web.page.x4db272.visual', to: 'web.page.x9a7b86.visual', by: 'label' }])
+	// No words of its own at all: only its place can say, and the report says so.
+	const bare = diffKb(manifest([pic('web.page.x111111.visual', OLD(2, 'section.portlet > img'))]), manifest([pic('web.page.x222222.visual', NEW('Z', 'section.portlet > img'))]))
+	assert.deepEqual(bare.renamed.map((r) => r.by), ['position'])
+})
+

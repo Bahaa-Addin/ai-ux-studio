@@ -55,8 +55,8 @@ const absolute = (href, base) => {
 }
 
 /** The address relative links resolve against: the page's <base href> when it has one, else its own. */
-const baseOf = (doc, origin, path) => {
-  const own = `${origin}${path}`
+const baseOf = (doc, origin, path, search = '') => {
+  const own = `${origin}${path}${search}`
   const declared = doc.querySelector('base[href]')?.getAttribute('href')
   try {
     return declared ? new URL(declared, own).href : own
@@ -153,50 +153,41 @@ const matchDestinations = (doc, pageMap, sections, portletOf, lang) => {
   }
 }
 
-/** Never counted as an unread card: what we never read, and navigation furniture. */
-const NOT_CARDS = `${SKIP}, nav, .nav, [role="tablist"], .owl-dots, .owl-nav, .breadcrumb, .pagination, form, table`
+/** Never counted as an unread card: what we never read, navigation furniture, a section's own heading link, app-store badges. */
+const NOT_CARDS = `${SKIP}, nav, .nav, [role="tablist"], .owl-dots, .owl-nav, .breadcrumb, .pagination, form, table, .section-title, .hello`
+const PRESSABLE = 'a[href], button, [data-toggle="modal"]'
+const CARD_SIGNS = 'img, picture, svg, h1, h2, h3, h4, h5, h6, .btn, button'
 
 /**
- * Card-like blocks in a portlet that no recogniser row read: three or more siblings of one shape,
- * each with words, a picture or a button, and something to press. They count against coverage, so a
- * card class Vodafone renames (which simply stops matching) lowers the ratio instead of leaving it at
- * 1 with the cards gone (ADR-0049 §3).
+ * Card-like blocks in a portlet that no recogniser row read. Each thing a person can press that no
+ * read card holds is grown to the largest block that still holds only it; the block counts when it
+ * has words and a picture, a heading or a button (a link in a sentence does not). They count against
+ * coverage, so a card class Vodafone renames, which simply stops matching, lowers the ratio instead
+ * of leaving it at 1 with the cards gone (ADR-0049 §3).
  */
 const unreadCards = (pb, claimed) => {
   const read = [...claimed]
   const taken = (el) => read.some((c) => c === el || c.contains(el) || el.contains(c))
-  const cardLike = (el) =>
-    !/^(P|BR|SCRIPT|STYLE|OPTION)$/.test(el.tagName) &&
-    !el.closest(NOT_CARDS) &&
-    !!el.querySelector('img, picture, .btn, button') &&
-    !!el.querySelector('a[href], button, [data-toggle]') &&
-    clean(el.textContent).length > 0
-  const found = []
-  for (const parent of pb.querySelectorAll('*')) {
-    if (parent.children.length < 3 || parent.closest(NOT_CARDS) || found.some((f) => f.contains(parent))) continue
-    const shapes = new Map()
-    for (const child of parent.children) {
-      const shape = `${child.tagName}.${child.classList[0] || ''}`
-      shapes.set(shape, [...(shapes.get(shape) || []), child])
-    }
-    for (const group of shapes.values()) {
-      if (group.length < 3) continue
-      const members = group.filter((m) => cardLike(m) && !taken(m))
-      if (members.length >= 3) found.push(...members)
-    }
+  const pressables = [...pb.querySelectorAll(PRESSABLE)].filter((a) => !a.closest(NOT_CARDS) && !a.matches(STORES) && !taken(a) && !/^(#|javascript:)/i.test(a.getAttribute('href') || ''))
+  const holds = (el) => pressables.filter((a) => el === a || el.contains(a)).length
+  const blocks = new Set()
+  for (const a of pressables) {
+    let block = a
+    while (block.parentElement && block.parentElement !== pb && pb.contains(block.parentElement) && holds(block.parentElement) === 1 && !read.some((c) => block.parentElement.contains(c))) block = block.parentElement
+    if (clean(block.textContent) && (block.matches(CARD_SIGNS) || block.querySelector(CARD_SIGNS))) blocks.add(block)
   }
-  return found
+  return [...blocks]
 }
 
 /** Reads the page. `origin` resolves relative links and pictures; `pageMap` (GET /v1/page-map) names the sections. */
-export function readPage(doc, { origin = doc.defaultView?.location.origin || 'https://web.vodafone.com.eg', path = doc.defaultView?.location.pathname || '/', pageMap = null } = {}) {
+export function readPage(doc, { origin = doc.defaultView?.location.origin || 'https://web.vodafone.com.eg', path = doc.defaultView?.location.pathname || '/', search = doc.defaultView?.location.search || '', pageMap = null } = {}) {
   const problems = []
   const main = doc.getElementById('main-content')
   if (!main) return { model: null, problems: ['No #main-content on this page.'], coverage: { ratio: 0, cards: 0, usable: 0, unread: 0, sections: [] }, tags: [] }
   const boundaries = [...main.querySelectorAll('#layout-column_column-1 > .portlet-boundary')]
   const portlets = boundaries.length ? boundaries : [...main.querySelectorAll('.portlet-boundary')].filter((b) => !b.parentElement?.closest('.portlet-boundary'))
 
-  const base = baseOf(doc, origin, path)
+  const base = baseOf(doc, origin, path, search)
   const page = { pageId: toId(path) || 'page', sourceUrl: `${origin}${path}`, title: null, intro: null, heroImage: null, sections: [], closingPromotion: null }
   const raw = []
   const coverage = { ratio: 0, cards: 0, usable: 0, unread: 0, sections: [] }
@@ -207,9 +198,12 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
     const sectionId = toId(instance || '') || `section-${index + 1}`
     // Cards, each once (a card can match two rows: .card-plan is also .card-collapsing), in page order.
     const claimed = new Set()
+    // Known and left out on purpose (a sign-in ticket): not a card, and not an unread one either.
+    const leftOut = new Set()
     const cards = []
     for (const row of RECOGNISERS) {
       for (const el of pb.querySelectorAll(row.match)) {
+        if (row.exclude && row.exclude(el) && !(row.when && !row.when(el))) leftOut.add(el)
         if (claimed.has(el) || el.closest(SKIP) || (row.when && !row.when(el)) || (row.exclude && row.exclude(el))) continue
         claimed.add(el)
         cards.push({ el, row })
@@ -222,7 +216,10 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
     const sectionTitle = textOf(titleEl) || null
     const hero = pb.querySelector('.hello')
 
-    const unread = unreadCards(pb, claimed)
+    // With no card read, one pressable block is the portlet's own button (a hero, a promo band); two or
+    // more are cards no row knows.
+    const found = unreadCards(pb, new Set([...claimed, ...leftOut]))
+    const unread = cards.length || found.length > 1 ? found : []
 
     if (hero && !cards.length && !unread.length) {
       page.title = textOf(first(pb, '.hello-title')) || textOf(first(pb, 'h1')) || sectionTitle
@@ -328,8 +325,17 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
 const MARKS = ['aixcItem', 'aixcSection']
 const MARKED = '[data-aixc-item], [data-aixc-section]'
 
-/** True when a change to the page is only the layer's own nodes coming or going. */
-const ours = (node) => node.nodeType !== 1 || node.hasAttribute('data-aixc') || !!node.closest?.('[data-aixc]')
+/**
+ * True when a change to the page is the layer's own: it happened inside something the layer added, or
+ * it is only the layer's own elements coming or going. Words changing in Vodafone's own elements (a
+ * new price, a late title) are Vodafone's.
+ */
+const ours = (record) => {
+  const where = record.target.nodeType === 1 ? record.target : record.target.parentElement
+  if (where?.closest('[data-aixc]')) return true
+  const nodes = [...record.addedNodes, ...record.removedNodes]
+  return record.type === 'childList' && nodes.length > 0 && nodes.every((n) => n.nodeType === 1 && n.hasAttribute('data-aixc'))
+}
 
 /**
  * The adapter the demos take (src/aixc/page-adapters.js contract): pageId, label, renderOriginal()
@@ -379,28 +385,33 @@ export function createLiveAdapter({ doc = document, origin, path, pageMap = null
       return changed
     },
     /**
-     * Re-reads when Vodafone's content under #main-content changes, `delay` ms after the last change.
+     * Re-reads when Vodafone's content under #main-content changes (elements or words), `delay` ms
+     * after the last change and at the latest `maxWait` ms after the first one not yet read.
      * `onChange({ model, problems, coverage, changed })` is called after each re-read, through
      * `run` (the layer's guard). Returns the function that stops watching.
      */
-    watch(onChange, { delay = 250, run = (fn) => fn() } = {}) {
+    watch(onChange, { delay = 250, maxWait = 2000, run = (fn) => fn() } = {}) {
       const main = doc.getElementById('main-content')
       const Observer = doc.defaultView?.MutationObserver
       if (!main || !Observer) return () => {}
       let timer = 0
+      let since = 0
       const observer = new Observer((records) => {
-        if (records.every((r) => [...r.addedNodes, ...r.removedNodes].every(ours))) return
+        if (records.every(ours)) return
+        const now = Date.now()
+        since ||= now
         clearTimeout(timer)
         timer = setTimeout(
           () =>
             run(() => {
+              since = 0
               const changed = adapter.refresh()
               onChange?.({ ...adapter.extractContent(), changed })
             }),
-          delay,
+          Math.max(0, Math.min(delay, since + maxWait - now)),
         )
       })
-      observer.observe(main, { childList: true, subtree: true })
+      observer.observe(main, { childList: true, subtree: true, characterData: true })
       return () => {
         clearTimeout(timer)
         observer.disconnect()

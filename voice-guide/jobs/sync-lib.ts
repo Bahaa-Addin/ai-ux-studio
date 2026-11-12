@@ -156,8 +156,8 @@ export async function runSync(opts: SyncOptions): Promise<SyncReport> {
 		report.gate.push({
 			name: 'destination churn',
 			ok: c.churn <= site.sync.gate.maxDestinationChurn,
-			// "renamed" are the same places under new ids; "lost" have no counterpart in the new version.
-			detail: `${(c.churn * 100).toFixed(1)}% (limit ${(site.sync.gate.maxDestinationChurn * 100).toFixed(0)}%): ${c.removed.length} removed (${d.renamed.length} renamed, ${d.lost.length} lost), ${c.retargeted.length} re-targeted`,
+			// "renamed": the same places under new ids; "by position": probably, to be checked; "lost": no counterpart.
+			detail: `${(c.churn * 100).toFixed(1)}% (limit ${(site.sync.gate.maxDestinationChurn * 100).toFixed(0)}%): ${c.removed.length} removed (${d.renamed.filter((r) => r.by !== 'position').length} renamed, ${d.renamed.filter((r) => r.by === 'position').length} by position, ${d.lost.length} lost), ${c.retargeted.length} re-targeted`,
 		})
 	}
 

@@ -76,12 +76,13 @@ test('losing many destinations holds the new version for review; --force activat
 	const churn = held.gate.find((g) => g.name === 'destination churn')!
 	assert.equal(churn.ok, false, churn.detail)
 	// Pages left the crawl: their places are lost, not renamed, and both reports say so (AIXC-45).
-	const counts = /(\d+) removed \((\d+) renamed, (\d+) lost\)/.exec(churn.detail)
+	const counts = /(\d+) removed \((\d+) renamed, (\d+) by position, (\d+) lost\)/.exec(churn.detail)
 	assert.ok(counts, churn.detail)
-	assert.ok(Number(counts![3]) > 0 && Number(counts![2]) + Number(counts![3]) === Number(counts![1]), `renamed and lost add up to removed: ${churn.detail}`)
+	assert.ok(Number(counts![4]) > 0 && Number(counts![2]) + Number(counts![3]) + Number(counts![4]) === Number(counts![1]), `renamed, by position and lost add up to removed: ${churn.detail}`)
 	const build = fs.readFileSync(held.ingest!.reportFile!, 'utf8')
 	assert.match(build, /- Renamed \(\d+;/)
-	assert.match(build, new RegExp(`- Removed with no counterpart \\(${counts![3]};`))
+	assert.match(build, /- Paired by position only \(\d+;/)
+	assert.match(build, new RegExp(`- Removed with no counterpart \\(${counts![4]};`))
 	assert.equal(await store.getActiveKbId(site.id), active, 'the active version did not change')
 	assert.ok(await store.getKbVersion(site.id, held.versionId!), 'the held version is stored for review')
 	assert.match(fs.readFileSync(held.reportFile!, 'utf8'), /npm run kb -- --site vodafone-eg --activate/)

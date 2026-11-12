@@ -78,7 +78,8 @@ const cleanAnchor = (t: string) => t.replace(/^press enter to redirect to\s+/i, 
 /** Soft 404s: the server answered 200 with a "page not found" page. */
 const SOFT_404 = /^(notfound|not found|page not found!?|404|الصفحة غير موجودة!?)$/i
 
-const GENERIC_VISUAL_WORDS: Record<string, Record<string, string[]>> = {
+/** Words every picture of a kind is also known by ("the banner", "the picture"); they tell no two pictures apart. */
+export const GENERIC_VISUAL_WORDS: Record<string, Record<string, string[]>> = {
 	image: { en: ['banner', 'image', 'picture'], ar: ['البانر', 'الصورة'] },
 	video: { en: ['video'], ar: ['الفيديو'] },
 	canvas: { en: ['chart', 'graph'], ar: ['الرسم البياني', 'الشارت'] },

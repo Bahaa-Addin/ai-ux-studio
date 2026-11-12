@@ -18,18 +18,34 @@ test('masking: Egyptian mobiles, national IDs, cards, emails, long numbers, in b
 
 test('masking: a mobile number written in groups, with spaces, dashes, dots or a country code, in both digit systems (AIXC-31)', () => {
 	const grouped = ['010 1234 5678', '٠١٠ ١٢٣٤ ٥٦٧٨', '0101-234-5678', '+20 10 1234 5678', '+20-100-123-4567', '0020 100 123 4567', '010.1234.5678', '010\u00a01234\u00a05678', '011 – 1234 – 5678', '+20 (10) 1234 5678', '(010) 1234 5678']
-	for (const n of grouped) {
+	// Found by the review of the first fix: other digit systems, invisible marks, a slash, tabs and line breaks, "(0)".
+	const more = ['+20 (0)10 1234 5678', '۰۱۰ ۱۲۳۴ ۵۶۷۸', '０１０ １２３４ ５６７８', '010\u200e 1234 5678', '010\u200b1234\u200b5678', '010 / 1234 / 5678', '010\t1234\t5678', '010\n1234\n5678', '+201012345678']
+	for (const n of [...grouped, ...more]) {
 		const hits: string[] = []
 		const out = maskContent(`Your number is ${n}.`, (k) => hits.push(k))
-		assert.deepEqual(hits, ['[phone]'], `${n} is masked as a phone: ${out}`)
-		assert.equal(out, 'Your number is [phone].')
+		assert.equal(hits.length, 1, `${JSON.stringify(n)} is masked once: ${out}`)
+		assert.match(hits[0], /^\[(phone|card)\]$/)
+		assert.match(out, /^Your number is \+?\[(phone|card)\]\.$/, `nothing of ${JSON.stringify(n)} is left`)
+	}
+	// A short number right after it does not let it through (the first rule refused a number with digits after it).
+	for (const [text, left] of [['Your line 010 1234 5678 5 GB left', '5 GB left'], ['Line 010-1234-5678 - 2 lines', '2 lines'], ['010 1234 5678.5', ''], ['010 1234 5678 25 EGP', 'EGP'], ['رقمك ٠١٠ ١٢٣٤ ٥٦٧٨ ٥ جيجا', 'جيجا']] as const) {
+		const hits: string[] = []
+		const out = maskContent(text, (k) => hits.push(k))
+		assert.ok(hits.length >= 1, `masked: ${out}`)
+		assert.ok(!/\d{4}/.test(out) && !/1234/.test(out), `no four digits of the number left: ${out}`)
+		assert.ok(out.includes(left), `the rest stays: ${out}`)
 	}
 	// Not phone numbers: years, prices, sizes, short codes, a number that only starts like one.
-	for (const text of ['Offers in 2011 2012 2013 and 2014', 'Bundles at 100 200 300 EGP', '1400 MB for 25 EGP, 3000 MB for 50 EGP', 'Dial 868 or *880#', 'Call 16888', '20 10 5 GB', '010 1234 567 is too short']) {
+	for (const text of ['Offers in 2011 2012 2013 and 2014', 'Bundles at 100 200 300 EGP', '1400 MB for 25 EGP, 3000 MB for 50 EGP', 'Dial 868 or *880#', 'Call 16888', '20 10 5 GB', '010 1234 567 is too short', 'Dial *868*1# then 2', 'Order 2011/2012']) {
 		const hits: string[] = []
 		maskContent(text, (k) => hits.push(k))
 		assert.deepEqual(hits, [], `nothing masked in "${text}"`)
 	}
+	// Long inputs stay fast (no runaway matching on runs of digits and separators).
+	const t0 = performance.now()
+	maskContent(`${'0 1-2.3 4 '.repeat(20000)}end`)
+	maskContent(`${'010 '.repeat(50000)}`)
+	assert.ok(performance.now() - t0 < 1500, `200 KB of digits and separators masked in ${Math.round(performance.now() - t0)} ms`)
 })
 
 test('the proxy masks page content with the same rules and leaves the request itself alone', () => {

@@ -55,7 +55,7 @@ test('the trail adds only a gate to guide.js; rrweb lives in its own on-demand c
  * The experience layer (ADR-0048): its own script beside guide.js, ES modules. The core is aixc.js
  * and every chunk it imports statically (the browser loads those with it). Measured: 1,791 bytes
  * gzipped on 2026-11-10 (phase 1: settings, PageHost, guard); 5,343 on 2026-11-11 (phase 2 adds the
- * live adapter and its recognisers, which decide what the layer can offer on a page); 6,933 on
+ * live adapter and its recognisers, which decide what the layer can offer on a page); 6,933 and then 7,072 on
  * 2026-11-12 (the review's fixes: links resolved against the page, unread card-like blocks counted
  * in coverage, two more recogniser rows, re-reading when the page changes). The budget is set a
  * little above and raised on purpose when a phase adds to the core. Demos load on intent (dynamic

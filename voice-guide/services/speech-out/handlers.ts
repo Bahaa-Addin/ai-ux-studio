@@ -18,7 +18,7 @@
 import path from 'node:path'
 
 import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
-import { splitSentences } from '../../packages/sdk/src/voice/sentences.ts'
+import { canonicalSpeech, splitSentences } from '../../packages/sdk/src/voice/sentences.ts'
 import type { PlatformConfig, SiteConfig } from '../shared/config.ts'
 import type { RpcContext } from '../shared/rpc.ts'
 import type { Tracer } from '../shared/trace.ts'
@@ -44,7 +44,8 @@ export type SpeechReason = 'off' | 'budget' | 'error' | 'empty' | 'private'
  */
 const isPrivate = (text: string): boolean => {
 	let hit = false
-	maskContent(text, () => (hit = true))
+	// As asked for, and as it would be sent (tidied: a number broken over lines is one number).
+	for (const t of [text, canonicalSpeech(text)]) maskContent(t, () => (hit = true))
 	return hit
 }
 
@@ -208,7 +209,10 @@ export function createSpeechOut(deps: SpeechOutDeps) {
 			const site = on(input.siteId)
 			if (!site) return { queued: 0, cached: 0, skipped: 'off' }
 			keepWarm()
-			const sentences = (input.lines || []).filter((l) => typeof l === 'string' && !isPrivate(l)).map((l) => splitSentences(l))
+			const sentences = (input.lines || [])
+				.filter((l) => typeof l === 'string' && !isPrivate(l))
+				.map((l) => splitSentences(l))
+				.filter((parts) => !parts.some(isPrivate))
 			// First sentences first (the page plays those first), then the rest, in order.
 			const order = [...sentences.map((s) => s.slice(0, 1)), ...sentences.map((s) => s.slice(1))].flat()
 			let queued = 0
