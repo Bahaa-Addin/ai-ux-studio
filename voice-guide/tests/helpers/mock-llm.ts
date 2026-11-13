@@ -1,8 +1,10 @@
 /**
  * A stand-in OpenAI-compatible model for page-agent, so the fallback agent path
  * runs end to end without network access. Policy: on the first step, click the
- * indexed element whose text and attributes best match the request; on the next
- * step, call `done`. It also records every request for assertions (masking).
+ * indexed element whose text and attributes best match the request ("show me where"
+ * calls show_person_where, "select X from the list" the dropdown tool, "type X" the
+ * input tool); on the next step, call `done`. It also records every request for
+ * assertions (masking).
  */
 import http from 'node:http'
 
@@ -64,6 +66,14 @@ export function decide(userPrompt: string) {
 		// Ties go to the later (more specific) element: a label inside its fieldset.
 		if (score > 0 && (!best || score >= best.score)) best = { index: Number(m[1]), score }
 	}
+	const lineOf = (i: number) => state.split('\n').find((l) => l.includes(`[${i}]`)) || ''
+	// "show me where ...": the guide's own tool, at the best-matching item when there is one (ADR-0058).
+	if (/\bshow me where\b|وريني فين/i.test(request))
+		return { evaluation_previous_goal: 'Start', memory: `Request: ${request}`, next_goal: 'Show the person where to press', action: { show_person_where: best ? { index: best.index } : {} } }
+	// "select <option> from the list": the dropdown tool on the best-matching select.
+	const option = /\b(?:select|choose|pick)\s+(.+?)\s+from the (?:\p{L}+ )?(?:list|menu|dropdown)\b/iu.exec(request)
+	if (best && option && /<select/.test(lineOf(best.index)))
+		return { evaluation_previous_goal: 'Start', memory: `Request: ${request}`, next_goal: `Select ${option[1]}`, action: { select_dropdown_option: { index: best.index, text: option[1] } } }
 	// "type <value> ..." requests: type into the best-matching input (the SDK's tool may refuse).
 	const typed = /\b(?:type|enter)\b.*?\b(?:is|as)?\s*(\S+)$/i.exec(request)
 	if (best && typed && /<input/.test(state.split('\n').find((l) => l.includes(`[${best!.index}]`)) || '')) {

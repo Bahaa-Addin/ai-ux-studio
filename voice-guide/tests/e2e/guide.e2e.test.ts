@@ -347,3 +347,109 @@ test('while the agent runs, a click no person made never reaches a commit contro
 		removeShop()
 	}
 })
+
+/** A stand-in page of our own at `rel` in the fixture site for one test, and its removal. Every press is counted on window.__pressed. */
+async function standIn(rel: string, body: string): Promise<() => void> {
+	const file = path.join(ROOT, 'fixtures/sites/demo-telco/web', rel)
+	// The first folder this creates, if any, goes again with the page.
+	const made = fs.mkdirSync(path.dirname(file), { recursive: true })
+	fs.writeFileSync(file, `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Demo Telco | Stand-in</title><style>body{font:16px sans-serif;margin:40px} .card{position:relative;width:320px;height:200px;border:1px solid #ccc;border-radius:8px;padding:12px;margin:12px 0;cursor:pointer} .card .cart{position:absolute;left:135px;top:75px;width:50px;height:50px} #onetrust-consent-sdk{position:fixed;right:16px;bottom:16px;background:#fff;border:1px solid #333;padding:12px}</style></head><body>${body}<script>window.__pressed = []</script></body></html>`)
+	await page.goto(`${WEB}/${rel.replace(/index\.html$/, '')}`)
+	await ready()
+	return () => fs.rmSync(made || file, { recursive: true, force: true })
+}
+const hush = () => page.evaluate(() => ((window as any).__spoken || []).splice(0))
+const GIF = 'data:image/gif;base64,R0lGODlhAQABAAAAACw='
+const card = (id: string, title: string, cart = `onclick="event.stopPropagation();window.__pressed.push('cart-${id}')"`) =>
+	`<div class="card" id="card-${id}" role="link" tabindex="0" onclick="window.__pressed.push('card-${id}')"><h3>${title}</h3><button type="button" class="cart" id="cart-${id}" ${cart}><img alt="cart" src="${GIF}"></button></div>`
+
+test('below the fold the card is checked where page-agent will press it: a cart button that acts on pointer and mouse events is never pressed (AIXC-73)', async () => {
+	const remove = await standIn('en/far-standin.html', `<h1>Phones</h1><div style="height:1600px"></div>${card('far', 'Galaxy far phone card', `onpointerdown="window.__pressed.push('cart:pointerdown')" onmousedown="window.__pressed.push('cart:mousedown')" onclick="event.stopPropagation();window.__pressed.push('cart:click')"`)}`)
+	try {
+		await type(page, 'open the Galaxy far phone card')
+		await heard(page, /add it to your cart\. Press it yourself/, 20_000)
+		assert.deepEqual(await pressed(), [], 'no pointer, mouse or click event reached the cart button, and the card was not pressed')
+		const off = await pointerOff('#cart-far')
+		assert.ok(off.on && off.dx <= 2 && off.dy <= 2, `the pointer rests on the cart button (${off.dx}, ${off.dy})`)
+	} finally {
+		remove()
+	}
+})
+
+test('with several products the guide never points at the first cart button: it asks which one, and show_person_where points at the named item\'s own, never at the cookie banner (AIXC-74, 78)', async () => {
+	const remove = await standIn('en/two-standin.html', `<h1>Phones</h1>${card('iphone', 'iPhone 15 phone card')}${card('galaxy', 'Galaxy A55 phone card')}<div id="onetrust-consent-sdk"><p>We use cookies.</p><button id="onetrust-pc-btn-handler" onclick="window.__pressed.push('consent-settings')">Cookie Settings</button><button id="onetrust-accept-btn-handler" onclick="window.__pressed.push('consent')">Accept All Cookies</button></div>`)
+	try {
+		// A commit request with no item chosen: the guide asks, and points at nothing.
+		await type(page, 'add it to the cart')
+		await heard(page, /There are several of these here\. Which one do you mean/, 15_000)
+		assert.equal((await spotlit(page)).on, false, 'nothing is highlighted')
+		assert.deepEqual(await pressed(), [])
+		// The agent's own tool, at the item the person named: that item's cart button.
+		await hush()
+		await type(page, 'show me where to get the Galaxy A55')
+		await heard(page, /add it to your cart\. Press it yourself/, 20_000)
+		const off = await pointerOff('#cart-galaxy')
+		assert.ok(off.on && off.dx <= 2 && off.dy <= 2, `the pointer rests on the Galaxy's cart button, not the iPhone's (${off.dx}, ${off.dy})`)
+		// Escape ends the guided step.
+		await page.keyboard.press('Escape')
+		assert.equal((await spotlit(page)).on, false, 'Escape clears the highlight')
+		// No item named and two cart buttons: the agent is told to ask; the cookie banner is never the answer.
+		await hush()
+		await type(page, 'show me where to start')
+		await heard(page, /couldn't do that on this page/, 20_000)
+		assert.equal((await spotlit(page)).on, false, 'not the cookie banner, not the first cart button')
+		assert.deepEqual(await pressed(), [], 'nothing was pressed')
+		// What the model can call, exactly (ADR-0058): no script tool, the guided step's own tool.
+		const action = llm.requests.at(-1)!.body.tools[0].function.parameters.properties.action
+		const names = (action.anyOf || action.oneOf).map((b: any) => Object.keys(b.properties)[0]).sort()
+		assert.deepEqual(names, ['ask_user', 'click_element_by_index', 'done', 'input_text', 'scroll', 'scroll_horizontally', 'select_dropdown_option', 'show_person_where', 'wait'])
+	} finally {
+		remove()
+	}
+})
+
+test('on the numbers page no number is chosen for the person: a request to pick one is a guided step, and the agent\'s press on a number is shown, not made (AIXC-70)', async () => {
+	const remove = await standIn(
+		'en/lines/red/numbers/index.html',
+		`<h1>Pick your new number</h1><div class="red-number-card" role="button" onclick="window.__pressed.push('card')">010 1234 5678</div>
+<p><label class="opt"><input type="radio" name="msisdn" value="01055556666" onclick="window.__pressed.push('radio-gold')"> Gold 010 5555 6666</label></p>
+<button id="sl-lines-pool-choose-this-line-button" onclick="window.__pressed.push('choose')">Choose this line</button>`,
+	)
+	try {
+		await type(page, 'I want the first number')
+		await heard(page, /Pick the number you want, then press this button yourself/, 15_000)
+		const off = await pointerOff('#sl-lines-pool-choose-this-line-button')
+		assert.ok(off.on && off.dx <= 2 && off.dy <= 2, `the pointer rests on "Choose this line" (${off.dx}, ${off.dy})`)
+		await hush()
+		await type(page, 'open the gold')
+		await heard(page, /Choose your number yourself, here/, 20_000)
+		assert.deepEqual(await pressed(), [], 'no number card, radio or "Choose this line" was pressed')
+		assert.equal(await page.evaluate(() => (document.querySelector('input[type=radio]') as HTMLInputElement).checked), false, 'the number is not chosen')
+	} finally {
+		remove()
+	}
+})
+
+test('on a commit page the agent presses, types and selects nothing: each is shown to the person instead (ADR-0058; AIXC-78)', async () => {
+	const remove = await standIn(
+		'en/cart/index.html',
+		`<h1>Your cart</h1><button id="apply" onclick="window.__pressed.push('apply')">Apply promo</button>
+<p><label>Code <input id="promo" name="promo" placeholder="Promo code"></label></p>
+<p><label>Delivery <select id="delivery" onchange="window.__pressed.push('delivery:' + this.value)"><option>Standard</option><option>Express</option></select></label></p>`,
+	)
+	try {
+		await type(page, 'apply the promo')
+		await heard(page, /This step is yours/, 20_000)
+		await hush()
+		await type(page, 'in the promo code field type SAVE10')
+		await heard(page, /This step is yours/, 20_000)
+		await hush()
+		await type(page, 'select Express from the delivery list')
+		await heard(page, /This step is yours/, 20_000)
+		assert.deepEqual(await pressed(), [], 'nothing pressed')
+		assert.equal(await page.inputValue('#promo'), '', 'nothing typed')
+		assert.equal(await page.inputValue('#delivery'), 'Standard', 'nothing selected')
+	} finally {
+		remove()
+	}
+})

@@ -4,6 +4,7 @@
 - Date: 2026-10-23
 - Area: Fallback agent
 - Code: `packages/sdk/src/agent.ts`, `packages/sdk/build.ts`
+- Amended by [ADR-0058](0058-commit-guard-in-code-and-guided-commit-step.md) (2026-11-13): `customTools` now replace four tools (`click_element_by_index`, `input_text`, `select_dropdown_option`, each checked against commit controls) and add `show_person_where`; `execute_javascript` stays out (page-agent adds it only with `experimentalScriptExecutionTool`, which is never set). A test pins the exact tool set (`tests/e2e/guide.e2e.test.ts`, AIXC-78)
 
 ## Context
 

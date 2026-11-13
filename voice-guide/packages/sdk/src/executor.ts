@@ -114,6 +114,7 @@ export class Executor {
 				}
 				const el = await locate(step.target, { lang, signal })
 				if (!el) throw new StepFailed('control to reveal not found')
+				if (h.guard.blocks(el)) throw new StepFailed('refused: commit point')
 				el.scrollIntoView({ block: 'center', behavior: 'smooth' })
 				h.firstMotion()
 				await h.ui.pointAt(el, true)
@@ -175,7 +176,16 @@ export class Executor {
 			}
 			case 'confirm': {
 				const el = await locate(step.target, { lang, item: this.#item, signal })
-				if (!el) throw new StepFailed('confirm button not found')
+				if (!el) {
+					if (!step.missing) throw new StepFailed('confirm button not found')
+					await h.say(step.missing, { wait: false })
+					return 'not on the page'
+				}
+				// Several such buttons and none chosen: pointing at the first could be another product's (ADR-0058).
+				if (step.which && step.target.within !== 'item' && (step.target.css.map((c) => [...document.querySelectorAll(c)].filter(visible)).find((l) => l.length)?.length || 0) > 1) {
+					await h.say(step.which, { wait: false })
+					return 'which one'
+				}
 				el.scrollIntoView({ block: 'center', behavior: 'smooth' })
 				await new Promise((r) => setTimeout(r, 350))
 				h.ui.spotlight(el, { caption: step.message, commit: true })

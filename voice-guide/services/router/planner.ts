@@ -3,7 +3,7 @@
  * Everything here is deterministic and model-free: the same knowledge base,
  * session and request always give the same steps.
  */
-import { COMMIT_TARGETS, type Collection, commitIntent, type Destination, pick, type Plan, type PlanStep, type ReadSpec, type Target } from '#kb'
+import { COMMIT_TARGETS, type Collection, commitIntent, type Destination, isNumbersPage, pick, type Plan, type PlanStep, type ReadSpec, type Target } from '#kb'
 import type { KbIndex } from '#shared/kb-index.ts'
 import type { Entity, SessionState } from '#shared/store/index.ts'
 
@@ -58,6 +58,27 @@ export function buildPlan(input: PlanInput): PlanOutput {
 		return out('clarify')
 	}
 
+	// A request to commit itself ("add it to the cart", "ضيفه للسلة") is never an agent task: the
+	// guide shows the person the control and they press it (ADR-0058).
+	const commit = commitIntent(input.utterance, { url: page.url })
+	// On the numbers page asking for a number is choosing one, wherever the router would have gone (AIXC-70).
+	if (commit && (u.route === 'agent' || (commit === 'number' && isNumbersPage(page.url)))) {
+		const t = COMMIT_TARGETS[commit]
+		const message = say(commit === 'number' ? 'commitNumber' : commit === 'cart' || commit === 'buy' || commit === 'checkout' ? 'commit' : 'commitYours', lang)
+		// "Add it to the cart" just after the person was shown an item, on its page: the step points at that
+		// item's own button, never at the first such button on the list (AIXC-74). Otherwise the
+		// executor asks which one when the page has several.
+		const last = session.last?.kind === 'item' && session.last.collectionId ? session.last : undefined
+		const col = last ? kb.collections.get(last.collectionId!) : undefined
+		if (col && last && onPage(col.pageId) && (commit === 'cart' || commit === 'buy') && (last.key || last.name)) {
+			steps.push({ op: 'pickItem', collection: collectionRef(col), select: last.key ? { by: 'key', key: last.key } : { by: 'name', name: last.name || '' } })
+			steps.push({ op: 'confirm', target: { css: t.css, text: { en: t.text.en, ar: t.text.ar }, within: 'item' }, message, missing: say('commitMissing', lang) })
+			return out('none')
+		}
+		steps.push({ op: 'confirm', target: { css: t.css, text: { en: t.text.en, ar: t.text.ar } }, message, which: say(commit === 'number' ? 'commitNumber' : 'commitWhich', lang), missing: say('commitMissing', lang) })
+		return out('none')
+	}
+
 	// ---- nothing matched well enough ----
 	if (u.route === 'agent' || u.route === 'none' || !u.decision.destinationId) {
 		const hints = u.candidates
@@ -68,14 +89,6 @@ export function buildPlan(input: PlanInput): PlanOutput {
 				return `${c.label} (${url})`
 			})
 			.join('; ')
-		// A request to commit itself ("add it to the cart", "ضيفه للسلة") is never an agent task: the
-		// guide shows the person the control and they press it (ADR-0058).
-		const commit = commitIntent(input.utterance)
-		if (commit && u.route === 'agent') {
-			const t = COMMIT_TARGETS[commit]
-			steps.push({ op: 'confirm', target: { css: t.css, text: { en: t.text.en, ar: t.text.ar } }, message: say('commit', lang) })
-			return out('none')
-		}
 		if (u.route === 'agent' && input.agent.enabled) {
 			steps.push({ op: 'agent', task: input.utterance, hints: hints || undefined, maxSteps: input.agent.maxSteps })
 			return out('agent', say('agent', lang))

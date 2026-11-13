@@ -3,8 +3,9 @@
  * page-agent's headless core and page controller, pinned at 1.12.4, wrapped:
  *  - its model calls go to our agent proxy with a short-lived session token
  *  - commit controls (ADR-0058) are hidden from what it can see, and every click, select and input
- *    is checked against them live, what lies at the click point included; while it runs, synthetic
- *    clicks on them are stopped; on commit pages it presses nothing at all
+ *    is checked against them live, what lies at the click point included (after the scroll that
+ *    brings it into view); while it runs, synthetic presses on them (pointer, mouse, click) are
+ *    stopped; on commit pages it presses nothing at all, and on the numbers page it chooses none
  *  - at a commit control it shows the person where to press (the guide's pointer and a pulsing
  *    highlight, a line in their language) and ends the task: the person presses it themselves
  *  - personal data is masked in page content before it leaves the browser
@@ -14,15 +15,22 @@ import { PageAgentCore, tool } from '@page-agent/core'
 import { PageController } from '@page-agent/page-controller'
 import * as z from 'zod/v4'
 
-import { COMMIT_SELECTORS, isCommitPage, isCommitWords } from '../../kb/src/commit.ts'
-import { fieldInfo, inputRefusal, maskContent } from './agent-mask.ts'
+import { COMMIT_SELECTORS, commitIntent, isCommitPage, isCommitWords } from '../../kb/src/commit.ts'
+import { asciiDigitsOf, fieldInfo, inputRefusal, maskContent } from './agent-mask.ts'
 
-/** Anything a person presses: links, buttons, inputs that act. */
-const CONTROL = 'a[href], button, [role="button"], [role="link"], input[type="submit"], input[type="button"], input[type="image"], summary'
+/** Anything a person presses: links, buttons, inputs that act, labels and choices (AIXC-80). */
+const CONTROL = 'a[href], button, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="option"], [role="menuitem"], input[type="submit"], input[type="button"], input[type="image"], input[type="checkbox"], input[type="radio"], label, summary, [onclick]'
 
+/** Text as read, one space between the pieces: "EGP 19,999" and "Add to cart" in two spans stay two phrases (AIXC-80). */
+const textOf = (el: Element): string => {
+	const out: string[] = []
+	const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+	for (let n = walk.nextNode(); n; n = walk.nextNode()) out.push(n.nodeValue || '')
+	return out.join(' ')
+}
 /** A control's words as a person meets them: its text, label, title and value, and its pictures' alt text (icon-only buttons). */
 const wordsOf = (el: Element): string =>
-	[el.textContent, el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLInputElement).value, ...[...el.querySelectorAll('img[alt]')].map((i) => i.getAttribute('alt'))].filter(Boolean).join(' ')
+	[textOf(el), el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLInputElement).value, ...[...el.querySelectorAll('img[alt]')].map((i) => i.getAttribute('alt'))].filter(Boolean).join(' ')
 
 const matchesAny = (el: Element, selectors: readonly string[]) =>
 	selectors.some((css) => {
@@ -38,18 +46,43 @@ export function commitControl(el: Element | null | undefined, selectors: readonl
 	if (!el) return null
 	for (let n: Element | null = el; n && n !== document.documentElement; n = n.parentElement) if (matchesAny(n, selectors)) return n
 	const control = el.closest(CONTROL)
-	if (control && isCommitWords(wordsOf(control), { link: control.matches('a[href]') && !control.matches('[role="button"]') })) return control
-	return null
+	if (control) return isCommitWords(wordsOf(control), { link: control.matches('a[href], [role="link"]') && !control.matches('[role="button"]') }) ? control : null
+	// Anything else page-agent can press (a div or span with a click handler): its own words, read as a
+	// link's when they are long (a card), as a button's when they are a label's length.
+	const words = wordsOf(el)
+	return isCommitWords(words, { link: words.trim().length > 40 }) ? el : null
+}
+
+/** On the numbers page a press on a number (a card, a radio, a label holding one) chooses it (AIXC-70). */
+const NUMBERS_PAGE = /\/lines\/[^/]+\/numbers(\/|$)/i
+const MOBILE = /(?:\+?20|0)?1[0125](?:[\s.-]?\d){8}/
+export function numberChoice(el: Element | null | undefined): Element | null {
+	if (!el || !NUMBERS_PAGE.test(location.pathname)) return null
+	const c = el.closest('label, [role="radio"], [role="option"], [role="button"], button, li, [onclick]') || el
+	return c.matches('input[type="radio"], [role="radio"]') || c.querySelector('input[type="radio"], [role="radio"]') || MOBILE.test(asciiDigitsOf(wordsOf(c))) ? c : null
 }
 
 /** What pressing `el` would press: the element, the control it sits in, and what lies at its centre (page-agent clicks there). */
 export function commitTarget(el: Element, selectors: readonly string[]): Element | null {
-	const hit = commitControl(el, selectors)
+	const hit = commitControl(el, selectors) || numberChoice(el)
 	if (hit) return hit
 	const r = el.getBoundingClientRect()
 	const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-	return at && el.contains(at) ? commitControl(at, selectors) : null
+	return at && el.contains(at) ? commitControl(at, selectors) || numberChoice(at) : null
 }
+
+/** page-agent scrolls an element into view before it presses its centre; the check looks there too (AIXC-73). */
+async function intoView(el: Element): Promise<void> {
+	const r = el.getBoundingClientRect()
+	if (r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth) return
+	const s = el as Element & { scrollIntoViewIfNeeded?: () => void }
+	if (s.scrollIntoViewIfNeeded) s.scrollIntoViewIfNeeded()
+	else el.scrollIntoView({ block: 'center' })
+	await new Promise((r) => setTimeout(r, 50))
+}
+
+/** The guide never points at the person's accessibility widget, and at the cookie banner only when asked about it. */
+const PERSONS_OWN = '#vodafone-aw-icon, accessibility-widget'
 
 /** Every commit control on the page, to keep out of the model's view. */
 function commitControls(selectors: readonly string[]): Element[] {
@@ -76,7 +109,7 @@ const lineFor = (el: Element): CommitLine => {
 	if (el.closest('#onetrust-consent-sdk')) return 'consent'
 	const w = wordsOf(el).toLowerCase()
 	if (/cart|basket|سل[ةه]/.test(w) || matchesAny(el, ['#sl-add-to-cart-button', 'button.cart', '[id*="add-to-cart" i]'])) return 'cart'
-	if (/\bnumber\b|رقم/.test(w)) return 'number'
+	if (/\bnumber\b|\bthis line\b|رقم|الخط/.test(w) || NUMBERS_PAGE.test(location.pathname) || matchesAny(el, ['.red-number-card', '.msisdn-container', '.number-card'])) return 'number'
 	if (/\bbuy\b|اشتر/.test(w) || matchesAny(el, ['#sl-button-buy-now', '[id*="buy-now" i]'])) return 'buy'
 	return 'any'
 }
@@ -114,6 +147,8 @@ export interface AgentRunResult {
 
 
 const LANG_NAME: Record<string, string> = { ar: 'Egyptian Arabic', en: 'English' }
+/** The events a synthetic press is made of. */
+const PRESSES = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'submit']
 
 export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 	// The built-in floor and the page's own commit points (ADR-0058). A commit page's ':root' mark is
@@ -135,10 +170,12 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 	let clickedStep = 0
 	/** The line said when the task ended at a commit control the person presses. */
 	let guided: string | null = null
+	/** A commit control the guard stopped a synthetic press on, during the agent's own click. */
+	let stopped: Element | null = null
 
 	const system = [
 		`You are the guide of this website. Reply to the person in ${LANG_NAME[o.lang] || 'their language'}: the "done" text is read aloud, so keep it to one or two short sentences.`,
-		'Show and explain; you never press anything that buys, pays, subscribes, reserves, adds to the cart, checks out, chooses a number or answers the cookie banner, and you never change a setting on the person\'s behalf. Those buttons are hidden from you. When the person\'s task needs one, call show_person_where (with the index of the item it belongs to, if there is one): the guide points at it and the person presses it.',
+		'Show and explain; you never press anything that buys, pays, subscribes, reserves, adds to the cart, checks out, chooses a number or answers the cookie banner, and you never change a setting on the person\'s behalf. Those buttons are hidden from you. When the person\'s task needs one, call show_person_where (with the index of the item it belongs to, if there is one): the guide points at it and the person presses it. On a page of numbers to choose from, the person picks the number themselves.',
 		'Never state a price or stock you did not read on this page in this task.',
 		'If the answer is on the current page, scroll to it and stop. If you cannot find it in a few steps, say so and stop.',
 		o.hints ? `Places on this site that may be relevant: ${o.hints}` : '',
@@ -164,13 +201,21 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 			g.ui.spotlight(el, { caption: line, commit: true })
 			// The pointer glides to the control and never taps; with reduced motion, the highlight alone.
 			if (!reduce) await g.ui.pointAt(el, false)
+			// It ends when the person presses the control, presses Escape or anything of the guide's own
+			// (the microphone), or after 30 s; a route change or the control going clears it in the guide.
 			const done = () => {
 				el.removeEventListener('click', onPress, true)
+				removeEventListener('keydown', onKey, true)
+				g.ui.root.removeEventListener('pointerdown', done, true)
+				clearTimeout(timer)
 				if (g.ui.root.querySelector('.spot.commit')) g.ui.clearSpotlight()
 			}
 			const onPress = (e: Event) => e.isTrusted && done()
+			const onKey = (e: KeyboardEvent) => e.key === 'Escape' && done()
 			el.addEventListener('click', onPress, true)
-			setTimeout(done, 30_000)
+			addEventListener('keydown', onKey, true)
+			g.ui.root.addEventListener('pointerdown', done, true)
+			const timer = setTimeout(done, 30_000)
 		}
 		queueMicrotask(() => void agent.stop())
 		return `Shown to the person, who presses it themselves (${line}). The task is over: do nothing more.`
@@ -209,6 +254,7 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 				execute: async function (this: PageAgentCore, input) {
 					const n = offset + this.history.filter((e) => e.type === 'step').length + 1
 					const el = at(this.pageController, input.index)
+					if (el) await intoView(el)
 					const no = await refused(el)
 					if (no) return no
 					// Page words leave the browser masked (ADR-0018); the server also strips prices from what it keeps (E3).
@@ -216,7 +262,10 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 					clickedStep = n
 					o.onStep({ step: n, action: `click_element_by_index [${input.index}]`, goal: label, ms: performance.now() - stepStart })
 					o.onSave({ lines: [...lines, `${n}. clicked [${input.index}] "${label}"`], steps: n })
+					stopped = null
 					const r = await this.pageController.clickElement(input.index)
+					// A press the guard stopped on its way (the click landed on a commit control after all) is shown to the person, not reported done.
+					if (stopped) return showPerson(stopped)
 					return r.message
 				},
 			}),
@@ -245,9 +294,10 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 				inputSchema: z.object({ index: z.int().min(0), text: z.string() }),
 				execute: async function (this: PageAgentCore, input) {
 					const el = at(this.pageController, input.index)
+					if (el) await intoView(el)
 					const no = await refused(el)
 					if (no) return no
-					if (el && (/\/lines\/[^/]+\/numbers/i.test(location.pathname) || isCommitWords(input.text))) return showPerson(el)
+					if (el && (NUMBERS_PAGE.test(location.pathname) || isCommitWords(input.text))) return showPerson(el)
 					const r = await this.pageController.selectOption(input.index, input.text)
 					return r.message
 				},
@@ -258,15 +308,28 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 				inputSchema: z.object({ index: z.int().min(0).optional() }),
 				execute: async function (this: PageAgentCore, input) {
 					const near = input.index === undefined ? undefined : at(this.pageController, input.index)
-					const all = commitControls(selectors).filter((e) => (e as HTMLElement).offsetParent !== null || e.getClientRects().length > 0)
+					const kind = commitIntent(o.task, { url: location.href })
+					const all = commitControls(selectors).filter((e) => ((e as HTMLElement).offsetParent !== null || e.getClientRects().length > 0) && !e.closest(PERSONS_OWN) && (kind === 'consent' || !e.closest('#onetrust-consent-sdk')))
+					// The item's own button, never one past its card (another product's), and never the first of several (AIXC-74).
+					const mine = (list: Element[]) => list.find((e) => lineFor(e) === kind) || (list.length === 1 ? list[0] : undefined)
 					let target: Element | undefined
-					for (let n: Element | null | undefined = near; n && !target; n = n.parentElement) target = all.find((e) => n!.contains(e))
-					target ??= all[0]
+					if (near) {
+						for (let n: Element | null = near; n && !target; n = n.parentElement) {
+							const inside = all.filter((e) => n!.contains(e))
+							if (!inside.length) continue
+							target = n === near ? mine(inside) || inside[0] : inside.length === 1 ? inside[0] : undefined
+							if (!target) return "That item has no such button of its own. Tell the person you can't see one for it."
+						}
+					} else {
+						target = mine(all)
+						if (!target && all.length > 1) return 'There are several such buttons on this page. Call show_person_where with the index of the item the person means, or ask them which one.'
+					}
 					if (!target) return 'There is no such button on this page.'
 					return showPerson(target)
 				},
 			}),
-			// No script runs on Vodafone's page from the model (ADR-0058).
+			// No script runs on Vodafone's page from the model (ADR-0058). page-agent 1.12.4 adds this tool only
+			// when `experimentalScriptExecutionTool` is set, which we never set; null keeps it out if that changes.
 			execute_javascript: null as never,
 		},
 		onBeforeTask: (a) => {
@@ -292,16 +355,24 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 	const stop = () => void agent.stop()
 	o.signal.addEventListener('abort', stop)
 	const timer = setTimeout(stop, o.timeoutSec * 1000)
-	// While the agent runs, a click or submit no person made never reaches a commit control.
+	// While the agent runs, a press no person made never reaches a commit control: page-agent sends
+	// pointer and mouse events before its click (AIXC-73), and the target is the element itself, inside
+	// a shadow root too (AIXC-80).
 	const block = (e: Event) => {
 		if (e.isTrusted) return
-		const t = e.target
-		if (t instanceof Element && !t.closest('vg-guide') && (commitControl(t, selectors) || (e.type === 'submit' && commitControls(selectors).some((c) => t.contains(c))))) {
+		const path = e.composedPath()
+		const t = path[0]
+		if (!(t instanceof Element) || path.some((n) => n instanceof Element && n.localName === 'vg-guide')) return
+		const c = commitControl(t, selectors) || numberChoice(t) || (e.type === 'submit' ? commitControls(selectors).find((x) => t.contains(x)) : null)
+		if (c) {
+			// page-agent sends pointer and mouse events only to the element at the click point: a stopped one
+			// means its own click landed on a commit control. A page script's nested click is stopped quietly.
+			if (e.type !== 'click' && e.type !== 'submit' && e.type !== 'dblclick') stopped ??= c
 			e.preventDefault()
 			e.stopImmediatePropagation()
 		}
 	}
-	for (const type of ['click', 'submit']) window.addEventListener(type, block, true)
+	for (const type of PRESSES) window.addEventListener(type, block, true)
 	try {
 		const r = await agent.execute(o.task)
 		const steps = offset + r.history.filter((e) => e.type === 'step').length
@@ -314,7 +385,7 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 	} finally {
 		clearTimeout(timer)
 		o.signal.removeEventListener('abort', stop)
-		for (const type of ['click', 'submit']) window.removeEventListener(type, block, true)
+		for (const type of PRESSES) window.removeEventListener(type, block, true)
 		agent.dispose()
 	}
 }

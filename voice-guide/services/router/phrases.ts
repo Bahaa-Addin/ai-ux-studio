@@ -25,6 +25,11 @@ const P = {
 	watchWhich: { en: 'Which part should I watch? For example an offer or a price.', ar: 'أراقب أنهي جزء؟ مثلًا عرض أو سعر.' },
 	whichItem: { en: 'Which one? Tap a bundle or tell me its name.', ar: 'أنهي واحدة؟ اختار باقة أو قولي اسمها.' },
 	commit: { en: 'This button completes the purchase. Press it yourself when you are ready.', ar: 'الزرار ده بيكمّل الشراء. دوس عليه بنفسك لما تكون جاهز.' },
+	// The guided commit step (ADR-0058; AIXC-70, 74): for steps other than buying, when there are several, and when there is none.
+	commitYours: { en: "This step is yours: press this button yourself when you're ready.", ar: 'الخطوة دي بتاعتك: دوس على الزرار ده بنفسك لما تكون جاهز.' },
+	commitNumber: { en: 'Pick the number you want, then press this button yourself.', ar: 'اختار الرقم اللي عايزه، وبعدين دوس على الزرار ده بنفسك.' },
+	commitWhich: { en: "There are several of these here. Which one do you mean? Tell me its name and I'll show you its button.", ar: 'فيه أكتر من واحد هنا. تقصد أنهي واحد؟ قولي اسمه وأنا أوريك الزرار بتاعه.' },
+	commitMissing: { en: "I can't see that button on this page. That step is yours to take.", ar: 'مش شايف الزرار ده في الصفحة دي. الخطوة دي بتاعتك.' },
 	stopped: { en: 'Okay, stopped.', ar: 'تمام، وقفت.' },
 	nothingToRepeat: { en: "I haven't said anything yet.", ar: 'لسه ماقلتش حاجة.' },
 	help: {

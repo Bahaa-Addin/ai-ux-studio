@@ -44,11 +44,31 @@ Read on 2026-11-13 (`docs/reference/eshop-map-2026-11-13.md`; the merged plan, �
 - `services/router/planner.ts`: a request the router would hand to the agent that asks to commit becomes a confirm step at the control (by its markup, else its words), never an agent task.
 - Not built yet: the site config's `commit:` block per origin (nothing needs it before the shop's crawl marks its own); the public gateway's start check is met by construction, since the floor is in code and every origin has it.
 - Tests (each failed on the code before it): `tests/e2e/guide.e2e.test.ts` (a card whose centre lies on its cart button, a button whose script presses the cart, a commit request; the cart, the cookie banner and an Arabic "Buy now" never indexed for the model, the pointer on the control within 2 px, a near miss still pressed); `tests/unit/commit.test.ts`, `tests/unit/commit-context.test.ts`, `tests/unit/router.test.ts`.
+- Correction (2026-11-13, AIXC-78): `execute_javascript: null` removes nothing today; page-agent 1.12.4 adds that tool only with `experimentalScriptExecutionTool`, which is never set. The entry keeps it out if that changes. The select, input, commit-page and `show_person_where` paths had no test until the review fixes below.
+
+## Review fixes (2026-11-13, AIXC-70 to AIXC-80)
+
+The review of E1 (Opus bypass hunt, the word lists against the shop's cached code and translations, docs and tests; two refuting checks per finding) found the floor incomplete on the shop's real markup. Fixed, each with a test that failed before (bug log B-44):
+
+- **Choosing a number** (AIXC-70): the shop's number cards (`.red-number-card`, `.msisdn-container`, `.number-card`), "Choose this line" (`#sl-lines-pool-choose-this-line-button`) and the shop home's `#sl-confirm-button` in the floor; on `/lines/*/numbers` a press on anything holding a mobile number or a radio is shown, not made; on that page a request for a number ("I want the first number", "عايز أول رقم", a number said aloud) is the guided step even where the router found a page elsewhere, and the line says to pick the number first.
+- **The shop's add-to-cart wordings** (AIXC-71): "add … to cart/bag/basket" and "move to cart" anywhere in a control's words, the Arabic اضف…سلة forms, `button.add-to-cart`, buttons holding a cart picture, Arabic verbs with the object joined ("اشتريه تاني").
+- **SPEC-03 §4.1's lexicon** (AIXC-72): confirm, submit, purchase, top up, renew, activate, rent, complete purchase or payment, make a payment, order now, send money, confirm transfer, payment or subscription; تأكيد, شراء, تحويل, جدد, فعّل, حول (alone), تأكيد التحويل/الاشتراك/الدفع/والدفع. Transfer and recharge requests are commit requests.
+- **Below the fold** (AIXC-73): the target is scrolled into view before its centre is checked, as page-agent does before it presses; untrusted pointer and mouse presses are stopped as well as clicks; a pointer or mouse press stopped during the agent's own click ends in the guided step (a page script's nested click is stopped quietly).
+- **The right control** (AIXC-74): an unscoped confirm step asks "which one?" when the page has several of the first matching kind, and says the button is not on the page when there is none; "add it to the cart" just after an item was shown, on its page, picks that item first. `show_person_where` never climbs past the item's own card, never points at the accessibility widget, and at the cookie banner only when asked about cookies; with several and no item it asks the model for one.
+- **DSL devices** (AIXC-75): "Rent" and "Cash" (`.device-payment-options button`, the device-card button ids; ايجار, شراء).
+- **Links** (AIXC-76): on a link (or `role=link`) a phrase counts only where the link's words begin with it, and "check out" not at all, so offer tiles and product cards with "at Checkout" open their pages.
+- **Questions** (AIXC-77): a question (how, what, can I, do I, is there, ازاي, ايه, هل, اقدر, ينفع, a question mark) is never a commit request; a polite request ("can you add it to the cart?") still is; "pay as you go" is a product.
+- **Tests** (AIXC-78): the stand-in model calls `show_person_where` and the dropdown tool; a stand-in cart page (press, type and select each shown), a numbers page, two products with the cookie banner up, a card below the fold; the exact tool set pinned.
+- **Decision 3** (AIXC-79): Escape or a press on anything of the guide's own (the microphone) now ends the guided step. Not built yet: keeping the pointer and caption clear of the accessibility button, the cookie banner and Vodafone's chat (phase 3 S16's matrix gets a commit-guidance cell).
+- **Decision 4, amended** (AIXC-79): "plans no click on commit words" applies to requests the router would hand to the agent. A curated flow's click steps are the owner's verified content (a bundle's "Subscribe" leads to its confirmation page, where the flow ends in a confirm step); the executor still refuses any click on the floor's controls or the knowledge base's commit points.
+- **Hardening** (AIXC-80): words read with a space between pieces (no "EGP 19,999Add to cart"); labels, checkboxes, radios, options and elements with a click handler classified; a clicked element outside any control judged by its own words; the listener checks the element inside a shadow root; the executor's `reveal` step asks CommitGuard too.
+- Measured: guide.js 20,416 B gzip -9 (was 20,329 B; budget 21,504 B, ADR-0057).
 
 ## Pilot knobs
 
 - The floor's selectors and words (`packages/kb/src/commit.ts`), and each origin's `commit:` block in the site config.
 - How long the guidance stays (30 s) and its line in each language.
+- What counts as a question (`QUESTION` in `commit.ts`), and the numbers page's request words.
 
 ## Revisit when
 

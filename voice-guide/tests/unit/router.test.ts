@@ -6,6 +6,8 @@ import { evaluate } from '#services/router/eval.ts'
 import { buildPlan } from '#services/router/planner.ts'
 import { understand } from '#services/router/understand.ts'
 
+import type { PlanStep } from '#kb'
+
 import { cases, emptySession, fixtureKb } from '../helpers/kb.ts'
 import { type MockJev, startMockJev } from '../helpers/mock-jev.ts'
 
@@ -172,4 +174,50 @@ test('a request to commit itself is a guided confirm step at the control, never 
 	const session = emptySession('en')
 	const u = await understand({ utterance: 'sort the phones by price', pageId: undefined, session, kb, settings })
 	if (u.route === 'agent') assert.deepEqual(buildPlan({ u, utterance: 'sort the phones by price', session, kb, page, turnId: 't', agent: { enabled: true, maxSteps: 12 } }).plan.steps.map((x) => x.op), ['agent'], 'sorting is still the agent\'s')
+})
+
+test('a commit step never points at the first of several: unscoped it carries a "which one" line and a "not on this page" line; just after an item was shown, on its page, it is that item\'s own button (AIXC-74)', async () => {
+	const phones = { url: 'http://localhost:4401/en/phones.html' }
+	const agent = { enabled: true, maxSteps: 12 }
+	let session = emptySession('en')
+	let u = await understand({ utterance: 'add it to the cart', pageId: undefined, session, kb, settings })
+	assert.equal(u.route, 'agent', 'nothing on the site matches: the agent branch')
+	{
+		const step = buildPlan({ u, utterance: 'add it to the cart', session, kb, page: phones, turnId: 't', agent }).plan.steps[0] as Extract<PlanStep, { op: 'confirm' }>
+		assert.equal(step.op, 'confirm')
+		assert.match(step.which || '', /Which one do you mean/)
+		assert.match(step.missing || '', /can't see that button/)
+		assert.equal(step.target.within, undefined)
+	}
+	session = { ...emptySession('en'), last: { kind: 'item' as const, destinationId: 'web.bundles.mobile-internet.mi-10', collectionId: 'web.bundles.mobile-internet', key: 'mi-10', pageId: 'web.bundles' } }
+	u = await understand({ utterance: 'add it to the cart', pageId: 'web.bundles', session, kb, settings })
+	assert.equal(u.route, 'agent')
+	{
+		const { plan } = buildPlan({ u, utterance: 'add it to the cart', session, kb, page: { url: 'http://localhost:4401/en/bundles.html', pageId: 'web.bundles' }, turnId: 't', agent })
+		assert.deepEqual(plan.steps.map((x) => x.op), ['pickItem', 'confirm'], 'the item first, then its own button')
+		const [pick, confirm] = plan.steps as [Extract<PlanStep, { op: 'pickItem' }>, Extract<PlanStep, { op: 'confirm' }>]
+		assert.deepEqual(pick.select, { by: 'key', key: 'mi-10' })
+		assert.equal(confirm.target.within, 'item')
+	}
+})
+
+test('questions about paying or booking reach the agent; they are not turned into a button to press (AIXC-77)', async () => {
+	const page = { url: 'http://localhost:4401/en/phones.html' }
+	for (const utterance of ['can I pay in installments', 'how do I book a store appointment', 'do I need to book before visiting a store']) {
+		const session = emptySession('en')
+		const u = await understand({ utterance, pageId: undefined, session, kb, settings })
+		assert.equal(u.route, 'agent', utterance)
+		assert.deepEqual(buildPlan({ u, utterance, session, kb, page, turnId: 't', agent: { enabled: true, maxSteps: 12 } }).plan.steps.map((x) => x.op), ['agent'], utterance)
+	}
+})
+
+test('on the numbers page asking for a number is a guided step at "Choose this line", even when the router finds a page elsewhere (AIXC-70)', async () => {
+	const session = emptySession('en')
+	const utterance = 'I want the first number'
+	const u = await understand({ utterance, pageId: undefined, session, kb, settings })
+	const { plan } = buildPlan({ u, utterance, session, kb, page: { url: 'http://localhost:4401/en/lines/red/numbers/' }, turnId: 't', agent: { enabled: true, maxSteps: 12 } })
+	assert.deepEqual(plan.steps.map((x) => x.op), ['confirm'], `route ${u.route}: no navigation away, one guided step`)
+	const step = plan.steps[0] as Extract<PlanStep, { op: 'confirm' }>
+	assert.equal(step.target.css[0], '#sl-lines-pool-choose-this-line-button')
+	assert.match(step.message, /Pick the number you want/)
 })

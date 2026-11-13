@@ -40,7 +40,8 @@ export const PlanStep = z.discriminatedUnion('op', [
 	z.object({ op: z.literal('spotlight'), target: Target, caption: z.string().optional(), read: ReadSpec.optional() }),
 	z.object({ op: z.literal('say'), text: z.string() }),
 	z.object({ op: z.literal('click'), target: Target }),
-	z.object({ op: z.literal('confirm'), target: Target, message: z.string() }),
+	// `which`: said instead when several such controls are on the page and none was chosen; `missing`: said when there is none (ADR-0058).
+	z.object({ op: z.literal('confirm'), target: Target, message: z.string(), which: z.string().optional(), missing: z.string().optional() }),
 	z.object({ op: z.literal('offerWatch'), target: Target, label: z.string(), url: z.string(), pageId: z.string().optional() }),
 	z.object({ op: z.literal('ask'), question: z.string(), options: z.array(z.object({ label: z.string(), utterance: z.string() })) }),
 	z.object({ op: z.literal('agent'), task: z.string(), hints: z.string().optional(), maxSteps: z.number().int().positive().optional() }),
@@ -77,7 +78,7 @@ export function knownLines(plan: Plan): string[] {
 	const lines = [plan.say]
 	for (const s of plan.steps) {
 		if (s.op === 'say') lines.push(s.text)
-		else if (s.op === 'confirm') lines.push(s.message)
+		else if (s.op === 'confirm') lines.push(s.message, s.which, s.missing)
 		else if (s.op === 'ask') lines.push(s.question)
 	}
 	return lines.filter((l): l is string => typeof l === 'string' && l.trim() !== '')
