@@ -25,6 +25,10 @@ Read on 2026-11-13 (`docs/reference/eshop-map-2026-11-13.md`):
 7. **Extraction:** commit points outside forms through ADR-0058's classifier; page kinds for transactional pages; stable ids for pages kept by their query (`shop.list.smart-phones`); the three category spellings as one key; item names from title classes, so they hold no price; guide points from the cards (ADR-0059). On the numbers page the list of numbers is never kept.
 8. **Sync order:** origins a run does not crawl are carried over, or the run is refused; the held web-only sync first (the owner runs it), then `--origin shop --dry-run`, its report read, and only then activation.
 
+## Built so far
+
+- Step E4 (2026-11-13): `crawl.origins.<key>.ready` in the site config, `shop: { ready: false }` for Vodafone; `crawlSite` refuses any crawl that includes a not-ready origin before robots.txt, a browser or any request (`jobs/crawler/crawl.ts`, `notReadyOrigins`), so a bare `npm run sync` is refused and `--origin web` runs; a saved crawl (`--from-crawl`) makes no request and is not held back. Test: `tests/unit/crawl-ready.test.ts` (no fetch, no crawl folder; a web-only run and a site that marks nothing pass the check). Before this, a bare sync crawled both origins with robots.txt failing open.
+
 ## Consequences
 
 - The guide can take people to any page of the shop's menu and help them there, within ADR-0058's guard.

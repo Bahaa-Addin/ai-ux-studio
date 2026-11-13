@@ -192,7 +192,7 @@ npm run sync -- --site vodafone-eg --origin web              # then: the same, a
 ```
 
 - The crawler opens Vodafone's public pages in Chromium with no cookies, follows the navigation two links deep from the seeds in `config/sites/vodafone-eg.yaml`, one page per second, two at a time, and honours `robots.txt`. Pages that show a password field or a login address are skipped and listed. A 403, a 429 or a bot-check page stops the run.
-- `--origin web` leaves the shop out, as the 2026-10-23 crawl did. Without it, the shop's public pages are crawled too (its `robots.txt` keeps the crawler out of cart, checkout, wishlist, register and account).
+- `--origin web` leaves the shop out, as the 2026-10-23 crawl did. **Without it the run is refused** before anything is fetched (2026-11-13, ADR-0060 §1): `crawl.origins.shop.ready: false` in the site config holds the shop back until its safeguards are in code (robots.txt failing closed, pacing per origin, the wait for its app; e-shop plan E7 and E8). Only then does the shop's first sync come, as its own dry run (E14).
 - Without Postgres, add `VG_STORE=memory` in front: nothing is stored, and the command prints the manifest file to use with `npm run demo:live -- --kb <file>`.
 - This command has not yet been run against the live site: the build machine cannot reach it. Run the dry run first and read the report. If the run stops on a bot check, do not retry; use §5.2 or the committed knowledge base.
 

@@ -100,6 +100,10 @@ crawl:
   userAgent: VodafoneEG-VoiceGuide-Crawler/0.1
   # No hreflang on the live site; /en/<slug> and /ar/<slug> are the same page (audit §6).
   pairLanguagesBy: path
+  # The shop is not crawled until its safeguards are in code (ADR-0060 §1, e-shop plan E4 to E8): a
+  # bare `npm run sync` is refused; `--origin web` crawls the web origin alone.
+  origins:
+    shop: { ready: false }
 
 # SCHEDULED CRAWLING IS PAUSED (owner's instruction, 2026-10-23, and PRD D3: no scheduled
 # crawl of production before Vodafone's written approval). On-demand runs only:

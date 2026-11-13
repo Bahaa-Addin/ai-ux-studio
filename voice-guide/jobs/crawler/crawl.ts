@@ -33,7 +33,17 @@ export function normalizeUrl(u: string): string {
 	return normalizeWith(u, { directoryIndex: 'index.html' })
 }
 
+/**
+ * The origins a crawl may not reach yet (`crawl.origins.<key>.ready: false`): the e-shop until its
+ * safeguards are in code (ADR-0060 §1). Checked before anything is fetched.
+ */
+export function notReadyOrigins(site: SiteConfig): string[] {
+	return site.origins.filter((o) => o.key && site.crawl.origins?.[o.key]?.ready === false).map((o) => o.key!)
+}
+
 export async function crawlSite(site: SiteConfig, opts: CrawlOptions): Promise<CrawlResult> {
+	const blocked = notReadyOrigins(site)
+	if (blocked.length) throw new Error(`this crawl includes ${blocked.join(', ')}, which is not ready to be crawled (crawl.origins.${blocked[0]}.ready: false, ADR-0060); leave it out with --origin ${site.origins.filter((o) => !blocked.includes(o.key || '')).map((o) => o.key).join(',') || '<key>'}`)
 	const log = opts.log || (() => {})
 	const startedAt = new Date().toISOString()
 	const id = `crawl-${startedAt.replace(/[-:]/g, '').replace(/\..*/, '')}`

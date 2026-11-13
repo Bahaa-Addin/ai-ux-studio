@@ -149,6 +149,8 @@ export const SiteConfig = z.object({
 		userAgent: z.string().optional(),
 		/** Which pages count as the same page in another language (ADR-0028): hreflang links, or /en/x <-> /ar/x. */
 		pairLanguagesBy: z.enum(['hreflang', 'path']).default('hreflang'),
+		/** Per origin key: `ready: false` refuses every crawl that includes that origin, before any request (ADR-0060 §1). */
+		origins: z.record(z.string(), z.object({ ready: z.boolean() })).default({}),
 	}),
 	/** Knowledge sync (SPEC-04). The schedule is paused unless enabled; on-demand runs always work. */
 	sync: z
