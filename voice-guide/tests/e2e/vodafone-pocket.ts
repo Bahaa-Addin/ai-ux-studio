@@ -74,6 +74,8 @@ export function vodafonePocket(PORT: number): { launch: (o?: LaunchOptions) => P
 			channel: 'chromium',
 			xray: 'off',
 			replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'),
+			// Nothing from Vodafone's live site: pictures and fonts the replay did not save are blank (S1).
+			offline: true,
 			clone: { path: '/en/services', dir: CLONE, pages: { '/ar/services': 'ar/index.html' } },
 			initScripts: [SPEECH_STUB, ...(o.consented ? [CONSENTED] : [])],
 			viewport: o.phone ? { width: 390, height: 844 } : { width: 1366, height: 860 },

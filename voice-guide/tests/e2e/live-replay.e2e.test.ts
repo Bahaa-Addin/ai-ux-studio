@@ -55,6 +55,8 @@ before(async () => {
 		start: `${WEB}/ar/home`,
 		headless: true,
 		replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'),
+		// Nothing from Vodafone's live site: pictures and fonts the replay did not save are blank.
+		offline: true,
 		fakeMic: wav,
 		initScripts: [VOICE_STUB],
 		viewport: { width: 1280, height: 800 },

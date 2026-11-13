@@ -46,6 +46,13 @@ export interface DemoBrowserOptions {
 	clone?: { path: string; dir: string; pages?: Record<string, string> }
 	/** Replay only: pages opened from the internet (not in the replay) are never saved by the trail. Default: recorded like the rest. */
 	liveUnsaved?: boolean
+	/**
+	 * Replay only: nothing is fetched from the internet. Pictures the replay did not save are a blank,
+	 * fonts and styles it did not save are refused, and a page it does not have says so. Tests use it,
+	 * so a run never reaches Vodafone's site. `onNetwork` hears each request that would have gone out.
+	 */
+	offline?: boolean
+	onNetwork?: (url: string, resourceType: string) => void
 	/** The experience layer (ADR-0048): false keeps it off even where the site config turns it on. Default: the site config. */
 	experiences?: boolean
 	/** Replay only: add a stand-in of Vodafone's accessibility button (scripts are off in replay, so the real one is absent). */
@@ -214,7 +221,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 	for (const origin of origins) await context.grantPermissions(['microphone', 'notifications'], { origin })
 
 	// Routes are matched newest first: the replay catch-all goes in first, the gateway bridge last.
-	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone, o.liveUnsaved)
+	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone, o.liveUnsaved, o.offline ? { onNetwork: o.onNetwork || (() => {}) } : undefined)
 
 	const forward = async (route: Route, target: string) => {
 		const req = route.request()
@@ -258,7 +265,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 }
 
 /** Serves the allowed origins from a crawl folder; a page the folder does not have opens from the internet, unsaved by the trail. */
-async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string; pages?: Record<string, string> }, liveUnsaved = false): Promise<void> {
+async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string; pages?: Record<string, string> }, liveUnsaved = false, offline?: { onNetwork: (url: string, type: string) => void }): Promise<void> {
 	const crawl = loadCrawl(dir)
 	const html = new Map<string, string>()
 	for (const p of crawl.pages) {
@@ -307,6 +314,10 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 		return false
 	}
 	const openLive = async (route: Route, url: URL) => {
+		if (offline) {
+			offline.onNetwork(url.toString(), 'document')
+			return route.fulfill({ status: 404, contentType: 'text/html; charset=utf-8', body: notInReplay(url.toString(), known.length) })
+		}
 		try {
 			const res = await route.fetch({ timeout: 20_000 })
 			const headers = { ...res.headers() }
@@ -359,6 +370,10 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 		// Never its scripts or API calls: saved pages stay script-free. Offline, a blank.
 		const looksLikeAsset = /\.(png|jpe?g|gif|webp|avif|svg|ico|css|woff2?|ttf|otf)$/i.test(url.pathname) || url.pathname.startsWith('/documents/')
 		if (!['image', 'stylesheet', 'font', 'media'].includes(type) && !(['fetch', 'xhr'].includes(type) && looksLikeAsset)) return route.abort()
+		if (offline) {
+			offline.onNetwork(url.toString(), type)
+			return type === 'image' ? route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1x1 }).catch(() => {}) : route.abort().catch(() => {})
+		}
 		try {
 			return await route.fulfill({ response: await route.fetch({ timeout: 10_000 }) })
 		} catch {

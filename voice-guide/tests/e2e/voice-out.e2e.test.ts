@@ -52,7 +52,7 @@ before(async () => {
 	await services.store.activateKb(site.id, m.version.id)
 	gateway = createGateway({ services })
 	await gateway.listen(PORT)
-	b = await launchDemoBrowser({ site, gatewayUrl: `http://127.0.0.1:${PORT}`, start: 'about:blank', headless: true, channel: 'chromium', xray: 'off', replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'), fakeMic: wav, initScripts: [VOICE_STUB, AUDIO_SPY], viewport: { width: 1366, height: 860 }, experiences: false })
+	b = await launchDemoBrowser({ site, gatewayUrl: `http://127.0.0.1:${PORT}`, start: 'about:blank', headless: true, offline: true, channel: 'chromium', xray: 'off', replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'), fakeMic: wav, initScripts: [VOICE_STUB, AUDIO_SPY], viewport: { width: 1366, height: 860 }, experiences: false })
 	page = b.page
 	page.on('pageerror', (e) => console.log('[pageerror]', e.message))
 })

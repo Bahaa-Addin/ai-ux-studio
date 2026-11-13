@@ -9,130 +9,37 @@
  *   the page without the map when it fails or does not come.
  */
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
 import { after, before, test } from 'node:test'
 
 import type { Page } from 'playwright'
 
-import type { Manifest } from '#kb'
-import { loadPlatformConfig, loadSiteConfig, ROOT } from '#shared/config.ts'
+import { CMS_PAGES, geometry, type Layer, type LayerGateway, launchLayer, layerState, open, startLayerGateway, V, watch } from './vodafone-layer.ts'
 
-import { buildSdk } from '../../packages/sdk/build.ts'
-import { createGateway } from '../../services/gateway/server.ts'
-import { createServices } from '../../services/index.ts'
-import { type DemoBrowser, launchDemoBrowser } from '../../tools/demo-browser.ts'
-import { SPEECH_STUB } from './browser.ts'
-
+// On the live-page kit (vodafone-layer.ts): offline replay, so nothing reaches Vodafone's site.
 const PORT = 4475
-const V = 'https://web.vodafone.com.eg'
-const platform = loadPlatformConfig({ ...process.env, VG_VOICETUT_URL: '', VG_STORE: 'memory', VG_PORT: String(PORT), VG_PUBLIC_URL: `http://127.0.0.1:${PORT}` })
-const site = loadSiteConfig(path.join(platform.sitesDir, 'vodafone-eg.yaml'))
-const REPLAY = path.join(ROOT, 'fixtures/replay/vodafone-eg')
-const DEMOS = Object.entries(site.experiences.demos)
-	.filter(([, on]) => on)
-	.map(([name]) => name)
-const CMS_PAGES = (JSON.parse(fs.readFileSync(path.join(REPLAY, 'crawl.json'), 'utf8')) as { pages: { url: string; snapshot?: string }[] }).pages
-	.filter((p) => p.snapshot && /^\/(en|ar)\//.test(new URL(p.url).pathname))
-	.map((p) => new URL(p.url).pathname)
-
-let services: Awaited<ReturnType<typeof createServices>>
-let gateway: ReturnType<typeof createGateway>
+let gw: LayerGateway
+let DEMOS: string[] = []
 
 before(async () => {
-	await buildSdk({ minify: true })
-	services = await createServices({ platform })
-	const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'config/kb/vodafone-eg.manifest.json'), 'utf8')) as Manifest
-	await services.store.putKbVersion(site.id, m)
-	await services.store.activateKb(site.id, m.version.id)
-	gateway = createGateway({ services })
-	await gateway.listen(PORT)
+	gw = await startLayerGateway(PORT)
+	DEMOS = Object.entries(gw.site.experiences.demos)
+		.filter(([, on]) => on)
+		.map(([name]) => name)
 })
 
 after(async () => {
-	await gateway?.close()
-	await services?.close()
+	await gw?.close()
 })
 
-/** One fixed 4×3 picture for every image: the saved pages fetch theirs from the internet, so heights could differ between loads. */
-const FIXED_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAADklEQVR4nGM4gwQYcHIAL60csTNOmkgAAAAASUVORK5CYII=', 'base64')
-
-const launch = async (initScripts: string[] = [], o: { experiences?: boolean } = {}) => {
-	const b = await launchDemoBrowser({
-		site,
-		gatewayUrl: `http://127.0.0.1:${PORT}`,
-		start: 'about:blank',
-		headless: true,
-		channel: 'chromium',
-		xray: 'off',
-		replayDir: REPLAY,
-		initScripts: [SPEECH_STUB, ...initScripts],
-		viewport: { width: 1366, height: 860 },
-		experiences: o.experiences,
-	})
-	// Registered last, so matched first: pictures never come from the network in these tests.
-	await b.context.route(`${V}/**`, (route) =>
-		route.request().resourceType() === 'image' && !new URL(route.request().url()).pathname.startsWith('/__vg/') ? route.fulfill({ status: 200, contentType: 'image/png', body: FIXED_PNG }) : route.fallback(),
-	)
-	return b
+/** The browser as these tests use it: its page, its context and close(), and what reached the network. */
+const launch = async (initScripts: string[] = [], o: { experiences?: boolean } = {}): Promise<Layer & { context: Layer['b']['context'] }> => {
+	const l = await launchLayer(gw, { initScripts, experiences: o.experiences, viewport: { width: 1366, height: 860 } })
+	return { ...l, context: l.b.context }
 }
-
-/** Errors from the page and console lines from the layer. */
-const watch = (page: Page) => {
-	const seen = { pageErrors: [] as string[], layer: [] as string[] }
-	page.on('pageerror', (e) => seen.pageErrors.push(e.message))
-	page.on('console', (m) => {
-		if (m.text().startsWith('[AIXC]')) seen.layer.push(`${m.type()}: ${m.text()}`)
-	})
-	return seen
-}
-
-const open = async (page: Page, pathname: string, query = '') => {
-	await page.goto(`${V}${pathname}${query}`, { waitUntil: 'load' })
-	// The module loads after DOMContentLoaded; give it a moment, then read where it stands.
-	await page.waitForFunction(() => document.querySelector('script[data-vg-loader]'), null, { timeout: 10_000 })
-	await page.waitForTimeout(400)
-}
-
-const layerState = (page: Page) =>
-	page.evaluate(() => {
-		const w = window as unknown as { __aixc?: { state: string; problem: string | null; settings: { demo: boolean; demos: string[] }; host: { lang: string; dir: string } | null; failure?: { step: string } | null } }
-		const out = document.getElementById('experience-output')
-		const bar = document.getElementById('aixc-viewbar')
-		return {
-			tag: !!document.querySelector('script[type="module"][data-aixc-demo]'),
-			demo: w.__aixc?.settings.demo ?? null,
-			demos: w.__aixc?.settings.demos ?? null,
-			state: w.__aixc?.state ?? null,
-			problem: w.__aixc?.problem ?? null,
-			lang: w.__aixc?.host?.lang ?? null,
-			dir: w.__aixc?.host?.dir ?? null,
-			failure: w.__aixc?.failure?.step ?? null,
-			regions: { output: out ? { hidden: out.hidden, afterMain: out.previousElementSibling?.id === 'main-content', marked: out.hasAttribute('data-aixc') && out.hasAttribute('data-vg') } : null, viewbar: bar ? { hidden: bar.hidden, beforeMain: bar.nextElementSibling?.id === 'main-content' } : null },
-			added: document.querySelectorAll('[data-aixc]').length,
-			tags: document.querySelectorAll('[data-aixc-item], [data-aixc-section]').length,
-			coverage: (w.__aixc as { coverage?: { ratio: number } } | undefined)?.coverage?.ratio ?? null,
-			destinations: ((w.__aixc as { model?: { sections: { destinationId?: string }[] } } | undefined)?.model?.sections ?? []).filter((x) => x.destinationId).length,
-			pageMap: (w.__aixc as { pageMap?: { pageId: string | null; sections: number } | null } | undefined)?.pageMap ?? null,
-			mainHidden: document.getElementById('main-content')?.hidden ?? null,
-		}
-	})
-
-/** Where Vodafone's own page sits: the header, #main-content and its sections, the footer. */
-const geometry = (page: Page) =>
-	page.evaluate(() => {
-		const r = (n: Element | null) => {
-			if (!n) return null
-			const b = n.getBoundingClientRect()
-			return [b.top + scrollY, b.left, b.width, b.height].map(Math.round)
-		}
-		const main = document.getElementById('main-content')
-		return { header: r(document.getElementById('header')), main: r(main), sections: [...(main?.children ?? [])].map(r), footer: r(document.querySelector('footer')), width: document.documentElement.scrollWidth }
-	})
 
 test('aixc.js loads on every saved CMS page in both languages and builds its hidden regions; not on /spa/ or with ?aixc=off', async () => {
 	assert.ok(CMS_PAGES.length >= 13, `saved CMS pages: ${CMS_PAGES.length}`)
-	const b: DemoBrowser = await launch()
+	const b = await launch()
 	try {
 		const seen = watch(b.page)
 		for (const pathname of CMS_PAGES) {
@@ -167,6 +74,7 @@ test('aixc.js loads on every saved CMS page in both languages and builds its hid
 		assert.equal(off.added, 0)
 		assert.deepEqual(seen.pageErrors, [], 'no page errors')
 		assert.deepEqual(seen.layer.filter((l) => !l.startsWith('info:')), [], 'the layer logged no warning or error')
+		assert.deepEqual(b.reached, [], 'nothing reached Vodafone\'s site')
 	} finally {
 		await b.close()
 	}
