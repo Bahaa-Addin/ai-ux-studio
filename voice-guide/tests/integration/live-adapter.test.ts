@@ -368,3 +368,79 @@ test('the page changes after load: a carousel\'s new copies lose the layer\'s ma
 	}
 })
 
+test('the layer\'s own nodes inside Vodafone\'s cards are never read: same ids, coverage and tags (phase 3 S3)', async () => {
+	const page = await browser.newPage()
+	try {
+		for (const p of saved) {
+			const pathname = new URL(p.url).pathname
+			await page.route('**/*', (route) => route.abort())
+			await page.setContent(htmlOf(p).replace(/<script\b[\s\S]*?<\/script>/gi, ''), { waitUntil: 'domcontentloaded' })
+			await page.addScriptTag({ content: bundle })
+			const out = await page.evaluate(([origin, path]) => {
+				const a = (window as any).__live.createLiveAdapter({ doc: document, origin, path })
+				const state = () => ({ ids: a.extractContent().model?.sections.flatMap((x: { items: { id: string }[] }) => x.items.map((i) => i.id)) ?? [], coverage: a.extractContent().coverage, tags: [...document.querySelectorAll('[data-aixc-item]')].map((e) => (e as HTMLElement).dataset.aixcItem).sort() })
+				a.tag()
+				const before = state()
+				// What the Pocket puts in a card (a button and a "Put back" liner), and its lifted copy of a card.
+				const cards = [...document.querySelectorAll('[data-aixc-item]')]
+				for (const card of cards) {
+					const chip = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Pocket it' })
+					chip.setAttribute('data-aixc', '')
+					const liner = document.createElement('div')
+					liner.setAttribute('data-aixc', '')
+					liner.innerHTML = '<button type="button">Put back</button>'
+					card.append(chip, liner)
+				}
+				if (cards[0]) {
+					const lift = document.createElement('div')
+					lift.setAttribute('data-aixc', '')
+					const copy = cards[0].cloneNode(true) as Element
+					copy.removeAttribute('data-aixc-item')
+					lift.append(copy)
+					cards[0].append(lift)
+				}
+				a.refresh()
+				a.tag()
+				return { before, after: state(), band: !!document.querySelector('[data-aixc-item="vodafone-cash"]') }
+			}, [ORIGIN, pathname] as const)
+			assert.deepEqual(out.after.ids, out.before.ids, `${pathname}: same items and ids`)
+			assert.deepEqual(out.after.coverage, out.before.coverage, `${pathname}: same coverage`)
+			assert.deepEqual(out.after.tags, out.before.tags, `${pathname}: same tags`)
+			if (/\/services$/.test(pathname)) assert.equal(out.band, true, `${pathname}: the Vodafone Cash band keeps its tag`)
+			await page.unroute('**/*')
+		}
+	} finally {
+		await page.close()
+	}
+})
+
+test('each card carries what it can be known by, and the same card has keys in common in both languages (phase 3 S3)', async () => {
+	const page = await browser.newPage()
+	try {
+		const keysOf = async (p: string) => {
+			const r = await read(page, htmlOf(savedAt(p)), p)
+			return r.model!.sections.flatMap((x) => x.items as unknown as { id: string; kind: string; keys: { kind: string; value: string }[] }[])
+		}
+		for (const p of ['/en/services', '/en/home', '/en/mobile-internet-bundles', '/ar/vodafone-red1']) {
+			const items = await keysOf(p)
+			assert.ok(items.every((i) => typeof i.kind === 'string' && Array.isArray(i.keys) && i.keys.length > 0), `${p}: every item has a kind and keys`)
+			assert.ok(items.every((i) => i.keys.every((k) => ['link', 'picture', 'title', 'tab', 'digits'].includes(k.kind) && typeof k.value === 'string' && k.value)), `${p}: known key kinds`)
+		}
+		// The same cards in the other language share a link or a picture key (home and Vodafone Cash: every card).
+		for (const [en, ar] of [['/en/home', '/ar/home'], ['/en/vodafone-cash', '/ar/vodafone-cash']] as const) {
+			const a = await keysOf(en)
+			const b = await keysOf(ar)
+			const shared = (x: (typeof a)[number]) => b.some((y) => y.keys.some((k) => (k.kind === 'link' || k.kind === 'picture') && x.keys.some((j) => j.kind === k.kind && j.value === k.value)))
+			assert.equal(a.filter(shared).length, a.length, `${en}: every card shares a link or picture key with ${ar}`)
+		}
+		// Bundles: ids differ between languages, but the numbers in the titles are shared.
+		const en = await keysOf('/en/mobile-internet-bundles')
+		const ar = await keysOf('/ar/mobile-internet-bundles')
+		const digits = (xs: typeof en) => new Set(xs.flatMap((x) => x.keys.filter((k) => k.kind === 'digits').map((k) => k.value)))
+		const common = [...digits(en)].filter((d) => digits(ar).has(d))
+		assert.ok(common.length >= 8, `bundles: numbers in titles shared across languages (${common.length})`)
+	} finally {
+		await page.close()
+	}
+})
+

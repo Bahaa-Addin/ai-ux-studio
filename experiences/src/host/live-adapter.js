@@ -113,6 +113,33 @@ const candidates = ({ href, image, title, el, sectionId, origin, path }) => {
 }
 
 /**
+ * What a card can be known by, kind by kind, so a saved sticker can find its card again when its id
+ * changes (an editor adds a card sharing its link), on the page in the other language, or on another
+ * date (ADR-0049 §8): the link's path (without /en or /ar), the picture's file name, the title as
+ * shown (lower case, spaces collapsed), the tab it sits in, and the numbers in its title ("1400",
+ * "25-55"), which both languages share. The id is still the first unique candidate above.
+ */
+const keysOf = ({ href, image, title, el, origin, path }) => {
+  const keys = []
+  if (href) {
+    try {
+      const u = new URL(href)
+      const where = u.origin === origin && u.pathname === path && u.hash ? '/' : u.pathname.replace(/^\/(en|ar)(\/|$)/, '/')
+      if (u.origin === origin || /vodafone/.test(u.hostname)) keys.push({ kind: 'link', value: `${u.origin === origin ? '' : u.hostname}${where}${u.hash}` })
+    } catch {}
+  }
+  const file = image?.src && /\/documents\//.test(image.src) ? fileName(image.src) : ''
+  if (file) keys.push({ kind: 'picture', value: file.replace(/\(\d+\)/g, '').replace(/\.[a-z0-9]+$/i, '').toLowerCase() })
+  const words = clean(title).toLowerCase()
+  if (words) keys.push({ kind: 'title', value: words })
+  const pane = el.closest('[id]')
+  if (pane && pane.id && !/^p_p_id|^portlet_/.test(pane.id)) keys.push({ kind: 'tab', value: pane.id })
+  const digits = (clean(title).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).match(/\d+(?:[.,]\d+)?/g) || []).join('-')
+  if (digits) keys.push({ kind: 'digits', value: digits })
+  return keys
+}
+
+/**
  * Which knowledge destination each portlet is (the guide's own names for the page's sections): a
  * destination's first locator that finds exactly one element, inside one portlet. Where several land on
  * the same portlet: section destinations before card lists and FAQs; among those, the one whose title
@@ -270,7 +297,7 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
       const cta = href ? { label, href } : opensDialog ? { label, href: null, opens: 'dialog' } : label ? { label, href: null } : null
       if (title && (href || opensDialog)) sectionCover.usable++
       if (!href && opensDialog) sectionCover.dialogs = (sectionCover.dialogs || 0) + 1
-      raw.push({ kind: row.kind, el, sectionId, sectionEl: pb, item: { title, description, image, cta }, cand: candidates({ href, image, title, el, sectionId, origin, path }) })
+      raw.push({ kind: row.kind, el, sectionId, sectionEl: pb, item: { title, description, image, cta, kind: row.kind, keys: keysOf({ href, image, title, el, origin, path }) }, cand: candidates({ href, image, title, el, sectionId, origin, path }) })
     }
 
     // A section with no cards but a heading, a picture and a button reads as one item (a promo band).
@@ -279,7 +306,7 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
       const image = imageOf(first(pb, 'img'), base)
       if (btn && (image || subtitleEl)) {
         const href = absolute(btn.getAttribute('href'), base)
-        raw.push({ kind: 'band', el: pb, sectionId, sectionEl: pb, item: { title: sectionTitle, description: textOf(subtitleEl) || null, image, cta: { label: textOf(btn) || null, href } }, cand: candidates({ href, image, title: sectionTitle, el: pb, sectionId, origin, path }) })
+        raw.push({ kind: 'band', el: pb, sectionId, sectionEl: pb, item: { title: sectionTitle, description: textOf(subtitleEl) || null, image, cta: { label: textOf(btn) || null, href }, kind: 'band', keys: keysOf({ href, image, title: sectionTitle, el: pb, origin, path }) }, cand: candidates({ href, image, title: sectionTitle, el: pb, sectionId, origin, path }) })
       }
     }
     if (sectionCover.cards) coverage.sections.push(sectionCover)

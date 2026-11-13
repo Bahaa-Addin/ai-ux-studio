@@ -102,8 +102,12 @@ export const RECOGNISERS = [
   },
 ]
 
-/** Never read: Owl's copies of cards, dialogs, FAQ entries, the quick-link bar, partner logos. */
-export const SKIP = '.owl-item.cloned, .modal, .accordion-item, nav.quick-links, .brand-item'
+/**
+ * Never read: Owl's copies of cards, dialogs, FAQ entries, the quick-link bar, partner logos, and
+ * anything the layer itself added to the page (`data-aixc`: the Pocket's chips, its lifted card
+ * copies), which would otherwise be read as Vodafone's cards and buttons.
+ */
+export const SKIP = '.owl-item.cloned, .modal, .accordion-item, nav.quick-links, .brand-item, [data-aixc]'
 
 /** Where a section's title is, in order (live plan §3.4, code map §5). */
 export const SECTION_TITLE = ['.section-title h2', '.hello-title', 'h2', 'h3']
