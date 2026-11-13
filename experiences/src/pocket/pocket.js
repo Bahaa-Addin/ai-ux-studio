@@ -258,7 +258,8 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
  */
 export const initPocket = ({ adapter, regions, composer = null, portal: portalOptions = {}, createActors = null, createPortal = null, store = null, seams: given = null, model: givenModel }) => {
   const { sourceRoot } = regions
-  const seams = { ...shellSeams(regions), ...given }
+  // The host's seams over the shell's, getters kept: a host's `page` can follow a route change (E5).
+  const seams = Object.defineProperties({ ...shellSeams(regions) }, Object.getOwnPropertyDescriptors(given || {}))
   const model = givenModel !== undefined ? givenModel : adapter.extractContent(sourceRoot).model
   // The clone has no Pocket without its page; on Vodafone's pages the album is there on every page.
   if (!model && seams.chips) return null

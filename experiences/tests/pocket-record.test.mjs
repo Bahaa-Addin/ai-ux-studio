@@ -5,7 +5,8 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isRecord, pageKeyOf, recordFrom, rematch, scoreOf, seen } from '../src/pocket/record.js'
+import { linkKeyOf } from '../src/host/live-adapter.js'
+import { categoryOf, isRecord, pageKeyOf, recordFrom, rematch, scoreOf, seen, siteOf, siteOfRecord } from '../src/pocket/record.js'
 
 const keys = (o) => Object.entries(o).map(([kind, value]) => ({ kind, value }))
 const card = (id, k, extra = {}) => ({ id, title: extra.title || id, description: extra.description ?? null, image: extra.image ?? null, cta: extra.cta ?? { label: null, href: `https://web.vodafone.com.eg/en/${id}` }, kind: 'card-action', keys: keys(k) })
@@ -27,7 +28,7 @@ test('a record keeps the copy as published, its picture, link, keys, source page
   assert.deepEqual(r.copy, { title: 'Roaming', description: 'From EGP 50', lang: 'en', dir: 'ltr' }, 'the price is kept as published (owner, 2026-11-13)')
   assert.deepEqual(r.image, { src: 'https://web.vodafone.com.eg/documents/1/roaming.png', alt: 'Roaming' })
   assert.deepEqual(r.cta, { label: 'Know more', href: 'https://web.vodafone.com.eg/spa/roaming' })
-  assert.deepEqual(r.source, { page: '/services', path: '/en/services', pageId: 'web.services', title: { en: 'Vodafone Services' }, section: { id: 'xsg0av63s0tv', title: 'Call & Connect abroad' } })
+  assert.deepEqual(r.source, { site: 'web', page: '/services', path: '/en/services', pageId: 'web.services', title: { en: 'Vodafone Services' }, section: { id: 'xsg0av63s0tv', title: 'Call & Connect abroad' } })
   assert.deepEqual([r.savedAt, r.seenAt, r.origin, r.id], [Date.UTC(2026, 10, 12), Date.UTC(2026, 10, 12), 'person', 'roaming'])
   assert.equal(recordFrom({ item: { ...item, image: null, cta: null }, section: null, page }).image, null, 'a card without a picture keeps none')
   assert.deepEqual(recordFrom({ item: { ...item, image: { src: 'x.png', alt: '', fit: 'contain' } }, section: null, page }).image, { src: 'x.png', alt: '', fit: 'contain' }, 'how the picture is fitted, when the card says')
@@ -123,4 +124,44 @@ test('a key other cards shared where the sticker was kept never becomes its own 
   const later = model(['plans', [red('red-elite', 'red elite+')]])
   assert.deepEqual([...rematch([sticker], later, { lang: 'en' })], [], 'RED Elite is not RED Exclusive, though it now has the picture alone')
   assert.equal(recordFrom({ item: kept.sections[0].items[0], section: kept.sections[0], page }).keys.some((k) => k.shared), false, 'without the page, nothing is marked')
+})
+
+test('records know their site: the shop\'s home is not the website\'s, two lists are two pages, the three spellings of a list are one (E5)', () => {
+  assert.equal(pageKeyOf('/en/'), '/')
+  assert.equal(pageKeyOf('/en/', { site: 'shop' }), 'shop:/')
+  const list = (search) => pageKeyOf('/en/list', { site: 'shop', search })
+  assert.notEqual(list('?categoryUrls=*smart-phones'), list('?categoryUrls=*tablets'))
+  assert.equal(list('?categoryUrls=*smart-phones'), list('?categoryUrls=/smart-phones'))
+  assert.equal(list('?categoryUrls=*smart-phones'), list('?categoryUrls=%2Fsmart-phones'))
+  assert.equal(list('?categoryUrls=*smart-phones'), pageKeyOf('/ar/list', { site: 'shop', search: '?categoryUrls=*smart-phones' }), 'both languages')
+  const shop = recordFrom({ item: { id: 'a', title: 'Galaxy A55', keys: [] }, page: { path: '/en/list', search: '?categoryUrls=*smart-phones', site: 'shop', lang: 'en' } })
+  assert.equal(shop.source.site, 'shop')
+  assert.equal(shop.source.page, 'shop:/list?c=smart-phones')
+  assert.equal(isRecord(shop), true, 'still a version 2 record')
+  // A record kept before E5 has no site: it is the website's, and its page key is unchanged.
+  const old = { v: 2, key: 'k', id: 'x', copy: { title: 'T' }, source: { page: '/services', path: '/en/services' }, savedAt: 1 }
+  assert.equal(isRecord(old), true)
+  assert.equal(siteOfRecord(old), 'web')
+})
+
+test('a link into the shop has one key, read on the website or on the shop, whatever spelling its list uses (E5)', () => {
+  const web = 'https://web.vodafone.com.eg'
+  const shop = 'https://eshop.vodafone.com.eg'
+  const a = linkKeyOf(`${shop}/en/list?categoryUrls=*smart-phones`, web, '/en/home')
+  assert.equal(a, 'eshop.vodafone.com.eg/list?c=smart-phones')
+  assert.equal(linkKeyOf(`${shop}/ar/list?categoryUrls=%2Fsmart-phones`, shop, '/ar/'), a, 'read on the shop, in Arabic, another spelling')
+  assert.notEqual(linkKeyOf(`${shop}/en/list?categoryUrls=*tablets`, web, '/en/home'), a, 'another list, another link')
+  // Website links keep the keys they had.
+  assert.equal(linkKeyOf(`${web}/en/services`, web, '/en/home'), '/services')
+  assert.equal(linkKeyOf('https://example.com/x', web, '/en/home'), null)
+})
+
+test('the adapter and the Pocket name a shop list the same way (two copies, one rule)', () => {
+  for (const search of ['?categoryUrls=*smart-phones', '?categoryUrls=/smart-phones', '?categoryUrls=%2Fsmart-phones', '?categoryUrls=%252FTablets', '', '?x=1']) {
+    const c = categoryOf(search)
+    const link = linkKeyOf(`https://eshop.vodafone.com.eg/en/list${search}`, 'https://web.vodafone.com.eg', '/en/home')
+    assert.equal(link, `eshop.vodafone.com.eg/list${c ? `?c=${c}` : ''}`, search)
+  }
+  assert.equal(siteOf('eshop.vodafone.com.eg'), 'shop')
+  assert.equal(siteOf('web.vodafone.com.eg'), 'web')
 })

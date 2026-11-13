@@ -129,15 +129,44 @@ const candidates = ({ href, image, title, el, sectionId, origin, path }) => {
  * shown (lower case, spaces collapsed), the tab it sits in, and the numbers in its title ("1400",
  * "25-55"), which both languages share. The id is still the first unique candidate above.
  */
+/** A shop list's category in one spelling (the Pocket's record.js has the same; a shared module would cost the core a file). */
+const categoryOf = (search) => {
+  let v = null
+  try {
+    v = new URLSearchParams(String(search || '')).get('categoryUrls')
+  } catch {}
+  let c = v || ''
+  try {
+    c = decodeURIComponent(c)
+  } catch {}
+  c = c.replace(/^[*/]+/, '').trim().toLowerCase()
+  return c || null
+}
+
+/**
+ * A link's key: its path without the language, and its hash; another Vodafone host is named. A link into
+ * the shop always names the shop's host and keeps its list's category in one spelling, so the same shop
+ * link has the same key read on the website and on the shop, and two lists are two links (E5).
+ */
+export const linkKeyOf = (href, origin, path) => {
+  try {
+    const u = new URL(href)
+    if (u.origin !== origin && !/vodafone/.test(u.hostname)) return null
+    const where = u.origin === origin && u.pathname === path && u.hash ? '/' : u.pathname.replace(/^\/(en|ar)(\/|$)/, '/')
+    if (/^eshop\./i.test(u.hostname)) {
+      const c = categoryOf(u.search)
+      return `${u.hostname}${where}${c ? `?c=${c}` : ''}${u.hash}`
+    }
+    return `${u.origin === origin ? '' : u.hostname}${where}${u.hash}`
+  } catch {
+    return null
+  }
+}
+
 const keysOf = ({ href, image, title, el, origin, path }) => {
   const keys = []
-  if (href) {
-    try {
-      const u = new URL(href)
-      const where = u.origin === origin && u.pathname === path && u.hash ? '/' : u.pathname.replace(/^\/(en|ar)(\/|$)/, '/')
-      if (u.origin === origin || /vodafone/.test(u.hostname)) keys.push({ kind: 'link', value: `${u.origin === origin ? '' : u.hostname}${where}${u.hash}` })
-    } catch {}
-  }
+  const link = href ? linkKeyOf(href, origin, path) : null
+  if (link) keys.push({ kind: 'link', value: link })
   const file = image?.src && /\/documents\//.test(image.src) ? fileName(image.src) : ''
   // Vodafone's file names often end in a space ('roaming+' in one language, 'roaming' in the other).
   if (file) keys.push({ kind: 'picture', value: clean(file.replace(/\(\d+\)/g, '').replace(/\.[a-z0-9]+$/i, '')).toLowerCase() })

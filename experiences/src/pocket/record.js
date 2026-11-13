@@ -16,9 +16,49 @@
  *
  * Pure functions: no DOM, no storage.
  */
+/*
+ * Vodafone's two sites (e-shop plan E5). The adapter in the core keeps its own copy of categoryOf: a
+ * module shared by the core and this chunk would become a third file, counted in the core's budget.
+ * tests/pocket-record.test.mjs checks that the two agree.
+ */
+/** 'shop' for the e-shop's host, 'web' for anything else. */
+export const siteOf = (host) => (/^eshop\./i.test(String(host || '')) ? 'shop' : 'web')
+
+/**
+ * A shop list's category, whichever of the shop's three spellings the address uses ("*smart-phones",
+ * "/smart-phones", "%2Fsmart-phones"), or null.
+ */
+export const categoryOf = (search) => {
+  let v = null
+  try {
+    v = new URLSearchParams(String(search || '')).get('categoryUrls')
+  } catch {}
+  let c = v || ''
+  try {
+    c = decodeURIComponent(c)
+  } catch {}
+  c = c.replace(/^[*/]+/, '').trim().toLowerCase()
+  return c || null
+}
+
 
 /** A page's address without its language and trailing slash: /en/services and /ar/services are one page. */
-export const pageKeyOf = (path) => (String(path || '/').replace(/^\/(en|ar)(?=\/|$)/, '') || '/').replace(/(.)\/+$/, '$1')
+const pathKeyOf = (path) => (String(path || '/').replace(/^\/(en|ar)(?=\/|$)/, '') || '/').replace(/(.)\/+$/, '$1')
+
+/**
+ * The page a record was kept on, the same in both languages. On the website, the path without its
+ * language (unchanged, so web records keep their keys). On the shop, "shop:" plus that path plus the
+ * list's category, so two lists are two pages and the shop's home is not the website's.
+ */
+export const pageKeyOf = (path, { site = 'web', search = '' } = {}) => {
+  const key = pathKeyOf(path)
+  if (site !== 'shop') return key
+  const c = categoryOf(search)
+  return `shop:${key}${c ? `?c=${c}` : ''}`
+}
+
+/** A record's site: records kept before E5 have none and are the website's. */
+export const siteOfRecord = (r) => (r?.source?.site === 'shop' ? 'shop' : 'web')
 
 /** A call to action that does something (a link or the page's own dialog), as kept. */
 const ctaOf = (cta) => (cta && (cta.href || cta.opens) ? { label: cta.label ?? null, href: cta.href ?? null, ...(cta.opens ? { opens: cta.opens } : {}) } : null)
@@ -34,7 +74,8 @@ const countsOf = (model) => {
 
 /**
  * A record from an item of the live model, its section and its page.
- * `page`: { path, lang, dir, title, pageId? } (pageId: the knowledge base's page id when known).
+ * `page`: { path, lang, dir, title, pageId?, site?, search? } (pageId: the knowledge base's page id when known;
+ * site: 'web' or 'shop', web when missing; search: the address's query, which names a shop list).
  * `model`: the page it was kept on, when known: a key other cards there shared is marked `shared`,
  * and never counts as the card's own later, even when the others have gone (AIXC-63).
  */
@@ -51,7 +92,8 @@ export function recordFrom({ item, section, page, model = null, origin = 'person
     // The card's own link or dialog, else its section's (the clone's Cash cards share one).
     cta: ctaOf(item.cta) ?? ctaOf(section?.cta),
     source: {
-      page: pageKeyOf(page.path),
+      site: page.site === 'shop' ? 'shop' : 'web',
+      page: pageKeyOf(page.path, page),
       path: page.path,
       pageId: page.pageId ?? null,
       title: page.title ? { [page.lang]: page.title } : {},

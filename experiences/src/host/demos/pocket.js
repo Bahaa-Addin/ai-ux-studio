@@ -18,7 +18,7 @@
  */
 import css from '../../pocket/pocket.css'
 import { initPocket } from '../../pocket/pocket.js'
-import { recordFrom } from '../../pocket/record.js'
+import { recordFrom, siteOf } from '../../pocket/record.js'
 import { openPocketStore } from '../../pocket/store.js'
 import { countItems, t } from '../../i18n.js'
 
@@ -32,7 +32,8 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
   ensureCss('pocket', css)
   const store = openPocketStore({ onError: (error) => console.warn(`[AIXC] the Pocket keeps its stickers for this page only: ${error?.message || error}`) })
   guard.onStop(() => store.close())
-  const page = { path: location.pathname, lang: host.lang, dir: host.dir, title: titleOf(document), pageId: layer.pageMap?.pageId ?? null }
+  // The page as it is now, read on every use: on the shop a route can change it after the start (E5).
+  const pageNow = () => ({ path: location.pathname, search: location.search, site: siteOf(location.hostname), lang: host.lang, dir: host.dir, title: titleOf(document), pageId: layer.pageMap?.pageId ?? null })
 
   const seams = {
     snapshotRoot: () => document.getElementById('wrapper') ?? document.body,
@@ -72,7 +73,9 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       back: t('Back to the page'),
       lead: (n) => (n ? t('Kept for later: {count}.', { count: countItems(n) }) : t('Nothing here yet.')),
     },
-    page,
+    get page() {
+      return pageNow()
+    },
     corner: false,
     chips: false,
     dated: true,
@@ -93,6 +96,7 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       const known = new Map((layer.model?.sections ?? []).flatMap((section) => section.items.map((item) => [item.id, { item, section }])))
       for (const id of ids) {
         const hit = known.get(id)
+        const page = pageNow()
         if (hit && !store.all().some((r) => r.id === id && r.source.path === page.path)) await store.put(recordFrom({ ...hit, page, model: layer.model }))
       }
       if (ids.every((id) => known.has(id))) store.dropLegacy()
