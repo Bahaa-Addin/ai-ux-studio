@@ -49,10 +49,14 @@ test('in the other language: titles do not count, but links, pictures, tabs and 
   // Two cards in one tab: the tab (+2) and the section (+1) for both, the unique number (+2) for one.
   const ar = model(['bundles', [card('1400', { title: '1400 ميجا', tab: 'plus-37', digits: '1400' }), card('3000', { title: '3000 ميجا', tab: 'plus-37', digits: '3000' })]])
   assert.deepEqual([...rematch([saved], ar, { lang: 'ar' })], [[saved.key, '1400']], 'the tab and its number: matched')
-  // Only the tab and the section (3): enough only when the tab is the card's alone (the prepaid-lines cards).
-  const alone = recordFrom({ item: card('prepaid', { title: 'prepaid lines', tab: 'lines' }), section: { id: 'bundles' }, page })
-  assert.deepEqual([...rematch([alone], model(['bundles', [card('x', { title: 'خطوط', tab: 'lines' }), card('y', { title: 'أخرى', tab: 'other' })]]), { lang: 'ar' })], [[alone.key, 'x']], 'a tab of its own: 3 is enough')
-  assert.deepEqual([...rematch([alone], model(['bundles', [card('x', { title: 'خطوط', tab: 'lines' }), card('y', { title: 'أخرى', tab: 'lines' })]]), { lang: 'ar' })], [], 'a shared tab and nothing else: no guess')
+  // The tab, the link every card in it shares, and the section (4): enough when the tab is the card's
+  // alone (the prepaid-lines cards); the tab alone is one sign, and one sign is a guess (AIXC-54).
+  const alone = recordFrom({ item: card('prepaid', { title: 'prepaid lines', tab: 'lines', link: '/spa/miManagement' }), section: { id: 'bundles' }, page })
+  const lines = (tabY) => model(['bundles', [card('x', { title: 'خطوط', tab: 'lines', link: '/spa/miManagement' }), card('y', { title: 'أخرى', tab: tabY, link: '/spa/miManagement' })]])
+  assert.deepEqual([...rematch([alone], lines('other'), { lang: 'ar' })], [[alone.key, 'x']], 'a tab of its own and the shared link: enough')
+  assert.deepEqual([...rematch([alone], lines('lines'), { lang: 'ar' })], [], 'a shared tab and nothing else: no guess')
+  const tabOnly = recordFrom({ item: card('prepaid', { title: 'prepaid lines', tab: 'lines' }), section: { id: 'bundles' }, page })
+  assert.deepEqual([...rematch([tabOnly], model(['bundles', [card('x', { title: 'خطوط', tab: 'lines' }), card('y', { title: 'أخرى', tab: 'other' })]]), { lang: 'ar' })], [], 'the tab alone is one sign: no guess')
   const counts = new Map([['title 1400 mega', 1], ['digits 1400', 1]])
   const ctx = { counts, lang: 'ar', sectionId: 'other' }
   assert.equal(scoreOf(saved, card('x', { title: '1400 mega', digits: '1400' }), ctx).score, scoreOf(saved, card('x', { digits: '1400' }), ctx).score, 'an English title scores nothing on an Arabic page')
@@ -84,3 +88,28 @@ test('numbers in the title tell products apart: a card without them is not the o
   assert.deepEqual([...rematch([flex], ar, { lang: 'ar' })], [[flex.key, 'y25']], 'the one with the same numbers')
 })
 
+
+test('keys that disagree count against: a card sharing only a sticker\'s link or title is not its card (AIXC-54)', () => {
+  // Vodafone's Arabic Mini Call card also links /spa/roaming: with Roaming gone, its sticker finds nothing.
+  const roaming = recordFrom({ item: card('roaming', { link: '/spa/roaming', picture: 'roaming', title: 'خدمات التجوال' }), section: { id: 'abroad' }, page: { ...page, lang: 'ar' } })
+  const withoutRoaming = model(['other', [card('mini-call', { link: '/spa/roaming', picture: 'mini call', title: 'خدمة الميني كول' })]])
+  assert.deepEqual([...rematch([roaming], withoutRoaming, { lang: 'ar' })], [], 'the link agrees, the picture and the title do not')
+  // Two English cards titled "Balance transfer": with one gone, the other is not it.
+  const balance = recordFrom({ item: card('spa-balancetransfer', { link: '/spa/balanceTransfer', picture: 'transfer', title: 'balance transfer', tab: 'test' }), section: { id: 'w9' }, page })
+  const twin = model(['w9', [card('mobile-repair', { link: '/shokran-services', picture: 'mobile repair', title: 'balance transfer', tab: 'test' })]])
+  assert.deepEqual([...rematch([balance], twin, { lang: 'en' })], [], 'the title and the tab agree, the link and the picture do not')
+  // A link alone, in the other language, is one sign.
+  const dsl = recordFrom({ item: card('internetservices-dsl-bundles', { link: 'eshop.vodafone.com.eg/internetServices/dsl/bundles', title: 'dsl' }), section: { id: 'u' }, page })
+  assert.deepEqual([...rematch([dsl], model(['u', [card('ubytreluayel-1', { link: 'eshop.vodafone.com.eg/internetServices/dsl/bundles', title: 'اتحكم في حسابك' })]]), { lang: 'ar' })], [], 'one sign: no guess')
+})
+
+test('two stickers that fit one card equally both go without it, whatever order they were kept in (AIXC-55)', () => {
+  const ar = { ...page, lang: 'ar', path: '/ar/mobile-internet-bundles' }
+  const control = recordFrom({ item: card('ubytreluayel-1', { link: 'eshop/dsl', title: 'اتحكم في حسابك' }), section: { id: 'u' }, page: ar, key: 'control' })
+  const services = recordFrom({ item: card('dsl', { link: 'eshop/dsl', title: 'خدمات ال dsl', picture: 'dsl' }), section: { id: 'u' }, page: ar, key: 'services' })
+  const en = model(['u', [card('internetservices-dsl-bundles', { link: 'eshop/dsl', title: 'dsl', picture: 'dsl' })]])
+  assert.deepEqual([...rematch([control, services], en, { lang: 'en' })], [['services', 'internetservices-dsl-bundles']], 'the one with more in common takes it')
+  const tied = recordFrom({ item: card('dsl', { link: 'eshop/dsl', title: 'خدمات ال dsl', picture: 'dsl' }), section: { id: 'u' }, page: ar, key: 'tied' })
+  assert.deepEqual([...rematch([services, tied], en, { lang: 'en' })], [], 'equal fits: neither')
+  assert.deepEqual([...rematch([tied, services], en, { lang: 'en' })], [], 'in either order')
+})

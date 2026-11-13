@@ -147,3 +147,90 @@ test('the clone\'s earlier ids-only store is read once and dropped; a record tha
 		await ctx.close()
 	}
 })
+
+const rec = (key: string, size = 0) => ({ v: 2, key, id: key, kind: 'card-action', keys: [], copy: { title: key, description: size ? 'x'.repeat(size) : null, lang: 'en', dir: 'ltr' }, image: null, cta: null, source: { page: '/services', path: '/en/services', pageId: null, title: {}, section: null }, origin: 'person', savedAt: 1, seenAt: 1 })
+
+test('a sticker kept before the store has opened is stored, not lost when the first read lands (AIXC-57)', async () => {
+	const ctx = await contextFor()
+	try {
+		const page = await at(ctx, '/en/services')
+		const out = await page.evaluate(async (r) => {
+			const s = (window as any).__pocket.openPocketStore()
+			const put = s.put(r) // before ready
+			await s.ready
+			await put
+			const mem = s.all().map((x: { key: string }) => x.key)
+			s.close()
+			const fresh = (window as any).__pocket.openPocketStore()
+			await fresh.ready
+			return { mem, disk: fresh.all().map((x: { key: string }) => x.key) }
+		}, rec('early'))
+		assert.deepEqual(out, { mem: ['early'], disk: ['early'] })
+	} finally {
+		await ctx.close()
+	}
+})
+
+test('another tab\'s change never undoes this tab\'s own newer one (AIXC-56)', async () => {
+	const ctx = await contextFor()
+	try {
+		const a = await at(ctx, '/en/services')
+		const b = await at(ctx, '/en/home')
+		// Tab A: the store, then a second channel that writes the moment the store has started reading
+		// for B's message (channels hear a message in the order they were made).
+		await a.evaluate(() => {
+			const w = window as any
+			const s = w.__pocket.openPocketStore()
+			w.__s = s
+			w.__told = []
+			s.subscribe((list: { key: string }[]) => w.__told.push(list.map((x) => x.key).sort().join(',')))
+			return s.ready
+		})
+		await a.evaluate((r) => {
+			const w = window as any
+			const ch = new BroadcastChannel('aixc-pocket')
+			ch.onmessage = () => {
+				ch.close()
+				w.__done = w.__s.put(r)
+			}
+		}, rec('mine'))
+		await b.evaluate(async (r) => {
+			const s = (window as any).__pocket.openPocketStore()
+			await s.ready
+			await s.put(r)
+		}, rec('theirs'))
+		await a.waitForFunction(() => (window as any).__done, null, { timeout: 5000 })
+		const out = await a.evaluate(async () => {
+			const w = window as any
+			await w.__done
+			await new Promise((r) => setTimeout(r, 300))
+			const fresh = w.__pocket.openPocketStore()
+			await fresh.ready
+			return { mem: w.__s.all().map((x: { key: string }) => x.key).sort(), told: w.__told.at(-1), disk: fresh.all().map((x: { key: string }) => x.key).sort() }
+		})
+		assert.deepEqual(out, { mem: ['mine', 'theirs'], told: 'mine,theirs', disk: ['mine', 'theirs'] })
+	} finally {
+		await ctx.close()
+	}
+})
+
+test('a write the browser refuses at commit (storage full) is reported and not shown as kept (AIXC-58)', async () => {
+	const ctx = await contextFor()
+	try {
+		const page = await at(ctx, '/en/services')
+		const cdp = await ctx.newCDPSession(page)
+		await cdp.send('Storage.overrideQuotaForOrigin', { origin: ORIGIN, quotaSize: 2000 })
+		const out = await page.evaluate(async (r) => {
+			const errors: string[] = []
+			const s = (window as any).__pocket.openPocketStore({ onError: (e: Error) => errors.push(e?.name || String(e)) })
+			await s.ready
+			await s.put(r)
+			await new Promise((res) => setTimeout(res, 200))
+			return { errors, mem: s.all().map((x: { key: string }) => x.key) }
+		}, rec('big', 50_000))
+		assert.ok(out.errors.length >= 1, `the failure is reported (${out.errors.join(', ')})`)
+		assert.deepEqual(out.mem, [], 'and the Pocket does not show a sticker that was not kept')
+	} finally {
+		await ctx.close()
+	}
+})

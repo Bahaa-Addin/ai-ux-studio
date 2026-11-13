@@ -5,6 +5,9 @@
  * behave as measured on the live site, so the Pocket's tests check what a live page would show.
  */
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { after, before, test } from 'node:test'
 
 import { CMS_PAGES, DESKTOP, furniture, type LayerGateway, launchLayer, layerState, open, PHONE, startLayerGateway, watch } from './vodafone-layer.ts'
@@ -84,7 +87,9 @@ test('the cookie banner stand-in: bottom-left in English, bottom-right in Arabic
 			await open(l.page, pathname)
 			const f = await furniture(l.page)
 			assert.ok(f.banner?.visible && f.filter?.visible, `${pathname}: banner and filter shown`)
-			assert.deepEqual([f.banner!.w, f.banner!.h], [375, 321])
+			// As rendered from the capture with Vodafone's fonts: English 375×321, Arabic 975,524 375×360 (AIXC-61).
+			const h = pathname.startsWith('/ar/') ? 360 : 321
+			assert.deepEqual([f.banner!.w, f.banner!.h, f.banner!.y], [375, h, DESKTOP.height - 16 - h], `${pathname}: the banner's box`)
 			assert.equal(side === 'left' ? f.banner!.x : DESKTOP.width - f.banner!.x - f.banner!.w, 16, `${pathname}: 16 px from the ${side}`)
 			assert.equal(f.banner!.onTop, true, 'the banner is on top of its filter')
 			assert.deepEqual([f.filter!.w, f.filter!.h], [DESKTOP.width, DESKTOP.height], 'the filter covers the page')
@@ -140,5 +145,43 @@ test('the carousel stand-in: Owl\'s stage, its copies on looping carousels; the 
 		assert.equal((await layerState(l.page)).coverage, 1)
 	} finally {
 		await l.close()
+	}
+})
+
+/** The addresses Chromium started a network request for, from its own log (written as it closes). */
+function startedRequests(file: string): string[] {
+	let text = fs.readFileSync(file, 'utf8').trim()
+	let log: { constants: { logEventTypes: Record<string, number> }; events: { type: number; params?: { url?: string } }[] }
+	try {
+		log = JSON.parse(text)
+	} catch {
+		// A log cut short at exit: end the events list ourselves.
+		text = text.replace(/,\s*$/, '')
+		log = JSON.parse(`${text}]}`)
+	}
+	const start = log.constants.logEventTypes.URL_REQUEST_START_JOB
+	return log.events.filter((e) => e.type === start && e.params?.url).map((e) => e.params!.url!)
+}
+
+test('nothing leaves as the browser closes: a request still waiting on the gateway is ended, never handed to the network (AIXC-53)', async () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vg-netlog-'))
+	const netLog = path.join(dir, 'net.json')
+	try {
+		const l = await launchLayer(gw, { netLog })
+		try {
+			await open(l.page, '/en/home')
+			// From the second page the guide's session resumes and it holds a long-poll open on the gateway (20 s).
+			const poll = l.page.waitForRequest(/\/__vg\/v1\/events\/poll/, { timeout: 15_000 })
+			await open(l.page, '/en/services')
+			await poll
+			await l.page.waitForTimeout(500)
+		} finally {
+			await l.close()
+		}
+		const local = (u: string) => /^(data|blob|about|chrome|chrome-extension):/.test(u) || ['127.0.0.1', 'localhost'].includes(new URL(u).hostname)
+		const out = startedRequests(netLog).filter((u) => !local(u))
+		assert.deepEqual(out, [], 'Chromium started no request to another host, even while closing')
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true })
 	}
 })

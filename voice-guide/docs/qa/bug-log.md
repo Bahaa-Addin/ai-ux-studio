@@ -271,3 +271,58 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Review of the fix (2026-11-12, Opus):** three wrong pairings in the first version, each hiding a real loss: the cards of a renamed list were paired by their number without comparing names (a card that left the list showed as a rename of the one that moved into its place); every picture carries the words "banner", "image", "picture", so a lost picture paired with any new one on the page; and pairing by place was reported as a plain rename. Fixed as above; generic picture words are not labels for this purpose.
 - **Test:** `tests/unit/kb-diff.test.ts` (renames by label and by card name, position pairs marked, a real loss and a real addition left unpaired, a card that left a renamed list, pictures told by their own words, no guess when it cannot tell); `tests/integration/sync.test.ts` (the held sync's two reports carry the counts). On the saved pages, old crawler and builder against new: 26 removed, 23 renamed, 3 by position, none lost; with RED PRIME+ taken out of the new version, that card is the one reported lost. The whole knowledge base (524 destinations, every id changed) diffs in 35 ms.
 
+
+## B-34 Closing a test's browser could send the guide's long-poll on to Vodafone's site
+
+- **Found:** 2026-11-13, review of phase 3 steps S0 to S4 (AIXC-53, high).
+- **Cause:** from the second saved page the guide's session resumes and keeps `GET <origin>/__vg/v1/events/poll?…&wait=20` open while the demo browser forwards it to the gateway. Closing called only `context.close()`; Playwright leaves a route still pending at close to Chromium, which sent the request on to the real host with its cookies, the session id and the site key. Neither the kit's `reached` nor its `refused` list saw it (no response came back). It happened in every suite that opens two saved pages offline.
+- **Fix:** `tools/demo-browser.ts` ends every request still waiting on the gateway before closing (its Node fetch aborted, the route aborted), and in offline mode the browser resolves no host name but localhost (`--host-resolver-rules`), so a request that escapes the routes fails before it leaves the machine.
+- **Test:** `tests/e2e/live-kit.e2e.test.ts`, "nothing leaves as the browser closes": Chromium's own network log (`netLog`) shows no request started to another host, even while closing. It failed before the fix (the poll URL to `web.vodafone.com.eg`), run with the resolver rule already in place so nothing could leave.
+
+## B-35 A sticker whose card was gone took another card
+
+- **Found:** 2026-11-13, the same review (AIXC-54).
+- **Cause:** one unique key reached the re-match's 4 points. Vodafone's own slips give two cards one link or one title: on `/ar/services` the Mini Call card also links `/spa/roaming`, so with Roaming gone its sticker took Mini Call; on `/en/services` two cards are titled "Balance transfer"; an English "DSL" sticker took the Arabic ticket "اتحكم في حسابك", which links the same shop page.
+- **Fix:** `experiences/src/pocket/record.js`: a link, a picture or a title (in the sticker's language) that both sides have and do not share counts against; a match needs two agreeing signs of different kinds (the same id counts as one). ADR-0051 §4 amended.
+- **Test:** `live-adapter.test.ts`, "a sticker whose card is gone finds no card at all": each card of five saved page pairs removed in turn, same language and across (306 pages), no sticker takes another card (20 did before); `pocket-record.test.mjs`, the three slips on synthetic cards. The cross-language test now runs Arabic to English too, with each card's real twin (the test had taken the place in a section as the truth, wrong on the bundles page).
+
+## B-36 Two stickers tied for one card: the one kept first took it
+
+- **Found:** 2026-11-13, the same review (AIXC-55).
+- **Cause:** the tie check compared cards for one sticker, never stickers for one card. The Arabic bundles page has two tickets linking the shop's DSL page, the English one "DSL"; both Arabic stickers scored 5 on it, and the order they were kept in decided.
+- **Fix:** two stickers that fit one card equally both go without it.
+- **Test:** `live-adapter.test.ts`, "two stickers that fit one card equally: neither takes it" (the bundles stickers in both orders give the same matches; failed before); `pocket-record.test.mjs`, the better fit takes it, equal fits neither, in either order.
+
+## B-37 Another tab's change could undo this tab's own newer one
+
+- **Found:** 2026-11-13, the same review, reproduced with two tabs (AIXC-56).
+- **Cause:** on another tab's message the store replaced its memory with a read that had started before this tab's own write (IndexedDB runs transactions in the order they are made), and the tab never read again (a channel does not hear its own messages).
+- **Fix:** `experiences/src/pocket/store.js` keeps this tab's changes not yet committed and lays them over every read; only the latest read counts.
+- **Test:** `pocket-store.test.ts`, "another tab's change never undoes this tab's own newer one" (a write made the moment the store starts reading for the other tab's message; memory, subscribers and disk all hold both; failed before).
+
+## B-38 A sticker kept before the store had opened was lost
+
+- **Found:** 2026-11-13, the same review (AIXC-57).
+- **Cause:** a write before `ready` returned early (no database yet) but resolved as if it worked, and the first read then cleared memory.
+- **Fix:** a change waits for the store to open, and the first read lays it over what it reads.
+- **Test:** `pocket-store.test.ts`, "a sticker kept before the store has opened is stored" (memory and a fresh store; failed before).
+
+## B-39 A write the browser refused at commit was never reported
+
+- **Found:** 2026-11-13, the same review, with a quota set through the browser's debugger (AIXC-58).
+- **Cause:** a write counted as done on its request's success, which comes before the transaction commits; an abort at commit (storage full) went unreported and the sticker stayed in memory only.
+- **Fix:** a write is done when its transaction commits; one that aborts is reported and the store is read again, so it shows only what was kept.
+- **Test:** `pocket-store.test.ts`, "a write the browser refuses at commit (storage full) is reported and not shown as kept" (failed before).
+
+## B-40 The adapter read the layer's own nodes inside a card
+
+- **Found:** 2026-11-13, the same review (AIXC-59); latent until "Pocket it" is drawn on live pages (phase 3 S6).
+- **Cause:** `[data-aixc]` was skipped when choosing cards, but not by the lookups inside one (`first()`, the plan cards' descriptions, a band's picture and button). With the Pocket's liner in a card, three RED cards read "In your pocket" as their description; a layer link with a picture ahead of a card's own changed its link, picture and id.
+- **Fix:** every lookup inside a card skips the layer's nodes and Vodafone's dialogs, and a card's words leave out the layer's nodes inside it (`experiences/src/host/live-adapter.js`).
+- **Test:** `live-adapter.test.ts`, "the layer's own nodes inside Vodafone's cards are never read": the whole model, word for word, is the same with the Pocket's liner, a chip and a layer link with a picture in every card, on every saved page (ids changed on `/ar/home` before).
+
+## B-41 Two tests could pass while what they guard went wrong
+
+- **Found:** 2026-11-13, the same review (AIXC-60, AIXC-61).
+- **Cause:** the AIXC-41 test told a sticker's card by its title, and `/en/services` has two cards titled "Balance transfer", so swapping them passed. The live kit's Arabic cookie banner was the English height (321 px; Vodafone's Arabic face sets it on 360), 39 px low, so a check that the accessibility button never meets the banner could pass while the live one would cover it.
+- **Fix:** the AIXC-41 test tells a card by its link, picture and title together (and checks that these are unique on the page); the Arabic banner stand-in is 375×360 at 975,524 and its test checks the box's top.

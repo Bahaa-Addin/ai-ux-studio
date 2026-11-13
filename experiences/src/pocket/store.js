@@ -7,7 +7,11 @@
  *
  * - `ready` resolves once the records are read; `all()` is the in-memory copy.
  * - Every change is written through to IndexedDB and told to other tabs on a BroadcastChannel; a
- *   tab that hears it reads the store again.
+ *   tab that hears it reads the store again. This tab's changes that are not committed yet are laid
+ *   over every read, so a read that started before them never undoes them (AIXC-56), and a change
+ *   made before the store has opened is kept and written once it has (AIXC-57). A write counts as
+ *   done when its transaction commits; one the browser refuses (storage full) is reported, and the
+ *   store is read again so it shows only what was kept (AIXC-58).
  * - When IndexedDB does not open (a private window, blocked storage), the store lives in memory for
  *   this page only and says so (`persistent: false`); nothing throws.
  * - The clone's earlier store (localStorage `aixc.pocket.v1`, ids only) is moved over once, by the
@@ -67,19 +71,48 @@ export function openPocketStore({ win = globalThis, onError = () => {} } = {}) {
     }
   }
   const tx = (mode) => db.transaction(STORE, mode).objectStore(STORE)
+  /** This tab's changes not committed yet, in order: each is { apply(map) }. */
+  const pending = []
+  let reads = 0
   const readAll = async () => {
     if (!db) return
+    const n = ++reads
     const rows = await request(tx('readonly').getAll())
+    // Only the latest read counts; an earlier one that lands later is older than it.
+    if (n !== reads) return
     records.clear()
     for (const row of rows) if (isRecord(row)) records.set(row.key, row)
+    for (const op of pending) op.apply(records)
   }
-  const write = async (fn) => {
-    if (!db || closed) return
+  /** Resolves when the transaction commits; rejects when it aborts (a quota refused at commit). */
+  const commit = (fn) =>
+    new Promise((resolve, reject) => {
+      const t = db.transaction(STORE, 'readwrite')
+      t.oncomplete = () => resolve()
+      t.onabort = () => reject(t.error || new Error('the write was aborted'))
+      fn(t.objectStore(STORE))
+    })
+  /** A change: in memory at once, then written once the store is open (memory only when it is not). */
+  const change = async (apply, fn) => {
+    const op = { apply }
+    apply(records)
+    pending.push(op)
+    tell()
+    let failed = false
     try {
-      await fn()
+      await ready
+      if (!db || closed) return
+      await commit(fn)
       channel?.postMessage('changed')
     } catch (e) {
+      failed = true
       onError(e)
+    } finally {
+      pending.splice(pending.indexOf(op), 1)
+    }
+    if (failed && db && !closed) {
+      await readAll().catch(onError)
+      tell()
     }
   }
 
@@ -114,19 +147,14 @@ export function openPocketStore({ win = globalThis, onError = () => {} } = {}) {
     get: (key) => records.get(key) ?? null,
     async put(record) {
       if (!isRecord(record)) throw new Error('not a Pocket record')
-      records.set(record.key, record)
-      tell()
-      await write(() => request(tx('readwrite').put(record)))
+      await change((map) => map.set(record.key, record), (store) => store.put(record))
     },
     async remove(key) {
-      if (!records.delete(key)) return
-      tell()
-      await write(() => request(tx('readwrite').delete(key)))
+      if (!records.has(key)) return
+      await change((map) => map.delete(key), (store) => store.delete(key))
     },
     async clear() {
-      records.clear()
-      tell()
-      await write(() => request(tx('readwrite').clear()))
+      await change((map) => map.clear(), (store) => store.clear())
     },
     /** Called with every record, now and after each change (here or in another tab); returns the unsubscribe function. */
     subscribe(fn) {

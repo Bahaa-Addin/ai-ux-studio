@@ -369,7 +369,7 @@ test('the page changes after load: a carousel\'s new copies lose the layer\'s ma
 	}
 })
 
-test('the layer\'s own nodes inside Vodafone\'s cards are never read: same ids, coverage and tags (phase 3 S3)', async () => {
+test('the layer\'s own nodes inside Vodafone\'s cards are never read: the same model, coverage and tags (phase 3 S3, AIXC-59)', async () => {
 	const page = await browser.newPage()
 	try {
 		for (const p of saved) {
@@ -379,17 +379,27 @@ test('the layer\'s own nodes inside Vodafone\'s cards are never read: same ids, 
 			await page.addScriptTag({ content: bundle })
 			const out = await page.evaluate(([origin, path]) => {
 				const a = (window as any).__live.createLiveAdapter({ doc: document, origin, path })
-				const state = () => ({ ids: a.extractContent().model?.sections.flatMap((x: { items: { id: string }[] }) => x.items.map((i) => i.id)) ?? [], coverage: a.extractContent().coverage, tags: [...document.querySelectorAll('[data-aixc-item]')].map((e) => (e as HTMLElement).dataset.aixcItem).sort() })
+				const state = () => {
+					const { model, coverage } = a.extractContent()
+					return { ids: model?.sections.flatMap((x: { items: { id: string }[] }) => x.items.map((i) => i.id)) ?? [], model: JSON.stringify(model), coverage, tags: [...document.querySelectorAll('[data-aixc-item]')].map((e) => (e as HTMLElement).dataset.aixcItem).sort() }
+				}
 				a.tag()
 				const before = state()
-				// What the Pocket puts in a card (a button and a "Put back" liner), and its lifted copy of a card.
+				// What the Pocket puts in a card (a button and its "In your pocket" liner), a layer node with a
+				// link and a picture ahead of the card's own, and its lifted copy of a card.
 				const cards = [...document.querySelectorAll('[data-aixc-item]')]
 				for (const card of cards) {
 					const chip = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Pocket it' })
 					chip.setAttribute('data-aixc', '')
 					const liner = document.createElement('div')
 					liner.setAttribute('data-aixc', '')
-					liner.innerHTML = '<button type="button">Put back</button>'
+					liner.innerHTML = '<div class="pocket-liner__content"><p class="pocket-liner__text">In your pocket</p><button type="button">Put back</button></div>'
+					const ahead = document.createElement('a')
+					ahead.setAttribute('data-aixc', '')
+					ahead.className = 'btn'
+					ahead.href = '/en/not-vodafones'
+					ahead.innerHTML = '<img src="https://web.vodafone.com.eg/documents/1/not-vodafones.png" alt="layer"><h3>Layer</h3>'
+					card.prepend(ahead)
 					card.append(chip, liner)
 				}
 				if (cards[0]) {
@@ -405,6 +415,7 @@ test('the layer\'s own nodes inside Vodafone\'s cards are never read: same ids, 
 				return { before, after: state(), band: !!document.querySelector('[data-aixc-item="vodafone-cash"]') }
 			}, [ORIGIN, pathname] as const)
 			assert.deepEqual(out.after.ids, out.before.ids, `${pathname}: same items and ids`)
+			assert.equal(out.after.model, out.before.model, `${pathname}: the same model, word for word (titles, descriptions, links, pictures, keys)`)
 			assert.deepEqual(out.after.coverage, out.before.coverage, `${pathname}: same coverage`)
 			assert.deepEqual(out.after.tags, out.before.tags, `${pathname}: same tags`)
 			if (/\/services$/.test(pathname)) assert.equal(out.band, true, `${pathname}: the Vodafone Cash band keeps its tag`)
@@ -462,6 +473,26 @@ const stickersOf = async (model: Model, pathname: string) => {
 	return model.sections.flatMap((s) => s.items.map((item, i) => ({ at: `${s.id}#${i}`, id: item.id, r: recordFrom({ item, section: s, page: { path: pathname, lang }, key: `${s.id}#${i}` }) })))
 }
 const placeOf = (model: Model) => new Map<string, string>(model.sections.flatMap((s) => s.items.map((item, i) => [item.id, `${s.id}#${i}`] as const)))
+/**
+ * Cards that are the same card in the other language where neither the id nor the place says so:
+ * the Arabic bundles page has one more ticket than the English one ("اتحكم في حسابك" also links the
+ * shop's DSL page and has no English card), so its "خدمات ال DSL" is the English "DSL".
+ */
+const TWINS: Record<string, string | null> = { 'ubytreluayel-1': null, dsl: 'internetservices-dsl-bundles', 'internetservices-dsl-bundles': 'dsl' }
+/** Each sticker's own card on `target`: the same id; else its named twin; else the same place, where the section holds as many cards in both. */
+const truthOf = (stickers: { r: { key: string }; id: string; at: string }[], source: Model, target: Model) => {
+	const at = placeOf(target)
+	const count = (m: Model, id: string) => m.sections.find((x) => x.id === id)?.items.length
+	return new Map(
+		stickers.map((x) => {
+			if (at.has(x.id)) return [x.r.key, x.id] as const
+			if (x.id in TWINS) return [x.r.key, TWINS[x.id] && at.has(TWINS[x.id]!) ? TWINS[x.id] : undefined] as const
+			const section = x.at.split('#')[0]
+			if (count(source, section) !== count(target, section)) return [x.r.key, undefined] as const
+			return [x.r.key, [...at].find(([, place]) => place === x.at)?.[0]] as const
+		}),
+	)
+}
 
 test('a sticker saved in one language finds its card in the other, never a wrong one (ADR-0051)', async () => {
 	const { rematch } = await recordModule()
@@ -469,20 +500,21 @@ test('a sticker saved in one language finds its card in the other, never a wrong
 	try {
 		// At least as many as the phase 3 map measured; never a wrong card.
 		const pairs = [['/en/home', '/ar/home', 10], ['/en/vodafone-cash', '/ar/vodafone-cash', 8], ['/en/services', '/ar/services', 29], ['/en/vodafone-red1', '/ar/vodafone-red1', 7], ['/en/mobile-internet-bundles', '/ar/mobile-internet-bundles', 19]] as const
-		for (const [en, ar, atLeast] of pairs) {
+		for (const [a, b, atLeast] of pairs)
+			for (const [en, ar, lang] of [[a, b, 'ar'], [b, a, 'en']] as const) {
 			const from = (await read(page, htmlOf(savedAt(en)), en)).model as unknown as Model
 			const to = (await read(page, htmlOf(savedAt(ar)), ar)).model as unknown as Model
 			const stickers = await stickersOf(from, en)
-			const found = rematch(stickers.map((x) => x.r), to, { lang: 'ar' })
+			const found = rematch(stickers.map((x) => x.r), to, { lang })
 			// The right card: the one with the same id where the other page has it (Services lists two Shokran
-			// cards in another order in Arabic), else the one in the same section and place.
-			const at = placeOf(to)
-			const truth = new Map(stickers.map((x) => [x.r.key, at.has(x.id) ? x.id : [...at].find(([, place]) => place === x.at)?.[0]]))
+			// cards in another order in Arabic), else its named twin, else the one in the same section and place.
+			const truth = truthOf(stickers, from, to)
 			const right = [...found].filter(([key, id]) => truth.get(key) === id).length
 			const wrong = [...found].filter(([key, id]) => truth.get(key) !== id)
 			console.log(`# ${en} -> ${ar}: ${right} of ${stickers.length} found, ${wrong.length} wrong`)
 			assert.deepEqual(wrong, [], `${en} -> ${ar}: no sticker finds a wrong card`)
-			assert.ok(right >= atLeast, `${en} -> ${ar}: ${right} of ${stickers.length} found (at least ${atLeast})`)
+			if (lang === 'ar') assert.ok(right >= atLeast, `${en} -> ${ar}: ${right} of ${stickers.length} found (at least ${atLeast})`)
+			found.size && found // (Arabic to English is measured, never wrong; its counts are in ADR-0051)
 		}
 	} finally {
 		await page.close()
@@ -534,10 +566,56 @@ test('Vodafone adds a card that shares a link: the cards\' ids change, every sti
 		const renamed = stickers.filter((x) => !after.sections.some((s) => s.items.some((i) => i.id === x.id)))
 		assert.ok(renamed.length >= 1, `an id changed (${renamed.map((x) => x.id).join(', ')})`)
 		const found = rematch(stickers.map((x) => x.r), after, { lang: 'en' })
-		const byTitle = (m: Model, id: string) => m.sections.flatMap((s) => s.items).find((i) => i.id === id)?.title
-		for (const x of stickers) assert.equal(byTitle(after, found.get(x.r.key) ?? ''), byTitle(before, x.id), `${x.id}: found its own card again`)
+		// The same card is the one with the same link, picture and title (two cards here are titled
+		// "Balance transfer": a title alone cannot tell them apart, AIXC-60).
+		const sign = (m: Model, id: string) => JSON.stringify(m.sections.flatMap((s) => s.items).find((i) => i.id === id)?.keys.filter((k) => ['link', 'picture', 'title'].includes(k.kind)) ?? null)
+		assert.equal(new Set(before.sections.flatMap((s) => s.items.map((i) => sign(before, i.id)))).size, before.sections.flatMap((s) => s.items).length, 'every card has its own link, picture and title together')
+		for (const x of stickers) assert.equal(sign(after, found.get(x.r.key) ?? ''), sign(before, x.id), `${x.id}: found its own card again`)
 	} finally {
 		await page.close()
 	}
 })
 
+
+test('a sticker whose card is gone finds no card at all: each card removed in turn, every saved page, both languages (AIXC-54)', async () => {
+	const { rematch } = await recordModule()
+	const page = await browser.newPage()
+	const guesses: string[] = []
+	let tried = 0
+	try {
+		const pairs = [['/en/home', '/ar/home'], ['/en/vodafone-cash', '/ar/vodafone-cash'], ['/en/services', '/ar/services'], ['/en/vodafone-red1', '/ar/vodafone-red1'], ['/en/mobile-internet-bundles', '/ar/mobile-internet-bundles']] as const
+		for (const [a, b] of pairs)
+			for (const [from, to, lang] of [[a, a, 'en'], [b, b, 'ar'], [a, b, 'ar'], [b, a, 'en']] as const) {
+				const source = (await read(page, htmlOf(savedAt(from)), from)).model as unknown as Model
+				const target = (await read(page, htmlOf(savedAt(to)), to)).model as unknown as Model
+				const stickers = await stickersOf(source, from)
+				const truth = truthOf(stickers, source, target)
+				for (const gone of target.sections.flatMap((s) => s.items.map((i) => i.id))) {
+					const without = { ...target, sections: target.sections.map((s) => ({ ...s, items: s.items.filter((i) => i.id !== gone) })) } as Model
+					const found = rematch(stickers.map((x) => x.r), without, { lang })
+					tried++
+					for (const [key, id] of found) if (truth.get(key) !== id) guesses.push(`${from} -> ${to} without ${gone}: ${key} took ${id} (its card: ${truth.get(key)})`)
+				}
+			}
+		console.log(`# ${tried} pages with one card removed; ${guesses.length} wrong`)
+		assert.deepEqual(guesses, [], 'a sticker never takes another card when its own is gone')
+	} finally {
+		await page.close()
+	}
+})
+
+test('two stickers that fit one card equally: neither takes it (AIXC-55)', async () => {
+	const { rematch } = await recordModule()
+	const page = await browser.newPage()
+	try {
+		const ar = (await read(page, htmlOf(savedAt('/ar/mobile-internet-bundles')), '/ar/mobile-internet-bundles')).model as unknown as Model
+		const en = (await read(page, htmlOf(savedAt('/en/mobile-internet-bundles')), '/en/mobile-internet-bundles')).model as unknown as Model
+		const stickers = await stickersOf(ar, '/ar/mobile-internet-bundles')
+		const records = stickers.map((x) => x.r)
+		const one = rematch(records, en, { lang: 'en' })
+		const other = rematch([...records].reverse(), en, { lang: 'en' })
+		assert.deepEqual([...one].sort(), [...other].sort(), 'the order the stickers were kept in decides nothing')
+	} finally {
+		await page.close()
+	}
+})

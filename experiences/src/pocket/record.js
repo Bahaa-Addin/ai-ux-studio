@@ -9,9 +9,10 @@
  * - Its card is found again by a score over the card's keys (link, picture, title, tab, the numbers
  *   in the title; experiences/src/host/live-adapter.js keysOf), not by its id alone: an id changes
  *   when an editor adds a card sharing its link (AIXC-41), and differs between languages on some
- *   pages (O26). Measured on the saved pages (phase 3 map): every card found across 20 days, and
- *   in the other language home 10/10, Cash 8/8, Services 29/30, RED 7/8, bundles 16/20, with no
- *   wrong match.
+ *   pages (O26). Measured on the saved pages (voice-guide tests/integration/live-adapter.test.ts,
+ *   2026-11-13): every card found across 20 days; in the other language home 10/10, Cash 8/8,
+ *   Services 29/30, RED 7/8, bundles 19/20 (19/21 from Arabic); with any one card removed, no
+ *   sticker ever takes another (AIXC-54).
  *
  * Pure functions: no DOM, no storage.
  */
@@ -61,6 +62,13 @@ export function isRecord(x) {
 const POINTS = { link: [4, 1], picture: [4, 1], title: [3, 1], tab: [2, 2], digits: [2, 0.5] }
 
 /**
+ * Points against a pair whose keys of a kind both have and do not share: another picture, another
+ * link, another title in the record's own language (AIXC-54: Vodafone's slips give two cards one
+ * link, or one title). Not tabs: a tab's id can differ between the languages (the bundles' Plus tab).
+ */
+const AGAINST = { link: 2, picture: 3, title: 2 }
+
+/**
  * How well a stored record fits a card on the page: per key kind, more when the card's value is
  * the only one of its kind on the page; a title counts only in the record's own language; numbers
  * in the title that differ count against; the same id and the same section add a little. `counts` maps "kind value" to how many cards carry it.
@@ -68,13 +76,20 @@ const POINTS = { link: [4, 1], picture: [4, 1], title: [3, 1], tab: [2, 2], digi
 export function scoreOf(record, item, { counts, lang, sectionId }) {
   let score = 0
   const unique = new Set()
+  const agreed = new Set()
+  const compared = (kind) => kind !== 'title' || record.copy.lang === lang
   for (const k of record.keys) {
-    if (k.kind === 'title' && record.copy.lang !== lang) continue
+    if (!compared(k.kind)) continue
     if (!item.keys?.some((x) => x.kind === k.kind && x.value === k.value)) continue
     const only = counts.get(`${k.kind} ${k.value}`) === 1
     const [hi, lo] = POINTS[k.kind] || [0, 0]
     score += only ? hi : lo
+    agreed.add(k.kind)
     if (only) unique.add(k.kind)
+  }
+  for (const [kind, points] of Object.entries(AGAINST)) {
+    if (!compared(kind) || agreed.has(kind)) continue
+    if (record.keys.some((k) => k.kind === kind) && item.keys?.some((x) => x.kind === kind)) score -= points
   }
   // The numbers in a title tell products apart ("1400 Mega", "Flex from 25 to 55"): different numbers,
   // or numbers on one side only, count against the pair (the bundles page's "prepaid lines" cards).
@@ -83,14 +98,17 @@ export function scoreOf(record, item, { counts, lang, sectionId }) {
   if (mine !== theirs) score -= mine && theirs ? 2 : 1
   if (record.id === item.id) score += 2
   if (record.source.section && record.source.section.id === sectionId) score += 1
-  return { score, unique }
+  // Two signs that agree, of different kinds (the same id is one): one alone is a guess.
+  const signs = agreed.size + (record.id === item.id ? 1 : 0)
+  return { score, unique, signs }
 }
 
 /**
  * Which card on this page each record is: `model` is the live content model, `records` those whose
  * source is this page. A record is matched to the card it scores best on, with at least 4 points
- * and no tie (3 when the tab alone is unique, the bundles page's cards across languages), and each
- * card to one record at most. Returns Map(record.key → item.id).
+ * (3 when the tab alone is unique, the bundles page's cards across languages), no tie, and two
+ * agreeing signs of different kinds; each card to one record at most, and to none when two fit it
+ * equally (AIXC-55). Returns Map(record.key → item.id).
  */
 export function rematch(records, model, { lang }) {
   const cards = (model?.sections || []).flatMap((s) => s.items.map((item) => ({ item, sectionId: s.id })))
@@ -101,16 +119,18 @@ export function rematch(records, model, { lang }) {
     const scored = cards.map(({ item, sectionId }) => ({ id: item.id, ...scoreOf(r, item, { counts, lang, sectionId }) })).sort((a, b) => b.score - a.score)
     const [best, next] = scored
     if (!best) continue
-    const enough = best.score >= 4 || (best.score >= 3 && best.unique.has('tab'))
+    const enough = best.signs >= 2 && (best.score >= 4 || (best.score >= 3 && best.unique.has('tab')))
     if (enough && !(next && next.score === best.score)) offers.push({ key: r.key, id: best.id, score: best.score })
   }
-  // Best fits first, so two records never take one card.
+  // Best fits first, so two records never take one card; two records that fit one card equally
+  // well both go without it, whatever order they were kept in (AIXC-55).
   offers.sort((a, b) => b.score - a.score)
   const out = new Map()
   const taken = new Set()
   for (const o of offers) {
     if (taken.has(o.id)) continue
     taken.add(o.id)
+    if (offers.some((other) => other !== o && other.id === o.id && other.score === o.score)) continue
     out.set(o.key, o.id)
   }
   return out

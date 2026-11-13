@@ -8,7 +8,8 @@
  *   fixed, zero-size `<accessibility-widget>` host at the top of the stack holding
  *   `button#vodafone-aw-icon.vf-aw-fab` (right 20, bottom 20, 55×55), styled from a stylesheet with
  *   the specificity of Vodafone's own (a class and an attribute), so an id rule overrides it as live;
- * - OneTrust's first-visit banner (bottom-left in English, bottom-right in Arabic, 375×321) and its
+ * - OneTrust's first-visit banner (bottom-left in English, 375×321; bottom-right in Arabic, 375×360:
+ *   Vodafone's Arabic face sets its copy on more lines, AIXC-61) and its
  *   full-page filter at z-index 2147483645; "Accept" and "Reject" hide both, as OneTrust does;
  * - the signed-out theme's `localStorage.clear()` on the pages whose theme does it (maintheme and
  *   static-theme: home, Services, RED, Vodafone Cash; not static-lite-theme), shortly after
@@ -85,6 +86,8 @@ export interface LayerOptions {
 	/** The experience layer; false keeps it off. Default: the site config (on). */
 	experiences?: boolean
 	initScripts?: string[]
+	/** Chromium's own network log goes to this file (to show nothing left, even as the browser closed). */
+	netLog?: string
 }
 
 export interface Layer {
@@ -112,6 +115,7 @@ export async function launchLayer(gw: LayerGateway, o: LayerOptions = {}): Promi
 		onNetwork: (url, type) => void refused.push({ url, type }),
 		accessibilityStandIn: false,
 		experiences: o.experiences,
+		netLog: o.netLog,
 		viewport: o.viewport || DESKTOP,
 		initScripts: [SPEECH_STUB, ...(o.widget === false ? [] : [WIDGET_STAND_IN]), ...(o.banner ? [BANNER_STAND_IN] : []), ...(o.themeClear ? [THEME_CLEAR_STAND_IN] : []), ...(o.owl ? [OWL_STAND_IN] : []), ...(o.initScripts || [])],
 	})
@@ -243,7 +247,7 @@ export const BANNER_STAND_IN = `(() => {
 		banner.setAttribute('tabindex', '0')
 		if (rtl) banner.setAttribute('dir', 'rtl')
 		const phone = innerWidth < 640
-		banner.style.cssText = 'position:fixed;z-index:2147483645;background:#fff;box-sizing:border-box;padding:16px;bottom:1rem;height:321px;' + (phone ? 'left:1rem;right:1rem' : rtl ? 'right:1rem;width:375px' : 'left:1rem;width:375px')
+		banner.style.cssText = 'position:fixed;z-index:2147483645;background:#fff;box-sizing:border-box;padding:16px;bottom:1rem;height:' + (rtl ? 360 : 321) + 'px;' + (phone ? 'left:1rem;right:1rem' : rtl ? 'right:1rem;width:375px' : 'left:1rem;width:375px')
 		banner.innerHTML = '<p>We use cookies.</p><button id="onetrust-accept-btn-handler" type="button">Accept All Cookies</button> <button id="onetrust-reject-all-handler" type="button">Reject All</button>'
 		const answer = () => {
 			banner.style.display = 'none'

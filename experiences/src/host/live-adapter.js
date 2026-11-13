@@ -26,7 +26,17 @@ const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
 const STORES = 'a[href*="apps.apple.com"], a[href*="play.google.com"], a[href*="appgallery"]'
 
 const clean = (s) => (s || '').replace(/\s+/g, ' ').trim()
-const textOf = (el) => clean(el?.textContent)
+/** The layer's own nodes (data-aixc) and Vodafone's dialogs are never read as a card's content (AIXC-59). */
+const NOT_READ = '.modal, [data-aixc]'
+
+/** An element's words, without any of the layer's own nodes inside it. */
+const textOf = (el) => {
+  if (!el) return clean(null)
+  if (!el.querySelector?.('[data-aixc]')) return clean(el.textContent)
+  const copy = el.cloneNode(true)
+  for (const node of copy.querySelectorAll('[data-aixc]')) node.remove()
+  return clean(copy.textContent)
+}
 
 /** Lower-case ASCII words joined by '-' ('' when the text has no ASCII letters or digits). */
 export const slug = (s) =>
@@ -68,7 +78,7 @@ const baseOf = (doc, origin, path, search = '') => {
 /** The first element matching `selector` inside `root` that is not in a part we never read. */
 const first = (root, selector) => {
   if (!selector) return null
-  for (const el of root.querySelectorAll(selector)) if (!el.closest('.modal')) return el
+  for (const el of root.querySelectorAll(selector)) if (!el.closest(NOT_READ)) return el
   return null
 }
 
@@ -257,7 +267,7 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
       page.heroImage = imageOf(first(pb, '.section-img-wrapper img, img'), base)
       return
     }
-    const stores = [...pb.querySelectorAll(STORES)].filter((a) => !a.closest('.modal'))
+    const stores = [...pb.querySelectorAll(STORES)].filter((a) => !a.closest(NOT_READ))
     if (stores.length && !cards.length && !unread.length) {
       page.closingPromotion = {
         id: toId(sectionTitle || 'download-app') || 'download-app',
@@ -291,7 +301,7 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
       const label = row.linkLabel ? textOf(first(el, row.linkLabel)) || null : null
       const descriptionParts =
         row.kind === 'card-plan'
-          ? [textOf(first(el, row.price)), ...[...el.querySelectorAll(row.description)].slice(0, 4).map(textOf)]
+          ? [textOf(first(el, row.price)), ...[...el.querySelectorAll(row.description)].filter((x) => !x.closest(NOT_READ)).slice(0, 4).map(textOf)]
           : [textOf(first(el, row.price)), textOf(first(el, row.description))]
       const description = descriptionParts.filter(Boolean).join(' · ') || null
       // No link, but the card opens one of the page's own dialogs (Great Entertainment: "Download Ana

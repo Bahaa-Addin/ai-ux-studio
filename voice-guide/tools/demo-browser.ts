@@ -50,9 +50,13 @@ export interface DemoBrowserOptions {
 	 * Replay only: nothing is fetched from the internet. Pictures the replay did not save are a blank,
 	 * fonts and styles it did not save are refused, and a page it does not have says so. Tests use it,
 	 * so a run never reaches Vodafone's site. `onNetwork` hears each request that would have gone out.
+	 * The browser also resolves no host name but localhost, so a request that escapes the routes
+	 * (one released as the browser closes, AIXC-53) fails before it leaves the machine.
 	 */
 	offline?: boolean
 	onNetwork?: (url: string, resourceType: string) => void
+	/** Tests: Chromium writes its own network log to this file (what it started, resolved and connected). */
+	netLog?: string
 	/** The experience layer (ADR-0048): false keeps it off even where the site config turns it on. Default: the site config. */
 	experiences?: boolean
 	/** Replay only: add a stand-in of Vodafone's accessibility button (scripts are off in replay, so the real one is absent). */
@@ -197,6 +201,8 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 		...(o.kiosk ? ['--kiosk'] : o.headless ? [] : ['--start-maximized']),
 		...(o.fakeMic ? ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${o.fakeMic}`] : []),
 		'--autoplay-policy=no-user-gesture-required',
+		...(o.offline ? ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'] : []),
+		...(o.netLog ? [`--log-net-log=${o.netLog}`, '--net-log-capture-mode=Default'] : []),
 	]
 	const launch = (channel: 'chrome' | 'chromium') =>
 		chromium.launchPersistentContext(profile, {
@@ -223,21 +229,33 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 	// Routes are matched newest first: the replay catch-all goes in first, the gateway bridge last.
 	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone, o.liveUnsaved, o.offline ? { onNetwork: o.onNetwork || (() => {}) } : undefined)
 
+	// Requests waiting on the gateway (the guide's 20 s long-poll among them). Closing ends each one
+	// first: Playwright leaves a route still pending at close to Chromium, which sends it on to the
+	// real site (AIXC-53).
+	const pending = new Map<Route, AbortController>()
+	let closing = false
 	const forward = async (route: Route, target: string) => {
+		if (closing) return route.abort('aborted').catch(() => {})
 		const req = route.request()
 		const headers = { ...req.headers() }
 		delete headers.host
 		delete headers['accept-encoding']
+		const stop = new AbortController()
+		pending.set(route, stop)
 		try {
-			const res = await fetch(target, { method: req.method(), headers, body: ['GET', 'HEAD'].includes(req.method()) ? undefined : (() => { const b = req.postDataBuffer(); return b ? new Uint8Array(b) : undefined })(), redirect: 'manual' })
+			const res = await fetch(target, { method: req.method(), headers, body: ['GET', 'HEAD'].includes(req.method()) ? undefined : (() => { const b = req.postDataBuffer(); return b ? new Uint8Array(b) : undefined })(), redirect: 'manual', signal: stop.signal })
 			const out: Record<string, string> = {}
 			res.headers.forEach((v, k) => {
 				if (!['content-encoding', 'content-length', 'transfer-encoding', 'connection'].includes(k)) out[k] = v
 			})
-			await route.fulfill({ status: res.status, headers: out, body: Buffer.from(await res.arrayBuffer()) })
+			const body = Buffer.from(await res.arrayBuffer())
+			if (!closing) await route.fulfill({ status: res.status, headers: out, body })
 		} catch (e) {
+			if (closing) return
 			log(`gateway unreachable for ${req.method()} ${target}: ${(e as Error).message}`)
 			await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ error: 'gateway unreachable', code: 'gateway_down' }) }).catch(() => {})
+		} finally {
+			pending.delete(route)
 		}
 	}
 	for (const origin of origins) {
@@ -258,6 +276,14 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 		context,
 		page,
 		close: async () => {
+			closing = true
+			await Promise.all(
+				[...pending].map(([route, stop]) => {
+					stop.abort()
+					return route.abort('aborted').catch(() => {})
+				}),
+			)
+			pending.clear()
 			await context.close().catch(() => {})
 			if (tmpProfile) fs.rmSync(tmpProfile, { recursive: true, force: true })
 		},
