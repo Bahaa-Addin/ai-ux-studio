@@ -221,3 +221,23 @@ test('on the numbers page asking for a number is a guided step at "Choose this l
 	assert.equal(step.target.css[0], '#sl-lines-pool-choose-this-line-button')
 	assert.match(step.message, /Pick the number you want/)
 })
+
+test('two choices that differ only by a stored price are both shown and read from the page, then asked as "the first or the second" (ADR-0059 §3)', async () => {
+	const { answerTo } = await import('#services/router/handlers.ts')
+	const alternatives = [
+		{ id: 'web.bundles.mobile-internet.mi-10', label: 'Plus · 37 EGP', score: 0.5, absolute: 0.5 },
+		{ id: 'web.bundles.mobile-internet.mi-25', label: 'Plus · 46 EGP', score: 0.49, absolute: 0.49 },
+	]
+	for (const lang of ['en', 'ar'] as const) {
+		const session = emptySession(lang)
+		const u = { ...(await understand({ utterance: 'plus', pageId: undefined, session, kb, settings })), route: 'clarify' as const, alternatives: alternatives as never, lang }
+		const { plan } = buildPlan({ u, utterance: 'plus', session, kb, page: { url: 'http://localhost:4401/en/index.html' }, turnId: 't', agent: { enabled: true, maxSteps: 12 } })
+		assert.deepEqual(plan.steps.map((x) => x.op).filter((op) => op !== 'navigate' && op !== 'reveal'), ['pickItem', 'spotlight', 'pickItem', 'spotlight', 'ask'], lang)
+		const ask = plan.steps.at(-1) as Extract<PlanStep, { op: 'ask' }>
+		assert.doesNotMatch(JSON.stringify(plan), /37|46 EGP/, 'no stored price anywhere in the plan')
+		assert.deepEqual(ask.options?.map((o) => o.utterance), alternatives.map((a) => `#dest:${a.id}`))
+	}
+	const ids = alternatives.map((a) => a.id)
+	for (const said of ['the first', 'first one', 'الأولى', 'الاول']) assert.equal(answerTo(said, ids, kb), ids[0], said)
+	for (const said of ['the second', 'second one', 'التانية', 'التاني']) assert.equal(answerTo(said, ids, kb), ids[1], said)
+})

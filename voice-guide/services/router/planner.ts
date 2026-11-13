@@ -6,6 +6,7 @@
 import { COMMIT_TARGETS, type Collection, commitIntent, type Destination, isNumbersPage, pick, type Plan, type PlanStep, type ReadSpec, type Target } from '#kb'
 import type { KbIndex } from '#shared/kb-index.ts'
 import type { Entity, SessionState } from '#shared/store/index.ts'
+import { valueFree } from '#text'
 
 import { type PhraseKey, say, template } from './phrases.ts'
 import type { Understanding } from './understand.ts'
@@ -32,9 +33,12 @@ export function buildPlan(input: PlanInput): PlanOutput {
 	const m = kb.manifest
 	const steps: PlanStep[] = []
 	const meta = (route: Plan['meta']['route'], destinationId?: string): Plan['meta'] => ({ intent: u.flowId ? `flow:${u.flowId}` : u.intent, route, destinationId, confidence: u.decision.confidence })
+	// Every plan leaves through the value gate (ADR-0059 §3): nothing the guide says or shows carries a
+	// stored price or stock; the live page answers. What the session keeps of an item is its key and a
+	// price-free name.
 	const out = (route: Plan['meta']['route'], sayText?: string, destinationId?: string, last?: Entity): PlanOutput => ({
-		plan: { v: 1, turnId: input.turnId, lang, say: sayText, steps: marked(steps, destinationId ? kb.dest.get(destinationId) : undefined), meta: meta(route, destinationId) },
-		last,
+		plan: gatePlan({ v: 1, turnId: input.turnId, lang, say: sayText, steps: marked(steps, destinationId ? kb.dest.get(destinationId) : undefined), meta: meta(route, destinationId) }, lang),
+		last: last?.name ? { ...last, name: free(last.name) } : last,
 	})
 
 	// ---- control ----
@@ -47,6 +51,29 @@ export function buildPlan(input: PlanInput): PlanOutput {
 	// ---- clarify: two close candidates ----
 	if (u.route === 'clarify' && u.alternatives.length === 2) {
 		const [a, b] = u.alternatives
+		// Two names that differ only by a stored price ("Plus 37 EGP" and "Plus 46 EGP") would read the same
+		// after the gate: the guide shows both cards and reads each from the page, then asks (ADR-0059 §3).
+		if ((free(a.label) || '') === (free(b.label) || '')) {
+			const both = [a, b].map((x) => kb.dest.get(x.id)).map((d) => ({ d, c: d?.collectionId ? kb.collections.get(d.collectionId) : undefined }))
+			if (both.every((x) => x.d?.kind === 'item' && x.c) && both[0].d!.pageId === both[1].d!.pageId) {
+				pushNavigate(both[0].d!.pageId)
+				const colDest = m.destinations.find((x) => x.kind === 'collection' && x.collectionId === both[0].c!.id)
+				if (colDest) pushReveal(colDest)
+				for (const { d, c } of both) {
+					steps.push({ op: 'pickItem', collection: collectionRef(c!), select: { by: 'key', key: itemKey(d!, c!) } })
+					steps.push({ op: 'spotlight', target: { css: [':scope'], within: 'item' }, read: itemRead(c!, lang, 'itemRead') })
+				}
+			}
+			steps.push({
+				op: 'ask',
+				question: say('clarifyBoth', lang),
+				options: [
+					{ label: say('theFirst', lang), utterance: `#dest:${a.id}` },
+					{ label: say('theSecond', lang), utterance: `#dest:${b.id}` },
+				],
+			})
+			return out('clarify')
+		}
 		steps.push({
 			op: 'ask',
 			question: say('clarify', lang, { a: a.label, b: b.label }),
@@ -86,7 +113,8 @@ export function buildPlan(input: PlanInput): PlanOutput {
 			.map((c) => {
 				const d = kb.dest.get(c.id)!
 				const url = variantUrl(kb, d.pageId, lang)
-				return `${c.label} (${url})`
+				// The agent's model gets no stored price either (ADR-0059 §3); the address stays as it is.
+				return `${free(c.label) || pageTitle(d.pageId)} (${url})`
 			})
 			.join('; ')
 		if (u.route === 'agent' && input.agent.enabled) {
@@ -274,6 +302,26 @@ export function cardAround(t: Target): Target | undefined {
 		return undefined
 	}
 	return upTo((p) => /^a([.#:[]|$)/.test(p)) ?? upTo((p) => /\.(tiles?|card|banner)(-(?!img|image)[\w-]*)?($|[.:[])/.test(p))
+}
+
+/** A line through the value gate; nothing when only a value was left. */
+const free = (s: string | undefined): string | undefined => (s ? valueFree(s) || undefined : s)
+
+/** Every line of a plan through the value gate (ADR-0059 §3). Read specs stay: they read the live page. */
+function gatePlan(plan: Plan, lang: string): Plan {
+	const steps: PlanStep[] = []
+	for (const s of plan.steps) {
+		if (s.op === 'say') {
+			const text = free(s.text)
+			if (text) steps.push({ ...s, text })
+		} else if (s.op === 'spotlight') steps.push(s.caption ? { ...s, caption: free(s.caption) } : s)
+		else if (s.op === 'confirm') steps.push({ ...s, message: free(s.message) || say('commitYours', lang), which: free(s.which), missing: free(s.missing) })
+		else if (s.op === 'ask') steps.push({ ...s, question: free(s.question) || s.question, options: s.options?.map((o) => ({ ...o, label: free(o.label) || o.label })) })
+		else if (s.op === 'offerWatch') steps.push({ ...s, label: free(s.label) || '' })
+		else if (s.op === 'pickItem' && s.select.by === 'name') steps.push({ ...s, select: { ...s.select, name: free(s.select.name) || s.select.name } })
+		else steps.push(s)
+	}
+	return { ...plan, say: free(plan.say), steps }
 }
 
 function collectionRef(c: Collection) {

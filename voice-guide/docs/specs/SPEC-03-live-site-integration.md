@@ -83,7 +83,7 @@ These rules are enforced in code and tested, not just written down:
 
 1. **Commit points are never pressed** by the guide or the fallback agent: payment, subscription confirmation, recharge, transfer (Vodafone Cash), line changes, consent. The site config marks known commit selectors. The agent's `interactiveBlacklist` covers buttons whose text matches the commit lexicon in both languages ("تأكيد", "ادفع", "اشترك" inside `/spa/` confirmation views, "Confirm", "Pay", "Submit order").
 2. **No credentials, OTPs, card numbers or national IDs are ever typed** by the guide. `input_text` refuses fields of type `password`, inputs with `autocomplete` values `one-time-code`, `cc-*` or `current-password`, and any field whose label matches those words.
-3. **Values are read, never stored** (ADR-0011): prices and balances go into the spoken answer and nowhere else. Traces store the destination id, not the value.
+3. **Values are read, never said from storage** (ADR-0011; amended 2026-11-13 by ADR-0059): prices and balances in an answer come from the live page. The knowledge base may keep public prices and stock as dated guide points, used to find places and never said or shown; every plan leaves the router through the value gate (`valueFree`, `packages/text`). Balances and personal data are never stored. Traces and logs are cleaned of page values and personal data (`services/shared/clean.ts`).
 4. **Masking** before page content leaves the browser (ADR-0018) covers Egyptian mobile numbers (`01[0125]\d{8}`), national IDs (14 digits), emails and card numbers.
 
 ## 5. Acceptance criteria

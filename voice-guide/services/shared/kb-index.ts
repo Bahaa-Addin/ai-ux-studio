@@ -3,7 +3,7 @@
  * (ADR-0010: hot reads in process, refreshed when the active version changes).
  */
 import type { Collection, Destination, Flow, Manifest, Page, Visual } from '#kb'
-import { buildSynonyms, type Doc, RetrievalIndex, type SynonymMap, terms } from '#text'
+import { buildSynonyms, type Doc, guidePointsIn, RetrievalIndex, type SynonymMap, terms } from '#text'
 
 import type { Store } from './store/index.ts'
 
@@ -24,6 +24,17 @@ export interface KbIndex {
 	pageFor(url: string): { pageId: string; lang: string } | undefined
 	index: RetrievalIndex
 	synonyms: SynonymMap
+}
+
+/**
+ * A destination's guide points (ADR-0059 §2): the price and stock its labels and target text name,
+ * as they were when the page was crawled. Used to rank and find ("around 50 pounds"), never said or
+ * shown: the live page answers. The lowest amount is the one a card starts from.
+ */
+export function guidePoints(d: Destination): { price?: number; stock?: 'in' | 'out' } {
+	const found = [...Object.values(d.labels || {}).flat(), ...Object.values(d.target?.text || {})].map(guidePointsIn)
+	const prices = found.flatMap((f) => f.prices)
+	return { price: prices.length ? Math.min(...prices) : undefined, stock: found.find((f) => f.stock)?.stock }
 }
 
 export function variantKey(url: string, keepQuery: string[] = []): string {

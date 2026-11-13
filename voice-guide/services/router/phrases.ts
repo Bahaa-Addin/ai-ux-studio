@@ -26,6 +26,10 @@ const P = {
 	whichItem: { en: 'Which one? Tap a bundle or tell me its name.', ar: 'أنهي واحدة؟ اختار باقة أو قولي اسمها.' },
 	commit: { en: 'This button completes the purchase. Press it yourself when you are ready.', ar: 'الزرار ده بيكمّل الشراء. دوس عليه بنفسك لما تكون جاهز.' },
 	// The guided commit step (ADR-0058; AIXC-70, 74): for steps other than buying, when there are several, and when there is none.
+	// Two choices that differ only by a stored price: both shown and read from the page, then this (ADR-0059).
+	clarifyBoth: { en: 'These two look alike. Which one: the first or the second?', ar: 'الاتنين شبه بعض. أنهي واحدة: الأولى ولا التانية؟' },
+	theFirst: { en: 'The first', ar: 'الأولى' },
+	theSecond: { en: 'The second', ar: 'التانية' },
 	commitYours: { en: "This step is yours: press this button yourself when you're ready.", ar: 'الخطوة دي بتاعتك: دوس على الزرار ده بنفسك لما تكون جاهز.' },
 	commitNumber: { en: 'Pick the number you want, then press this button yourself.', ar: 'اختار الرقم اللي عايزه، وبعدين دوس على الزرار ده بنفسك.' },
 	commitWhich: { en: "There are several of these here. Which one do you mean? Tell me its name and I'll show you its button.", ar: 'فيه أكتر من واحد هنا. تقصد أنهي واحد؟ قولي اسمه وأنا أوريك الزرار بتاعه.' },

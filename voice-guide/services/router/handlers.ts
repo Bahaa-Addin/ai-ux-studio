@@ -210,7 +210,12 @@ function direct(utterance: string, kb: KbIndex, input: TurnInput): Understanding
 }
 
 /** The option an answer names: all of its words appear in one option's labels and in no other's. */
-function answerTo(utterance: string, options: string[], kb: KbIndex): string | undefined {
+export function answerTo(utterance: string, options: string[], kb: KbIndex): string | undefined {
+	// "The first" / "the second" answer a question about two cards shown side by side (ADR-0059 §3).
+	if (options.length === 2) {
+		if (/^\s*(the )?(first|1st)( one)?\s*$|^\s*(ال)?[اأإ]و[لّ](ى|ي|ه|اني)?\s*$/i.test(utterance)) return options[0]
+		if (/^\s*(the )?(second|2nd)( one)?\s*$|^\s*(ال)?تاني(ة|ه)?\s*$|^\s*(ال)?ثاني(ة|ه)?\s*$/i.test(utterance)) return options[1]
+	}
 	const said = termGroups(utterance, kb.synonyms)
 	if (!said.length) return undefined
 	const named = options.filter((id) => {

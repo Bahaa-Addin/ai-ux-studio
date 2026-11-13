@@ -10,12 +10,12 @@
 
 | Kind of knowledge | Where it lives | How fresh |
 |---|---|---|
-| Values: prices, data amounts, balances, dates | **Read from the live page when the guide answers** (ADR-0011) | Always current; never stored |
+| Values: prices, data amounts, balances, dates | **Read from the live page when the guide answers** (ADR-0011). Public prices and stock also stay in the knowledge base as dated guide points, to find places, never said or shown (ADR-0059, 2026-11-13); balances are never stored | The answer is always current; guide points are as of the last sync |
 | Structure: pages, sections, tabs, cards, flows, selectors | Knowledge base version | Changed pages picked up within **3 hours** of their sitemap `lastmod` (target), plus the CDN cache (up to 4 hours, audit §2) |
 | Words: labels, examples, synonyms, picture descriptions | Crawl plus curated overlay | Same as structure; curated words change only by human edit |
 | New pages, removed pages | Sitemaps plus navigation | Next incremental run |
 
-Because values are always read live, a stale knowledge base can point to the wrong place but can never quote a wrong price. The sync exists to keep **where things are** right.
+Because values are always read live, a stale knowledge base can point to the wrong place but can never quote a wrong price (a stale guide point can at worst send someone to the wrong card, where the live read still tells the truth). The sync exists to keep **where things are** right.
 
 ## 2. Crawl scope
 

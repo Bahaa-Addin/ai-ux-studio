@@ -46,7 +46,7 @@ These protect real people on a real website. They are enforced in code and tests
 
 1. **Never press a commit point**: payment, subscription confirmation, recharge, money transfer, line changes, consent. The guide and the fallback agent stop before it and say so.
 2. **Never type credentials, OTPs, card numbers or national IDs**, in code or in a browser you drive.
-3. **Never store page values** (prices, balances, personal data) in the knowledge base, traces or logs. Read them live. (Owner, 2026-11-13: a Pocket sticker in the visitor's own browser and the committed demo kit keep a card's public copy as published, price included, labelled with the day it was captured; ADR-0051. Neither ever holds personal data.)
+3. **Never store personal data or balances anywhere.** Public prices and stock may be kept in the knowledge base as dated guide points (owner, 2026-11-13; ADR-0059): the guide uses them to find places and never says or shows them; it reads the live page, which answers. Traces and logs never hold page values. Pocket stickers keep Vodafone's public copy as published and dated, in the visitor's browser or on our gateway (ADR-0051, ADR-0062); never personal data.
 4. **Mask personal data** before page content leaves the browser (ADR-0018).
 5. **Respect Vodafone's site**: honour `robots.txt` on both origins; keep to the crawl rate limits; stop on bot challenges and never try to get past them; no scheduled crawling of production before written approval (PRD D3).
 6. **Never hide, cover or change Vodafone's accessibility widget or cookie banner.**

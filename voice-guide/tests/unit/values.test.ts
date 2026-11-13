@@ -32,3 +32,22 @@ test('numbers that are part of a name stay: sizes, bundle names, ranges, phone-l
 		assert.equal(hasValue(text), false, text)
 	}
 })
+
+test('guide points: amounts written with a currency, in either digit system, and in or out of stock; nothing from a name (ADR-0059 §2)', async () => {
+	const { guidePointsIn } = await import('#text')
+	assert.deepEqual(guidePointsIn('Mega 25 · 46 EGP/month'), { prices: [46], stock: undefined })
+	assert.deepEqual(guidePointsIn('5 جيجا ٤٦ جنيه'), { prices: [46], stock: undefined })
+	assert.deepEqual(guidePointsIn('EGP 1,400 now'), { prices: [1400], stock: undefined })
+	assert.deepEqual(guidePointsIn('Galaxy A55 18,999 EGP Out of stock'), { prices: [18999], stock: 'out' })
+	assert.deepEqual(guidePointsIn('Flex 1400'), { prices: [], stock: undefined })
+	const { guidePoints } = await import('#shared/kb-index.ts')
+	assert.deepEqual(guidePoints({ id: 'x', kind: 'item', pageId: 'p', labels: { en: ['Flex From 25 EGP up to 55 EGP'], ar: ['فليكس من ٢٥ جنيه'] } } as never), { price: 25, stock: undefined })
+})
+
+test('a URL\'s percent encoding is not a percentage: encoded Arabic paths stay whole', async () => {
+	const { hasValue, valueFree } = await import('#text')
+	const url = 'https://web.vodafone.com.eg/ar/%D8%A7%D9%84%D8%A7%D9%86%D8%AA%D8%B1%D9%86%D8%AA'
+	assert.equal(hasValue(url), false)
+	assert.equal(valueFree(url), url)
+	assert.equal(valueFree('Save 20% now'), 'Save now')
+})

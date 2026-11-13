@@ -8,6 +8,7 @@ import type { ExperienceCache } from '#shared/experience.ts'
 import { HttpError } from '#shared/http.ts'
 import { type KbCache, variantKey } from '#shared/kb-index.ts'
 import type { Store } from '#shared/store/index.ts'
+import { hasValue, valueFree } from '#text'
 
 export interface KnowledgeDeps {
 	store: Store
@@ -19,7 +20,15 @@ export interface KnowledgeDeps {
 /** Pages that belong to one person: never recorded, never offered as an explored item (ADR-0037 §3). */
 const PRIVATE_KINDS = new Set(['account', 'login', 'checkout'])
 const eligible = (p: Page) => !PRIVATE_KINDS.has(p.kind) && !p.requiresAuth
-const titles = (labels: Record<string, string[]> | undefined): I18nText => Object.fromEntries(Object.entries(labels || {}).filter(([, l]) => l[0]).map(([lang, l]) => [lang, l[0]]))
+/** Titles the page shows (the layer, the trail) carry no stored price or stock (ADR-0059 §3). */
+const titles = (labels: Record<string, string[]> | undefined): I18nText =>
+	Object.fromEntries(
+		Object.entries(labels || {})
+			.map(([lang, l]) => [lang, valueFree(l[0] || '')] as const)
+			.filter(([, t]) => t),
+	)
+/** A suggested question that names a price or stock is left out, not shortened into another question. */
+const priceFree = (qs: Record<string, { id: string; text: string; intent: string }[]>) => Object.fromEntries(Object.entries(qs).map(([lang, list]) => [lang, list.filter((q) => !hasValue(q.text))]))
 
 export function createKnowledge(deps: KnowledgeDeps) {
 	return {
@@ -62,7 +71,7 @@ export function createKnowledge(deps: KnowledgeDeps) {
 			const page = hit ? kb.pages.get(hit.pageId) : undefined
 			const m = kb.manifest
 			const keep = m.site.keepQuery || []
-			const pageTitle = (p: Page): I18nText => Object.fromEntries(Object.entries(p.variants).map(([lang, v]) => [lang, v.title]))
+			const pageTitle = (p: Page): I18nText => Object.fromEntries(Object.entries(p.variants).map(([lang, v]) => [lang, valueFree(v.title) || v.title]))
 			const here = page
 				? m.destinations
 						.filter((d) => d.pageId === page.id && d.kind !== 'page' && d.kind !== 'action' && !d.commit && d.target)
@@ -80,7 +89,7 @@ export function createKnowledge(deps: KnowledgeDeps) {
 								topic: xd?.topic || d.collectionId || d.id,
 								collectionId: d.collectionId,
 								key,
-								questions: x?.published(d.id) ?? {},
+								questions: priceFree(x?.published(d.id) ?? {}),
 								popular: !!xd?.minimumCohortMet,
 							}
 						})
@@ -100,7 +109,7 @@ export function createKnowledge(deps: KnowledgeDeps) {
 					eligible: eligible(p),
 					title: pageTitle(p),
 					paths: [...new Set(Object.values(p.variants).flatMap((v) => [v.url, ...(v.aliases || [])]).map((u) => variantKey(u, keep)))],
-					questions: eligible(p) ? (x?.published(p.id) ?? {}) : {},
+					questions: eligible(p) ? priceFree(x?.published(p.id) ?? {}) : {},
 				})),
 			}
 		},
