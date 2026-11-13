@@ -6,6 +6,7 @@ import { Manifest, type ManifestInput } from './manifest.ts'
 export * from './manifest.ts'
 export * from './plan.ts'
 export * from './experience.ts'
+export * from './commit.ts'
 export { checkIntegrity, type Issue } from './integrity.ts'
 
 export interface ValidationResult {

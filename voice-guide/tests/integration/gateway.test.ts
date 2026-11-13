@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 
-import type { Target } from '#kb'
+import { COMMIT_SELECTORS, type Target } from '#kb'
 
 import { type MockLlm, startMockLlm } from '../helpers/mock-llm.ts'
 import { startPlatform, type TestPlatform } from '../helpers/platform.ts'
@@ -49,7 +49,8 @@ test('a session starts, resumes by id, and crosses origins with a single-use han
 	assert.match(s.sessionId, /^ses_/)
 	assert.equal(s.via, 'new')
 	assert.equal(s.page.pageId, 'web.home')
-	assert.deepEqual(s.page.commitTargets, [['#confirm-pay', '#checkout-form > button.btn']])
+	// The knowledge base's own commit points, then the built-in floor every page gets (ADR-0058).
+	assert.deepEqual(s.page.commitTargets, [['#confirm-pay', '#checkout-form > button.btn'], [...COMMIT_SELECTORS]])
 	assert.ok(s.agentToken)
 	assert.ok(s.push.publicKey.length > 80)
 	const again = (await call('/v1/session', { sessionId: s.sessionId, lang: 'ar', page: { url: `${ORIGIN}/ar/bundles.html` } })).body

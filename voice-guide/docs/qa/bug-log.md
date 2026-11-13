@@ -330,3 +330,10 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Found:** 2026-11-13, the same review (AIXC-60, AIXC-61).
 - **Cause:** the AIXC-41 test told a sticker's card by its title, and `/en/services` has two cards titled "Balance transfer", so swapping them passed. The live kit's Arabic cookie banner was the English height (321 px; Vodafone's Arabic face sets it on 360), 39 px low, so a check that the accessibility button never meets the banner could pass while the live one would cover it.
 - **Fix:** the AIXC-41 test tells a card by its link, picture and title together (and checks that these are unique on the page); the Arabic banner stand-in is 375×360 at 975,524 and its test checks the box's top.
+
+## B-42 The fallback agent could press a commit control, and the cookie banner, on any page
+
+- **Found:** 2026-11-13, by the e-shop map and the merged plan (`docs/reference/eshop-plan-2026-11-13.md` §0). AGENTS.md 4.1.
+- **Cause:** the agent hid only the knowledge base's commit selectors (the first 4 matches of each), and the knowledge base marks none outside forms, so nothing was hidden on the shop or from OneTrust's banner; its click tool pressed without a check, and page-agent clicks the centre of an element, where a product card's cart button can sit; its prompt said purchase buttons were hidden from it.
+- **Fix:** ADR-0058 step E1: a built-in commit floor in code (markup and words, both languages), checked on every click, select and input target and at the click point; commit controls out of the model's view; synthetic clicks on them stopped while the agent runs; nothing pressed on commit pages; at a commit control the guide shows the person where to press and the task ends; a commit request is a confirm step, never an agent task.
+- **Test:** `tests/e2e/guide.e2e.test.ts`, the three ADR-0058 tests (each failed before: the old agent pressed through or never guided); `tests/unit/commit.test.ts`, `commit-context.test.ts`, `router.test.ts`.

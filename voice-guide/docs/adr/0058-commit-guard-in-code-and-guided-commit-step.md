@@ -35,6 +35,16 @@ Read on 2026-11-13 (`docs/reference/eshop-map-2026-11-13.md`; the merged plan, �
 - A word list can refuse a harmless button; that errs on the safe side, and the near-miss list keeps demo moment 6.
 - guide.js grows by one measured call (ADR-0057's 21 KB budget, owner 2026-11-13).
 
+## Built (step E1, 2026-11-13)
+
+- `packages/kb/src/commit.ts`: the floor's selectors, the words in both languages (on a link only the unmistakable phrases count, so "Balance transfer" still opens its page), the near misses, `commitIntent` for requests and `isCommitPage`. Choosing how to pay ("اختار الدفع بالبطاقة") is not paying.
+- `packages/sdk/src/agent.ts`: every commit control (markup or words) is out of the model's view, found again each time page-agent reads the page; click, select and input check the target, the control it sits in and what lies at its centre; `select_dropdown_option` overridden; `show_person_where` added; `execute_javascript` removed; synthetic clicks and submits on commit controls stopped while the agent runs; on commit pages nothing is pressed; the guided step (pointer glide, pulsing highlight in the guide's own root, the line in the person's language, ended by the person's own press or after 30 s) ends the task. 0 bytes in guide.js.
+- `packages/sdk/src/executor.ts`: the confirm step also glides the pointer to the control (one call in guide.js).
+- `services/knowledge/handlers.ts`: the floor in every page context, with or without a knowledge base; `:root` on commit pages.
+- `services/router/planner.ts`: a request the router would hand to the agent that asks to commit becomes a confirm step at the control (by its markup, else its words), never an agent task.
+- Not built yet: the site config's `commit:` block per origin (nothing needs it before the shop's crawl marks its own); the public gateway's start check is met by construction, since the floor is in code and every origin has it.
+- Tests (each failed on the code before it): `tests/e2e/guide.e2e.test.ts` (a card whose centre lies on its cart button, a button whose script presses the cart, a commit request; the cart, the cookie banner and an Arabic "Buy now" never indexed for the model, the pointer on the control within 2 px, a near miss still pressed); `tests/unit/commit.test.ts`, `tests/unit/commit-context.test.ts`, `tests/unit/router.test.ts`.
+
 ## Pilot knobs
 
 - The floor's selectors and words (`packages/kb/src/commit.ts`), and each origin's `commit:` block in the site config.

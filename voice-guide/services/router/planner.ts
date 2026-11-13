@@ -3,7 +3,7 @@
  * Everything here is deterministic and model-free: the same knowledge base,
  * session and request always give the same steps.
  */
-import { type Collection, type Destination, pick, type Plan, type PlanStep, type ReadSpec, type Target } from '#kb'
+import { COMMIT_TARGETS, type Collection, commitIntent, type Destination, pick, type Plan, type PlanStep, type ReadSpec, type Target } from '#kb'
 import type { KbIndex } from '#shared/kb-index.ts'
 import type { Entity, SessionState } from '#shared/store/index.ts'
 
@@ -68,6 +68,14 @@ export function buildPlan(input: PlanInput): PlanOutput {
 				return `${c.label} (${url})`
 			})
 			.join('; ')
+		// A request to commit itself ("add it to the cart", "ضيفه للسلة") is never an agent task: the
+		// guide shows the person the control and they press it (ADR-0058).
+		const commit = commitIntent(input.utterance)
+		if (commit && u.route === 'agent') {
+			const t = COMMIT_TARGETS[commit]
+			steps.push({ op: 'confirm', target: { css: t.css, text: { en: t.text.en, ar: t.text.ar } }, message: say('commit', lang) })
+			return out('none')
+		}
 		if (u.route === 'agent' && input.agent.enabled) {
 			steps.push({ op: 'agent', task: input.utterance, hints: hints || undefined, maxSteps: input.agent.maxSteps })
 			return out('agent', say('agent', lang))

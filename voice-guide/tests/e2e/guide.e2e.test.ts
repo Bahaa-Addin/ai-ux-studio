@@ -254,3 +254,96 @@ test('"stop" ends what the guide is doing, instantly', async () => {
 	await heard(page, /Okay, stopped/)
 	assert.equal((await spotlit(page)).on, false)
 })
+
+/**
+ * A shop-like page of our own (no Vodafone code or copy), served by the test: a product card whose
+ * centre lies on its icon-only cart button, a "Sort by price" button, a "quick view" button whose own
+ * script presses the cart button, an Arabic "Buy now" link and a cookie-banner stand-in. Every press
+ * is counted on window.__pressed.
+ */
+const SHOP = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Demo Telco | Phones</title>
+<style>body{font:16px sans-serif;margin:40px} .card{position:relative;width:320px;height:200px;border:1px solid #ccc;border-radius:8px;padding:12px;cursor:pointer}
+.card .cart{position:absolute;left:135px;top:75px;width:50px;height:50px} #onetrust-consent-sdk{position:fixed;left:16px;bottom:16px;background:#fff;border:1px solid #333;padding:12px}</style></head>
+<body><h1>Phones</h1>
+<button id="sort" onclick="window.__pressed.push('sort')">Sort by price</button>
+<button id="quick" onclick="window.__pressed.push('quick');document.querySelector('.card .cart').click()">Galaxy quick view</button>
+<div class="card" role="link" tabindex="0" onclick="window.__pressed.push('card')"><h3>Galaxy A55 phone card</h3>
+<button type="button" class="cart" onclick="event.stopPropagation();window.__pressed.push('cart')"><img alt="cart" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></button></div>
+<p><a href="#buy" onclick="window.__pressed.push('buy-ar')">اشتري الآن</a></p>
+<div id="onetrust-consent-sdk"><p>We use cookies.</p><button id="onetrust-accept-btn-handler" onclick="window.__pressed.push('consent')">Accept All Cookies</button></div>
+<script>window.__pressed = []</script>
+</body></html>`
+
+/** Puts the stand-in page in the fixture site for one test (the site server adds the guide's tag), and takes it away again. */
+async function openShop(): Promise<() => void> {
+	const file = path.join(ROOT, 'fixtures/sites/demo-telco/web/en/phones-standin.html')
+	fs.writeFileSync(file, SHOP)
+	await page.goto(`${WEB}/en/phones-standin.html`)
+	await ready()
+	return () => fs.rmSync(file, { force: true })
+}
+const pressed = () => page.evaluate(() => (window as any).__pressed as string[])
+/** Where the guide's pointer is, and how far from the centre of `css`. */
+const pointerOff = (css: string) =>
+	page.evaluate((sel) => {
+		const p = document.querySelector('vg-guide')!.shadowRoot!.querySelector('.pointer') as HTMLElement
+		const r = document.querySelector(sel)!.getBoundingClientRect()
+		return { on: p.classList.contains('on'), dx: Math.abs(parseFloat(p.style.left) - (r.left + r.width / 2)), dy: Math.abs(parseFloat(p.style.top) - (r.top + r.height / 2)) }
+	}, css)
+
+test('the agent never presses a commit control: its click on a card lands on the cart button, so it shows the person where to press instead (ADR-0058)', async () => {
+	const removeShop = await openShop()
+	try {
+		await type(page, 'open the Galaxy A55 phone card')
+		await heard(page, /add it to your cart\. Press it yourself/, 20_000)
+		assert.deepEqual(await pressed(), [], 'nothing was pressed for the person: not the cart button, not the card')
+		const s = await spotlit(page)
+		assert.equal(s.on && s.commit, true, 'the cart button is highlighted as a commit control')
+		const off = await pointerOff('.card .cart')
+		assert.ok(off.on && off.dx <= 2 && off.dy <= 2, `the pointer rests on the cart button (${off.dx}, ${off.dy})`)
+		const done = (await p.store.listTrace(await sessionId())).filter((e) => e.name === 'agent.done').at(-1)
+		assert.equal(done?.attrs.guided, true, 'the task ended at the commit control, guided')
+		// The model never saw the cart button, the cookie banner's button or the Arabic "Buy now" link.
+		const state = /<browser_state>([\s\S]*?)<\/browser_state>/.exec(llm.requests.at(-1)!.body.messages[1].content)?.[1] || ''
+		assert.doesNotMatch(state, /\[\d+\]<[^\n]*(cart|Accept All Cookies|اشتري الآن)/, 'commit controls are not among what it can press')
+		assert.match(state, /\[\d+\]<div role=link>Galaxy A55 phone card/, 'the card itself is')
+		const tools = JSON.stringify(llm.requests.at(-1)!.body.tools || '')
+		assert.match(tools, /show_person_where/, 'it can show the person where to press')
+		assert.doesNotMatch(tools, /execute_javascript/, 'no script runs on the page from the model')
+	} finally {
+		removeShop()
+	}
+})
+
+test('asking to add something to the cart is a guided step, never an agent task; sorting stays the agent\'s (ADR-0058)', async () => {
+	const removeShop = await openShop()
+	try {
+		const agentRuns = async () => (await p.store.listTrace(await sessionId())).filter((e) => e.name === 'agent.done').length
+		const runs = await agentRuns()
+		await type(page, 'add the Galaxy A55 to the cart')
+		await heard(page, /Press it yourself when you are ready/, 15_000)
+		assert.deepEqual(await pressed(), [], 'the cart button was not pressed')
+		assert.equal(await agentRuns(), runs, 'no agent ran for it')
+		const off = await pointerOff('.card .cart')
+		assert.ok(off.on && off.dx <= 2 && off.dy <= 2, `the pointer rests on the cart button (${off.dx}, ${off.dy})`)
+		await type(page, 'sort the phones by price')
+		await page.waitForFunction(() => (window as any).__pressed.includes('sort'), null, { timeout: 20_000 })
+		assert.deepEqual(await pressed(), ['sort'], 'a near miss stays clickable: only "Sort by price" was pressed')
+	} finally {
+		removeShop()
+	}
+})
+
+test('while the agent runs, a click no person made never reaches a commit control: a button whose script presses the cart does not get through (ADR-0058)', async () => {
+	const removeShop = await openShop()
+	try {
+		await type(page, 'show the galaxy quick view')
+		await heard(page, /Done, I selected it/, 20_000)
+		assert.deepEqual(await pressed(), ['quick'], 'the quick view opened; the cart button its script pressed did not')
+		// The person's own press is theirs: a real click on the cart button gets through.
+		await page.locator('.card .cart').click()
+		assert.deepEqual(await pressed(), ['quick', 'cart'])
+	} finally {
+		removeShop()
+	}
+})

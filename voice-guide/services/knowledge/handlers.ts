@@ -2,7 +2,7 @@
  * Knowledge service (ADR-0011, ADR-0012): the active manifest version per
  * site, what the SDK needs to know about the current page, and activation.
  */
-import { type I18nText, type Page } from '#kb'
+import { COMMIT_SELECTORS, type I18nText, isCommitPage, type Page } from '#kb'
 import type { SiteConfig } from '#shared/config.ts'
 import type { ExperienceCache } from '#shared/experience.ts'
 import { HttpError } from '#shared/http.ts'
@@ -28,11 +28,14 @@ export function createKnowledge(deps: KnowledgeDeps) {
 		 * variants, and the commit targets the guide must never press (ADR-0015).
 		 */
 		async pageContext(input: { siteId: string; url: string }) {
+			// The built-in commit floor on every page, known to the knowledge base or not, and on a
+			// commit page (the cart, checkout) a mark that makes the guide press nothing there (ADR-0058).
+			const floor = [[...COMMIT_SELECTORS], ...(isCommitPage(input.url) ? [[':root']] : [])]
 			const kb = await deps.kb.get(input.siteId)
-			if (!kb) return { kbVersion: null, pageId: null, variants: {}, commitTargets: [], visuals: 0, phrases: [] }
+			if (!kb) return { kbVersion: null, pageId: null, variants: {}, commitTargets: floor, visuals: 0, phrases: [] }
 			const hit = kb.pageFor(input.url)
 			const page = hit ? kb.pages.get(hit.pageId) : undefined
-			const commitTargets = kb.manifest.destinations.filter((d) => d.commit && d.target).map((d) => d.target!.css)
+			const commitTargets = [...kb.manifest.destinations.filter((d) => d.commit && d.target).map((d) => d.target!.css), ...floor]
 			return {
 				kbVersion: kb.versionId,
 				pageId: hit?.pageId ?? null,

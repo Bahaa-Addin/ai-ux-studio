@@ -178,6 +178,8 @@ export class Executor {
 				el.scrollIntoView({ block: 'center', behavior: 'smooth' })
 				await new Promise((r) => setTimeout(r, 350))
 				h.ui.spotlight(el, { caption: step.message, commit: true })
+				// The pointer glides to it and never taps: the person presses it (ADR-0058).
+				void h.ui.pointAt(el)
 				await h.say(step.message, { wait: false })
 				return 'left for the person to press'
 			}

@@ -156,3 +156,20 @@ test('Jev/Laya adapter: a slow provider times out and the turn still answers', a
 	assert.match(u.decision.fallbackReason || '', /abort|timeout/i)
 	assert.ok(performance.now() - t0 < 350)
 })
+
+test('a request to commit itself is a guided confirm step at the control, never an agent task; other unmatched requests still go to the agent (ADR-0058)', async () => {
+	const page = { url: 'http://localhost:4401/en/phones.html' }
+	for (const [utterance, lang] of [['add the Galaxy A55 to the cart', 'en'], ['ضيفه للسلة', 'ar']] as const) {
+		const session = emptySession(lang)
+		const u = await understand({ utterance, pageId: undefined, session, kb, settings })
+		if (u.route !== 'agent') continue // the local decider found a place for it: not this case
+		const { plan } = buildPlan({ u, utterance, session, kb, page, turnId: 't', agent: { enabled: true, maxSteps: 12 } })
+		assert.deepEqual(plan.steps.map((x) => x.op), ['confirm'], `${utterance}: one confirm step`)
+		const step = plan.steps[0] as Extract<(typeof plan.steps)[number], { op: 'confirm' }>
+		assert.ok(step.target.css.includes('button.cart') && step.target.text?.[lang], `${utterance}: the cart control, by markup and by its words`)
+		assert.match(step.message, lang === 'ar' ? /بنفسك/ : /Press it yourself/)
+	}
+	const session = emptySession('en')
+	const u = await understand({ utterance: 'sort the phones by price', pageId: undefined, session, kb, settings })
+	if (u.route === 'agent') assert.deepEqual(buildPlan({ u, utterance: 'sort the phones by price', session, kb, page, turnId: 't', agent: { enabled: true, maxSteps: 12 } }).plan.steps.map((x) => x.op), ['agent'], 'sorting is still the agent\'s')
+})
