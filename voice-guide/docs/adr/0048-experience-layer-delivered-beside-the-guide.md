@@ -3,6 +3,7 @@
 - Status: Proposed (2026-11-10); Accepted when phase 1's checks of the live plan pass
 - Date: 2026-11-10
 - Area: delivery, build, gateway, site config, failure isolation; phase 1 of the live plan (`docs/handoff/live-demos-way2.md` at the repository root), under ADR-0046
+- Amended: §3 by [ADR-0052](0052-pocket-on-vodafone-pages.md) (2026-11-13): a demo's CSS is minified at build time and put on the page once by the core's `ensureCss`; every demo chunk has a budget of its own; the asset plugin waits for the first chunk that needs it
 - Owner decisions: 2026-11-10, ADRs are numbered in the order they are written, so this one takes 0048 and the trail host interface version 2 (asked questions, `seed()`, and the run-time host claim below) takes the next number
 
 ## Context

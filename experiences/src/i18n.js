@@ -37,6 +37,11 @@ const AR = {
   'Your pocket, {count}.': 'جيبك، {count}.',
   'Play with the Pocket drone': 'العب مع درون الجيب',
   'Opening {title}': 'بنفتح {title}',
+  '{title} removed from your pocket. {count} left.': 'شلت {title} من جيبك. فاضل {count}.',
+  // Pocket on Vodafone's own pages (the experience layer)
+  'Back to the page': 'ارجع للصفحة',
+  'Kept for later: {count}.': 'محفوظة لبعدين: {count}.',
+  'Saved {date}': 'اتحفظت {date}',
   // Reimagine this page (the composer)
   'Reimagine this page': 'غيّر شكل الصفحة',
   'Describe how you’d like to experience this page…': 'اوصف إزاي تحب تشوف الصفحة…',
@@ -76,7 +81,6 @@ const AR = {
   "Skip intro": "تخطّي المقدمة",
   // Reimagined experiences: spotlight, gallery
   "slide": "شريحة",
-  "carousel": "عرض شرايح",
   "{n} of {total}: {title}": "{n} من {total}: {title}",
   "Show {title}": "اعرض {title}",
   "Up next": "اللي جاي",
@@ -93,7 +97,6 @@ const AR = {
   "Gallery of Vodafone services": "معرض خدمات ڤودافون",
   "No. {n}": "رقم {n}",
   "In this category": "في النوع ده",
-  "{n} of {total}": "{n} من {total}",
   // Reimagined experiences: split, fan
   "{n} of {total}: {title}, {group}": "{n} من {total}: {title}، {group}",
   "Go to {title}": "روح لـ{title}",
@@ -288,8 +291,6 @@ const AR = {
   'Clear journey': 'امسح الرحلة دي',
   'You explored': 'اللي اكتشفته',
   'Only in this browser': 'في المتصفح ده بس',
-  Home: 'الرئيسية',
-  Services: 'الخدمات',
   // the coach marks ("Try it")
   Skip: 'تخطّي',
   'Got it': 'تمام',

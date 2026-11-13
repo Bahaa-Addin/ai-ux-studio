@@ -8,6 +8,34 @@
  * Every selector is .pocket- or .curl- prefixed so nothing leaks into the shell.
  */
 
+/* Vodafone's faces. Its Arabic pages name the Arabic faces apart (vodafone-bold-ar…, the theme's
+   @font-face); the clone's Arabic page gives the -en names Arabic glyphs instead (src/rtl.css), so
+   either way Arabic text is drawn in Vodafone Arabic. */
+:root {
+  --pocket-regular: vodafone-regular-en, vf-regular, sans-serif;
+  --pocket-bold: vodafone-bold-en, vf-bold, sans-serif;
+  --pocket-light: vodafone-light-en, vf-light, sans-serif;
+}
+
+:root:lang(ar) {
+  --pocket-regular: vodafone-regular-ar, vodafone-regular-en, vf-regular, sans-serif;
+  --pocket-bold: vodafone-bold-ar, vodafone-bold-en, vf-bold, sans-serif;
+  --pocket-light: vodafone-light-ar, vodafone-light-en, vf-light, sans-serif;
+}
+
+/* Read out, not shown (the same rule as aixc.css, which Vodafone's pages do not load). */
+.aixc-sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ------------------------------------------------------------- the engine */
 
 .curl-host {
@@ -67,7 +95,7 @@
   border-radius: 999px;
   background: #fff;
   color: #e60000;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.82rem;
   line-height: 1;
   white-space: nowrap;
@@ -154,7 +182,7 @@
 
 .pocket-liner__text {
   margin: 2px 0 0;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.95rem;
   line-height: 1.2;
 }
@@ -166,7 +194,7 @@
   border-radius: 6px;
   background: none;
   color: #e60000;
-  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-family: var(--pocket-regular);
   font-size: 0.88rem;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -288,13 +316,17 @@ body:not([data-pocket-view]):has(#experience-output:not([hidden])) vg-guide {
   --vg-lift: var(--pocket-corner-lift);
 }
 
-#vodafone-aw-icon {
+/* The accessibility button is moved on the clone's page only (its .page-shell). On Vodafone's own
+   pages these rules never match: its widget keeps its own transition and place (AGENTS.md 4.6),
+   apart from the owner's lift exception, which has rules of its own (live plan phase 3, S11).
+   :where() adds nothing to their weight, so the portal's rule (portal.css) still wins in its turn. */
+:where(body:has(.page-shell)) #vodafone-aw-icon {
   transition: bottom 0.28s ease;
 }
 
-body:has(.pocket-peek[data-state='shown']) #vodafone-aw-icon,
-body[data-pocket-view='open'] #vodafone-aw-icon,
-body:not([data-pocket-view]):has(#experience-output:not([hidden])) #vodafone-aw-icon {
+body:where(:has(.page-shell)):has(.pocket-peek[data-state='shown']) #vodafone-aw-icon,
+body:where(:has(.page-shell))[data-pocket-view='open'] #vodafone-aw-icon,
+body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not([hidden])) #vodafone-aw-icon {
   bottom: calc(20px + var(--pocket-corner-lift)) !important;
   z-index: 10 !important; /* above the curl's shadow */
 }
@@ -323,7 +355,7 @@ body:not([data-pocket-view]):has(#experience-output:not([hidden])) #vodafone-aw-
   border-radius: 12px;
   background: #fff;
   color: #e60000;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.8rem;
   line-height: 24px;
   text-align: center;
@@ -338,7 +370,7 @@ body:not([data-pocket-view]):has(#experience-output:not([hidden])) #vodafone-aw-
   border-radius: 999px;
   background: #fff;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.9rem;
   white-space: nowrap;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
@@ -379,6 +411,20 @@ body[data-pocket-view='open'] .aixc-composer {
 
 /* ------------------------------------------------------ the pocket album */
 
+/* On Vodafone's pages (the layer marks its regions data-aixc): the album's own column, since the
+   themes' .container differs or is missing, and a full screen of album under the turning page. */
+.pocket-output[data-aixc] .container {
+  box-sizing: border-box;
+  width: min(calc(100% - 30px), 1140px);
+  max-width: none;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.pocket-output[data-aixc] .pocket-view {
+  min-height: 100vh;
+}
+
 .pocket-output[hidden],
 .pocket-output [hidden] {
   display: none !important;
@@ -400,7 +446,7 @@ body[data-pocket-view='open'] .aixc-composer {
   min-height: calc(100vh - var(--aixc-header-h, 104px));
   padding: 28px 0 88px;
   color: #333;
-  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-family: var(--pocket-regular);
 }
 
 .pocket-view__bar {
@@ -421,7 +467,7 @@ body[data-pocket-view='open'] .aixc-composer {
   border-radius: 6px;
   background: #fff;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1rem;
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
   cursor: pointer;
@@ -459,7 +505,7 @@ body[data-pocket-view='open'] .aixc-composer {
   border-radius: 6px;
   background: none;
   color: #666;
-  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-family: var(--pocket-regular);
   font-size: 0.95rem;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -496,7 +542,7 @@ body[data-pocket-view='open'] .aixc-composer {
 
 .pocket-view__title {
   margin: 0;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 2.442rem;
   font-weight: normal;
   line-height: 1.08;
@@ -514,7 +560,7 @@ body[data-pocket-view='open'] .aixc-composer {
 .pocket-view__lead {
   margin: 6px 0 0;
   color: #666;
-  font-family: vodafone-light-en, vf-light, sans-serif;
+  font-family: var(--pocket-light);
   font-size: 1.16rem;
   line-height: 1.4;
 }
@@ -600,7 +646,7 @@ body[data-pocket-view='open'] .aixc-composer {
 .pocket-sticker__from {
   margin: 0 0 6px;
   color: #e60000;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.72rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -608,7 +654,7 @@ body[data-pocket-view='open'] .aixc-composer {
 
 .pocket-sticker__title {
   margin: 0 0 6px;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1.3rem;
   font-weight: normal;
   line-height: 1.2;
@@ -620,6 +666,13 @@ body[data-pocket-view='open'] .aixc-composer {
   color: #666;
   font-size: 0.95rem;
   line-height: 1.5;
+}
+
+/* The day a sticker was kept (Vodafone's pages): its copy, price included, is that day's. */
+.pocket-sticker__date {
+  margin: 8px 0 0;
+  color: #999;
+  font-size: 0.78rem;
 }
 
 .pocket-sticker__actions {
@@ -638,7 +691,7 @@ body[data-pocket-view='open'] .aixc-composer {
   gap: 6px;
   min-height: 36px;
   color: #e60000;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.95rem;
 }
 
@@ -663,7 +716,7 @@ body[data-pocket-view='open'] .aixc-composer {
   border-radius: 6px;
   background: none;
   color: #666;
-  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-family: var(--pocket-regular);
   font-size: 0.88rem;
   cursor: pointer;
 }
@@ -699,7 +752,7 @@ body[data-pocket-view='open'] .aixc-composer {
 
 .pocket-empty__title {
   margin: 4px 0 0;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1.45rem;
 }
 

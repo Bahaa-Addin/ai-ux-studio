@@ -57,11 +57,20 @@ test('the trail adds only a gate to guide.js; rrweb lives in its own on-demand c
  * gzipped on 2026-11-10 (phase 1: settings, PageHost, guard); 5,343 on 2026-11-11 (phase 2 adds the
  * live adapter and its recognisers, which decide what the layer can offer on a page); 6,933 and then 7,072 on
  * 2026-11-12 (the review's fixes: links resolved against the page, unread card-like blocks counted
- * in coverage, two more recogniser rows, re-reading when the page changes). The budget is set a
- * little above and raised on purpose when a phase adds to the core. Demos load on intent (dynamic
- * imports), never in it.
+ * in coverage, two more recogniser rows, re-reading when the page changes); 7,647 on 2026-11-13
+ * (phase 3 S5: the demo loader and ensureCss, which put a demo's CSS on the page). The budget is
+ * set a little above and raised on purpose when a phase adds to the core. Demos load on intent
+ * (dynamic imports), never in it.
  */
-const AIXC_CORE_BUDGET = 7.5 * 1024
+const AIXC_CORE_BUDGET = 7.75 * 1024
+
+/**
+ * Each demo chunk with what it imports statically, by the source module it is the entry of
+ * (ADR-0052). Measured 2026-11-13: the Pocket's album on live pages (S5: pocket.js, curl.js, its
+ * store and record, pocket.css as minified text, the UI copy in both languages) 24,830 bytes
+ * gzipped, without the mascot, the drone or the portal, which are passed in only where they run.
+ */
+const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 26 * 1024 }
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
 	const sizes = await buildSdk({ minify: true })
@@ -78,6 +87,23 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	assert.ok(core <= AIXC_CORE_BUDGET, `the core (${[...eager].join(', ')}) is ${core} bytes gzipped, over the ${AIXC_CORE_BUDGET}-byte budget`)
 	for (const f of eager) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-peek|aixc-composer|pz-world|tips-coach|vf-portal/, `no demo code in the core (${f})`)
 	assert.doesNotMatch(fs.readFileSync(path.join(dist, 'guide.js'), 'utf8'), /experience-output|aixc-viewbar|__aixc/, 'nothing of the layer in guide.js')
+	// Each demo chunk within its budget; a file next to a module (new URL('./x', import.meta.url)) would 404 on the gateway, which serves only .js.
+	const closure = (file: string) => {
+		const files = new Set([file])
+		for (const f of files) for (const i of manifest.files.find((x) => x.file === f)?.imports ?? []) if (i.kind === 'import-statement') files.add(i.file)
+		return [...files]
+	}
+	for (const [entry, max] of Object.entries(AIXC_DEMO_BUDGETS)) {
+		const chunk = manifest.files.find((f) => f.entry === entry)
+		assert.ok(chunk, `${entry} is built as its own chunk`)
+		assert.ok(manifest.files.find((f) => f.file === 'aixc.js')?.imports.some((i) => i.file === chunk.file && i.kind === 'dynamic-import'), `the core loads ${entry} on intent`)
+		const files = closure(chunk.file)
+		const gz = files.filter((f) => !eager.has(f)).reduce((sum, f) => sum + gzipSync(fs.readFileSync(path.join(aixc, f)), { level: 9 }).length, 0)
+		assert.ok(gz <= max, `${entry} (${files.join(', ')}) is ${gz} bytes gzipped, over its ${max}-byte budget`)
+	}
+	for (const f of manifest.files) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f.file), 'utf8'), /new URL\(["'`]\.\//, `no asset beside a module in ${f.file}`)
+	const pocket = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/pocket.js')?.file ?? ''), 'utf8')
+	assert.doesNotMatch(pocket, /vf-portal|pocket-mascot|pocket-drone|generativelanguage|aixc-composer__/, 'the Pocket on live pages carries no portal, mascot, drone or composer (pocket.css only hides the composer\'s launcher)')
 })
 
 /**

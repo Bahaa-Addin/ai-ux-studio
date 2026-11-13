@@ -6,6 +6,8 @@ import { renderShell } from './shell.js'
 import { getPageAdapter } from './aixc/page-adapters.js'
 import { initComposer } from './aixc/controller.js'
 import { initPocket } from './pocket/pocket.js'
+import { createPocketActors } from './pocket/pocket-actors.js'
+import { initPocketPortal } from './pocket/portal/portal.js'
 import { initJourney } from './pocket/journey.js'
 import { initTips } from './tips/entry.js'
 import { initPersonalization } from './personalization/index.js'
@@ -54,7 +56,7 @@ window.addEventListener('vg:trail-ready', () => {
   document.documentElement.dataset.vgTrail = 'on'
 })
 // Pocket: peel services off like stickers, keep them, turn the page to see them.
-const pocket = initPocket({ adapter, regions, composer })
+const pocket = initPocket({ adapter, regions, composer, createActors: createPocketActors, createPortal: initPocketPortal })
 // Your journey: when the Voice Guide trail runs on this page, the journey lives in the pocket.
 if (pocket) initJourney({ pocket })
 // Tips: an Apple Tips-style walkthrough of the four demos, from a button bottom-left (voice-guide ADR-0045).

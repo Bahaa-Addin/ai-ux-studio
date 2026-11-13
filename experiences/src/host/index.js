@@ -6,7 +6,9 @@
  * (hidden), reads Vodafone's cards into the content model (./live-adapter.js) and tags them, names
  * each section's knowledge destination on the model (GET /v1/page-map, ADR-0049), reads the page
  * again whenever Vodafone's content changes (an `aixc:model` event on the document says the model
- * changed), and waits. The demos load on intent in later phases, as chunks of this bundle.
+ * changed), and waits. Phase 3 loads the demos the site enables (the tag's data-aixc-demos) at idle,
+ * each a chunk of this bundle (./demos/<name>.js exporting start()); a demo's CSS comes as text and
+ * goes into one marked <style> (ensureCss).
  * Everything runs through one guard (./guard.js): any error removes the layer and leaves the page
  * as Vodafone served it.
  *
@@ -42,6 +44,22 @@ const pageMapFor = (settings) =>
         .catch(() => null)
     : Promise.resolve(null)
 
+/** The demos this core can load, each its own chunk (voice-guide ADR-0052). */
+const DEMOS = { pocket: () => import('./demos/pocket.js') }
+
+/** A demo's stylesheet, once, in <head>; marked, so a stop removes it with the rest of the layer. */
+const ensureCss = (name, text) => {
+  if ([...document.head.querySelectorAll('style[data-aixc-css]')].some((s) => s.dataset.aixcCss === name)) return
+  const style = document.createElement('style')
+  style.dataset.aixc = ''
+  style.dataset.vg = ''
+  style.dataset.aixcCss = name
+  style.textContent = text
+  document.head.append(style)
+}
+
+const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(() => fn(), { timeout: 2000 }) : setTimeout(fn, 200))
+
 /** Test-only: throws at a named step (window.__AIXC_TEST__ = { failAt }), to prove the guard. */
 const checkpoint = (step) => {
   if (window.__AIXC_TEST__?.failAt === step) throw new Error(`test failure at "${step}"`)
@@ -58,7 +76,7 @@ const start = () => {
   const guard = createGuard()
   // Stopped, the layer leaves no trace, not even the tag the loader added for it.
   guard.onStop(() => tag?.remove())
-  const layer = { state: 'starting', settings, host: null, problem: null, guard, adapter: null, model: null, coverage: null, pageMap: null, reads: 0 }
+  const layer = { state: 'starting', settings, host: null, problem: null, guard, adapter: null, model: null, coverage: null, pageMap: null, reads: 0, demos: {} }
   if (settings.debug) {
     window.__aixc = layer
     guard.onStop((reason) => {
@@ -108,6 +126,17 @@ const start = () => {
     const named = model?.sections.filter((x) => x.destinationId).length ?? 0
     if (settings.debug) console.info(`[AIXC] ready (${host.lang}, ${host.dir}): ${model?.sections.length ?? 0} sections, coverage ${coverage.ratio}, ${layer.pageMap ? `${named} named from the page map` : 'no page map'}`)
     checkpoint('ready')
+    for (const name of settings.demos) {
+      if (!DEMOS[name]) continue
+      whenIdle(
+        guard.wrap(`demo ${name}`, async () => {
+          const demo = await DEMOS[name]()
+          if (guard.stopped) return
+          checkpoint(`demo-${name}`)
+          layer.demos[name] = await demo.start({ host, adapter, guard, layer, ensureCss, checkpoint })
+        }),
+      )
+    }
   })
 }
 

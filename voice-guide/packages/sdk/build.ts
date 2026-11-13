@@ -62,6 +62,17 @@ const cssMinify: esbuild.Plugin = {
 	},
 }
 
+/** The demos' stylesheets reach Vodafone's page as text (the layer's ensureCss); minified at build time. */
+const cssText: esbuild.Plugin = {
+	name: 'css-text',
+	setup(b) {
+		b.onLoad({ filter: /\.css$/ }, async (a) => {
+			const { code } = await esbuild.transform(fs.readFileSync(a.path, 'utf8'), { loader: 'css', minify: true, charset: 'utf8' })
+			return { contents: code, loader: 'text' }
+		})
+	},
+}
+
 /** Resolves the repo's `#kb` alias for browser builds (types only are imported by the SDK). */
 const alias: esbuild.Plugin = {
 	name: 'alias',
@@ -110,6 +121,7 @@ export async function buildAixc(opts: { minify?: boolean } = {}): Promise<Record
 		entryNames: '[name]',
 		chunkNames: '[name]-[hash]',
 		loader: { '.css': 'text' },
+		plugins: (opts.minify ?? true) ? [cssText] : [],
 		metafile: true,
 	})
 	const files: AixcManifestFile[] = Object.entries(result.metafile.outputs)

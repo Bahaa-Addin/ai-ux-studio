@@ -7,6 +7,8 @@
  * - outputRoot (#experience-output) and viewbar (#aixc-viewbar) are the layer's, inserted beside
  *   #main-content and hidden until a demo needs them. They keep the clone's ids, so the modules'
  *   CSS (ADR-0044 keys on #experience-output) works unchanged.
+ * - A demo can add a region of its own after these (`addRegion`): the Pocket's album (#pocket-output,
+ *   ADR-0052), so its page turn can hide #main-content and the reimagined view without hiding itself.
  * - Vodafone's header, footer, accessibility button and cookie banner are protected: the layer
  *   never writes into them.
  *
@@ -55,6 +57,7 @@ export const createPageHost = (doc = document, { path = doc.defaultView?.locatio
   // #main-content as Vodafone served it, so hiding it can be undone exactly.
   const served = { hidden: main.hidden }
   let sourceHidden = false
+  const regions = [outputRoot]
 
   return {
     host: {
@@ -85,11 +88,23 @@ export const createPageHost = (doc = document, { path = doc.defaultView?.locatio
         sourceHidden = false
         main.hidden = served.hidden
       },
+      /** True while the layer hides #main-content. */
+      get sourceHidden() {
+        return sourceHidden
+      },
+      /** Puts a demo's own region after the layer's, marked like them (it keeps its own hidden state). */
+      addRegion(node) {
+        node.dataset.aixc = ''
+        node.dataset.vg = ''
+        regions.at(-1).after(node)
+        regions.push(node)
+        return node
+      },
       destroy() {
         if (sourceHidden) main.hidden = served.hidden
         sourceHidden = false
         viewbar.remove()
-        outputRoot.remove()
+        for (const node of regions.splice(0)) node.remove()
       },
     },
     problem: null,

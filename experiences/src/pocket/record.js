@@ -19,6 +19,9 @@
 /** A page's address without its language and trailing slash: /en/services and /ar/services are one page. */
 export const pageKeyOf = (path) => (String(path || '/').replace(/^\/(en|ar)(?=\/|$)/, '') || '/').replace(/(.)\/+$/, '$1')
 
+/** A call to action that does something (a link or the page's own dialog), as kept. */
+const ctaOf = (cta) => (cta && (cta.href || cta.opens) ? { label: cta.label ?? null, href: cta.href ?? null, ...(cta.opens ? { opens: cta.opens } : {}) } : null)
+
 const newKey = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
 /**
@@ -33,8 +36,9 @@ export function recordFrom({ item, section, page, origin = 'person', now = Date.
     kind: item.kind ?? null,
     keys: Array.isArray(item.keys) ? item.keys.map((k) => ({ kind: k.kind, value: k.value })) : [],
     copy: { title: item.title, description: item.description ?? null, lang: page.lang, dir: page.dir || (page.lang === 'ar' ? 'rtl' : 'ltr') },
-    image: item.image ? { src: item.image.src, alt: item.image.alt ?? null } : null,
-    cta: item.cta ? { label: item.cta.label ?? null, href: item.cta.href ?? null, ...(item.cta.opens ? { opens: item.cta.opens } : {}) } : null,
+    image: item.image ? { src: item.image.src, alt: item.image.alt ?? null, ...(item.image.fit ? { fit: item.image.fit } : {}) } : null,
+    // The card's own link or dialog, else its section's (the clone's Cash cards share one).
+    cta: ctaOf(item.cta) ?? ctaOf(section?.cta),
     source: {
       page: pageKeyOf(page.path),
       path: page.path,

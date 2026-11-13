@@ -15,14 +15,20 @@
  *
  * The mascot and drone (./pocket-actors.js) are told about each step through a few
  * lifecycle calls; they are decoration and never hold up a save, an open or a close.
+ *
+ * Two hosts (voice-guide ADR-0052). The Services clone (src/shell.js) is the default; on Vodafone's
+ * own pages the experience layer passes `seams` (src/host/demos/pocket.js): where the album goes,
+ * what the turn freezes, how the page's content is covered and restored, how every node is marked
+ * and every handler guarded. Stickers come from a store of records (./store.js on live; the clone's
+ * ids-only ./ids-store.js), and the mascot, the drone and the portal are passed in, so a page that
+ * does not use them never loads them.
  */
 
-import { createCurl, cornerReach, fullTurn, tween, ease, lerp } from './curl.js'
-import { createPocketActors } from './pocket-actors.js'
-import { initPocketPortal } from './portal/portal.js'
-import { countItems, t } from '../i18n.js'
+import { createCurl, cornerReach, fullTurn, tween as runTween, ease, lerp } from './curl.js'
+import { createIdsStore } from './ids-store.js'
+import { recordFrom } from './record.js'
+import { countItems, lang as pageLang, t } from '../i18n.js'
 
-const STORE_KEY = 'aixc.pocket.v1'
 const RAD = Math.PI / 180
 const PEEL_MS = 560 // peel back to halfway (the adhesive holds, then gives)
 const LIFT_MS = 520 // keep peeling while lifting it off, until the last corner lets go
@@ -94,6 +100,32 @@ const stripIds = (root) => {
   root.removeAttribute?.('id')
   for (const node of root.querySelectorAll('[id]')) node.removeAttribute('id')
 }
+
+/** Drops the layer's tags (data-aixc-item, data-aixc-section…) from a copy, so nothing finds a card twice. */
+const stripMarks = (root) => {
+  for (const node of [root, ...root.querySelectorAll('*')]) {
+    for (const name of [...(node.getAttributeNames?.() ?? [])]) if (name.startsWith('data-aixc-')) node.removeAttribute(name)
+  }
+}
+
+/**
+ * Makes a frozen copy of a page quiet: no frame, video or plugin loads again, no script or stylesheet
+ * link is copied (the page's own styles still apply). Each is replaced by an empty box of its size.
+ */
+const quietCopy = (source, copy) => {
+  const LOUD = 'iframe, video, audio, object, embed'
+  const live = [...source.querySelectorAll(LOUD)]
+  for (const [index, node] of [...copy.querySelectorAll(LOUD)].entries()) {
+    const box = live[index]?.getBoundingClientRect()
+    const stand = document.createElement('div')
+    stand.style.cssText = `width:${Math.round(box?.width ?? 0)}px;height:${Math.round(box?.height ?? 0)}px`
+    node.replaceWith(stand)
+  }
+  for (const node of copy.querySelectorAll('script, link, noscript, template')) node.remove()
+}
+
+/** True for a colour nothing shows through, so a snapshot never turns see-through. */
+const opaque = (color) => !!color && color !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(color)
 
 /** First opaque background behind an element, so a snapshot never turns see-through. */
 const backdropOf = (node) => {
@@ -171,49 +203,147 @@ const tiltFor = (id) => {
   return ((((hash % 9) + 9) % 9) - 4) * 0.55
 }
 
-const loadIds = () => {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(STORE_KEY) || '[]')
-    return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []
-  } catch {
-    return []
+/* ------------------------------------------------------------------- hosts */
+
+/**
+ * The Services clone's page (src/shell.js): the album inside <main>, the turn freezing `.page-shell`
+ * below the sticky header, the page's regions hidden while the album shows. Exactly what the Pocket
+ * did before it learned to run on Vodafone's pages.
+ */
+const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
+  const pageShell = main.closest('.page-shell') ?? document.querySelector('.page-shell')
+  return {
+    snapshotRoot: () => pageShell,
+    sheetTop: () => header.getBoundingClientRect().bottom,
+    place: (root) => main.append(root),
+    cover: () => {
+      const note = viewbar.nextElementSibling?.classList.contains('aixc-viewnote') ? viewbar.nextElementSibling : null
+      const hidden = new Map([sourceRoot, outputRoot, viewbar, note].filter(Boolean).map((node) => [node, node.hidden]))
+      for (const node of hidden.keys()) node.hidden = true
+      return {
+        restore: () => {
+          for (const [node, wasHidden] of hidden) node.hidden = wasHidden
+        },
+        inCopy: (shell) => {
+          for (const [node, wasHidden] of hidden) {
+            const copy = shell.querySelector(`.${node.classList[0]}`)
+            if (copy) copy.hidden = wasHidden
+          }
+        },
+      }
+    },
+    mark: (node) => node,
+    wrap: (_step, fn) => fn,
+    checkpoint: () => {},
+    labels: {
+      back: t('Back to Services'),
+      lead: (n) => (n ? `${n} ${n === 1 ? 'service' : 'services'} you peeled off the Services page, kept here for later.` : t('Nothing here yet.')),
+    },
+    page: { path: location.pathname, lang: pageLang, dir: pageLang === 'ar' ? 'rtl' : 'ltr', title: document.title },
+    corner: true,
+    chips: true,
+    dated: false,
+    eagerImages: true,
+    pageBack: PAGE_BACK,
   }
 }
 
 /* -------------------------------------------------------------- controller */
 
-export const initPocket = ({ adapter, regions, composer = null, portal: portalOptions = {} }) => {
-  const { sourceRoot, outputRoot, viewbar, header, main } = regions
-  const pageShell = main.closest('.page-shell') ?? document.querySelector('.page-shell')
-  const { model } = adapter.extractContent(sourceRoot)
-  if (!model) return null
+/**
+ * `store`: the Pocket's records (./store.js interface); the clone's ids-only store when omitted.
+ * `createActors`, `createPortal`: the mascot and drone (./pocket-actors.js) and the portal
+ * (./portal/portal.js), or nothing. `seams`: the host's (see shellSeams); `model`: the page's
+ * content model when the host has read it already.
+ */
+export const initPocket = ({ adapter, regions, composer = null, portal: portalOptions = {}, createActors = null, createPortal = null, store = null, seams: given = null, model: givenModel }) => {
+  const { sourceRoot } = regions
+  const seams = { ...shellSeams(regions), ...given }
+  const model = givenModel !== undefined ? givenModel : adapter.extractContent(sourceRoot).model
+  // The clone has no Pocket without its page; on Vodafone's pages the album is there on every page.
+  if (!model && seams.chips) return null
 
   /** id → { item, section } for everything that can be pocketed (not the closing promo). */
   const catalog = new Map()
-  for (const section of model.sections) for (const item of section.items) catalog.set(item.id, { item, section })
+  for (const section of model?.sections ?? []) for (const item of section.items) catalog.set(item.id, { item, section })
+  const ownStore = !store
+  store ??= createIdsStore({ catalog, page: seams.page })
 
   const state = {
-    ids: loadIds().filter((id) => catalog.has(id)), // oldest first
+    ids: [], // the stickers' keys, oldest first (in the clone, a sticker's key is its card's id)
     view: 'page', // 'page' | 'pocket'
     busy: false, // a page turn is running
     peek: null, // { rig, sheet, phi, R, tween }
     saved: null, // where the page was when the pocket opened
     flights: new Set(), // stickers in the air
   }
+  /** key → record, as the store has it. */
+  let records = new Map()
+  const sync = (list) => {
+    records = new Map([...list].sort((a, b) => a.savedAt - b.savedAt).map((record) => [record.key, record]))
+    state.ids = [...records.keys()]
+  }
+  sync(store.all())
   const cards = new Map()
   const isPocketed = (id) => state.ids.includes(id)
-  const persist = () => {
+  /** The Pocket's own writes: the store tells its subscribers at once, and this one already knows. */
+  let writing = false
+  const save = (fn) => {
+    writing = true
+    let out
     try {
-      window.localStorage.setItem(STORE_KEY, JSON.stringify(state.ids))
-    } catch {
-      // Storage can be unavailable (private mode); the pocket then lasts for this visit.
+      out = fn()
+    } finally {
+      writing = false
     }
+    return Promise.resolve(out).catch((error) =>
+      wrap('pocket save', () => {
+        throw error
+      })(),
+    )
+  }
+
+  /* Everything the Pocket adds to the page, listens to or schedules goes through these, so it can be
+     marked (data-aixc), guarded and taken away again completely. */
+  const { mark, wrap, checkpoint } = seams
+  const offs = []
+  const on = (target, type, handler, options) => {
+    const guarded = wrap(`pocket ${type}`, handler)
+    target.addEventListener(type, guarded, options)
+    offs.push(() => target.removeEventListener(type, guarded, options))
+  }
+  const timers = new Set()
+  const later = (fn, ms) => {
+    const id = window.setTimeout(
+      wrap('pocket timer', () => {
+        timers.delete(id)
+        fn()
+      }),
+      ms,
+    )
+    timers.add(id)
+    return id
+  }
+  /** Every animation, guarded and cancelled when the Pocket goes. */
+  const running = new Set()
+  const tween = (duration, update, easing) => {
+    const job = runTween(duration, wrap('pocket frame', update), easing)
+    running.add(job)
+    job.promise.then(() => running.delete(job))
+    return job
+  }
+  let destroyed = false
+  /** Puts a node in <body>, marked; destroy() takes every one away. */
+  const added = new Set()
+  const attach = (...nodes) => {
+    for (const node of nodes) added.add(mark(node))
+    document.body.append(...nodes)
   }
 
   const live = make('div', { class: 'aixc-sr-only', role: 'status', 'aria-live': 'polite' })
   const announce = (text) => {
     live.textContent = ''
-    window.setTimeout(() => (live.textContent = text), 60)
+    later(() => (live.textContent = text), 60)
   }
   const countLabel = countItems
 
@@ -235,9 +365,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const pocketTitle = make('h1', { class: 'pocket-view__title', id: 'pocket-title', tabindex: '-1' }, t('Your pocket'))
   const pocketLead = make('p', { class: 'pocket-view__lead' })
   const grid = make('ul', { class: 'pocket-grid', role: 'list' })
-  const backButton = make('button', { type: 'button', class: 'pocket-back' }, icon('back', 'pocket-back__icon'), t('Back to Services'))
+  const backButton = make('button', { type: 'button', class: 'pocket-back' }, icon('back', 'pocket-back__icon'), seams.labels.back)
   const clearButton = make('button', { type: 'button', class: 'pocket-clear' }, t('Empty pocket'))
-  const emptyBack = make('button', { type: 'button', class: 'pocket-back pocket-back--solid' }, t('Back to Services'))
+  const emptyBack = make('button', { type: 'button', class: 'pocket-back pocket-back--solid' }, seams.labels.back)
   const empty = make(
     'div',
     { class: 'pocket-empty', hidden: true },
@@ -270,8 +400,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   /** The page turns to the pocket even with no stickers while this says so (a saved journey). */
   let openableEmpty = () => false
   const viewChanged = (view) => pocketRoot.dispatchEvent(new CustomEvent('pocket:view', { detail: view }))
-  main.append(pocketRoot)
-  document.body.append(planeLayer, liftLayer, peekButton, live)
+  seams.place(mark(pocketRoot))
+  // Without the page's corner (the host has not given it a place yet) there is no Pocket button.
+  attach(planeLayer, liftLayer, ...(seams.corner ? [peekButton] : []), live)
 
   /**
    * Leaving the Pocket page through the portal (./portal/portal.js, ADR-0005). Optional: if it
@@ -279,12 +410,13 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
    */
   let portal = { enabled: false }
   try {
-    portal = initPocketPortal({
-      options: portalOptions,
-      isPocketPage: () => state.view === 'pocket' && !state.busy,
-      openPocket: (options) => openPocket(options),
-      viewEvents: pocketRoot,
-    })
+    if (createPortal)
+      portal = createPortal({
+        options: portalOptions,
+        isPocketPage: () => state.view === 'pocket' && !state.busy,
+        openPocket: (options) => openPocket(options),
+        viewEvents: pocketRoot,
+      })
   } catch {
     portal = { enabled: false }
   }
@@ -292,14 +424,14 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   /** Mascot and drone. Optional: if they cannot start, the pocket works exactly as before. */
   let actors = null
   try {
-    actors = createPocketActors({ pocketRoot, peekButton, sheet: () => state.peek?.sheet ?? sheetRect(), reducedMotion })
+    actors = createActors?.({ pocketRoot, peekButton, sheet: () => state.peek?.sheet ?? sheetRect(), reducedMotion }) ?? null
   } catch {
     actors = null
   }
 
   /* ----------------------------------------------------- page geometry */
   const sheetRect = () => {
-    const top = Math.max(0, Math.round(header.getBoundingClientRect().bottom))
+    const top = Math.max(0, Math.round(seams.sheetTop()))
     return { top, width: document.documentElement.clientWidth, height: Math.max(1, window.innerHeight - top) }
   }
   const small = () => window.innerWidth < 640
@@ -323,6 +455,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
 
   /** A frozen copy of the page as it looks right now (or as `prepare` makes it look). */
   const snapshotPage = ({ scrollY, sheet, prepare = null }) => (box) => {
+    const body = getComputedStyle(document.body).backgroundColor
     const scroller = make('div', {
       class: 'curl-snapshot',
       style: {
@@ -332,13 +465,17 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
         width: `${sheet.width}px`,
         height: `${sheet.top + sheet.height}px`,
         overflow: 'hidden',
-        background: getComputedStyle(document.body).backgroundColor || '#fff',
+        background: opaque(body) ? body : backdropOf(document.documentElement),
       },
     })
-    const shell = pageShell.cloneNode(true)
+    const source = seams.snapshotRoot() ?? document.body
+    const shell = source.cloneNode(true)
     prepare?.(shell)
-    for (const img of shell.querySelectorAll('img[loading="lazy"]')) img.loading = 'eager'
+    // The clone's own pictures load eagerly in the copy; Vodafone's are never fetched for it.
+    if (seams.eagerImages) for (const img of shell.querySelectorAll('img[loading="lazy"]')) img.loading = 'eager'
+    quietCopy(source, shell)
     stripIds(shell)
+    stripMarks(shell)
     scroller.append(shell)
     box.append(scroller)
     // The copy is its own scroll container, so sticky parts sit where they do on screen.
@@ -347,8 +484,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
 
   /* -------------------------------------------------------------- peek */
   const setPeekButton = (visible) => {
-    peekButton.dataset.state = visible ? 'shown' : 'hidden'
-    peekButton.inert = !visible
+    const shown = visible && seams.corner
+    peekButton.dataset.state = shown ? 'shown' : 'hidden'
+    peekButton.inert = !shown
   }
 
   const updateCount = (n = state.ids.length) => {
@@ -371,7 +509,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       width: sheet.width,
       height: sheet.height,
       under: albumUnder,
-      back: PAGE_BACK,
+      back: seams.pageBack,
       strips: 16,
       perspective: 2400,
     })
@@ -393,7 +531,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   }
 
   const openPeek = ({ animate = true } = {}) => {
-    if (state.view !== 'page') return
+    if (state.view !== 'page' || !seams.corner || destroyed) return
     if (!state.peek) buildPeek(0)
     setPeekButton(true)
     movePeek(peekX(), animate ? 680 : 0)
@@ -412,12 +550,12 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     if (await movePeek(peekX(22), 150)) movePeek(peekX(), 420, ease.outBack)
   }
 
-  peekButton.addEventListener('pointerenter', () => !state.busy && movePeek(peekX(30), 260))
-  peekButton.addEventListener('pointerleave', () => !state.busy && movePeek(peekX(), 320))
+  on(peekButton, 'pointerenter', () => !state.busy && movePeek(peekX(30), 260))
+  on(peekButton, 'pointerleave', () => !state.busy && movePeek(peekX(), 320))
   // Keyboard focus turns the corner further too (not focus that follows a mouse click).
-  peekButton.addEventListener('focus', () => !state.busy && peekButton.matches(':focus-visible') && movePeek(peekX(30), 260))
-  peekButton.addEventListener('blur', () => !state.busy && movePeek(peekX(), 320))
-  peekButton.addEventListener('animationend', () => peekButton.classList.remove('is-bump'))
+  on(peekButton, 'focus', () => !state.busy && peekButton.matches(':focus-visible') && movePeek(peekX(30), 260))
+  on(peekButton, 'blur', () => !state.busy && movePeek(peekX(), 320))
+  on(peekButton, 'animationend', () => peekButton.classList.remove('is-bump'))
 
   /* ------------------------------------------------- stickers on the page */
   let hover = null // a corner lifted while the pointer is on "Pocket it"
@@ -493,7 +631,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       style: { left: `${rect.left}px`, top: `${rect.top}px`, width: `${width}px`, height: `${height}px` },
     })
     host.append(rig.plane, rig.lift)
-    document.body.append(host)
+    attach(host)
 
     const halfway = Math.max(startX, span * 0.5)
     const free = span + R * 1.2 // the roll has passed the far corner: nothing is stuck
@@ -615,11 +753,13 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const pocketItem = async (id) => {
     if (isPocketed(id) || state.view !== 'page' || state.busy) return
     const card = cards.get(id)
-    const { item } = catalog.get(id)
+    const { item, section } = catalog.get(id)
     const startX = hover?.card === card ? hover.rig.state?.x ?? 0 : 0
     const fromKeyboard = card.querySelector('.pocket-cta')?.matches(':focus-visible')
+    const record = recordFrom({ item, section, page: seams.page, key: id })
+    records.set(id, record)
     state.ids.push(id)
-    persist()
+    save(() => store.put(record))
     dropCorner({ immediate: true })
     card.classList.remove('is-peeling')
     card.classList.add('is-pocketed')
@@ -635,6 +775,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     openPeek()
     actors?.itemPocketed({ phi: state.peek?.phi, landsIn: FLIGHT_MS })
     await landing
+    if (destroyed) return
     actors?.itemLanded()
     if (state.view === 'page') {
       updateCount()
@@ -647,8 +788,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const card = cards.get(id)
     const { item } = catalog.get(id)
     const fromKeyboard = card.querySelector('.pocket-liner__undo')?.matches(':focus-visible')
+    records.delete(id)
     state.ids = state.ids.filter((other) => other !== id)
-    persist()
+    save(() => store.remove(id))
     updateCount()
     announce(`${item.title} is back on the page. ${countLabel(state.ids.length)} in your pocket.`)
     card.classList.replace('is-pocketed', 'is-returning')
@@ -657,6 +799,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       const cleanup = await fly(flyBack(card))
       card.classList.remove('is-returning')
       cleanup()
+      if (destroyed) return
     } else {
       card.classList.remove('is-returning')
     }
@@ -673,11 +816,11 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       icon('pocketAdd', 'pocket-cta__icon'),
       make('span', { class: 'pocket-cta__label' }, t('Pocket it')),
     )
-    cta.addEventListener('pointerenter', (event) => event.pointerType !== 'touch' && liftCorner(card, id))
-    cta.addEventListener('pointerleave', () => hover?.card === card && dropCorner())
-    cta.addEventListener('click', () => pocketItem(id))
+    on(cta, 'pointerenter', (event) => event.pointerType !== 'touch' && liftCorner(card, id))
+    on(cta, 'pointerleave', () => hover?.card === card && dropCorner())
+    on(cta, 'click', () => pocketItem(id))
     const undo = make('button', { type: 'button', class: 'pocket-liner__undo', 'aria-label': t('Put back {title}', { title: item.title }) }, t('Put back'))
-    undo.addEventListener('click', () => putBack(id))
+    on(undo, 'click', () => putBack(id))
     const liner = make(
       'div',
       { class: 'pocket-liner' },
@@ -688,28 +831,45 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     cards.set(id, card)
   }
 
-  for (const card of sourceRoot.querySelectorAll('[data-aixc-item]')) {
-    const id = card.dataset.aixcItem
-    if (catalog.has(id)) decorate(card, id)
-  }
+  // "Pocket it" on the cards: the clone draws it inside them; on Vodafone's pages that is step S6.
+  if (seams.chips)
+    for (const card of sourceRoot.querySelectorAll('[data-aixc-item]')) {
+      const id = card.dataset.aixcItem
+      if (catalog.has(id)) decorate(card, id)
+    }
 
   /* --------------------------------------------------------- the album */
-  const stickerFor = (id) => {
-    const { item, section } = catalog.get(id)
-    const tone = TONES[section.id] ?? 'light'
-    const titleId = `pocket-sticker-${id}`
-    const link = item.cta?.href ? { href: item.cta.href, label: item.cta.label || t('View more') } : section.cta?.href ? { href: section.cta.href, label: section.cta.label } : null
-    const remove = make('button', { type: 'button', class: 'pocket-sticker__remove', 'aria-label': t('Remove {title} from your pocket', { title: item.title }) }, icon('remove', 'pocket-sticker__remove-icon'), make('span', null, t('Remove')))
+  /** The day a sticker was kept, in the page's language ("12 Nov", "١٢ نوفمبر" in Latin digits). */
+  const dayOf = (ms) => {
+    try {
+      return new Intl.DateTimeFormat(seams.page.lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short' }).format(ms)
+    } catch {
+      return ''
+    }
+  }
+
+  /** A sticker as kept: its copy as published when it was saved, in its own language, with its picture or without one. */
+  const stickerFor = (key) => {
+    const record = records.get(key)
+    const { copy, image, cta, source } = record
+    const tone = TONES[source.section?.id] ?? 'light'
+    const titleId = `pocket-sticker-${key}`
+    const link = cta?.href ? { href: cta.href, label: cta.label || t('View more') } : null
+    const own = copy.lang === seams.page.lang
+    const remove = make('button', { type: 'button', class: 'pocket-sticker__remove', 'aria-label': t('Remove {title} from your pocket', { title: copy.title }) }, icon('remove', 'pocket-sticker__remove-icon'), make('span', null, t('Remove')))
     const sticker = make(
       'article',
-      { class: `pocket-sticker pocket-sticker--${tone}`, 'aria-labelledby': titleId, style: { '--tilt': `${tiltFor(id)}deg` } },
-      make('div', { class: 'pocket-sticker__media' }, make('img', { src: item.image.src, alt: '', class: item.image.fit === 'contain' ? 'is-contain' : null })),
+      { class: `pocket-sticker pocket-sticker--${tone}${image ? '' : ' pocket-sticker--plain'}`, 'aria-labelledby': titleId, style: { '--tilt': `${tiltFor(key)}deg` } },
+      image ? make('div', { class: 'pocket-sticker__media' }, make('img', { src: image.src, alt: '', class: image.fit === 'contain' ? 'is-contain' : null })) : null,
       make(
         'div',
         { class: 'pocket-sticker__body' },
-        make('p', { class: 'pocket-sticker__from' }, section.title),
-        make('h2', { class: 'pocket-sticker__title', id: titleId }, item.title),
-        item.description ? make('p', { class: 'pocket-sticker__desc' }, item.description) : null,
+        source.section?.title ? make('p', { class: 'pocket-sticker__from', lang: own ? null : copy.lang, dir: own ? null : copy.dir }, source.section.title) : null,
+        // Kept in the other language: it says so, so it is read and laid out in its own.
+        make('h2', { class: 'pocket-sticker__title', id: titleId, lang: own ? null : copy.lang, dir: own ? null : copy.dir }, copy.title),
+        copy.description ? make('p', { class: 'pocket-sticker__desc', lang: own ? null : copy.lang, dir: own ? null : copy.dir }, copy.description) : null,
+        // The copy is as it was that day, price included (ADR-0051): the day says so.
+        seams.dated && record.savedAt ? make('p', { class: 'pocket-sticker__date' }, t('Saved {date}', { date: dayOf(record.savedAt) })) : null,
         make(
           'div',
           { class: 'pocket-sticker__actions' },
@@ -720,23 +880,21 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
                 { class: 'pocket-sticker__cta', href: link.href, target: portal.enabled ? null : '_blank', rel: 'noopener noreferrer' },
                 link.label,
                 icon('external', 'pocket-sticker__cta-icon'),
-                portal.enabled ? null : make('span', { class: 'aixc-sr-only' }, ' (opens in a new tab)'),
+                portal.enabled ? null : make('span', { class: 'aixc-sr-only' }, ` ${t('(opens in a new tab)')}`),
               )
             : make('span'),
           remove,
         ),
       ),
     )
-    const cell = make('li', { class: 'pocket-grid__item', 'data-pocket-id': id }, sticker)
-    remove.addEventListener('click', () => removeFromPocket(id, cell))
+    const cell = make('li', { class: 'pocket-grid__item', 'data-pocket-id': key }, sticker)
+    on(remove, 'click', () => removeFromPocket(key, cell))
     return cell
   }
 
   const renderLead = () => {
     const n = state.ids.length
-    pocketLead.textContent = n
-      ? `${n} ${n === 1 ? 'service' : 'services'} you peeled off the Services page, kept here for later.`
-      : t('Nothing here yet.')
+    pocketLead.textContent = seams.labels.lead(n)
     grid.hidden = n === 0
     empty.hidden = n > 0
     clearButton.hidden = n === 0
@@ -769,7 +927,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       style: { left: `${centre.x - width / 2}px`, top: `${centre.y - height / 2}px`, width: `${width}px`, height: `${height}px`, transform: `rotate(${tilt}deg)`, zIndex: '9' },
     })
     host.append(rig.plane, rig.lift)
-    document.body.append(host)
+    attach(host)
     sticker.style.visibility = 'hidden'
     const phi = stickerPhi(width, height)
     const end = fullTurn(width, height, phi, R)
@@ -790,24 +948,27 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
 
   const removeFromPocket = async (id, cell) => {
     if (state.busy || !isPocketed(id)) return
-    const { item } = catalog.get(id)
+    const { title } = records.get(id).copy
     const next = cell.nextElementSibling ?? cell.previousElementSibling
     if (!reducedMotion()) await peelAway(cell.querySelector('.pocket-sticker'))
+    if (destroyed) return
+    records.delete(id)
     state.ids = state.ids.filter((other) => other !== id)
-    persist()
+    save(() => store.remove(id))
     unpocketCard(id)
     updateCount()
     cell.remove()
     renderLead()
-    announce(`${item.title} removed from your pocket. ${countLabel(state.ids.length)} left.`)
+    announce(t('{title} removed from your pocket. {count} left.', { title, count: countLabel(state.ids.length) }))
     ;(next?.querySelector('.pocket-sticker__remove') ?? (state.ids.length ? pocketTitle : emptyBack)).focus({ preventScroll: true })
   }
 
-  clearButton.addEventListener('click', () => {
+  on(clearButton, 'click', () => {
     if (state.busy) return
     for (const id of state.ids) unpocketCard(id)
+    records.clear()
     state.ids = []
-    persist()
+    save(() => store.clear())
     updateCount()
     grid.replaceChildren()
     renderLead()
@@ -816,127 +977,159 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   })
 
   /* --------------------------------------------------------- page turn */
-  const coveredRegions = () => {
-    const note = viewbar.nextElementSibling?.classList.contains('aixc-viewnote') ? viewbar.nextElementSibling : null
-    return [sourceRoot, outputRoot, viewbar, note].filter(Boolean)
+
+  /**
+   * Takes the album away and gives the page back as it was before the Pocket opened: the end of a
+   * turn that failed half way, and the Pocket going (destroy). Nothing here can throw.
+   */
+  const giveBackPage = () => {
+    const saved = state.saved
+    state.saved = null
+    try {
+      destroyPeek()
+    } catch {}
+    pocketRoot.hidden = true
+    try {
+      saved?.cover.restore()
+    } catch {}
+    delete document.body.dataset.pocketView
+    if (saved && state.view === 'pocket') window.scrollTo(0, saved.scrollY)
+    state.view = 'page'
+    state.busy = false
   }
 
   /** `instant`: no page turn (Back from a page the portal opened returns straight to the album). */
   const openPocket = async ({ instant = false } = {}) => {
-    if (state.busy || state.view !== 'page' || (!state.ids.length && !openableEmpty())) return
+    if (destroyed || state.busy || state.view !== 'page' || (!state.ids.length && !openableEmpty())) return
     state.busy = true
-    actors?.openRequested()
-    await Promise.allSettled([...state.flights])
-    dropCorner({ immediate: true })
-    if (!state.peek) buildPeek(peekX())
-    const peek = state.peek
-    peek.tween?.cancel()
-    const { sheet } = peek
-    const scrollY = window.scrollY
+    const opener = document.activeElement
+    try {
+      actors?.openRequested()
+      await Promise.allSettled([...state.flights])
+      if (destroyed) return
+      dropCorner({ immediate: true })
+      // Without the corner the page turns from flat.
+      if (!state.peek) buildPeek(seams.corner ? peekX() : 0)
+      const peek = state.peek
+      peek.tween?.cancel()
+      const { sheet } = peek
+      const scrollY = window.scrollY
 
-    // Freeze what is on screen into the turning sheet, then swap the live page for the
-    // pocket underneath it. Both happen before the next paint, so nothing flickers.
-    peek.rig.setFront(snapshotPage({ scrollY, sheet }))
-    const hidden = new Map(coveredRegions().map((node) => [node, node.hidden]))
-    state.saved = { scrollY, hidden }
-    for (const node of hidden.keys()) node.hidden = true
-    composer?.state?.activeExperience?.unmount?.()
-    renderPocket()
-    pocketRoot.hidden = false
-    state.view = 'pocket'
-    document.body.dataset.pocketView = 'open'
-    window.scrollTo(0, 0)
-    peek.rig.setUnder(null)
-    setPeekButton(false)
-    actors?.openStart({ phi: peek.phi })
+      // Freeze what is on screen into the turning sheet, then swap the live page for the
+      // pocket underneath it. Both happen before the next paint, so nothing flickers.
+      peek.rig.setFront(snapshotPage({ scrollY, sheet }))
+      state.saved = { scrollY, cover: seams.cover(), opener }
+      checkpoint('pocket-open')
+      composer?.state?.activeExperience?.unmount?.()
+      renderPocket()
+      checkpoint('pocket-render')
+      pocketRoot.hidden = false
+      state.view = 'pocket'
+      document.body.dataset.pocketView = 'open'
+      window.scrollTo(0, 0)
+      peek.rig.setUnder(null)
+      setPeekButton(false)
+      actors?.openStart({ phi: peek.phi })
 
-    const from = { x: peek.rig.state?.x ?? peekX(), phi: peek.phi, R: peek.R }
-    const toR = pageRadius(sheet)
-    await tween(
-      reducedMotion() || instant ? 0 : 1150,
-      (e, t) => {
-        const phi = lerp(from.phi, TURNED_PHI, ease.inOutSine(t))
-        const R = lerp(from.R, toR, ease.inOutSine(t))
-        peek.rig.update({ x: lerp(from.x, fullTurn(sheet.width, sheet.height, phi, R) + 80, e), phi, R })
-        actors?.openProgress(t)
-      },
-      ease.inOutSine,
-    ).promise
-    destroyPeek()
-    pocketTitle.focus({ preventScroll: true })
-    announce(t('Your pocket, {count}.', { count: countLabel(state.ids.length) }))
-    state.busy = false
-    viewChanged('pocket')
-    actors?.openComplete()
+      const from = { x: peek.rig.state?.x ?? peekX(), phi: peek.phi, R: peek.R }
+      const toR = pageRadius(sheet)
+      await tween(
+        reducedMotion() || instant ? 0 : 1150,
+        (e, t) => {
+          const phi = lerp(from.phi, TURNED_PHI, ease.inOutSine(t))
+          const R = lerp(from.R, toR, ease.inOutSine(t))
+          peek.rig.update({ x: lerp(from.x, fullTurn(sheet.width, sheet.height, phi, R) + 80, e), phi, R })
+          actors?.openProgress(t)
+        },
+        ease.inOutSine,
+      ).promise
+      if (destroyed) return
+      destroyPeek()
+      pocketTitle.focus({ preventScroll: true })
+      announce(t('Your pocket, {count}.', { count: countLabel(state.ids.length) }))
+      state.busy = false
+      viewChanged('pocket')
+      actors?.openComplete()
+    } catch (error) {
+      giveBackPage()
+      throw error
+    }
   }
 
   const closePocket = async () => {
-    if (state.busy || state.view !== 'pocket') return
+    if (destroyed || state.busy || state.view !== 'pocket') return
     state.busy = true
-    viewChanged('closing')
-    actors?.closeStart()
-    const saved = state.saved ?? { scrollY: 0, hidden: new Map() }
-    const sheet = sheetRect()
-    placeLayers(sheet)
-    const fromR = pageRadius(sheet)
-    const toR = peekRadius()
-    const landX = state.ids.length ? peekX() : 0
+    try {
+      viewChanged('closing')
+      actors?.closeStart()
+      checkpoint('pocket-close')
+      const saved = state.saved ?? { scrollY: 0, cover: { restore() {}, inCopy() {} }, opener: null }
+      const sheet = sheetRect()
+      placeLayers(sheet)
+      const fromR = pageRadius(sheet)
+      const toR = peekRadius()
+      const corner = seams.corner && state.ids.length > 0
+      const landX = corner ? peekX() : 0
 
-    // The services page comes back over the pocket: a sheet that starts fully turned.
-    const restoreInCopy = (shell) => {
-      shell.querySelector('.pocket-output')?.setAttribute('hidden', '')
-      for (const [node, wasHidden] of saved.hidden) {
-        const copy = shell.querySelector(`.${node.classList[0]}`)
-        if (copy) copy.hidden = wasHidden
+      // The page comes back over the pocket: a sheet that starts fully turned.
+      const restoreInCopy = (shell) => {
+        shell.querySelector('.pocket-output')?.setAttribute('hidden', '')
+        saved.cover.inCopy(shell)
       }
-    }
-    const rig = createCurl({ width: sheet.width, height: sheet.height, back: PAGE_BACK, strips: 16, perspective: 2400 })
-    destroyPeek()
-    planeLayer.replaceChildren(rig.plane)
-    liftLayer.replaceChildren(rig.lift)
-    // Snapshot only once mounted: the copy needs layout to restore its scroll position.
-    rig.setFront(snapshotPage({ scrollY: saved.scrollY, sheet, prepare: restoreInCopy }))
-    state.peek = { rig, sheet, phi: PEEK_PHI, R: toR, tween: null }
-    rig.update({ x: fullTurn(sheet.width, sheet.height, TURNED_PHI, fromR) + 80, phi: TURNED_PHI, R: fromR })
-
-    await tween(
-      reducedMotion() ? 0 : 1100,
-      (e, t) => {
-        const phi = lerp(TURNED_PHI, PEEK_PHI, ease.inOutSine(t))
-        const R = lerp(fromR, toR, ease.inOutSine(t))
-        const start = fullTurn(sheet.width, sheet.height, phi, R) + 80
-        rig.update({ x: lerp(start, landX, e), phi, R })
-      },
-      ease.inOutSine,
-    ).promise
-
-    // Landed: put the live page back under the sheet, then let the sheet go transparent.
-    rig.setUnder(albumUnder)
-    pocketRoot.hidden = true
-    for (const [node, wasHidden] of saved.hidden) node.hidden = wasHidden
-    state.view = 'page'
-    delete document.body.dataset.pocketView
-    actors?.closeComplete()
-    window.scrollTo(0, saved.scrollY)
-    rig.setFront(null)
-    if (composer?.state?.view === 'reimagined') composer.state.activeExperience?.mount?.()
-    state.saved = null
-    state.busy = false
-    viewChanged('page')
-    if (state.ids.length) {
-      setPeekButton(true)
-      peekButton.focus({ preventScroll: true })
-    } else {
-      setPeekButton(false)
+      const rig = createCurl({ width: sheet.width, height: sheet.height, back: seams.pageBack, strips: 16, perspective: 2400 })
       destroyPeek()
-      ;(sourceRoot.hidden ? document.querySelector('.aixc-launcher') : sourceRoot.querySelector('.pocket-cta'))?.focus({ preventScroll: true })
+      planeLayer.replaceChildren(rig.plane)
+      liftLayer.replaceChildren(rig.lift)
+      // Snapshot only once mounted: the copy needs layout to restore its scroll position.
+      rig.setFront(snapshotPage({ scrollY: saved.scrollY, sheet, prepare: restoreInCopy }))
+      state.peek = { rig, sheet, phi: PEEK_PHI, R: toR, tween: null }
+      rig.update({ x: fullTurn(sheet.width, sheet.height, TURNED_PHI, fromR) + 80, phi: TURNED_PHI, R: fromR })
+
+      await tween(
+        reducedMotion() ? 0 : 1100,
+        (e, t) => {
+          const phi = lerp(TURNED_PHI, PEEK_PHI, ease.inOutSine(t))
+          const R = lerp(fromR, toR, ease.inOutSine(t))
+          const start = fullTurn(sheet.width, sheet.height, phi, R) + 80
+          rig.update({ x: lerp(start, landX, e), phi, R })
+        },
+        ease.inOutSine,
+      ).promise
+      if (destroyed) return
+
+      // Landed: put the live page back under the sheet, then let the sheet go transparent.
+      rig.setUnder(albumUnder)
+      pocketRoot.hidden = true
+      saved.cover.restore()
+      state.view = 'page'
+      delete document.body.dataset.pocketView
+      actors?.closeComplete()
+      window.scrollTo(0, saved.scrollY)
+      rig.setFront(null)
+      if (composer?.state?.view === 'reimagined') composer.state.activeExperience?.mount?.()
+      state.saved = null
+      state.busy = false
+      viewChanged('page')
+      if (corner) {
+        setPeekButton(true)
+        peekButton.focus({ preventScroll: true })
+      } else {
+        setPeekButton(false)
+        destroyPeek()
+        // Back where the visitor was: the clone's chips, else whatever opened the Pocket.
+        const back = seams.chips ? (sourceRoot.hidden ? document.querySelector('.aixc-launcher') : sourceRoot.querySelector('.pocket-cta')) : saved.opener?.isConnected && saved.opener !== document.body ? saved.opener : null
+        back?.focus({ preventScroll: true })
+      }
+    } catch (error) {
+      giveBackPage()
+      throw error
     }
   }
 
-  peekButton.addEventListener('click', () => openPocket())
-  backButton.addEventListener('click', closePocket)
-  emptyBack.addEventListener('click', closePocket)
-  pocketRoot.addEventListener('keydown', (event) => {
+  on(peekButton, 'click', () => openPocket())
+  on(backButton, 'click', () => closePocket())
+  on(emptyBack, 'click', () => closePocket())
+  on(pocketRoot, 'keydown', (event) => {
     if (event.key === 'Escape' && state.view === 'pocket') {
       event.preventDefault()
       closePocket()
@@ -945,18 +1138,72 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
 
   /* ------------------------------------------------------- lifecycle */
   let resizeTimer = 0
-  window.addEventListener('resize', () => {
+  on(window, 'resize', () => {
     window.clearTimeout(resizeTimer)
-    resizeTimer = window.setTimeout(() => {
+    resizeTimer = later(() => {
       if (state.busy || state.view !== 'page' || !state.peek) return
       buildPeek(peekX())
     }, 160)
   })
 
+  /** Another tab changed the Pocket (or the store finished reading): show what it holds now. */
+  let settled = false
+  const fromStore = (list) => {
+    sync(list)
+    for (const [id, card] of cards) card.classList.toggle('is-pocketed', isPocketed(id))
+    updateCount()
+    if (state.view === 'pocket' && !state.busy) renderPocket()
+    if (state.view === 'page' && !state.busy && settled) {
+      if (!state.ids.length && state.peek) closePeek()
+      else if (state.ids.length && !state.peek) openPeek()
+    }
+  }
+  const unsubscribe = store.subscribe(
+    wrap('pocket sync', (list) => {
+      if (!writing && !destroyed) fromStore(list)
+    }),
+  )
+
   updateCount()
-  if (state.ids.length) {
-    // Returning visitor: the corner turns up shortly after the page settles.
-    window.setTimeout(() => openPeek({ animate: true }), 500)
+  store.ready.then(
+    wrap('pocket ready', () => {
+      if (destroyed) return
+      fromStore(store.all())
+      settled = true
+      // Returning visitor: the corner turns up shortly after the page settles.
+      if (state.ids.length) later(() => openPeek({ animate: true }), 500)
+    }),
+  )
+
+  /** Everything the Pocket added or changed, taken away; the page as it was. */
+  const destroy = () => {
+    if (destroyed) return
+    destroyed = true
+    for (const job of running) job.cancel()
+    running.clear()
+    for (const id of timers) window.clearTimeout(id)
+    timers.clear()
+    for (const off of offs.splice(0)) off()
+    unsubscribe()
+    try {
+      dropCorner({ immediate: true })
+    } catch {}
+    giveBackPage()
+    for (const card of cards.values()) {
+      card.classList.remove('pocket-host', 'is-pocketed', 'is-peeling', 'is-returning')
+      for (const node of card.querySelectorAll(':scope > .pocket-cta, :scope > .pocket-liner, :scope > .curl-host')) node.remove()
+    }
+    cards.clear()
+    for (const node of added) node.remove()
+    added.clear()
+    pocketRoot.remove()
+    try {
+      actors?.destroy()
+    } catch {}
+    try {
+      portal.destroy?.()
+    } catch {}
+    if (ownStore) store.close?.()
   }
 
   return {
@@ -970,9 +1217,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       openableEmpty = fn
     },
     portal,
-    destroy: () => {
-      actors?.destroy()
-      portal.destroy?.()
-    },
+    store,
+    destroy,
   }
 }
