@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
 
+import { OFFLINE_ARGS } from '../../tools/demo-browser.ts'
 import { CMS_PAGES, DESKTOP, furniture, type LayerGateway, launchLayer, layerState, open, PHONE, startLayerGateway, watch } from './vodafone-layer.ts'
 
 const PORT = 4478
@@ -184,4 +185,9 @@ test('nothing leaves as the browser closes: a request still waiting on the gatew
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true })
 	}
+})
+
+test('offline, Chromium resolves no host but localhost and uses no proxy, so a request that escapes cannot leave (AIXC-65)', () => {
+	assert.ok(OFFLINE_ARGS.includes('--no-proxy-server'), 'no proxy: one from the system or the environment would resolve the host itself')
+	assert.ok(OFFLINE_ARGS.some((a) => /^--host-resolver-rules=MAP \* ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127\.0\.0\.1$/.test(a)), 'no host name resolves but localhost')
 })

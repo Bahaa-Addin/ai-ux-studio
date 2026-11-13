@@ -73,13 +73,16 @@ export function openPocketStore({ win = globalThis, onError = () => {} } = {}) {
   const tx = (mode) => db.transaction(STORE, mode).objectStore(STORE)
   /** This tab's changes not committed yet, in order: each is { apply(map) }. */
   const pending = []
-  let reads = 0
+  let started = 0
+  let applied = 0
   const readAll = async () => {
     if (!db) return
-    const n = ++reads
+    const n = ++started
     const rows = await request(tx('readonly').getAll())
-    // Only the latest read counts; an earlier one that lands later is older than it.
-    if (n !== reads) return
+    // A read that lands after a newer one has already been applied is older than it; any other
+    // read is applied, the store's first one too (AIXC-64).
+    if (n < applied) return
+    applied = n
     records.clear()
     for (const row of rows) if (isRecord(row)) records.set(row.key, row)
     for (const op of pending) op.apply(records)
@@ -100,10 +103,13 @@ export function openPocketStore({ win = globalThis, onError = () => {} } = {}) {
     tell()
     let failed = false
     try {
-      await ready
-      if (!db || closed) return
+      // Open already: the write starts now, before anything else can close the store (AIXC-67).
+      if (!db || closed) {
+        await ready
+        if (!db || closed) return
+      }
       await commit(fn)
-      channel?.postMessage('changed')
+      if (!closed) channel?.postMessage('changed')
     } catch (e) {
       failed = true
       onError(e)

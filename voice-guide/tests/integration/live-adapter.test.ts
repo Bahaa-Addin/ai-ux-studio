@@ -463,14 +463,14 @@ type Model = { sections: { id: string; title: string | null; items: Item[] }[] }
 type Rec = { key: string; id: string }
 const recordModule = () =>
 	import(pathToFileURL(path.join(ROOT, '../experiences/src/pocket/record.js')).href) as Promise<{
-		recordFrom(o: { item: Item; section: { id: string; title: string | null }; page: { path: string; lang: string; title?: string }; key?: string }): Rec
+		recordFrom(o: { item: Item; section: { id: string; title: string | null }; page: { path: string; lang: string; title?: string }; model?: Model; key?: string }): Rec
 		rematch(records: Rec[], model: Model, o: { lang: string }): Map<string, string>
 	}>
 /** Every card of a model as a sticker, keyed by where it sits (section and place: the same in both languages). */
 const stickersOf = async (model: Model, pathname: string) => {
 	const { recordFrom } = await recordModule()
 	const lang = pathname.slice(1, 3)
-	return model.sections.flatMap((s) => s.items.map((item, i) => ({ at: `${s.id}#${i}`, id: item.id, r: recordFrom({ item, section: s, page: { path: pathname, lang }, key: `${s.id}#${i}` }) })))
+	return model.sections.flatMap((s) => s.items.map((item, i) => ({ at: `${s.id}#${i}`, id: item.id, r: recordFrom({ item, section: s, page: { path: pathname, lang }, model, key: `${s.id}#${i}` }) })))
 }
 const placeOf = (model: Model) => new Map<string, string>(model.sections.flatMap((s) => s.items.map((item, i) => [item.id, `${s.id}#${i}`] as const)))
 /**
@@ -513,8 +513,10 @@ test('a sticker saved in one language finds its card in the other, never a wrong
 			const wrong = [...found].filter(([key, id]) => truth.get(key) !== id)
 			console.log(`# ${en} -> ${ar}: ${right} of ${stickers.length} found, ${wrong.length} wrong`)
 			assert.deepEqual(wrong, [], `${en} -> ${ar}: no sticker finds a wrong card`)
-			if (lang === 'ar') assert.ok(right >= atLeast, `${en} -> ${ar}: ${right} of ${stickers.length} found (at least ${atLeast})`)
-			found.size && found // (Arabic to English is measured, never wrong; its counts are in ADR-0051)
+			// From Arabic to English the bundles page has one more ticket than its twin, and Services and RED
+			// the same one card neither direction finds.
+			const least = lang === 'ar' ? atLeast : en === '/ar/mobile-internet-bundles' ? 19 : atLeast
+			assert.ok(right >= least, `${en} -> ${ar}: ${right} of ${stickers.length} found (at least ${least}; AIXC-66)`)
 		}
 	} finally {
 		await page.close()
@@ -577,7 +579,7 @@ test('Vodafone adds a card that shares a link: the cards\' ids change, every sti
 })
 
 
-test('a sticker whose card is gone finds no card at all: each card removed in turn, every saved page, both languages (AIXC-54)', async () => {
+test('a sticker alone whose card is gone takes no other card, even when another card goes with it (AIXC-54, AIXC-63)', async () => {
 	const { rematch } = await recordModule()
 	const page = await browser.newPage()
 	const guesses: string[] = []
@@ -590,15 +592,21 @@ test('a sticker whose card is gone finds no card at all: each card removed in tu
 				const target = (await read(page, htmlOf(savedAt(to)), to)).model as unknown as Model
 				const stickers = await stickersOf(source, from)
 				const truth = truthOf(stickers, source, target)
-				for (const gone of target.sections.flatMap((s) => s.items.map((i) => i.id))) {
-					const without = { ...target, sections: target.sections.map((s) => ({ ...s, items: s.items.filter((i) => i.id !== gone) })) } as Model
-					const found = rematch(stickers.map((x) => x.r), without, { lang })
-					tried++
-					for (const [key, id] of found) if (truth.get(key) !== id) guesses.push(`${from} -> ${to} without ${gone}: ${key} took ${id} (its card: ${truth.get(key)})`)
+				const ids = target.sections.flatMap((s) => s.items.map((i) => i.id))
+				const without = (...gone: (string | null | undefined)[]) => ({ ...target, sections: target.sections.map((s) => ({ ...s, items: s.items.filter((i) => !gone.includes(i.id)) })) }) as Model
+				// A visitor's Pocket holds a few stickers, not the whole page: each sticker alone, its own
+				// card gone, and with it no other card or any one other card (two leaving at once).
+				for (const x of stickers) {
+					const own = truth.get(x.r.key)
+					for (const also of [undefined, ...ids.filter((id) => id !== own)]) {
+						const found = rematch([x.r], without(own, also), { lang })
+						tried++
+						for (const [, id] of found) guesses.push(`${from} -> ${to} without ${own}${also ? ` and ${also}` : ''}: ${x.id} took ${id}`)
+					}
 				}
 			}
-		console.log(`# ${tried} pages with one card removed; ${guesses.length} wrong`)
-		assert.deepEqual(guesses, [], 'a sticker never takes another card when its own is gone')
+		console.log(`# ${tried} stickers alone with their card gone (and one more card); ${guesses.length} took another card`)
+		assert.deepEqual(guesses.slice(0, 20), [], 'a sticker never takes another card when its own is gone')
 	} finally {
 		await page.close()
 	}

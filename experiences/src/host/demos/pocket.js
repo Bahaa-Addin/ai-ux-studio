@@ -93,7 +93,7 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       const known = new Map((layer.model?.sections ?? []).flatMap((section) => section.items.map((item) => [item.id, { item, section }])))
       for (const id of ids) {
         const hit = known.get(id)
-        if (hit && !store.all().some((r) => r.id === id && r.source.path === page.path)) await store.put(recordFrom({ ...hit, page }))
+        if (hit && !store.all().some((r) => r.id === id && r.source.path === page.path)) await store.put(recordFrom({ ...hit, page, model: layer.model }))
       }
       if (ids.every((id) => known.has(id))) store.dropLegacy()
     }),

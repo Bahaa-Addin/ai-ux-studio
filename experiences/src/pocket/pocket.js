@@ -267,7 +267,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const catalog = new Map()
   for (const section of model?.sections ?? []) for (const item of section.items) catalog.set(item.id, { item, section })
   const ownStore = !store
-  store ??= createIdsStore({ catalog, page: seams.page })
+  store ??= createIdsStore({ catalog, page: seams.page, model })
 
   const state = {
     ids: [], // the stickers' keys, oldest first (in the clone, a sticker's key is its card's id)
@@ -756,7 +756,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const { item, section } = catalog.get(id)
     const startX = hover?.card === card ? hover.rig.state?.x ?? 0 : 0
     const fromKeyboard = card.querySelector('.pocket-cta')?.matches(':focus-visible')
-    const record = recordFrom({ item, section, page: seams.page, key: id })
+    const record = recordFrom({ item, section, page: seams.page, model, key: id })
     records.set(id, record)
     state.ids.push(id)
     save(() => store.put(record))

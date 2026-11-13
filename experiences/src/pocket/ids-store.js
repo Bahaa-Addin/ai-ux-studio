@@ -12,8 +12,8 @@ import { recordFrom } from './record.js'
 
 export const IDS_KEY = 'aixc.pocket.v1'
 
-/** `catalog`: Map(id → { item, section }) of this page's cards; `page`: { path, lang, dir, title }. */
-export function createIdsStore({ catalog, page, win = globalThis }) {
+/** `catalog`: Map(id → { item, section }) of this page's cards; `page`: { path, lang, dir, title }; `model`: the page's model. */
+export function createIdsStore({ catalog, page, model = null, win = globalThis }) {
   const load = () => {
     try {
       const value = JSON.parse(win.localStorage.getItem(IDS_KEY) || '[]')
@@ -26,7 +26,7 @@ export function createIdsStore({ catalog, page, win = globalThis }) {
   const listeners = new Set()
   const toRecord = (id) => {
     const { item, section } = catalog.get(id)
-    return recordFrom({ item, section, page, key: id, now: 0 })
+    return recordFrom({ item, section, page, model, key: id, now: 0 })
   }
   const persist = () => {
     try {

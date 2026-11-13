@@ -234,3 +234,67 @@ test('a write the browser refuses at commit (storage full) is reported and not s
 		await ctx.close()
 	}
 })
+
+test('another tab\'s change during the store\'s first read never leaves it empty: ready holds what is on disk (AIXC-64)', async () => {
+	const ctx = await contextFor()
+	try {
+		const page = await at(ctx, '/en/services')
+		const out = await page.evaluate(async (r) => {
+			const w = window as any
+			const seed = w.__pocket.openPocketStore()
+			await seed.ready
+			await seed.put(r)
+			seed.close()
+			// A channel this test can speak on, and a message from "another tab" the moment the first read is under way.
+			const heard: ((e: unknown) => void)[] = []
+			class Channel {
+				onmessage: ((e: unknown) => void) | null = null
+				constructor() {
+					heard.push((e) => this.onmessage?.(e))
+				}
+				postMessage() {}
+				close() {}
+			}
+			const getAll = IDBObjectStore.prototype.getAll
+			let first = true
+			IDBObjectStore.prototype.getAll = function (...a: unknown[]) {
+				const req = getAll.apply(this, a as [])
+				if (first) {
+					first = false
+					queueMicrotask(() => heard.forEach((h) => h({ data: 'changed' })))
+				}
+				return req
+			}
+			const s = w.__pocket.openPocketStore({ win: { indexedDB, BroadcastChannel: Channel, localStorage } })
+			await s.ready
+			const atReady = s.all().map((x: { key: string }) => x.key)
+			IDBObjectStore.prototype.getAll = getAll
+			return atReady
+		}, rec('kept'))
+		assert.deepEqual(out, ['kept'])
+	} finally {
+		await ctx.close()
+	}
+})
+
+test('a sticker kept just before the Pocket closes is stored, and no error is reported for it (AIXC-67)', async () => {
+	const ctx = await contextFor()
+	try {
+		const page = await at(ctx, '/en/services')
+		const out = await page.evaluate(async (r) => {
+			const errors: string[] = []
+			const s = (window as any).__pocket.openPocketStore({ onError: (e: Error) => errors.push(e?.message || String(e)) })
+			await s.ready
+			const put = s.put(r)
+			s.close()
+			await put
+			await new Promise((res) => setTimeout(res, 100))
+			const fresh = (window as any).__pocket.openPocketStore()
+			await fresh.ready
+			return { errors, disk: fresh.all().map((x: { key: string }) => x.key) }
+		}, rec('last'))
+		assert.deepEqual(out, { errors: [], disk: ['last'] })
+	} finally {
+		await ctx.close()
+	}
+})

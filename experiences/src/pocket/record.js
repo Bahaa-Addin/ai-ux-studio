@@ -25,17 +25,27 @@ const ctaOf = (cta) => (cta && (cta.href || cta.opens) ? { label: cta.label ?? n
 
 const newKey = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
+/** How many cards of a model carry each "kind value" key. */
+const countsOf = (model) => {
+  const counts = new Map()
+  for (const s of model?.sections || []) for (const item of s.items) for (const k of new Set((item.keys || []).map((x) => `${x.kind} ${x.value}`))) counts.set(k, (counts.get(k) || 0) + 1)
+  return counts
+}
+
 /**
  * A record from an item of the live model, its section and its page.
  * `page`: { path, lang, dir, title, pageId? } (pageId: the knowledge base's page id when known).
+ * `model`: the page it was kept on, when known: a key other cards there shared is marked `shared`,
+ * and never counts as the card's own later, even when the others have gone (AIXC-63).
  */
-export function recordFrom({ item, section, page, origin = 'person', now = Date.now(), key = newKey() }) {
+export function recordFrom({ item, section, page, model = null, origin = 'person', now = Date.now(), key = newKey() }) {
+  const counts = model ? countsOf(model) : null
   return {
     v: 2,
     key,
     id: item.id,
     kind: item.kind ?? null,
-    keys: Array.isArray(item.keys) ? item.keys.map((k) => ({ kind: k.kind, value: k.value })) : [],
+    keys: Array.isArray(item.keys) ? item.keys.map((k) => ({ kind: k.kind, value: k.value, ...(counts && (counts.get(`${k.kind} ${k.value}`) || 0) > 1 ? { shared: true } : {}) })) : [],
     copy: { title: item.title, description: item.description ?? null, lang: page.lang, dir: page.dir || (page.lang === 'ar' ? 'rtl' : 'ltr') },
     image: item.image ? { src: item.image.src, alt: item.image.alt ?? null, ...(item.image.fit ? { fit: item.image.fit } : {}) } : null,
     // The card's own link or dialog, else its section's (the clone's Cash cards share one).
@@ -81,7 +91,8 @@ export function scoreOf(record, item, { counts, lang, sectionId }) {
   for (const k of record.keys) {
     if (!compared(k.kind)) continue
     if (!item.keys?.some((x) => x.kind === k.kind && x.value === k.value)) continue
-    const only = counts.get(`${k.kind} ${k.value}`) === 1
+    // The only card with it now, and not one of several where the sticker was kept.
+    const only = counts.get(`${k.kind} ${k.value}`) === 1 && !k.shared
     const [hi, lo] = POINTS[k.kind] || [0, 0]
     score += only ? hi : lo
     agreed.add(k.kind)
@@ -112,8 +123,7 @@ export function scoreOf(record, item, { counts, lang, sectionId }) {
  */
 export function rematch(records, model, { lang }) {
   const cards = (model?.sections || []).flatMap((s) => s.items.map((item) => ({ item, sectionId: s.id })))
-  const counts = new Map()
-  for (const { item } of cards) for (const k of new Set((item.keys || []).map((x) => `${x.kind} ${x.value}`))) counts.set(k, (counts.get(k) || 0) + 1)
+  const counts = countsOf(model)
   const offers = []
   for (const r of records) {
     const scored = cards.map(({ item, sectionId }) => ({ id: item.id, ...scoreOf(r, item, { counts, lang, sectionId }) })).sort((a, b) => b.score - a.score)

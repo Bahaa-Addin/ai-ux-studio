@@ -113,3 +113,14 @@ test('two stickers that fit one card equally both go without it, whatever order 
   assert.deepEqual([...rematch([services, tied], en, { lang: 'en' })], [], 'equal fits: neither')
   assert.deepEqual([...rematch([tied, services], en, { lang: 'en' })], [], 'in either order')
 })
+
+test('a key other cards shared where the sticker was kept never becomes its own when they go (AIXC-63)', () => {
+  // The RED page: three plans share one picture ('alll') and one link; two of them are retired.
+  const red = (id, title) => card(id, { link: 'eshop/lines/red/numbers', picture: 'alll', title })
+  const kept = model(['plans', [red('red-exclusive', 'red exclusive'), red('red-elite', 'red elite+'), red('red-prime', 'red prime+')]])
+  const sticker = recordFrom({ item: kept.sections[0].items[0], section: kept.sections[0], page, model: kept })
+  assert.deepEqual(sticker.keys.filter((k) => k.shared).map((k) => k.kind).sort(), ['link', 'picture'], 'the picture and the link were shared')
+  const later = model(['plans', [red('red-elite', 'red elite+')]])
+  assert.deepEqual([...rematch([sticker], later, { lang: 'en' })], [], 'RED Elite is not RED Exclusive, though it now has the picture alone')
+  assert.equal(recordFrom({ item: kept.sections[0].items[0], section: kept.sections[0], page }).keys.some((k) => k.shared), false, 'without the page, nothing is marked')
+})

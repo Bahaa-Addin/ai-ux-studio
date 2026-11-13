@@ -276,7 +276,8 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 
 - **Found:** 2026-11-13, review of phase 3 steps S0 to S4 (AIXC-53, high).
 - **Cause:** from the second saved page the guide's session resumes and keeps `GET <origin>/__vg/v1/events/poll?…&wait=20` open while the demo browser forwards it to the gateway. Closing called only `context.close()`; Playwright leaves a route still pending at close to Chromium, which sent the request on to the real host with its cookies, the session id and the site key. Neither the kit's `reached` nor its `refused` list saw it (no response came back). It happened in every suite that opens two saved pages offline.
-- **Fix:** `tools/demo-browser.ts` ends every request still waiting on the gateway before closing (its Node fetch aborted, the route aborted), and in offline mode the browser resolves no host name but localhost (`--host-resolver-rules`), so a request that escapes the routes fails before it leaves the machine.
+- **Fix:** `tools/demo-browser.ts` ends every request still waiting on the gateway before closing (its Node fetch aborted, the route aborted), and in offline mode the browser resolves no host name but localhost (`--host-resolver-rules`) and uses no proxy (`--no-proxy-server`), so a request that escapes the routes fails before it leaves the machine.
+- **Review of the fix (2026-11-13, Opus):** with a proxy set on the machine or in the environment, an escaping request went to the proxy as `CONNECT web.vodafone.com.eg:443` and the proxy resolved it: the resolver rule alone did not hold (AIXC-65). Fixed with `--no-proxy-server`; the kit's test checks both arguments.
 - **Test:** `tests/e2e/live-kit.e2e.test.ts`, "nothing leaves as the browser closes": Chromium's own network log (`netLog`) shows no request started to another host, even while closing. It failed before the fix (the poll URL to `web.vodafone.com.eg`), run with the resolver rule already in place so nothing could leave.
 
 ## B-35 A sticker whose card was gone took another card
@@ -285,6 +286,7 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** one unique key reached the re-match's 4 points. Vodafone's own slips give two cards one link or one title: on `/ar/services` the Mini Call card also links `/spa/roaming`, so with Roaming gone its sticker took Mini Call; on `/en/services` two cards are titled "Balance transfer"; an English "DSL" sticker took the Arabic ticket "اتحكم في حسابك", which links the same shop page.
 - **Fix:** `experiences/src/pocket/record.js`: a link, a picture or a title (in the sticker's language) that both sides have and do not share counts against; a match needs two agreeing signs of different kinds (the same id counts as one). ADR-0051 §4 amended.
 - **Test:** `live-adapter.test.ts`, "a sticker whose card is gone finds no card at all": each card of five saved page pairs removed in turn, same language and across (306 pages), no sticker takes another card (20 did before); `pocket-record.test.mjs`, the three slips on synthetic cards. The cross-language test now runs Arabic to English too, with each card's real twin (the test had taken the place in a section as the truth, wrong on the bundles page).
+- **Review of the fix (2026-11-13, Opus; AIXC-63, AIXC-66):** a sticker on its own whose card left with a sibling still took another card (RED Exclusive took RED Elite once Prime went too, their shared picture then belonging to Elite alone; a YouTube "Flex 25-55" took PUBG's): the test gave every card its own sticker, so each remaining card's sticker claimed it first, and removed one card only. A record now marks the keys other cards on its page shared when it was kept (`shared`), and those never count as its own later. The test takes each sticker alone, its card gone with no other or with any one other card: 6,194 cases, none takes another card (108 did with the first fix). The Arabic-to-English counts are now asserted too.
 
 ## B-36 Two stickers tied for one card: the one kept first took it
 
@@ -299,6 +301,7 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** on another tab's message the store replaced its memory with a read that had started before this tab's own write (IndexedDB runs transactions in the order they are made), and the tab never read again (a channel does not hear its own messages).
 - **Fix:** `experiences/src/pocket/store.js` keeps this tab's changes not yet committed and lays them over every read; only the latest read counts.
 - **Test:** `pocket-store.test.ts`, "another tab's change never undoes this tab's own newer one" (a write made the moment the store starts reading for the other tab's message; memory, subscribers and disk all hold both; failed before).
+- **Review of the fix (2026-11-13, Opus; AIXC-64):** the first version kept only the latest read, so another tab's message during the store's very first read made `ready` resolve with nothing in it. Now a read is applied unless a newer one has already landed. Test: "another tab's change during the store's first read never leaves it empty" (failed before).
 
 ## B-38 A sticker kept before the store had opened was lost
 
@@ -306,6 +309,7 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** a write before `ready` returned early (no database yet) but resolved as if it worked, and the first read then cleared memory.
 - **Fix:** a change waits for the store to open, and the first read lays it over what it reads.
 - **Test:** `pocket-store.test.ts`, "a sticker kept before the store has opened is stored" (memory and a fresh store; failed before).
+- **Review of the fix (2026-11-13; AIXC-67):** a sticker kept just before the store closed (the layer's guard stopping it) was dropped without a word: the write waited one beat for `ready`, and the store had closed by then. A write now starts at once when the store is open, and nothing is posted on a closed channel. Test: "a sticker kept just before the Pocket closes is stored, and no error is reported for it" (failed before).
 
 ## B-39 A write the browser refused at commit was never reported
 

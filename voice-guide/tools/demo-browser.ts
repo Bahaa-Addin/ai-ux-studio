@@ -50,8 +50,9 @@ export interface DemoBrowserOptions {
 	 * Replay only: nothing is fetched from the internet. Pictures the replay did not save are a blank,
 	 * fonts and styles it did not save are refused, and a page it does not have says so. Tests use it,
 	 * so a run never reaches Vodafone's site. `onNetwork` hears each request that would have gone out.
-	 * The browser also resolves no host name but localhost, so a request that escapes the routes
-	 * (one released as the browser closes, AIXC-53) fails before it leaves the machine.
+	 * The browser also resolves no host name but localhost and uses no proxy (the machine's own or
+	 * one from the environment would resolve the host for it, AIXC-65), so a request that escapes
+	 * the routes (one released as the browser closes, AIXC-53) fails before it leaves the machine.
 	 */
 	offline?: boolean
 	onNetwork?: (url: string, resourceType: string) => void
@@ -190,6 +191,9 @@ const MIME: Record<string, string> = {
 	'.json': 'application/json; charset=utf-8',
 }
 
+/** Offline: no host name resolves but localhost, and no proxy is used, so nothing can leave the machine (AIXC-53, AIXC-65). */
+export const OFFLINE_ARGS = ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1', '--no-proxy-server']
+
 export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrowser> {
 	const log = o.log || (() => {})
 	const origins = o.site.origins.map((x) => new URL(x.url).origin)
@@ -201,7 +205,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 		...(o.kiosk ? ['--kiosk'] : o.headless ? [] : ['--start-maximized']),
 		...(o.fakeMic ? ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${o.fakeMic}`] : []),
 		'--autoplay-policy=no-user-gesture-required',
-		...(o.offline ? ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'] : []),
+		...(o.offline ? OFFLINE_ARGS : []),
 		...(o.netLog ? [`--log-net-log=${o.netLog}`, '--net-log-capture-mode=Default'] : []),
 	]
 	const launch = (channel: 'chrome' | 'chromium') =>
