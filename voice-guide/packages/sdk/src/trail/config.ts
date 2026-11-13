@@ -96,9 +96,20 @@ export const TRAIL_CONFIG = {
 			'oauth',
 			'sso',
 			'wallet',
+			// The e-shop's own private and transactional pages (e-shop map, 2026-11-13; E3).
+			'wishlist',
+			'payments',
+			'vouchers?',
+			'returns',
+			'orders?',
+			'order-?status',
+			'subscription-details',
+			'documents',
+			'lines/[^/]+/(?:numbers|review)',
 		],
 		/** Fields whose presence makes a page private. */
-		privateFields: 'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"], input[name*="otp" i], input[name*="card" i][inputmode="numeric"]',
+		privateFields:
+			'input[type="password"], input[autocomplete="one-time-code"], input[autocomplete^="cc-"], input[name*="otp" i], input[name*="card" i][inputmode="numeric"], input[type="tel"], input[autocomplete="tel"], input[name*="national" i], input[id*="national" i], input[name*="msisdn" i], input[type="file"]',
 		/** Blocked from recordings: an empty box of the same size. */
 		block: [
 			'vg-guide',

@@ -1,6 +1,7 @@
 export { detectLanguage, dirOf, isArabicToken, normalize, words, type Lang } from './normalize.ts'
 export { stem, stemArabic, stemEnglish } from './stem.ts'
 export { STOPWORDS } from './stopwords.ts'
+export { hasValue, valueFree } from './values.ts'
 export {
 	buildSynonyms,
 	containment,

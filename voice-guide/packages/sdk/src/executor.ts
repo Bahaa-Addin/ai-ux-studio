@@ -154,7 +154,8 @@ export class Executor {
 				const text = step.read ? readAnswer(step.read, el, this.#item, lang) : ''
 				h.ui.spotlight(el, { caption: text || step.caption })
 				if (text) await h.say(text, { wait: false })
-				return text ? text.slice(0, 80) : step.caption || ''
+				// What was read is a live page value (a price, a balance): the trace says only that it was read (AGENTS.md 4.3; E3).
+				return text ? 'read' : step.caption || ''
 			}
 			case 'say':
 				await h.say(step.text, { wait: false })

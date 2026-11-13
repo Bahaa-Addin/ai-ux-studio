@@ -14,6 +14,8 @@ import type { Entity, SessionState, Turn } from '#shared/store/index.ts'
 import type { Tracer } from '#shared/trace.ts'
 import { termGroups, terms } from '#text'
 
+import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
+
 import { CircuitBreaker, type Decider, SystemOneDecider } from './deciders.ts'
 import { buildPlan } from './planner.ts'
 import { type Understanding, understand } from './understand.ts'
@@ -140,7 +142,8 @@ export function createRouter(deps: RouterDeps) {
 			// The guide's voice makes the plan's own words before the page asks (ADR-0047); never waited for.
 			if (deps.speech) void deps.speech.prepare({ siteId: site.id, lang: plan.lang, lines: knownLines(plan) }, { trace: tctx }).catch(() => {})
 
-			const turn: Turn = { id: turnId, utterance, lang: u.lang, intent: plan.meta.intent, route: plan.meta.route, destinationId: plan.meta.destinationId, at: new Date().toISOString() }
+			// The session keeps the person's words with personal data masked (AGENTS.md 4.4; E3); the trace cleans its own copy.
+			const turn: Turn = { id: turnId, utterance: maskContent(utterance), lang: u.lang, intent: plan.meta.intent, route: plan.meta.route, destinationId: plan.meta.destinationId, at: new Date().toISOString() }
 			if (plan.meta.route === 'clarify') turn.options = u.alternatives.map((a) => a.id)
 			return { turnId, plan, understanding: u, turn, last, kbVersion: kb.versionId }
 		},

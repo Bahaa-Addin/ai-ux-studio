@@ -3,12 +3,15 @@
  * loads, and single-use handoff tokens for crossing origins (website to web app).
  */
 import type { Plan } from '#kb'
+import { cleanAttrs, cleanText } from '#shared/clean.ts'
 import type { PlatformConfig } from '#shared/config.ts'
 import { HttpError } from '#shared/http.ts'
 import { newId } from '#shared/ids.ts'
 import type { RpcContext } from '#shared/rpc.ts'
 import type { AgentState, Entity, SessionState, Store, Turn } from '#shared/store/index.ts'
 import type { Tracer } from '#shared/trace.ts'
+
+import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
 
 const MAX_TURNS = 20
 const HANDOFF_TTL_SEC = 60
@@ -63,7 +66,8 @@ export function createSessions(deps: SessionsDeps) {
 			const patch: Partial<SessionState> = {
 				turns,
 				lang: input.turn.lang,
-				plan: runnable ? { turnId: input.turn.id, steps: input.plan.steps, cursor: 0, startedAt: new Date().toISOString() } : null,
+				// The plan sent to the page keeps the person's words, so the agent may type a number they said (ADR-0018 §3); the copy kept here is masked (AGENTS.md 4.3; E3).
+				plan: runnable ? { turnId: input.turn.id, steps: input.plan.steps.map((st) => (st.op === 'agent' ? { ...st, task: maskContent(st.task) } : st)), cursor: 0, startedAt: new Date().toISOString() } : null,
 				// A new request ends any agent run that was carried across pages.
 				agent: null,
 			}
@@ -91,7 +95,7 @@ export function createSessions(deps: SessionsDeps) {
 			else patch.plan = { ...s.plan, cursor: input.cursor, awaitingNavigation: !!input.awaitingNavigation, itemKey: input.item?.key ?? s.plan.itemKey }
 			if (input.item) {
 				const destinationId = input.item.key ? `${input.item.collectionId}.${slugKey(input.item.key)}` : undefined
-				patch.last = { kind: 'item', collectionId: input.item.collectionId, key: input.item.key, name: input.item.name, destinationId: destinationId ?? s.last?.destinationId, pageId: s.last?.pageId }
+				patch.last = { kind: 'item', collectionId: input.item.collectionId, key: input.item.key, name: input.item.name ? cleanText(input.item.name, 120) : undefined, destinationId: destinationId ?? s.last?.destinationId, pageId: s.last?.pageId }
 			}
 			await store.patchSession(s.id, patch, ttl)
 			return { ok: true }
@@ -108,7 +112,8 @@ export function createSessions(deps: SessionsDeps) {
 		/** Carries a fallback agent's progress across page loads (ADR-0017). */
 		async saveAgent(input: { siteId: string; sessionId: string; agent: AgentState | null }): Promise<{ ok: true }> {
 			const s = await mustGet(input.sessionId, input.siteId)
-			const agent = input.agent ? { ...input.agent, history: (input.agent.history || []).slice(-30) } : null
+			// The steps the agent took are page words (AGENTS.md 4.3, 4.4; E3): cleaned like a trace. The task is the person's own request, masked only.
+			const agent = input.agent ? { ...input.agent, task: maskContent(String(input.agent.task || '')), history: (input.agent.history || []).slice(-30).map((l) => cleanAttrs(l, 400)) } : null
 			await store.patchSession(s.id, { agent }, ttl)
 			return { ok: true }
 		},

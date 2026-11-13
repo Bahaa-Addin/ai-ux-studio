@@ -2,8 +2,11 @@
  * Turn tracing (ADR-0021). Every service records what it did for a turn as
  * trace events in the store; the X-ray panel streams them live and the pilot
  * analysis reads them later. The W3C traceparent header carries the trace id
- * between the SDK, the gateway and the services.
+ * between the SDK, the gateway and the services. Every attribute is cleaned on the way in
+ * (`clean.ts`; AGENTS.md 4.3, 4.4): no personal data, no price or stock, no query value that can
+ * name a person, whoever wrote the event.
  */
+import { cleanAttrs } from './clean.ts'
 import { newSpanId, newTraceId } from './ids.ts'
 import { log } from './log.ts'
 import type { Store, TraceEvent } from './store/index.ts'
@@ -48,7 +51,7 @@ export class Tracer {
 			service: this.service,
 			at: new Date().toISOString(),
 			durationMs,
-			attrs,
+			attrs: cleanAttrs(attrs),
 		}
 		try {
 			await this.store.appendTrace(ev)

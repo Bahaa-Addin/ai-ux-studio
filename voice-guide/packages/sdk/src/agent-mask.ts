@@ -46,7 +46,7 @@ export interface FieldInfo {
 	label?: string
 }
 
-const SECRET_WORDS = /(password|passcode|passwd|\bpin\b|otp|one[ -]?time|verification code|security code|cvv|cvc|card number|national id|كلمة (ال)?سر|كلمة المرور|الرقم السري|رمز (التحقق|التأكيد)|كود (التحقق|التأكيد)|الرقم القومي|رقم البطاقة|رقم الكارت)/i
+const SECRET_WORDS = /(password|passcode|passwd|\bpin\b|otp|one[ -]?time|verification code|security code|cvv|cvc|card number|national[ _-]?id|\bnid\b|\bid[ _-]?(?:number|no)\b|كلمة (ال)?سر|كلمة المرور|الرقم السري|رمز (التحقق|التأكيد)|كود (التحقق|التأكيد)|الرقم القومي|رقم البطاقة|رقم الكارت)/i
 
 /** Why the agent must not type into this field, or null. */
 export function secretField(f: FieldInfo): string | null {

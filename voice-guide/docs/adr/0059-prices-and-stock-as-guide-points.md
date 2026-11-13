@@ -24,6 +24,10 @@ Measured on the committed manifest (`docs/reference/eshop-map-2026-11-13.md`): 2
 - Ids built from prices still rename when a price changes; they stop being built that way at the next held web sync (the plan's Q12).
 - Traces and logs hold no page values (step E3).
 
+## Built so far
+
+- Step E3 (2026-11-13): `valueFree` and `hasValue` in `packages/text/src/values.ts` (money with its currency in English and Arabic, Western and Arabic-Indic digits, percentages, stock phrases; a number without a currency, a percent sign or a stock word stays, so "Flex 1400", "25-55" and "128 GB" need no exception list). Every trace attribute and log field goes through it (`services/shared/clean.ts`, ADR-0021). Tests: `tests/unit/values.test.ts`, `tests/unit/clean.test.ts`, the E3 test in `tests/integration/gateway.test.ts`. The gate on what the guide says and shows is step E2.
+
 ## Pilot knobs
 
 - The money and stock patterns and the exception list (`packages/text`).

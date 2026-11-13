@@ -211,7 +211,8 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 					const el = at(this.pageController, input.index)
 					const no = await refused(el)
 					if (no) return no
-					const label = el ? (el.textContent || el.getAttribute('aria-label') || el.getAttribute('value') || '').replace(/\s+/g, ' ').trim().slice(0, 60) : ''
+					// Page words leave the browser masked (ADR-0018); the server also strips prices from what it keeps (E3).
+					const label = el ? maskContent((el.textContent || el.getAttribute('aria-label') || el.getAttribute('value') || '').replace(/\s+/g, ' ').trim()).slice(0, 60) : ''
 					clickedStep = n
 					o.onStep({ step: n, action: `click_element_by_index [${input.index}]`, goal: label, ms: performance.now() - stepStart })
 					o.onSave({ lines: [...lines, `${n}. clicked [${input.index}] "${label}"`], steps: n })
@@ -280,8 +281,9 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 			if (!last || last.type !== 'step') return
 			const n = offset + history.filter((e) => e.type === 'step').length
 			const action = `${last.action.name}${last.action.input && typeof last.action.input === 'object' && 'index' in last.action.input ? ` [${(last.action.input as any).index}]` : ''}`
-			lines.push(`${n}. ${action}: ${String(last.action.output).slice(0, 120)}${last.reflection.next_goal ? ` (goal: ${last.reflection.next_goal.slice(0, 100)})` : ''}`)
-			if (clickedStep !== n) o.onStep({ step: n, action, goal: last.reflection.next_goal, ms: performance.now() - stepStart })
+			const goal = last.reflection.next_goal ? maskContent(last.reflection.next_goal).slice(0, 100) : ''
+			lines.push(`${n}. ${action}: ${maskContent(String(last.action.output)).slice(0, 120)}${goal ? ` (goal: ${goal})` : ''}`)
+			if (clickedStep !== n) o.onStep({ step: n, action, goal: goal || undefined, ms: performance.now() - stepStart })
 			o.onSave({ lines, steps: n })
 		},
 	})

@@ -4,6 +4,7 @@
 - Date: 2026-10-23
 - Area: Model access, cost, privacy
 - Code: `services/agent/handlers.ts`, gateway route `/v1/agent/chat/completions`
+- Amended (2026-11-13, e-shop plan step E3; AGENTS.md 4.3 as approved that day in ADR-0059: never store personal data anywhere): §3 still holds for the page the person is on: the plan sent there keeps their words, so the agent may type a number they said. What we keep is masked: the session's turn, its copy of the planned agent task and the agent's saved task and steps (carried to the next page, ADR-0017), and every trace and log line (`services/shared/clean.ts`). After a page load the agent therefore asks the person for a number they said instead of typing it. The secret-field words also catch `nationalId`, `national_id`, `nid` and "ID number"
 
 ## Context
 

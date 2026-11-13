@@ -4,6 +4,7 @@
 - Date: 2026-10-23
 - Area: Observability
 - Code: `services/shared/trace.ts`, gateway `/v1/events`, `packages/sdk/src/xray.ts`
+- Amended (2026-11-13, e-shop plan step E3; AGENTS.md 4.3, 4.4): `Tracer.event` cleans every attribute before it is stored, whoever wrote the event (`services/shared/clean.ts`): personal data masked with ADR-0018's rules, prices, percentages and stock phrases removed (`valueFree`, ADR-0059), URLs cut to origin and path plus query values that are short and cannot name a person, strings capped at 300 characters. Logs are cleaned the same way. The X-ray therefore shows the person's request masked, a spotlight's read as "read", and no price
 
 ## Context
 

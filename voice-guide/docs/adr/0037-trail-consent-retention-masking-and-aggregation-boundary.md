@@ -4,6 +4,7 @@
 - Date: 2026-11-03
 - Area: Privacy and security; extends ADR-0018 (masking before data leaves the browser) and ADR-0022 (edge security)
 - Spec: [SPEC-06](../specs/SPEC-06-exploration-trail.md) §2, §6, §8; threat model in SPEC-06 §9
+- Amended: §3 (2026-11-13, e-shop plan step E3): the sensitive paths gain the e-shop's private and transactional pages (`wishlist`, `payments`, `vouchers`, `returns`, `orders`, `order-status`, `subscription-details`, `documents`, `lines/<plan>/numbers` and `lines/<plan>/review`; DSL checkout was already caught by `checkout`), and the private fields gain phone, national-ID, `msisdn` and file-upload inputs (`packages/sdk/src/trail/config.ts`). The shop's lists and plan pages stay recordable
 
 ## Context
 

@@ -65,6 +65,10 @@ test('secret fields: passwords, one-time codes, card fields, national ID, in Eng
 	assert.ok(secretField({ placeholder: 'الرقم القومي' }))
 	assert.ok(secretField({ label: 'كلمة السر' }))
 	assert.ok(secretField({ name: 'otp' }))
+	// The shop's forms name the field in code, not words (e-shop plan E3).
+	assert.ok(secretField({ name: 'nationalId' }))
+	assert.ok(secretField({ id: 'national_id' }))
+	assert.ok(secretField({ label: 'ID number' }))
 	assert.equal(secretField({ type: 'text', label: 'Mobile number', name: 'msisdn' }), null)
 	assert.equal(secretField({ type: 'search', placeholder: 'Find a store' }), null)
 })
