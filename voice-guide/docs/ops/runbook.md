@@ -69,7 +69,7 @@ First run only: answer the cookie banner yourself (reject non-essential cookies)
 | Option | Use |
 |---|---|
 | `--start <url>` | Start on another Vodafone page, for example `https://web.vodafone.com.eg/en/mobile-internet-bundles` |
-| `--replay` | Offline: Vodafone pages saved on 2026-10-23 (§2.2) |
+| `--replay` | Vodafone pages saved on 2026-10-23 (§2.2); a page not saved opens from the internet |
 | `--kiosk` | Full screen, no browser chrome (on stage) |
 | `--xray open` | Open the X-ray drawer (what the guide heard, decided and did, with timings); `button` (default) shows a button for it |
 | `--kb <manifest.json>` | Use this knowledge base instead of the default (§4) |
@@ -87,7 +87,7 @@ Stop: close the browser window, or press Ctrl+C in the terminal.
 npm run demo:live -- --replay
 ```
 
-The same, but Vodafone's origins are served from `fixtures/replay/vodafone-eg/`: 14 pages captured on 2026-10-23 with Vodafone's own stylesheets and fonts. Nothing goes to the internet except speech recognition (Chrome's service). Saved pages: home, mobile internet bundles, RED, home wireless, services, Vodafone Cash (each in Arabic and English), promotions (English) and the store locator (`/spa/storeLocator`). Any other page shows a short "not in replay" page. Page scripts are off in replay, so a stand-in of the accessibility button is drawn where the real one sits, and pictures were not saved, so their alt text shows in their place (on the home page that alt text includes stray HTML from Vodafone's CMS).
+The same, but Vodafone's origins are served from `fixtures/replay/vodafone-eg/`: 14 pages captured on 2026-10-23 with Vodafone's own stylesheets and fonts. Saved pages: home, mobile internet bundles, RED, home wireless, services, Vodafone Cash (each in Arabic and English), promotions (English) and the store locator (`/spa/storeLocator`). Any other page, and a picture, font or style the replay did not save, is opened from the internet (owner, 2026-11-13: replay keeps this live fallback); no e-shop page is saved, so every e-shop link, sticker and "Buy now" links included, opens the live shop. Only when the internet does not answer does a page say "not in replay". Speech recognition uses Chrome's service. The tests run replay fully offline (`offline: true`): nothing leaves the machine there. Page scripts are off in replay, so a stand-in of the accessibility button is drawn where the real one sits, and pictures were not saved, so their alt text shows in their place (on the home page that alt text includes stray HTML from Vodafone's CMS).
 
 ### 2.3 Requests to try
 

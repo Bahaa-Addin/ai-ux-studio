@@ -3,7 +3,7 @@
  *
  *   npm run demo:live                                   # live site, start on /ar/home
  *   npm run demo:live -- --start https://web.vodafone.com.eg/en/mobile-internet-bundles
- *   npm run demo:live -- --replay                       # offline: captured pages, no internet needed
+ *   npm run demo:live -- --replay                       # captured pages; a page not captured opens live
  *   npm run demo:live -- --kiosk --xray open            # on stage
  *   npm run demo:live -- --browser chromium             # Playwright's Chromium (no speech service; typing only)
  *   npm run demo:live -- --replay --trail               # with the Exploration Trail (SPEC-06; demo only, consent still asked)
@@ -106,7 +106,7 @@ console.log(`Gateway: http://127.0.0.1:${port} (store: ${services.store.kind}, a
 const preset = llmPreset(platform.llm.preset)
 if (preset) console.log(`Agent model: ${preset.model} via ${preset.label}: ${preset.notice}\n  Use your own model with VG_LLM_BASE_URL and VG_LLM_MODEL, or turn the agent off with --agent off.`)
 console.log(`Experience layer (ADR-0048): ${site.experiences.enabled && values.aixc !== 'off' ? `on (${site.experiences.paths.join(', ')}; --aixc off to leave it out)` : 'off'}`)
-console.log(replayDir ? `Replay: ${path.relative(ROOT, replayDir)} (offline)${clone ? `, ${[clone.path, ...Object.keys(clone.pages)].join(' and ')} ${Object.keys(clone.pages).length ? 'are' : 'is'} the Services clone with Pocket` : ''}` : 'Live: real Vodafone pages')
+console.log(replayDir ? `Replay: ${path.relative(ROOT, replayDir)} (saved pages; one not saved, and the e-shop, opens from the internet)${clone ? `, ${[clone.path, ...Object.keys(clone.pages)].join(' and ')} ${Object.keys(clone.pages).length ? 'are' : 'is'} the Services clone with Pocket` : ''}` : 'Live: real Vodafone pages')
 
 const browser = await launchDemoBrowser({
 	site,
