@@ -348,6 +348,8 @@ test('traces and the saved session hold no page value, no personal data and no p
 		events: [
 			{ name: 'sdk.step', attrs: { op: 'spotlight', ok: true, detail: 'Your balance is 46.50 EGP', i: 0 } },
 			{ name: 'agent.step', attrs: { step: 1, action: 'click_element_by_index [3]', goal: 'Super 10 · 46 EGP/month, only 3 left, my id 29001011234567' } },
+			// What the microphone heard, sent by the browser: only the site's own words are kept (AIXC-94, AIXC-105).
+			{ name: 'sdk.listen', attrs: { text: 'Zaynab Farouk wants internet bundles, 01012345678', final: true } },
 		],
 	})
 	await call('/v1/progress', { sessionId: s.sessionId, turnId: t.turnId, cursor: 1, item: { collectionId: 'web.bundles.mobile-internet', key: 'mi-10', name: 'Super 10 46 EGP' } })
@@ -368,6 +370,9 @@ test('traces and the saved session hold no page value, no personal data and no p
 	assert.match(trace, /\[phone\]/, 'the request is still traced, masked')
 	assert.match(trace, /internet bundle/, 'with the site\'s own words')
 	assert.doesNotMatch(trace, /Zaynab|Farouk/, 'never a name the site does not use (AIXC-94)')
+	const heard = (await p.store.listTrace(s.sessionId)).find((e) => e.name === 'sdk.listen')
+	assert.match(String(heard?.attrs.text), /internet bundles/, 'the transcript keeps the site\'s words')
+	assert.match(String(heard?.attrs.text), /\[phone\]/)
 	assert.match(trace, /index\.html\?tab=offers/, 'the page keeps its path and its harmless query')
 	assert.doesNotMatch(JSON.stringify((await p.store.getSession(s.sessionId))?.turns), /call me on|Zaynab/, 'the turns keep none of the person\'s words')
 	assert.match(row, /call me on \[phone\]/, 'the agent\'s task is kept, masked, for the next page (ADR-0017; owner, 2026-11-13)')

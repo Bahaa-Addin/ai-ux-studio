@@ -42,10 +42,11 @@ export function vocabularyOf(m: Manifest): string[] {
  * as they were when the page was crawled. Used to rank and find ("around 50 pounds"), never said or
  * shown: the live page answers. The lowest amount is the one a card starts from.
  */
-export function guidePoints(d: Destination): { price?: number; stock?: 'in' | 'out' } {
+export function guidePoints(d: Destination): { price?: number; monthly?: number; stock?: 'in' | 'out' } {
 	const found = [...Object.values(d.labels || {}).flat(), ...Object.values(d.target?.text || {})].map(guidePointsIn)
-	const prices = found.flatMap((f) => f.prices)
-	return { price: prices.length ? Math.min(...prices) : undefined, stock: found.find((f) => f.stock)?.stock }
+	const low = (ns: number[]) => (ns.length ? Math.min(...ns) : undefined)
+	// An instalment is kept apart: "999 a month" is not a 999 card (AIXC-104).
+	return { price: low(found.flatMap((f) => f.prices)), monthly: low(found.flatMap((f) => f.monthly)), stock: found.find((f) => f.stock)?.stock }
 }
 
 export function variantKey(url: string, keepQuery: string[] = []): string {

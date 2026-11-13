@@ -73,7 +73,9 @@ export function siteWords(s: string, siteId: string, max = 300): string {
 	for (const w of cleanWords(s, max).split(/\s+/).filter(Boolean)) {
 		const mask = /\[(phone|card|email|national-id|number)\]/.exec(w)?.[0]
 		const key = normalize(w).replace(/[^\p{L}]+/gu, '')
-		const keep = mask || (key && (vocab?.has(key) || vocab?.has(stem(key))) ? w : '')
+		// A short number stays (an amount, a bundle's size: the person's own price point); a long one was masked or goes (AIXC-102).
+		const short = /^[\d٠-٩.,٬٫]{1,6}$/.test(w.replace(/[^\d٠-٩.,٬٫]/g, '')) && !/\p{L}/u.test(w) ? w : ''
+		const keep = mask || short || (key && (vocab?.has(key) || vocab?.has(stem(key))) ? w : '')
 		if (keep) out.push(keep)
 		else if (out.at(-1) !== '…') out.push('…')
 	}

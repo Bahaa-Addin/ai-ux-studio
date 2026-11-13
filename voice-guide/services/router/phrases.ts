@@ -30,6 +30,9 @@ const P = {
 	clarifyBoth: { en: 'These two look alike. Which one: the first or the second?', ar: 'الاتنين شبه بعض. أنهي واحدة: الأولى ولا التانية؟' },
 	theFirst: { en: 'The first', ar: 'الأولى' },
 	theSecond: { en: 'The second', ar: 'التانية' },
+	// What the guide calls something whose name was only a stored price, or a page with no other title (AIXC-100).
+	thisOne: { en: 'this one', ar: 'ده' },
+	thePage: { en: 'the page', ar: 'الصفحة' },
 	commitYours: { en: "This step is yours: press this button yourself when you're ready.", ar: 'الخطوة دي بتاعتك: دوس على الزرار ده بنفسك لما تكون جاهز.' },
 	commitNumber: { en: 'Pick the number you want, then press this button yourself.', ar: 'اختار الرقم اللي عايزه، وبعدين دوس على الزرار ده بنفسك.' },
 	commitWhich: { en: "There are several of these here. Which one do you mean? Tell me its name and I'll show you its button.", ar: 'فيه أكتر من واحد هنا. تقصد أنهي واحد؟ قولي اسمه وأنا أوريك الزرار بتاعه.' },

@@ -10,7 +10,7 @@ const D = '[0-9٠-٩۰-۹]'
 // Read from the start of a number only, so a long run of digits is tried once (AIXC-81).
 const AMOUNT = `(?<![0-9٠-٩۰-۹.,٬٫])${D}[0-9٠-٩۰-۹.,٬٫]*`
 // Pounds and piasters as Vodafone writes them, bare "ج" included (AIXC-92): "ب6.5ج", "50 PT", "10 قروش", "£E 20".
-const CURRENCY = '(?:egp|e\\.g\\.p|l\\.?e\\.?|le|£e|e£|£|pounds?|piasters?|pt|جنيه(?:ا|ًا)?|جنيهات|ج\\.?\\s?م|ج|قروش|قرش|\\$|usd|eur|€|sar|aed|ريال|درهم)'
+const CURRENCY = '(?:egp|e\\.g\\.p|l\\.?e\\.?|le|£e|e£|£|pounds?|piasters?|pt|جني[هة](?:ا|ًا)?|جنيهات|ج\\.?\\s?م|ج|قروش|قرش|\\$|usd|eur|€|sar|aed|ريال|درهم)'
 const PER = '(?:\\s*(?:/|per|في|فى|كل)\\s*(?:month|mo|call|minute|min|شهر|الشهر|مكالمه|مكالمة|دقيقه|دقيقة))?'
 
 const PATTERNS: RegExp[] = [
@@ -28,11 +28,21 @@ const PATTERNS: RegExp[] = [
 	),
 ]
 
-/** `text` with every price, percentage and stock phrase removed, spaces tidied. */
+/**
+ * The words that only join a value to a sentence ("from 25 EGP up to 55 EGP", "بـ 46 جنيه", "starting at"):
+ * they go with the value, so "Flex From 25 EGP up to 55 EGP" leaves "Flex", not "Flex From up to".
+ */
+const BEFORE = String.raw`(?:(?:from|starting(?:\s+(?:at|from))?|up\s+to|to|for|at|only|just|priced\s+at|price|من|بـ?|بسعر|سعر|يبدأ\s+من|ابتداء\s+من|ابتداءً\s+من|لحد|حتى|حتي|إلى|الى|الي|ل|فقط|بس)\s*)*`
+const AFTER = String.raw`(?:\s*(?:only|each|فقط|بس))*`
+const JOINED = new RegExp(`${BEFORE}\u0000${AFTER}`, 'giu')
+
+/** `text` with every price, percentage and stock phrase removed, with the words that joined them, spaces tidied. */
 export function valueFree(text: string): string {
 	let out = String(text || '')
-	for (const re of PATTERNS) out = out.replace(re, ' ')
+	for (const re of PATTERNS) out = out.replace(re, ' \u0000 ')
 	return out
+		.replace(JOINED, ' ')
+		.replace(/\u0000/g, ' ')
 		.replace(/\(\s*\)|\[\s*\]/g, '')
 		.replace(/\s+([)\]])/g, '$1')
 		.replace(/\s*([·•|،,])\s*(?=[·•|،,]|$)/g, '')
@@ -41,9 +51,10 @@ export function valueFree(text: string): string {
 		.trim()
 }
 
-const AMOUNT_CURRENCY = new RegExp(`(${AMOUNT})\\s*${CURRENCY}(?![\\p{L}])|(?<![\\p{L}])${CURRENCY}\\s*(${AMOUNT})`, 'giu')
-const OUT_OF_STOCK = /\bout of stock\b|\bsold out\b|نفذت?\s+الكمي[ةه]|غير\s+متوفر/iu
-const IN_STOCK = /\bin stock\b|\bonly\s+\S+\s+left\b|(?<![\p{L}])متوفر(?![\p{L}])/iu
+const AMOUNT_CURRENCY = new RegExp(`(${AMOUNT})\\s*${CURRENCY}(\\s*(?:/|per|a|في|فى|كل)\\s*(?:month|mo|شهر|الشهر))?(?![\\p{L}])|(?<![\\p{L}])${CURRENCY}\\s*(${AMOUNT})(\\s*(?:/|per|a|في|فى|كل)\\s*(?:month|mo|شهر|الشهر))?`, 'giu')
+// The gate's own stock wordings (AIXC-104): out first, so "غير متوفر" is not read as "متوفر".
+const OUT_OF_STOCK = new RegExp(`\\b(?:out)[\\s_-]*of[\\s_-]*stock\\b|\\boutstock\\b|\\bsold[\\s_-]?out\\b|نف[دذ]ت?\\s+الكمي[ةه]|غير\\s+متا?ح[ةه]?|غير\\s+متوفر[ةه]?`, 'iu')
+const IN_STOCK = new RegExp(`\\bin[\\s_-]*(?:of[\\s_-]*)?stock\\b|\\binstock\\b|\\blow[\\s_-]stock\\b|\\bonly\\s+(?:one|${D}+)(?:\\s+\\p{L}+)?\\s+left\\b|(?<![\\p{L}])متوفر[ةه]?(?![\\p{L}])|[اآ]خر\\s+قطع[ةه]|(?:باقي|فاضل)\\s+${D}+\\s+(?:قطع[ةه]?|بس)`, 'iu')
 
 /** A written amount as a number: Arabic-Indic digits, thousands separators and decimal marks of either script. */
 function amountOf(s: string): number {
@@ -55,10 +66,18 @@ function amountOf(s: string): number {
  * The guide points in `text` (ADR-0059 §2): amounts written with a currency, and whether it says in or
  * out of stock. For ranking and finding only: never said or shown.
  */
-export function guidePointsIn(text: string): { prices: number[]; stock?: 'in' | 'out' } {
+export function guidePointsIn(text: string): { prices: number[]; monthly: number[]; stock?: 'in' | 'out' } {
 	const t = String(text || '')
-	const prices = [...t.matchAll(AMOUNT_CURRENCY)].map((m) => amountOf(m[1] || m[2] || '')).filter((n) => Number.isFinite(n) && n > 0)
-	return { prices, stock: OUT_OF_STOCK.test(t) ? 'out' : IN_STOCK.test(t) ? 'in' : undefined }
+	const prices: number[] = []
+	const monthly: number[] = []
+	// An amount a month with a term ("EGP 999/month for 24 months", "تقسيط") is an instalment, not the
+	// card's price; a bundle's "46 EGP/month" is its price (AIXC-104).
+	const instalment = /\b(?:for|over|x)\s*\d+\s*months?\b|\binstal?lments?\b|تقسيط|(?:على|لمدة)\s*[\d٠-٩]+\s*شهر/iu.test(t)
+	for (const m of t.matchAll(AMOUNT_CURRENCY)) {
+		const n = amountOf(m[1] || m[3] || '')
+		if (Number.isFinite(n) && n > 0) ((m[2] || m[4]) && instalment ? monthly : prices).push(n)
+	}
+	return { prices, monthly, stock: OUT_OF_STOCK.test(t) ? 'out' : IN_STOCK.test(t) ? 'in' : undefined }
 }
 
 /** True when `text` holds a price, a percentage or a stock phrase. */

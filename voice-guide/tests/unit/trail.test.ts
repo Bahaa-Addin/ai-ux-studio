@@ -16,6 +16,7 @@ import { decideStep } from '../../packages/sdk/src/trail/boundaries.ts'
 import { TRAIL_CONFIG } from '../../packages/sdk/src/trail/config.ts'
 import { band, type CatalogEntry, emptyInterest, isDeliberate, scoreInterest, selectTop, settle } from '../../packages/sdk/src/trail/interest.ts'
 import { canonicalPath, eligibility, pageKey, recorderOptions, sensitivePath } from '../../packages/sdk/src/trail/policy.ts'
+import { headingKey, nameIndex } from '../../packages/sdk/src/trail/resolver.ts'
 import { allowedResource, collectResources, sanitizeCss, sanitizeEvents } from '../../packages/sdk/src/trail/sanitize.ts'
 import { INITIAL, reduce, type TrailEvent, type TrailState } from '../../packages/sdk/src/trail/state.ts'
 import { CorruptChunk, decodeChunk, encodeEvents, planEviction } from '../../packages/sdk/src/trail/storage.ts'
@@ -310,4 +311,14 @@ test('the replay resource policy allows only same-origin, query-free static asse
 	assert.equal(allowedResource(`${ORIGIN}/documents/../api/logout`, ORIGIN, ['/documents/']), false)
 	assert.equal(sanitizeCss('a{background:url(data:image/png;base64,iVBORw0KGgo=)}', { origin: ORIGIN }), 'a{background:url("data:image/png;base64,iVBORw0KGgo=")}')
 	assert.match(sanitizeCss('a{background:url(data:image/svg+xml;base64,PHN2Zz4=)}', { origin: ORIGIN }), /R0lGOD/, 'SVG data URLs become a transparent pixel')
+})
+
+test('the name rule: a live heading with its price matches the price-free title; a name several cards share names none (AIXC-103)', () => {
+	const index = nameIndex([
+		{ id: 'flex-25', title: { en: 'Flex' } },
+		{ id: 'flex-60', title: { en: 'Flex' } },
+		{ id: 'mega', title: { en: 'Mega 25', ar: 'ميجا ٢٥' } },
+	])
+	assert.equal(index.get(headingKey('Mega 25 · 46 EGP/month')), 'mega', 'the live heading still carries its price')
+	assert.equal(index.has(headingKey('Flex From 25 EGP up to 55 EGP')), false, 'two tiers, one name: neither is guessed')
 })

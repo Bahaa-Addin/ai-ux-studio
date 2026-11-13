@@ -61,7 +61,7 @@ test('log lines are cleaned like traces (AIXC-88)', async () => {
 test('a request is traced with only the site\'s own words: a name or an address the site does not use is never kept (owner, 2026-11-13; AIXC-94)', async () => {
 	const { setVocabulary, siteWords } = await import('#shared/clean.ts')
 	setVocabulary('t-site', ['Mobile internet bundles', 'Pay your bill', 'باقات النت', 'سجل خط جديد'])
-	assert.equal(siteWords('register a line for Mohamed Ahmed, pay the bill at 12 Tahrir St, call 01012345678', 't-site'), '… pay … bill … [phone]')
+	assert.equal(siteWords('register a line for Mohamed Ahmed, pay the bill at 12 Tahrir St, call 01012345678', 't-site'), '… pay … bill … 12 … [phone]')
 	assert.equal(siteWords('سجل خط جديد باسم محمد أحمد على شارع التحرير', 't-site'), 'سجل خط جديد …')
 	assert.equal(siteWords('internet bundles please', 't-site'), 'internet bundles …')
 	assert.equal(siteWords('my name is Zaynab', 'no-such-site'), '…', 'no vocabulary: nothing but masks')

@@ -15,6 +15,9 @@ import { loadSiteConfig, ROOT } from '#shared/config.ts'
 
 import { buildSdk } from '../../packages/sdk/build.ts'
 import { startSiteServers } from '../../tools/site-server.ts'
+import { buildPlan } from '#services/router/planner.ts'
+
+import { emptySession, fixtureKb } from '../helpers/kb.ts'
 import { type MockLlm, startMockLlm } from '../helpers/mock-llm.ts'
 import { startPlatform, type TestPlatform } from '../helpers/platform.ts'
 import { heard, SPEECH_STUB, speak, spotlit, type } from './browser.ts'
@@ -395,6 +398,33 @@ test('what the agent pressed reaches the trace masked, and a spotlight that read
 	}
 	assert.ok(spots.some((e) => e.attrs.detail === 'read'), `what was read from the page is traced as "read" (${JSON.stringify(spots.map((e) => e.attrs.detail))})`)
 	assert.ok(!spots.some((e) => /أرخص واحدة|\d/.test(String(e.attrs.detail))), 'never the words or numbers that were read')
+})
+
+test('show both: two cards that read the same once prices are gone are each read out in full, in turn, the second in its own tab (AIXC-96, AIXC-97)', async () => {
+	const alternatives = [
+		{ id: 'web.bundles.mobile-internet.mi-10', label: 'Plus · 37 EGP', score: 0.5, absolute: 0.5 },
+		{ id: 'web.bundles.home-internet.hi-250', label: 'Plus · 46 EGP', score: 0.49, absolute: 0.49 },
+	]
+	const u = { lang: 'en', intent: 'navigate', intentSource: 'default', refersBack: false, usedContext: false, query: '', candidates: [], alternatives, decision: { destinationId: undefined, confidence: 1, provider: 'test', latencyMs: 0 }, route: 'clarify', ms: 0 }
+	const { plan } = buildPlan({ u: u as never, utterance: 'plus', session: emptySession('en'), kb: fixtureKb(), page: { url: `${WEB}/en/bundles.html`, pageId: 'web.bundles' }, turnId: 'turn-both', agent: { enabled: true, maxSteps: 12 } })
+	await page.goto(`${WEB}/en/bundles.html`)
+	await ready()
+	await page.evaluate(() => {
+		const synth = window.speechSynthesis as any
+		const speak = synth.speak.bind(synth)
+		synth.speak = (u: any) => {
+			;((window as any).__spokenAt ||= []).push({ text: u.text, at: performance.now() })
+			speak(u)
+		}
+	})
+	await page.evaluate((plan) => (window as any).voiceGuide.executor.run(plan), plan)
+	const spoken: { text: string; at: number }[] = await page.evaluate(() => (window as any).__spokenAt || [])
+	const reads = spoken.filter((x) => /Super 10|Home Plus/.test(x.text))
+	assert.equal(reads.length, 2, `both cards are read from the page (${JSON.stringify(spoken.map((x) => x.text))})`)
+	const gap = reads[1].at - reads[0].at
+	assert.ok(gap >= 550 + reads[0].text.length * 70, `the first reading is heard out before the second starts (${Math.round(gap)} ms for ${reads[0].text.length} characters)`)
+	assert.match(spoken.at(-1)!.text, /Which one: the first or the second/)
+	assert.equal(await page.locator('[data-bundle="hi-250"]').isVisible(), true, 'the second card was shown in its own tab')
 })
 
 test('below the fold the card is checked where page-agent will press it: a cart button that acts on pointer and mouse events is never pressed (AIXC-73)', async () => {

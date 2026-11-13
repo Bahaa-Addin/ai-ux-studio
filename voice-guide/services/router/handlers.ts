@@ -12,7 +12,7 @@ import { type KbCache, type KbIndex } from '#shared/kb-index.ts'
 import type { RpcContext } from '#shared/rpc.ts'
 import type { Entity, SessionState, Turn } from '#shared/store/index.ts'
 import type { Tracer } from '#shared/trace.ts'
-import { termGroups, terms } from '#text'
+import { normalize, termGroups, terms } from '#text'
 
 import { CircuitBreaker, type Decider, SystemOneDecider } from './deciders.ts'
 import { buildPlan } from './planner.ts'
@@ -208,12 +208,33 @@ function direct(utterance: string, kb: KbIndex, input: TurnInput): Understanding
 	}
 }
 
+/** Words around an ordinal that do not change it: politeness, "I want", "the one", fillers. */
+const AROUND = new Set('the a one please pls plz i want choose pick take select option number uh um ok okay yes yeah واحده واحد دي ده دا عايز عاوز عايزه اختار اختر خد هات لو سمحت من فضلك يا ايوه اه طيب'.split(' '))
+const FIRST = new Set(['first', '1st', '1', 'one', 'اول', 'الاول', 'الاولي', 'اولي', 'الاولاني', 'الاولانيه'])
+const SECOND = new Set(['second', '2nd', '2', 'two', 'تاني', 'التاني', 'التانيه', 'تانيه', 'ثاني', 'الثاني', 'الثانيه', 'ثانيه', 'التانيين'])
+
+/** 0 for "the first", 1 for "the second", whatever surrounds it; undefined for anything else. */
+export function ordinalOf(utterance: string): 0 | 1 | undefined {
+	const words = normalize(utterance)
+		.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660))
+		.replace(/[^\p{L}\p{N}]+/gu, ' ')
+		.trim()
+		.split(' ')
+		.filter(Boolean)
+	const core = words.filter((w) => !AROUND.has(w))
+	// "one" on its own, or "number one", is the first; an ordinal word with fillers around it is that ordinal.
+	const said = core.length ? core : words.filter((w) => w === 'one' || w === 'two')
+	if (said.length !== 1) return undefined
+	return FIRST.has(said[0]) ? 0 : SECOND.has(said[0]) ? 1 : undefined
+}
+
 /** The option an answer names: all of its words appear in one option's labels and in no other's. */
 export function answerTo(utterance: string, options: string[], kb: KbIndex): string | undefined {
-	// "The first" / "the second" answer a question about two cards shown side by side (ADR-0059 §3).
+	// "The first" / "the second" answer a question about two cards shown side by side (ADR-0059 §3), as
+	// speech-to-text writes them too: "The first.", "the first one please", "التانى", "أول واحدة" (AIXC-101).
 	if (options.length === 2) {
-		if (/^\s*(the )?(first|1st)( one)?\s*$|^\s*(ال)?[اأإ]و[لّ](ى|ي|ه|اني)?\s*$/i.test(utterance)) return options[0]
-		if (/^\s*(the )?(second|2nd)( one)?\s*$|^\s*(ال)?تاني(ة|ه)?\s*$|^\s*(ال)?ثاني(ة|ه)?\s*$/i.test(utterance)) return options[1]
+		const n = ordinalOf(utterance)
+		if (n !== undefined) return options[n]
 	}
 	const said = termGroups(utterance, kb.synonyms)
 	if (!said.length) return undefined

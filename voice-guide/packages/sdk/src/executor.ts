@@ -155,6 +155,8 @@ export class Executor {
 				const text = step.read ? readAnswer(step.read, el, this.#item, lang) : ''
 				h.ui.spotlight(el, { caption: text || step.caption })
 				if (text) await h.say(text, { wait: false })
+				// Two cards read in turn: this reading is heard out before the next starts (AIXC-97).
+				if (text && step.wait) await new Promise((r) => setTimeout(r, Math.min(9e3, 600 + text.length * 70)))
 				// What was read is a live page value (a price, a balance): the trace says only that it was read (AGENTS.md 4.3; E3).
 				return text ? 'read' : step.caption || ''
 			}

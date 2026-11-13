@@ -20,11 +20,15 @@ export interface KnowledgeDeps {
 /** Pages that belong to one person: never recorded, never offered as an explored item (ADR-0037 §3). */
 const PRIVATE_KINDS = new Set(['account', 'login', 'checkout'])
 const eligible = (p: Page) => !PRIVATE_KINDS.has(p.kind) && !p.requiresAuth
-/** Titles the page shows (the layer, the trail) carry no stored price or stock (ADR-0059 §3). */
-const titles = (labels: Record<string, string[]> | undefined): I18nText =>
+/**
+ * Titles the page shows (the layer, the trail) carry no stored price or stock (ADR-0059 §3). A title
+ * the gate empties takes `fallback`'s in that language (its list's or page's name), so an explored row
+ * is never nameless (AIXC-103).
+ */
+const titles = (labels: Record<string, string[]> | undefined, fallback: I18nText = {}): I18nText =>
 	Object.fromEntries(
-		Object.entries(labels || {})
-			.map(([lang, l]) => [lang, valueFree(l[0] || '')] as const)
+		[...new Set([...Object.keys(labels || {}), ...Object.keys(fallback)])]
+			.map((lang) => [lang, valueFree(labels?.[lang]?.[0] || '') || fallback[lang] || ''] as const)
 			.filter(([, t]) => t),
 	)
 /** A suggested question that names a price or stock is left out, not shortened into another question. */
@@ -84,8 +88,8 @@ export function createKnowledge(deps: KnowledgeDeps) {
 								kind: d.kind,
 								// A page that recreates this destination marks its copy (the Services clone, ADR-0040).
 								css: [...d.target!.css, `[data-vg-destination="${d.id}"]`],
-								title: titles(d.labels),
-								context: col ? titles(col.labels) : pageTitle(page),
+								title: titles(d.labels, col ? titles(col.labels, pageTitle(page)) : pageTitle(page)),
+								context: col ? titles(col.labels, pageTitle(page)) : pageTitle(page),
 								topic: xd?.topic || d.collectionId || d.id,
 								collectionId: d.collectionId,
 								key,
@@ -124,9 +128,11 @@ export function createKnowledge(deps: KnowledgeDeps) {
 			const kb = await deps.kb.get(input.siteId)
 			const hit = kb?.pageFor(input.url)
 			if (!kb || !hit) return { kbVersionId: kb?.versionId ?? null, pageId: null, sections: [] }
+			const page = kb.pages.get(hit.pageId)
+			const pageName: I18nText = page ? Object.fromEntries(Object.entries(page.variants).map(([l, v]) => [l, valueFree(v.title) || ''])) : {}
 			const sections = kb.manifest.destinations
 				.filter((d) => d.pageId === hit.pageId && ['section', 'collection', 'faq'].includes(d.kind) && !d.commit && d.target)
-				.map((d) => ({ id: d.id, kind: d.kind, css: d.target!.css, title: titles(d.labels) }))
+				.map((d) => ({ id: d.id, kind: d.kind, css: d.target!.css, title: titles(d.labels, pageName) }))
 			return { kbVersionId: kb.versionId, pageId: hit.pageId, sections: sections.slice(0, 100) }
 		},
 

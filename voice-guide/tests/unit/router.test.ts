@@ -241,3 +241,43 @@ test('two choices that differ only by a stored price are both shown and read fro
 	for (const said of ['the first', 'first one', 'الأولى', 'الاول']) assert.equal(answerTo(said, ids, kb), ids[0], said)
 	for (const said of ['the second', 'second one', 'التانية', 'التاني']) assert.equal(answerTo(said, ids, kb), ids[1], said)
 })
+
+test('show both: each card is revealed in its own tab before it is picked, and each reading is heard out before the next (AIXC-96, AIXC-97)', async () => {
+	const alternatives = [
+		{ id: 'web.bundles.mobile-internet.mi-10', label: 'Plus · 37 EGP', score: 0.5, absolute: 0.5 },
+		{ id: 'web.bundles.home-internet.hi-250', label: 'Plus · 46 EGP', score: 0.49, absolute: 0.49 },
+	]
+	const session = emptySession('en')
+	const u = { ...(await understand({ utterance: 'plus', pageId: undefined, session, kb, settings })), route: 'clarify' as const, alternatives: alternatives as never, lang: 'en' as const }
+	const { plan } = buildPlan({ u, utterance: 'plus', session, kb, page: { url: 'http://localhost:4401/en/bundles.html', pageId: 'web.bundles' }, turnId: 't', agent: { enabled: true, maxSteps: 12 } })
+	const ops = plan.steps.map((x) => x.op)
+	const second = ops.lastIndexOf('pickItem')
+	assert.equal(plan.steps.slice(ops.indexOf('pickItem') + 1, second).some((x) => x.op === 'reveal'), true, 'the home-internet tab opens before its card is picked')
+	assert.ok(plan.steps.filter((x) => x.op === 'spotlight').every((x) => (x as Extract<PlanStep, { op: 'spotlight' }>).wait === true), 'each reading waits')
+})
+
+test('a choice whose name was only a stored price is never shown as that price, nor left out of the question (AIXC-96)', async () => {
+	const alternatives = [
+		{ id: 'web.bundles.mobile-internet', label: 'mobile internet bundles', score: 0.5, absolute: 0.5 },
+		{ id: 'web.bundles.home-internet.hi-250', label: '150 EGP', score: 0.49, absolute: 0.49 },
+	]
+	for (const lang of ['en', 'ar'] as const) {
+		const session = emptySession(lang)
+		const u = { ...(await understand({ utterance: 'internet', pageId: undefined, session, kb, settings })), route: 'clarify' as const, alternatives: alternatives as never, lang }
+		const { plan } = buildPlan({ u, utterance: 'internet', session, kb, page: { url: 'http://localhost:4401/en/index.html' }, turnId: 't', agent: { enabled: true, maxSteps: 12 } })
+		assert.doesNotMatch(JSON.stringify(plan), /150/, `${lang}: the stored price is nowhere in the plan`)
+		const ask = plan.steps.at(-1) as Extract<PlanStep, { op: 'ask' }>
+		assert.ok(ask.options?.every((o) => o.label.trim()), `${lang}: every choice has a name`)
+		assert.doesNotMatch(ask.question, /\bor\s*\?$|ولا\s*؟$/, `${lang}: the question names both choices`)
+	}
+})
+
+test('"the first" and "the second" are understood as speech-to-text writes them, in both languages (AIXC-101)', async () => {
+	const { answerTo } = await import('#services/router/handlers.ts')
+	const ids = ['web.bundles.mobile-internet.mi-10', 'web.bundles.mobile-internet.mi-25']
+	for (const said of ['The first.', 'first one please', 'the first one please', 'Uh, the first', 'الأولى.', 'أول واحدة', 'الأولانية', 'number one', '1', '١', 'عايز الأولى لو سمحت'])
+		assert.equal(answerTo(said, ids, kb), ids[0], said)
+	for (const said of ['Second!', 'second one', 'التانية؟', 'التانى', 'التانية دي', 'تاني واحدة', 'الثانيه.', '٢'])
+		assert.equal(answerTo(said, ids, kb), ids[1], said)
+	for (const said of ['the first bundle under 50', 'الاتنين', 'one of the plans']) assert.notEqual(answerTo(said, ids, kb), ids[0], said)
+})

@@ -35,13 +35,17 @@ test('numbers that are part of a name stay: sizes, bundle names, ranges, phone-l
 
 test('guide points: amounts written with a currency, in either digit system, and in or out of stock; nothing from a name (ADR-0059 §2)', async () => {
 	const { guidePointsIn } = await import('#text')
-	assert.deepEqual(guidePointsIn('Mega 25 · 46 EGP/month'), { prices: [46], stock: undefined })
-	assert.deepEqual(guidePointsIn('5 جيجا ٤٦ جنيه'), { prices: [46], stock: undefined })
-	assert.deepEqual(guidePointsIn('EGP 1,400 now'), { prices: [1400], stock: undefined })
-	assert.deepEqual(guidePointsIn('Galaxy A55 18,999 EGP Out of stock'), { prices: [18999], stock: 'out' })
-	assert.deepEqual(guidePointsIn('Flex 1400'), { prices: [], stock: undefined })
+	assert.deepEqual(guidePointsIn('Mega 25 · 46 EGP/month'), { prices: [46], monthly: [], stock: undefined })
+	assert.deepEqual(guidePointsIn('5 جيجا ٤٦ جنيه'), { prices: [46], monthly: [], stock: undefined })
+	assert.deepEqual(guidePointsIn('EGP 1,400 now'), { prices: [1400], monthly: [], stock: undefined })
+	assert.deepEqual(guidePointsIn('Galaxy A55 18,999 EGP Out of stock'), { prices: [18999], monthly: [], stock: 'out' })
+	assert.deepEqual(guidePointsIn('Flex 1400'), { prices: [], monthly: [], stock: undefined })
+	// An instalment is kept apart; every stock wording the gate removes counts (AIXC-104).
+	assert.deepEqual(guidePointsIn('EGP 999/month for 24 months, or 23,976 EGP'), { prices: [23976], monthly: [999], stock: undefined })
+	for (const [t, stock] of [['باقي 2 قطعة', 'in'], ['متوفرة', 'in'], ['Low stock', 'in'], ['نفدت الكمية', 'out'], ['غير متاح', 'out'], ['out-of-stock', 'out']] as const) assert.equal(guidePointsIn(t).stock, stock, t)
+	assert.equal(guidePointsIn('٤٦ جنية').prices[0], 46, 'the spelling جنية too')
 	const { guidePoints } = await import('#shared/kb-index.ts')
-	assert.deepEqual(guidePoints({ id: 'x', kind: 'item', pageId: 'p', labels: { en: ['Flex From 25 EGP up to 55 EGP'], ar: ['فليكس من ٢٥ جنيه'] } } as never), { price: 25, stock: undefined })
+	assert.deepEqual(guidePoints({ id: 'x', kind: 'item', pageId: 'p', labels: { en: ['Flex From 25 EGP up to 55 EGP'], ar: ['فليكس من ٢٥ جنيه'] } } as never), { price: 25, monthly: undefined, stock: undefined })
 })
 
 test('a URL\'s percent encoding is not a percentage: encoded Arabic paths stay whole', async () => {
@@ -50,4 +54,17 @@ test('a URL\'s percent encoding is not a percentage: encoded Arabic paths stay w
 	assert.equal(hasValue(url), false)
 	assert.equal(valueFree(url), url)
 	assert.equal(valueFree('Save 20% now'), 'Save now')
+})
+
+test('the words that joined a price go with it: "Flex From 25 EGP up to 55 EGP" leaves "Flex", never "Flex From up to" (AIXC-100)', async () => {
+	const { valueFree } = await import('#text')
+	for (const [t, want] of [
+		['Flex From 25 EGP up to 55 EGP', 'Flex'],
+		['فليكس من 25 جنيه حتى 55 جنيه', 'فليكس'],
+		['باقة بـ 46 جنية', 'باقة'],
+		['Get it for 46 EGP today', 'Get it today'],
+		['150 EGP', ''],
+	] as const)
+		assert.equal(valueFree(t), want, t)
+	for (const t of ['from the shop to you', 'For your home', 'Up to you']) assert.equal(valueFree(t), t, t)
 })

@@ -10,6 +10,7 @@
  * Navigation, footer, cookie and guide regions resolve to nothing. Results are cached per element
  * and the target index is rebuilt only when the page's structure changes.
  */
+import { valueFree } from '../../../text/src/values.ts'
 import { TRAIL_CONFIG } from './config.ts'
 import { pageKey } from './policy.ts'
 import type { PageMap, PageMapDestination } from './types.ts'
@@ -39,6 +40,27 @@ export const norm = (s: string) =>
 		.replace(/[^\p{L}\p{N}]+/gu, ' ')
 		.trim()
 
+/** A heading as the name rule compares it: without stored prices, like the titles (ADR-0059; AIXC-103). */
+export const headingKey = (s: string) => norm(valueFree(s))
+
+/**
+ * The name rule's index: each destination title (3 characters or more) to its destination. A name several
+ * destinations share ("Flex" for each tier once prices are gone) names none of them (AIXC-103).
+ */
+export function nameIndex(destinations: readonly { id: string; title: Record<string, string> }[]): Map<string, string> {
+	const byName = new Map<string, string>()
+	const shared = new Set<string>()
+	for (const d of destinations)
+		for (const t of Object.values(d.title)) {
+			const k = t && t.length >= 3 ? norm(t) : ''
+			if (!k) continue
+			if (byName.has(k) && byName.get(k) !== d.id) shared.add(k)
+			else byName.set(k, d.id)
+		}
+	for (const k of shared) byName.delete(k)
+	return byName
+}
+
 export class Resolver {
 	readonly map: PageMap
 	#dest = new Map<string, PageMapDestination>()
@@ -53,10 +75,8 @@ export class Resolver {
 	constructor(map: PageMap, doc: Document = document) {
 		this.map = map
 		this.#doc = doc
-		for (const d of map.destinations) {
-			this.#dest.set(d.id, d)
-			for (const t of Object.values(d.title)) if (t && t.length >= 3) this.#byName.set(norm(t), d.id)
-		}
+		for (const d of map.destinations) this.#dest.set(d.id, d)
+		this.#byName = nameIndex(map.destinations)
 		for (const p of map.pages) for (const k of p.paths) this.#pagesByKey.set(k, p.id)
 		this.index()
 	}
@@ -120,7 +140,8 @@ export class Resolver {
 		// 3. a card-like container named like a destination
 		const box = start.closest(CONTAINERS)
 		if (box && this.#constrained(box)) {
-			const name = norm(accessibleName(box))
+			// Titles come without stored prices (ADR-0059): the live heading is compared the same way (AIXC-103).
+			const name = headingKey(accessibleName(box))
 			const id = name ? this.#byName.get(name) : undefined
 			if (id) return { key: `dest:${id}`, destinationId: id, pageId: this.map.page?.id, via: 3, el: box }
 		}

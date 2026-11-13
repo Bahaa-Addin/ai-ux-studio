@@ -37,7 +37,8 @@ export const PlanStep = z.discriminatedUnion('op', [
 	z.object({ op: z.literal('reveal'), target: Target, until: Target.optional() }),
 	z.object({ op: z.literal('scrollTo'), target: Target }),
 	z.object({ op: z.literal('pickItem'), collection: CollectionRef, select: ItemSelect }),
-	z.object({ op: z.literal('spotlight'), target: Target, caption: z.string().optional(), read: ReadSpec.optional() }),
+	// `wait`: the reading is heard to its end before the next step (two cards read in turn; AIXC-97).
+	z.object({ op: z.literal('spotlight'), target: Target, caption: z.string().optional(), read: ReadSpec.optional(), wait: z.boolean().optional() }),
 	z.object({ op: z.literal('say'), text: z.string() }),
 	z.object({ op: z.literal('click'), target: Target }),
 	// `which`: said instead when several such controls are on the page and none was chosen; `missing`: said when there is none (ADR-0058).

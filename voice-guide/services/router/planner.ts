@@ -51,35 +51,46 @@ export function buildPlan(input: PlanInput): PlanOutput {
 	// ---- clarify: two close candidates ----
 	if (u.route === 'clarify' && u.alternatives.length === 2) {
 		const [a, b] = u.alternatives
-		// Two names that differ only by a stored price ("Plus 37 EGP" and "Plus 46 EGP") would read the same
-		// after the gate: the guide shows both cards and reads each from the page, then asks (ADR-0059 §3).
-		if ((free(a.label) || '') === (free(b.label) || '')) {
+		// What each is called once its stored price is gone (ADR-0059 §3): a name that was only a price has none.
+		const names = [free(a.label), free(b.label)]
+		if (!names[0] || !names[1] || names[0] === names[1]) {
 			const both = [a, b].map((x) => kb.dest.get(x.id)).map((d) => ({ d, c: d?.collectionId ? kb.collections.get(d.collectionId) : undefined }))
 			if (both.every((x) => x.d?.kind === 'item' && x.c) && both[0].d!.pageId === both[1].d!.pageId) {
+				// Two cards on one page: each, in its own tab, picked and read from the page, and the reading
+				// heard to its end before the next; then the question (AIXC-96, AIXC-97).
 				pushNavigate(both[0].d!.pageId)
-				const colDest = m.destinations.find((x) => x.kind === 'collection' && x.collectionId === both[0].c!.id)
-				if (colDest) pushReveal(colDest)
 				for (const { d, c } of both) {
+					const colDest = m.destinations.find((x) => x.kind === 'collection' && x.collectionId === c!.id)
+					if (colDest) pushReveal(colDest)
 					steps.push({ op: 'pickItem', collection: collectionRef(c!), select: { by: 'key', key: itemKey(d!, c!) } })
-					steps.push({ op: 'spotlight', target: { css: [':scope'], within: 'item' }, read: itemRead(c!, lang, 'itemRead') })
+					steps.push({ op: 'spotlight', target: { css: [':scope'], within: 'item' }, read: itemRead(c!, lang, 'itemRead'), wait: true })
 				}
+				steps.push({
+					op: 'ask',
+					question: say('clarifyBoth', lang),
+					options: [
+						{ label: say('theFirst', lang), utterance: `#dest:${a.id}` },
+						{ label: say('theSecond', lang), utterance: `#dest:${b.id}` },
+					],
+				})
+				return out('clarify')
 			}
-			steps.push({
-				op: 'ask',
-				question: say('clarifyBoth', lang),
-				options: [
-					{ label: say('theFirst', lang), utterance: `#dest:${a.id}` },
-					{ label: say('theSecond', lang), utterance: `#dest:${b.id}` },
-				],
+			// Anything else that reads the same: each is named by where it is, its list or its page (AIXC-98).
+			const named = [a, b].map((x, i) => {
+				const d = kb.dest.get(x.id)
+				const place = d ? placeOf(d) : undefined
+				return names[i] && place ? `${names[i]} (${place})` : names[i] || place || say(i ? 'theSecond' : 'theFirst', lang)
 			})
-			return out('clarify')
+			if (named[0] === named[1]) [named[0], named[1]] = [say('theFirst', lang), say('theSecond', lang)]
+			names[0] = named[0]
+			names[1] = named[1]
 		}
 		steps.push({
 			op: 'ask',
-			question: say('clarify', lang, { a: a.label, b: b.label }),
+			question: say('clarify', lang, { a: names[0]!, b: names[1]! }),
 			options: [
-				{ label: a.label, utterance: `#dest:${a.id}` },
-				{ label: b.label, utterance: `#dest:${b.id}` },
+				{ label: names[0]!, utterance: `#dest:${a.id}` },
+				{ label: names[1]!, utterance: `#dest:${b.id}` },
 			],
 		})
 		return out('clarify')
@@ -184,7 +195,8 @@ export function buildPlan(input: PlanInput): PlanOutput {
 		}
 		pushNavigate(d.pageId)
 		pushReveal(d)
-		const label = pick(d.labels, lang, m.site.defaultLanguage)?.[0] || ''
+		// Never "when  changes" or "Flex From up to": its name without a price, or where it is (AIXC-100).
+		const label = nameOf(d)
 		steps.push({ op: 'spotlight', target })
 		steps.push({ op: 'offerWatch', target, label, url: variantUrl(kb, d.pageId, lang), pageId: d.pageId })
 		return out('replay', say('watchOffer', lang, { label }), d.id, { kind: 'destination', destinationId: d.id, pageId: d.pageId, target })
@@ -284,7 +296,18 @@ export function buildPlan(input: PlanInput): PlanOutput {
 	}
 	function pageTitle(pageId: string): string {
 		const p = kb.pages.get(pageId)
-		return p ? pick(Object.fromEntries(Object.entries(p.variants).map(([l, v]) => [l, v.title])), lang, m.site.defaultLanguage) || pageId : pageId
+		const title = p ? pick(Object.fromEntries(Object.entries(p.variants).map(([l, v]) => [l, v.title])), lang, m.site.defaultLanguage) || pageId : pageId
+		// A title the gate would empty is no title to say ("Taking you to ."; AIXC-100).
+		return free(title) || say('thePage', lang)
+	}
+	/** Where a destination is: its list's name, else its page's, without a stored price. */
+	function placeOf(d: Destination): string | undefined {
+		const col = d.collectionId ? kb.collections.get(d.collectionId) : undefined
+		return free(pick(col?.labels, lang, m.site.defaultLanguage)?.[0]) || free(pageTitle(d.pageId)) || undefined
+	}
+	/** What a destination is called, without a stored price; where it is when its name was only a price (AIXC-100). */
+	function nameOf(d: Destination): string {
+		return free(pick(d.labels, lang, m.site.defaultLanguage)?.[0]) || placeOf(d) || say('thisOne', lang)
 	}
 }
 
@@ -316,8 +339,9 @@ function gatePlan(plan: Plan, lang: string): Plan {
 			if (text) steps.push({ ...s, text })
 		} else if (s.op === 'spotlight') steps.push(s.caption ? { ...s, caption: free(s.caption) } : s)
 		else if (s.op === 'confirm') steps.push({ ...s, message: free(s.message) || say('commitYours', lang), which: free(s.which), missing: free(s.missing) })
-		else if (s.op === 'ask') steps.push({ ...s, question: free(s.question) || s.question, options: s.options?.map((o) => ({ ...o, label: free(o.label) || o.label })) })
-		else if (s.op === 'offerWatch') steps.push({ ...s, label: free(s.label) || '' })
+		// A button is never a stored price: a label the gate empties becomes "The first" or "The second" (AIXC-96).
+		else if (s.op === 'ask') steps.push({ ...s, question: free(s.question) || say('clarifyBoth', lang), options: s.options?.map((o, i) => ({ ...o, label: free(o.label) || say(i ? 'theSecond' : 'theFirst', lang) })) })
+		else if (s.op === 'offerWatch') steps.push({ ...s, label: free(s.label) || say('thisOne', lang) })
 		else if (s.op === 'pickItem' && s.select.by === 'name') steps.push({ ...s, select: { ...s.select, name: free(s.select.name) || s.select.name } })
 		else steps.push(s)
 	}
