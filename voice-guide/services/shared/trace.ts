@@ -33,6 +33,9 @@ export function newContext(base: { siteId: string; sessionId: string; turnId?: s
 	return { traceId: p?.traceId || newTraceId(), spanId: newSpanId(), ...base }
 }
 
+/** Where an event holds the person's own words. */
+const PERSONS_WORDS: Record<string, string[]> = { 'turn.received': ['utterance'], 'sdk.listen': ['text'] }
+
 export class Tracer {
 	readonly store: Store
 	readonly service: string
@@ -51,7 +54,8 @@ export class Tracer {
 			service: this.service,
 			at: new Date().toISOString(),
 			durationMs,
-			attrs: cleanAttrs(attrs),
+			// The request as heard keeps its own words' prices (they are the person's, not the page's): masked only.
+			attrs: cleanAttrs(attrs, 300, PERSONS_WORDS[name] || []),
 		}
 		try {
 			await this.store.appendTrace(ev)

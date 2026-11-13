@@ -172,6 +172,8 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 	let guided: string | null = null
 	/** A commit control the guard stopped a synthetic press on, during the agent's own click. */
 	let stopped: Element | null = null
+	/** What the person told the agent when it asked: theirs to have typed, like the request itself (AIXC-86). */
+	const told: string[] = []
 
 	const system = [
 		`You are the guide of this website. Reply to the person in ${LANG_NAME[o.lang] || 'their language'}: the "done" text is read aloud, so keep it to one or two short sentences.`,
@@ -279,7 +281,7 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 					try {
 						field = (this.pageController as any).selectorMap?.get(input.index)?.ref ?? null
 					} catch {}
-					const refusal = inputRefusal(o.task, input.text, fieldInfo(field))
+					const refusal = inputRefusal([o.task, ...told].join(' '), input.text, fieldInfo(field))
 					if (refusal) return refusal
 					// Nothing is typed on a commit page, nor into a commit control.
 					const no = await refused(field ?? undefined)
@@ -345,12 +347,19 @@ export async function runAgent(o: AgentRunOptions): Promise<AgentRunResult> {
 			const n = offset + history.filter((e) => e.type === 'step').length
 			const action = `${last.action.name}${last.action.input && typeof last.action.input === 'object' && 'index' in last.action.input ? ` [${(last.action.input as any).index}]` : ''}`
 			const goal = last.reflection.next_goal ? maskContent(last.reflection.next_goal).slice(0, 100) : ''
-			lines.push(`${n}. ${action}: ${maskContent(String(last.action.output)).slice(0, 120)}${goal ? ` (goal: ${goal})` : ''}`)
+			// What was typed or chosen is never kept, even masked: only that it was done or refused (AIXC-83).
+			const output = String(last.action.output)
+			const said = /^(input_text|select_dropdown_option)$/.test(last.action.name) ? (output.startsWith('❌') ? 'refused' : 'done') : maskContent(output).slice(0, 120)
+			lines.push(`${n}. ${action}: ${said}${goal ? ` (goal: ${goal})` : ''}`)
 			if (clickedStep !== n) o.onStep({ step: n, action, goal: goal || undefined, ms: performance.now() - stepStart })
 			o.onSave({ lines, steps: n })
 		},
 	})
-	agent.onAskUser = (q, opts) => o.onAsk(q, opts?.signal)
+	agent.onAskUser = async (q, opts) => {
+		const answer = await o.onAsk(q, opts?.signal)
+		told.push(answer)
+		return answer
+	}
 
 	const stop = () => void agent.stop()
 	o.signal.addEventListener('abort', stop)
@@ -417,6 +426,20 @@ export async function runForGuide(c: GuideAgentContext, step: { task: string; hi
 	signal.addEventListener('abort', () => abort.abort())
 	c.onAbort(abort)
 	const t0 = performance.now()
+	// The server keeps the task masked (AGENTS.md 4.3); the person's own words stay in this tab for the
+	// next page of the same task, so a number they said can still be typed there (ADR-0018 §3; AIXC-86).
+	const KEY = 'vg.agent.task'
+	let task = step.task
+	try {
+		const kept = JSON.parse(sessionStorage.getItem(KEY) || 'null') as { turnId: string; task: string } | null
+		if (previous && kept?.turnId === turnId && maskContent(kept.task) === maskContent(step.task)) task = kept.task
+		else if (!previous) sessionStorage.setItem(KEY, JSON.stringify({ turnId, task }))
+	} catch {}
+	const forget = () => {
+		try {
+			sessionStorage.removeItem(KEY)
+		} catch {}
+	}
 	// The time limit covers the whole task, across page loads.
 	const startedAt = previous?.startedAt || new Date().toISOString()
 	// Saves go out one after another: a step's save that is still in flight must never land
@@ -435,7 +458,7 @@ export async function runForGuide(c: GuideAgentContext, step: { task: string; hi
 			gateway: c.gateway,
 			token: c.token,
 			turnId,
-			task: step.task,
+			task,
 			hints: step.hints,
 			lang: c.lang,
 			maxSteps: step.maxSteps || c.maxSteps,
@@ -451,6 +474,7 @@ export async function runForGuide(c: GuideAgentContext, step: { task: string; hi
 			},
 		})
 		await save(null)
+		forget()
 		c.report(turnId, [{ name: 'agent.done', attrs: { success: r.success, steps: r.steps, error: r.error, guided: r.guided }, ms: performance.now() - t0 }])
 		if (abort.signal.aborted) return
 		if (r.text) await c.say(r.text)
@@ -458,6 +482,7 @@ export async function runForGuide(c: GuideAgentContext, step: { task: string; hi
 	} catch (e) {
 		if (abort.signal.aborted) return
 		await save(null)
+		forget()
 		await c.say(c.unavailable)
 		c.report(turnId, [{ name: 'sdk.step', attrs: { op: 'agent', ok: false, detail: (e as Error).message } }])
 	} finally {

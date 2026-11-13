@@ -5,6 +5,7 @@
  * probabilities and a confidence. The local decider turns retrieval scores
  * into the same shape so the rest of the router never knows which ran.
  */
+import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
 
 export interface ChoiceQuestion {
 	instructions: string
@@ -64,7 +65,7 @@ export class SystemOneDecider implements Decider {
 			body: JSON.stringify({ ...(this.#o.model ? { model: this.#o.model } : {}), state: req.state, questions }),
 			signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(this.#o.timeoutMs)]) : AbortSignal.timeout(this.#o.timeoutMs),
 		})
-		if (!res.ok) throw new Error(`${this.name} ${res.status}: ${(await res.text()).slice(0, 200)}`)
+		if (!res.ok) throw new Error(`${this.name} ${res.status}: ${maskContent(await res.text()).slice(0, 200)}`)
 		const body = (await res.json()) as { answers?: Record<string, any>; model?: string }
 		const answers: Record<string, ChoiceAnswer> = {}
 		for (const k of Object.keys(req.questions)) {

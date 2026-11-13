@@ -14,15 +14,23 @@ const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g
 
 /** Order matters: the most specific pattern first. */
 const RULES: [RegExp, string][] = [
-	[/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]'],
+	// Anchored at the start of a run, so a long run of letters is tried once, not at every position (AIXC-81).
+	[/(?<![\w.+-])[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]'],
 	// Egyptian national ID: 14 digits, century digit 2 or 3.
 	[/(?<![\w\d])[23]\d{13}(?![\w\d])/g, '[national-id]'],
-	[/(?<![\w\d])(?:\d[ -]?){13,19}(?![\w\d])/g, '[card]'],
+	// Card numbers, grouped by spaces, dashes or dots ("4111.1111.1111.1111", "4111 - 1111 - …"; AIXC-90).
+	[/(?<![\w\d])(?:\d[ .\-–]{0,3}){12,18}\d(?![\w\d])/g, '[card]'],
 	// An Egyptian mobile written in groups ("010 1234 5678", "+20 10 1234 5678", "+20 (0)10 …",
 	// "0101-234-5678"): spaces of any kind, line breaks, dashes, dots, slashes or brackets between the
 	// digits. After the card rule, which takes the longer runs; whatever follows the number stays.
 	[/(?<![\w\d])(?:\(?(?:\+|00)20\)?[\s.\-–—/]{0,3}(?:\(?0\)?[\s.\-–—/]{0,3})?\(?1[0125]\)?|\(?01[0125]\)?)(?:[\s.\-–—/]{0,3}\d){8}(?![\w\d])/g, '[phone]'],
+	// The same with the prefix or the leading zero split or missing ("0 10 1234 5678", "01 0123 45678", "20 10 1234 5678"; AIXC-90).
+	// A bare 20 counts as the country code only with a separator after it: "2011 2012 2013" are years.
+	[/(?<![\w\d])(?:\(?(?:\+|00)20\)?[\s.\-–—/]{0,3}|\(?20\)?[\s.\-–—/]{1,3})?\(?0?[\s.\-–—/]{0,3}1[\s.\-–—/]{0,3}[0125]\)?(?:[\s.\-–—/]{0,3}\d){8}(?![\w\d])/g, '[phone]'],
 	[/(?<![\w\d])(?:\+?20|0)1[0125]\d{8}(?![\w\d])/g, '[phone]'],
+	// A landline, with its area code after a 0 or the country code ("02 2345 6789", "(02) 23456789",
+	// "+20 2 2345 6789", "03 555 1234"); the shop's DSL check asks for one (AIXC-90).
+	[/(?<![\w\d])(?:(?:\+|00)20[\s.\-–—/]{0,3}\(?0?|20[\s.\-–—/]{1,3}\(?0?|\(?0)[2-9]\d?\)?[\s.\-–—/]{0,3}\d{3,4}[\s.\-–—/]{0,3}\d{4}(?![\w\d])/g, '[phone]'],
 	// Any other long number (account and line numbers); prices and amounts are shorter.
 	[/(?<![\w\d.,])\d{10,}(?![\w\d])/g, '[number]'],
 ]

@@ -203,11 +203,16 @@ test('fallback agent when the model is down: the person hears a short line in th
 test('fallback agent across pages: a click that navigates, then the agent continues on the next page', async () => {
 	await page.goto(`${WEB}/en/help.html`)
 	await ready()
-	await type(page, 'click on coverage')
+	await type(page, 'click on coverage for 01012345678')
 	await page.waitForURL(`${WEB}/en/coverage.html`)
 	await ready()
 	await heard(page, /Here it is: \/en\/coverage\.html/, 20_000)
 	const sid = await sessionId()
+	// The second page's model still has the number the person said: kept in this tab, not on our server (AIXC-86).
+	const resumed = llm.requests.map((r) => String([...(r.body.messages || [])].reverse().find((m: any) => m.role === 'user')?.content || '')).filter((c) => /Steps already done:/.test(c)).at(-1) || ''
+	assert.match(/<user_request>\n([\s\S]*?)\n<\/user_request>/.exec(resumed)?.[1] || '', /01012345678/, 'the task on the next page is the person\'s own words')
+	assert.equal(await page.evaluate(() => sessionStorage.getItem('vg.agent.task')), null, 'the tab forgets the task when it ends')
+	assert.doesNotMatch(JSON.stringify(await p.store.listTrace(sid)), /01012345678/, 'no trace holds the number')
 	const steps = (await p.store.listTrace(sid)).filter((e) => e.name === 'agent.step')
 	assert.ok(steps.some((e) => /click_element_by_index/.test(String(e.attrs.action))), 'the first page clicked')
 	assert.ok(steps.some((e) => e.attrs.action === 'done' && Number(e.attrs.step) >= 2), 'the second page continued the step count')
@@ -362,6 +367,29 @@ const hush = () => page.evaluate(() => ((window as any).__spoken || []).splice(0
 const GIF = 'data:image/gif;base64,R0lGODlhAQABAAAAACw='
 const card = (id: string, title: string, cart = `onclick="event.stopPropagation();window.__pressed.push('cart-${id}')"`) =>
 	`<div class="card" id="card-${id}" role="link" tabindex="0" onclick="window.__pressed.push('card-${id}')"><h3>${title}</h3><button type="button" class="cart" id="cart-${id}" ${cart}><img alt="cart" src="${GIF}"></button></div>`
+
+test('what the agent pressed reaches the trace masked, and a spotlight that read a value is traced as "read" (E3; AIXC-84)', async () => {
+	const remove = await standIn('en/call-standin.html', `<h1>Contact</h1><button id="call" onclick="window.__pressed.push('call')">Call us on 010 1234 5678</button>`)
+	try {
+		await type(page, 'press the call us button')
+		await heard(page, /Done, I selected it/, 20_000)
+		assert.deepEqual(await pressed(), ['call'])
+		const trace = await p.store.listTrace(await sessionId())
+		const step = trace.filter((e) => e.name === 'agent.step' && /click_element_by_index/.test(String(e.attrs.action))).at(-1)
+		assert.match(String(step?.attrs.goal || ''), /\[phone\]/, 'the label is masked in the browser')
+		assert.doesNotMatch(JSON.stringify(trace), /1234 5678|01012345678/, 'no trace holds the number')
+	} finally {
+		remove()
+	}
+	await page.goto(`${WEB}/ar/index.html`)
+	await ready()
+	await type(page, 'إيه أرخص باقة نت؟')
+	await page.waitForURL(`${WEB}/ar/bundles.html`)
+	await ready()
+	await heard(page, /أرخص واحدة/)
+	const spot = (await p.store.listTrace(await sessionId())).filter((e) => e.name === 'sdk.step' && e.attrs.op === 'spotlight').at(-1)
+	assert.equal(spot?.attrs.detail, 'read', 'what was read from the page is not in the trace')
+})
 
 test('below the fold the card is checked where page-agent will press it: a cart button that acts on pointer and mouse events is never pressed (AIXC-73)', async () => {
 	const remove = await standIn('en/far-standin.html', `<h1>Phones</h1><div style="height:1600px"></div>${card('far', 'Galaxy far phone card', `onpointerdown="window.__pressed.push('cart:pointerdown')" onmousedown="window.__pressed.push('cart:mousedown')" onclick="event.stopPropagation();window.__pressed.push('cart:click')"`)}`)

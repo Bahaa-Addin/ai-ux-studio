@@ -113,7 +113,7 @@ export function createSessions(deps: SessionsDeps) {
 		async saveAgent(input: { siteId: string; sessionId: string; agent: AgentState | null }): Promise<{ ok: true }> {
 			const s = await mustGet(input.sessionId, input.siteId)
 			// The steps the agent took are page words (AGENTS.md 4.3, 4.4; E3): cleaned like a trace. The task is the person's own request, masked only.
-			const agent = input.agent ? { ...input.agent, task: maskContent(String(input.agent.task || '')), history: (input.agent.history || []).slice(-30).map((l) => cleanAttrs(l, 400)) } : null
+			const agent = input.agent ? { ...input.agent, task: maskContent(String(input.agent.task || '').slice(0, 2000)), history: (input.agent.history || []).slice(-30).map((l) => cleanAttrs(l, 400)) } : null
 			await store.patchSession(s.id, { agent }, ttl)
 			return { ok: true }
 		},

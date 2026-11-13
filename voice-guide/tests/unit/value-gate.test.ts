@@ -71,3 +71,23 @@ test('no plan the guide makes from the knowledge base says or shows a stored pri
 	assert.ok(plans > 1000, `${plans} plans checked`)
 	assert.deepEqual(bad.slice(0, 20), [], `${bad.length} lines with a stored price or stock`)
 })
+
+test('every string of the committed knowledge base comes out of the gate with nothing the crawler\'s own money pattern finds (AIXC-92)', async () => {
+	const { valueFree } = await import('#text')
+	// The crawler's pattern (jobs/crawler/extract.ts), independent of the gate's own.
+	const MONEY = /([\d٠-٩][\d٠-٩.,٬٫]*\s*(egp|le\b|l\.e|جنيه|ج\.م|\$|usd|eur|€|£|sar|aed|ريال|درهم))|((egp|\$|€|£)\s*[\d٠-٩])/i
+	const strings = new Set<string>()
+	const add = (t: unknown) => typeof t === 'string' && strings.add(t)
+	for (const d of m.destinations) {
+		for (const l of Object.values(d.labels || {}).flat()) add(l)
+		for (const t of Object.values(d.target?.text || {})) add(t)
+		for (const t of Object.values(d.description || {})) add(t)
+	}
+	for (const p of m.pages) for (const t of Object.values(p.summary || {})) add(t)
+	const left = [...strings].map((t) => [t, valueFree(t)]).filter(([, v]) => MONEY.test(v))
+	assert.ok(strings.size > 1000, `${strings.size} strings`)
+	assert.deepEqual(left.slice(0, 10), [], `${left.length} still name a price`)
+	for (const [t, want] of [['(with 50 PT per call)', '(with)'], ['كارت واشتركت في Plus Play ب6.5ج في الشهر', 'كارت واشتركت في Plus Play ب'], ['10 piasters will be charged', 'will be charged'], ['نفدت الكمية', ''], ['Only 1 item left', ''], ['out-of-stock', ''], ['%20', ''], ['٤٦ ج', ''], ['متوفرة', '']] as const)
+		assert.equal(valueFree(t), want, t)
+	assert.equal(valueFree('5 جيجا'), '5 جيجا', 'a size with ج at its start is not money')
+})

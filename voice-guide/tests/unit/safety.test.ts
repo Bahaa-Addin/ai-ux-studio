@@ -89,3 +89,9 @@ test('input_text: refused for secrets even when the person said them; allowed fo
 	assert.equal(inputRefusal('search for Maadi', 'Maadi', { type: 'search' }), null)
 	assert.equal(inputRefusal('my number is ٠١٠١٢٣٤٥٦٧٨', '01012345678', { type: 'tel', label: 'Mobile' }), null)
 })
+
+test('masking: landlines, mobiles split or without the leading zero, and cards grouped by dots; years stay (AIXC-90)', () => {
+	for (const t of ['0 10 1234 5678', '01 0123 45678', '20 10 1234 5678', '02 2345 6789', '(02) 23456789', '+20 2 2345 6789', '03 555 1234', '035551234', '4111.1111.1111.1111', '4111 - 1111 - 1111 - 1111'])
+		assert.doesNotMatch(maskContent(t), /\d{3}/, t)
+	for (const t of ['Offers in 2011 2012 2013 and 2014', 'Flex 25 600 1234', '16888', '2026-11-13 15:13', 'vf plus youtube 25-55']) assert.equal(maskContent(t), t, t)
+})

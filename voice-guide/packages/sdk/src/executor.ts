@@ -206,7 +206,8 @@ export class Executor {
 				// hands over now, so a page load never restarts the agent from scratch.
 				await h.progress({ turnId, cursor: i + 1, done: true })
 				await h.runAgent(step, turnId, signal)
-				return step.task.slice(0, 60)
+				// The task is the person's own words, and the server has the plan: the trace says only which op ran (AIXC-82).
+				return 'agent'
 		}
 	}
 }

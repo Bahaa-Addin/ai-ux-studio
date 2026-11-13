@@ -41,7 +41,7 @@ test('sign-in, account, checkout and payment routes are never recorded; site pat
 	// The e-shop's private and transactional pages (e-shop plan E3); its lists and plans stay recordable.
 	for (const u of ['https://eshop.vodafone.com.eg/en/wishlist', 'https://eshop.vodafone.com.eg/en/order-status', 'https://eshop.vodafone.com.eg/ar/lines/red/numbers', 'https://eshop.vodafone.com.eg/en/lines/flex/review', 'https://eshop.vodafone.com.eg/en/internetServices/at-home/at-home-subscription-details', 'https://eshop.vodafone.com.eg/en/documents', 'https://eshop.vodafone.com.eg/en/saved-payments', 'https://eshop.vodafone.com.eg/en/vouchers'])
 		assert.equal(sensitivePath(u), true, u)
-	for (const u of ['https://eshop.vodafone.com.eg/en/list?categoryUrls=*smart-phones', 'https://eshop.vodafone.com.eg/en/lines/red', 'https://eshop.vodafone.com.eg/en/'])
+	for (const u of ['https://eshop.vodafone.com.eg/en/list?categoryUrls=*smart-phones', 'https://eshop.vodafone.com.eg/en/lines/red', 'https://eshop.vodafone.com.eg/en/', 'https://web.vodafone.com.eg/en/vodafone-cash-government-payments'])
 		assert.equal(sensitivePath(u), false, u)
 	// Phone, national-ID and upload fields make a page private, like password and card fields.
 	for (const css of ['input[type="tel"]', 'input[name*="national" i]', 'input[type="file"]']) assert.ok(TRAIL_CONFIG.policy.privateFields.includes(css), css)

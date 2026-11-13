@@ -7,18 +7,25 @@
  */
 
 const D = '[0-9٠-٩۰-۹]'
-const AMOUNT = `${D}[0-9٠-٩۰-۹.,٬٫]*`
-const CURRENCY = '(?:egp|e\\.g\\.p|l\\.?e\\.?|le|pounds?|جنيه(?:ا|ًا)?|جنيهات|ج\\.?\\s?م|قرش)'
+// Read from the start of a number only, so a long run of digits is tried once (AIXC-81).
+const AMOUNT = `(?<![0-9٠-٩۰-۹.,٬٫])${D}[0-9٠-٩۰-۹.,٬٫]*`
+// Pounds and piasters as Vodafone writes them, bare "ج" included (AIXC-92): "ب6.5ج", "50 PT", "10 قروش", "£E 20".
+const CURRENCY = '(?:egp|e\\.g\\.p|l\\.?e\\.?|le|£e|e£|£|pounds?|piasters?|pt|جنيه(?:ا|ًا)?|جنيهات|ج\\.?\\s?م|ج|قروش|قرش|\\$|usd|eur|€|sar|aed|ريال|درهم)'
+const PER = '(?:\\s*(?:/|per|في|فى|كل)\\s*(?:month|mo|call|minute|min|شهر|الشهر|مكالمه|مكالمة|دقيقه|دقيقة))?'
 
 const PATTERNS: RegExp[] = [
-	// 46 EGP, 1,400 LE, ٤٦ جنيه, 37ج.م, 46 EGP/month
-	new RegExp(`${AMOUNT}\\s*${CURRENCY}(?:\\s*(?:/|per|في|كل)\\s*(?:month|mo|شهر|الشهر))?(?![\\p{L}])`, 'giu'),
-	// EGP 46, LE 1,400
-	new RegExp(`(?<![\\p{L}])${CURRENCY}\\s*${AMOUNT}`, 'giu'),
-	// 20%, ٢٠٪, 20 percent; not URL encoding ("%D8%A7")
-	new RegExp(`${AMOUNT}\\s*(?:%(?![0-9a-f]{2})|٪|percent\\b|في المية|بالمية)`, 'giu'),
-	// Stock: "only 3 left", "out of stock", "in stock", "نفذت الكمية", "متوفر", "غير متوفر"
-	new RegExp(`\\bonly\\s+${AMOUNT}\\s+left\\b|\\b(?:out of|in)\\s+stock\\b|\\bsold out\\b|نفذت?\\s+الكمي[ةه]|غير\\s+متوفر|(?<![\\p{L}])متوفر(?![\\p{L}])|باقي\\s+${AMOUNT}\\s+(?:قطع[ةه]?|بس)`, 'giu'),
+	// 46 EGP, 1,400 LE, ٤٦ جنيه, 37ج.م, 46 EGP/month, ب6.5ج في الشهر, 50 PT per call
+	new RegExp(`${AMOUNT}\\s*${CURRENCY}${PER}(?![\\p{L}])`, 'giu'),
+	// EGP 46, LE 1,400, £E 20
+	new RegExp(`(?<![\\p{L}])${CURRENCY}\\s*${AMOUNT}${PER}`, 'giu'),
+	// 20%, %20, ٢٠٪, 20 percent, 20 في المية; not URL encoding ("%D8%A7")
+	new RegExp(`${AMOUNT}\\s*(?:%(?![0-9a-f]{2})|٪|percent\\b|ف[يى] الم[يئ][ةه]|بالمي[ةه])|(?<![0-9a-z])[%٪]\\s*${AMOUNT}`, 'giu'),
+	// Stock in both languages and its spellings: "only 3 left", "Only 1 item left", "out-of-stock", "OutOfStock",
+	// "low stock", "sold out", "نفدت الكمية", "غير متاح", "متوفرة", "آخر قطعة", "فاضل 2 قطعة".
+	new RegExp(
+		`\\bonly\\s+(?:one|${D}+)(?:\\s+\\p{L}+)?\\s+left\\b|\\b(?:out|in)[\\s_-]*of[\\s_-]*stock\\b|\\b(?:out|in)stock\\b|\\bin[\\s_-]stock\\b|\\blow[\\s_-]stock\\b|\\bsold[\\s_-]?out\\b|نف[دذ]ت?\\s+الكمي[ةه]|غير\\s+متا?ح[ةه]?|غير\\s+متوفر[ةه]?|(?<![\\p{L}])متوفر[ةه]?(?![\\p{L}])|[اآ]خر\\s+قطع[ةه]|(?:باقي|فاضل)\\s+${D}+\\s+(?:قطع[ةه]?|بس)`,
+		'giu',
+	),
 ]
 
 /** `text` with every price, percentage and stock phrase removed, spaces tidied. */
@@ -26,6 +33,8 @@ export function valueFree(text: string): string {
 	let out = String(text || '')
 	for (const re of PATTERNS) out = out.replace(re, ' ')
 	return out
+		.replace(/\(\s*\)|\[\s*\]/g, '')
+		.replace(/\s+([)\]])/g, '$1')
 		.replace(/\s*([·•|،,])\s*(?=[·•|،,]|$)/g, '')
 		.replace(/\s{2,}/g, ' ')
 		.replace(/\s+([.,!?؟،])/g, '$1')

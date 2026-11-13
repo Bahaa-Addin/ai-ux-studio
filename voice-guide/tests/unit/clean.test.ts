@@ -25,3 +25,35 @@ test('text: personal data masked, prices and stock removed, URLs inside it cut, 
 test('attributes: every string at any depth cleaned; numbers, booleans and the shape stay', () => {
 	assert.deepEqual(cleanAttrs({ n: 3, ok: true, none: null, list: ['46 EGP', 'Mega 25'], deep: { goal: 'call 01012345678' } }), { n: 3, ok: true, none: null, list: ['', 'Mega 25'], deep: { goal: 'call [phone]' } })
 })
+
+test('a long string costs no more than a short one: it is cut before any pattern runs, and a number cut at the edge is dropped (AIXC-81)', () => {
+	const t0 = performance.now()
+	cleanText('a'.repeat(250_000))
+	cleanText('1'.repeat(40_000))
+	cleanAttrs({ detail: 'x@'.repeat(100_000) })
+	assert.ok(performance.now() - t0 < 500, `${Math.round(performance.now() - t0)} ms`)
+	assert.doesNotMatch(cleanText(`${'a '.repeat(170)}call 01012345678`), /\d{3}/, 'no piece of the number is left')
+})
+
+test('identifiers pass as they are; the person\'s own words keep their prices; the query keeps only keys that name a page (AIXC-85, 87, 89)', () => {
+	assert.deepEqual(cleanAttrs({ kbVersion: '20261023-122606-5b2080', destinationId: 'web.mobile-internet-bundles.plus--37---600egp.3', candidates: [{ id: 'web.x.600egp' }] }), { kbVersion: '20261023-122606-5b2080', destinationId: 'web.mobile-internet-bundles.plus--37---600egp.3', candidates: [{ id: 'web.x.600egp' }] })
+	assert.deepEqual(cleanAttrs({ utterance: 'a bundle around 50 EGP, call 01012345678' }, 300, ['utterance']), { utterance: 'a bundle around 50 EGP, call [phone]' })
+	assert.equal(cleanUrl('https://eshop.vodafone.com.eg/en/order?orderId=A12345&ref=xyz&q=mohamed+salah&tab=2'), 'https://eshop.vodafone.com.eg/en/order?tab=2')
+})
+
+test('log lines are cleaned like traces (AIXC-88)', async () => {
+	const { log } = await import('#shared/log.ts')
+	const lines: string[] = []
+	const keep = { log: console.log, error: console.error }
+	console.log = (l: string) => lines.push(l)
+	console.error = (l: string) => lines.push(l)
+	try {
+		log('error', 'request failed', { path: '/v1/turn', error: 'bad input from 01012345678 about 46 EGP', url: 'https://web.vodafone.com.eg/en/x?msisdn=01012345678' })
+	} finally {
+		console.log = keep.log
+		console.error = keep.error
+	}
+	assert.equal(lines.length, 1)
+	assert.doesNotMatch(lines[0], /01012345678|46 EGP|msisdn/)
+	assert.match(lines[0], /\[phone\]/)
+})

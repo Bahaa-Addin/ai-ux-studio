@@ -98,7 +98,9 @@ export const TRAIL_CONFIG = {
 			'wallet',
 			// The e-shop's own private and transactional pages (e-shop map, 2026-11-13; E3).
 			'wishlist',
-			'payments',
+			// Saved and personal payment pages; "government payments" is a public page about a service (AIXC-91).
+			'saved-?payments',
+			'my-?payments',
 			'vouchers?',
 			'returns',
 			'orders?',

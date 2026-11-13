@@ -14,6 +14,8 @@ import type { KbIndex } from '#shared/kb-index.ts'
 import type { SessionState } from '#shared/store/index.ts'
 import { detectLanguage, type Hit, terms } from '#text'
 
+import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
+
 import { type CircuitBreaker, type Decider, type DecisionRequest, localChoice } from './deciders.ts'
 import { ACT_PHRASES, BACK_REFERENCES, containsPhrase, INTENT_PHRASES, type IntentId, matchPhrases, PAGE_WORDS, padded, SELECTORS, stripPhrases, THIS_PAGE, WATCH_FILLER } from './lexicon.ts'
 
@@ -318,7 +320,8 @@ export async function understand(input: UnderstandInput): Promise<Understanding>
 			}
 		} catch (e) {
 			input.breaker?.failure()
-			decision.fallbackReason = (e as Error).message.slice(0, 160)
+			// Masked before it is cut: a number cut in half would slip past the trace's mask (AIXC-82).
+			decision.fallbackReason = maskContent((e as Error).message).slice(0, 160)
 		}
 	}
 	if (!useRemote || decision.fallbackReason) {

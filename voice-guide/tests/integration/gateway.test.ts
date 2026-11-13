@@ -76,7 +76,9 @@ test('a turn returns a validated plan, records it in the session and traces ever
 	assert.equal(r.body.plan.meta.route, 'replay')
 	const state = await p.store.getSession(s.sessionId)
 	assert.equal(state?.plan?.turnId, r.body.turnId)
-	assert.equal(state?.turns.at(-1)?.utterance, 'إيه أرخص باقة نت؟')
+	// The turn is recorded with its route and language, none of the person's words (AIXC-83).
+	assert.equal(state?.turns.at(-1)?.id, r.body.turnId)
+	assert.equal(state?.turns.at(-1)?.utterance, '')
 	const names = (await p.store.listTrace(s.sessionId)).filter((e) => e.turnId === r.body.turnId).map((e) => e.name)
 	for (const n of ['turn.received', 'router.understood', 'planner.plan', 'turn.planned']) assert.ok(names.includes(n), `${n} in ${names}`)
 })
@@ -365,6 +367,7 @@ test('traces and the saved session hold no page value, no personal data and no p
 	}
 	assert.match(trace, /call me on \[phone\]/, 'the request is still traced, masked')
 	assert.match(trace, /index\.html\?tab=offers/, 'the page keeps its path and its harmless query')
-	assert.match(row, /call me on \[phone\]/, 'the turn keeps the person\'s words, masked')
+	assert.doesNotMatch(JSON.stringify((await p.store.getSession(s.sessionId))?.turns), /call me on/, 'the turns keep none of the person\'s words')
+	assert.match(row, /call me on \[phone\]/, 'the agent\'s task is kept, masked, for the next page (ADR-0017)')
 	assert.match(row, /Super 10/, 'the chosen item keeps its name')
 })
