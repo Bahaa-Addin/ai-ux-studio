@@ -387,8 +387,14 @@ test('what the agent pressed reaches the trace masked, and a spotlight that read
 	await page.waitForURL(`${WEB}/ar/bundles.html`)
 	await ready()
 	await heard(page, /أرخص واحدة/)
-	const spot = (await p.store.listTrace(await sessionId())).filter((e) => e.name === 'sdk.step' && e.attrs.op === 'spotlight').at(-1)
-	assert.equal(spot?.attrs.detail, 'read', 'what was read from the page is not in the trace')
+	// The step's event is sent after the line starts: wait for it rather than read the trace at once.
+	let spots: { attrs: Record<string, unknown> }[] = []
+	for (let i = 0; i < 50 && !spots.some((e) => e.attrs.detail === 'read'); i++) {
+		spots = (await p.store.listTrace(await sessionId())).filter((e) => e.name === 'sdk.step' && e.attrs.op === 'spotlight')
+		await page.waitForTimeout(100)
+	}
+	assert.ok(spots.some((e) => e.attrs.detail === 'read'), `what was read from the page is traced as "read" (${JSON.stringify(spots.map((e) => e.attrs.detail))})`)
+	assert.ok(!spots.some((e) => /أرخص واحدة|\d/.test(String(e.attrs.detail))), 'never the words or numbers that were read')
 })
 
 test('below the fold the card is checked where page-agent will press it: a cart button that acts on pointer and mouse events is never pressed (AIXC-73)', async () => {

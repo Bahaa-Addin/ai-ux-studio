@@ -5,6 +5,7 @@
 import type { Collection, Destination, Flow, Manifest, Page, Visual } from '#kb'
 import { buildSynonyms, type Doc, guidePointsIn, RetrievalIndex, type SynonymMap, terms } from '#text'
 
+import { setVocabulary } from './clean.ts'
 import type { Store } from './store/index.ts'
 
 export interface KbIndex {
@@ -24,6 +25,16 @@ export interface KbIndex {
 	pageFor(url: string): { pageId: string; lang: string } | undefined
 	index: RetrievalIndex
 	synonyms: SynonymMap
+}
+
+/** A site's own short words: labels, page titles, button texts and synonyms; not long descriptions. */
+export function vocabularyOf(m: Manifest): string[] {
+	const out: string[] = []
+	for (const d of m.destinations) out.push(...Object.values(d.labels || {}).flat(), ...Object.values(d.target?.text || {}))
+	for (const c of m.collections) out.push(...Object.values(c.labels || {}).flat())
+	for (const p of m.pages) out.push(...Object.values(p.variants).map((v) => v.title))
+	out.push(...(m.lexicon?.synonyms || []).flat())
+	return out.filter((t) => typeof t === 'string')
 }
 
 /**
@@ -140,6 +151,8 @@ export class KbCache {
 		if (!m) return null
 		const index = buildKbIndex(m)
 		this.#entries.set(siteId, { index, checkedAt: now })
+		// The site's own words, the only words of a request its traces keep (AIXC-94).
+		setVocabulary(siteId, vocabularyOf(m))
 		return index
 	}
 

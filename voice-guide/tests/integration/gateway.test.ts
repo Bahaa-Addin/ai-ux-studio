@@ -337,7 +337,7 @@ test('admin endpoints list and activate knowledge versions from loopback', async
 test('traces and the saved session hold no page value, no personal data and no private query value (AGENTS.md 4.3, 4.4; e-shop plan E3)', async () => {
 	const page = `${ORIGIN}/en/index.html?msisdn=01012345678&tab=offers`
 	const s = await newSession('en', page)
-	const t = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'call me on 01012345678 about the cheapest internet bundle', page: { url: page } })).body
+	const t = (await call('/v1/turn', { sessionId: s.sessionId, utterance: 'I am Zaynab Farouk, call me on 01012345678 about the cheapest internet bundle', page: { url: page } })).body
 	assert.ok(t.turnId, JSON.stringify(t))
 	const agentStep = t.plan.steps.find((st: { op: string }) => st.op === 'agent')
 	if (agentStep) assert.match(agentStep.task, /01012345678/, 'the plan sent to the page keeps the person\'s words, so the agent may type a number they said (ADR-0018 §3)')
@@ -365,9 +365,11 @@ test('traces and the saved session hold no page value, no personal data and no p
 		assert.doesNotMatch(text, /only 3 left/, `${where}: stock`)
 		assert.doesNotMatch(text, /msisdn/, `${where}: a private query value`)
 	}
-	assert.match(trace, /call me on \[phone\]/, 'the request is still traced, masked')
+	assert.match(trace, /\[phone\]/, 'the request is still traced, masked')
+	assert.match(trace, /internet bundle/, 'with the site\'s own words')
+	assert.doesNotMatch(trace, /Zaynab|Farouk/, 'never a name the site does not use (AIXC-94)')
 	assert.match(trace, /index\.html\?tab=offers/, 'the page keeps its path and its harmless query')
-	assert.doesNotMatch(JSON.stringify((await p.store.getSession(s.sessionId))?.turns), /call me on/, 'the turns keep none of the person\'s words')
-	assert.match(row, /call me on \[phone\]/, 'the agent\'s task is kept, masked, for the next page (ADR-0017)')
+	assert.doesNotMatch(JSON.stringify((await p.store.getSession(s.sessionId))?.turns), /call me on|Zaynab/, 'the turns keep none of the person\'s words')
+	assert.match(row, /call me on \[phone\]/, 'the agent\'s task is kept, masked, for the next page (ADR-0017; owner, 2026-11-13)')
 	assert.match(row, /Super 10/, 'the chosen item keeps its name')
 })

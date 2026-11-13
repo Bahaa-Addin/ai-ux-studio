@@ -54,8 +54,8 @@ export class Tracer {
 			service: this.service,
 			at: new Date().toISOString(),
 			durationMs,
-			// The request as heard keeps its own words' prices (they are the person's, not the page's): masked only.
-			attrs: cleanAttrs(attrs, 300, PERSONS_WORDS[name] || []),
+			// The request as heard: masked, and only the words the site itself uses (owner, 2026-11-13; AIXC-94).
+			attrs: cleanAttrs(attrs, 300, PERSONS_WORDS[name] || [], ctx.siteId),
 		}
 		try {
 			await this.store.appendTrace(ev)

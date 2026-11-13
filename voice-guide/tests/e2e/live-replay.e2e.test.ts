@@ -234,7 +234,8 @@ test('X-ray fills from long-polled events through the page origin', async () => 
 	const view = await page.evaluate(() => (window as any).voiceGuide.xray.view())
 	const layers = view.turns.flatMap((t: any) => t.events.map((e: any) => e.layer))
 	assert.ok(layers.includes('understand'), 'server-side events (router.understood) arrived by polling')
-	assert.ok(view.turns.some((t: any) => /أرخص باقة نت/.test(t.utterance)), 'with the utterance from turn.received')
+	// The request's words as traced: only the site's own words (owner, 2026-11-13; AIXC-94).
+	assert.ok(view.turns.some((t: any) => /باقة نت/.test(t.utterance)), 'with the site\'s words of the utterance from turn.received')
 	const listen = view.turns.flatMap((t: any) => t.events).find((e: any) => e.layer === 'listen' && /shared-track/.test(e.detail))
 	assert.ok(listen, 'the listen row shows the audio mode')
 	assert.match(listen.detail, /first word \d+ ms/, 'and the time to the first word')
