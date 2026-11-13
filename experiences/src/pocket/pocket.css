@@ -225,6 +225,84 @@
   display: none;
 }
 
+/* ----------------------------------- "Pocket it" on Vodafone's own pages */
+
+/* The overlay (ADR-0052 §10): a slot over each of Vodafone's cards, nothing written into the card.
+   Only the chip, and the liner of a pocketed card, take the pointer; every other click reaches the
+   card underneath. The chip is Vodafone's secondary button (SPEC-01 §3; owner, 2026-11-13). */
+.pocket-chips[hidden],
+.pocket-chips[data-aixc] > [hidden] {
+  display: none !important;
+}
+
+.pocket-chips[data-aixc] > .pocket-host {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.pocket-chips[data-aixc] .pocket-cta {
+  right: auto;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 12px 0 9px;
+  border: 1px solid #e60000;
+  border-radius: 6px;
+  background: #fff;
+  color: #e60000;
+  font-family: var(--pocket-regular);
+  font-size: 14px;
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+.pocket-chips[data-aixc] .pocket-cta:hover {
+  background: #e60000;
+  color: #fff;
+  box-shadow: none;
+}
+
+/* Two tones, so the ring shows on white cards and on red ones. */
+.pocket-chips[data-aixc] .pocket-cta:focus-visible,
+.pocket-chips[data-aixc] .pocket-liner__undo:focus-visible {
+  outline: 2px solid #333;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+/* A tight card: the icon alone, its name still read out. */
+.pocket-chips[data-aixc] .pocket-cta--icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.pocket-chips[data-aixc] .pocket-cta--icon .pocket-cta__label {
+  display: none;
+}
+
+.pocket-chips[data-aixc] .pocket-liner {
+  border: 1px dashed #ccc;
+  background: #f4f4f4;
+}
+
+.pocket-chips[data-aixc] > .pocket-host.is-pocketed > .pocket-liner {
+  pointer-events: auto;
+}
+
+/* Focus inside a pocketed card: the card shows through, so its focused link is never hidden. */
+.pocket-chips[data-aixc] > .pocket-host[data-focus-in] > .pocket-liner {
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pocket-chips[data-aixc] .pocket-cta {
+    transition: none;
+  }
+}
+
 /* -------------------------------------------------- the peeking corner */
 
 .pocket-peek {

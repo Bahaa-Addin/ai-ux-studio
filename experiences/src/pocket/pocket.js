@@ -26,7 +26,7 @@
 
 import { createCurl, cornerReach, fullTurn, tween as runTween, ease, lerp } from './curl.js'
 import { createIdsStore } from './ids-store.js'
-import { recordFrom } from './record.js'
+import { onPage, recordFrom } from './record.js'
 import { countItems, lang as pageLang, t } from '../i18n.js'
 
 const RAD = Math.PI / 180
@@ -169,6 +169,8 @@ const snapshotCard = (card, width, height) => {
   })
   for (const node of clone.querySelectorAll('.pocket-cta, .pocket-liner, .curl-host')) node.remove()
   clone.classList.remove('is-pocketed', 'is-peeling', 'is-returning')
+  // A copy is never one of the page's cards: without the adapter's marks there is one element per id (B-49).
+  stripMarks(clone)
   stripIds(clone)
   const ownBackground = getComputedStyle(card).backgroundColor
   Object.assign(clone.style, {
@@ -242,6 +244,8 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
     page: { path: location.pathname, lang: pageLang, dir: pageLang === 'ar' ? 'rtl' : 'ltr', title: document.title },
     corner: true,
     chips: true,
+    // The clone's ids-only store keys a sticker by its card's id; on live pages a record has its own key.
+    recordKey: (id) => id,
     dated: false,
     eagerImages: true,
     pageBack: PAGE_BACK,
@@ -256,13 +260,13 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
  * (./portal/portal.js), or nothing. `seams`: the host's (see shellSeams); `model`: the page's
  * content model when the host has read it already.
  */
-export const initPocket = ({ adapter, regions, composer = null, portal: portalOptions = {}, createActors = null, createPortal = null, store = null, seams: given = null, model: givenModel }) => {
+export const initPocket = ({ adapter, regions, composer = null, portal: portalOptions = {}, createActors = null, createPortal = null, createChips = null, store = null, seams: given = null, model: givenModel }) => {
   const { sourceRoot } = regions
   // The host's seams over the shell's, getters kept: a host's `page` can follow a route change (E5).
   const seams = Object.defineProperties({ ...shellSeams(regions) }, Object.getOwnPropertyDescriptors(given || {}))
-  const model = givenModel !== undefined ? givenModel : adapter.extractContent(sourceRoot).model
+  let model = givenModel !== undefined ? givenModel : adapter.extractContent(sourceRoot).model
   // The clone has no Pocket without its page; on Vodafone's pages the album is there on every page.
-  if (!model && seams.chips) return null
+  if (!model && seams.chips === true) return null
 
   /** id → { item, section } for everything that can be pocketed (not the closing promo). */
   const catalog = new Map()
@@ -285,8 +289,19 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     state.ids = [...records.keys()]
   }
   sync(store.all())
+  /**
+   * id → { card, host, cta, undo }: Vodafone's card, and the node its chip, liner and lift live on (the
+   * card itself in the clone; a slot in the overlay on live pages, ADR-0052 §10).
+   */
   const cards = new Map()
-  const isPocketed = (id) => state.ids.includes(id)
+  /** This page's record for card `id`: a sticker kept on another page never marks this page's card (S6). */
+  const keyOf = (id, page = seams.page) => {
+    for (const [key, record] of records) if (record.id === id && onPage(record, page)) return key
+    return undefined
+  }
+  const isPocketed = (id, page) => keyOf(id, page) !== undefined
+  /** The overlay of chips on live pages (./chips-overlay.js), or nothing. */
+  let chips = null
   /** The Pocket's own writes: the store tells its subscribers at once, and this one already knows. */
   let writing = false
   const save = (fn) => {
@@ -400,7 +415,11 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const pocketRoot = make('div', { id: 'pocket-output', class: 'pocket-output pocket-album', hidden: true }, pocketView)
   /** The page turns to the pocket even with no stickers while this says so (a saved journey). */
   let openableEmpty = () => false
-  const viewChanged = (view) => pocketRoot.dispatchEvent(new CustomEvent('pocket:view', { detail: view }))
+  const viewChanged = (view) => {
+    pocketRoot.dispatchEvent(new CustomEvent('pocket:view', { detail: view }))
+    // The chips stand aside while the album shows, and come back where the cards are (S6).
+    chips?.view()
+  }
   seams.place(mark(pocketRoot))
   // Without the page's corner (the host has not given it a place yet) there is no Pocket button.
   attach(planeLayer, liftLayer, ...(seams.corner ? [peekButton] : []), live)
@@ -576,17 +595,21 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const liftCorner = (card, id) => {
     if (reducedMotion() || state.view !== 'page' || isPocketed(id) || hover?.card === card) return
     dropCorner({ immediate: true })
+    const entry = cards.get(id)
+    const inSlot = entry.host !== card
     const style = getComputedStyle(card)
     const width = card.offsetWidth
     const height = card.offsetHeight
     const rig = stickerRig(card, width, height, card.getBoundingClientRect())
     const host = make('div', {
       class: 'curl-host curl-host--inside',
-      style: { left: `${-parseFloat(style.borderLeftWidth) || 0}px`, top: `${-parseFloat(style.borderTopWidth) || 0}px`, width: `${width}px`, height: `${height}px` },
+      'aria-hidden': 'true',
+      inert: true,
+      style: { left: `${inSlot ? 0 : -parseFloat(style.borderLeftWidth) || 0}px`, top: `${inSlot ? 0 : -parseFloat(style.borderTopWidth) || 0}px`, width: `${width}px`, height: `${height}px` },
     })
     host.append(rig.plane, rig.lift)
-    card.append(host)
-    card.classList.add('is-peeling')
+    entry.host.append(host)
+    entry.host.classList.add('is-peeling')
     const R = stickerRadius(width, height)
     const phi = stickerPhi(width, height)
     // Enough lift to clear the chip sitting on the corner, so the curl is visible.
@@ -603,7 +626,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const finish = () => {
       current.host.remove()
       current.rig.destroy()
-      if (hover?.card !== current.card && !isPocketed(current.id)) current.card.classList.remove('is-peeling')
+      if (hover?.card !== current.card && !isPocketed(current.id)) cards.get(current.id)?.host.classList.remove('is-peeling')
     }
     if (immediate) return finish()
     const from = current.rig.state?.x ?? 0
@@ -629,6 +652,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const rig = stickerRig(card, width, height, rect, span)
     const host = make('div', {
       class: 'curl-host curl-host--flying',
+      'aria-hidden': 'true',
+      inert: true,
       style: { left: `${rect.left}px`, top: `${rect.top}px`, width: `${width}px`, height: `${height}px` },
     })
     host.append(rig.plane, rig.lift)
@@ -751,23 +776,29 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     }
   }
 
+  /** True when the visitor pressed `button` from the keyboard or a screen reader (a slot's buttons are only reached that way). */
+  const pressedByKeys = (entry, button) => button.matches(':focus-visible') || (entry.host !== entry.card && document.activeElement === button)
+
   const pocketItem = async (id) => {
-    if (isPocketed(id) || state.view !== 'page' || state.busy) return
-    const card = cards.get(id)
+    const entry = cards.get(id)
+    if (!entry || !catalog.has(id) || isPocketed(id) || state.view !== 'page' || state.busy) return
+    const { card, host } = entry
     const { item, section } = catalog.get(id)
     const startX = hover?.card === card ? hover.rig.state?.x ?? 0 : 0
-    const fromKeyboard = card.querySelector('.pocket-cta')?.matches(':focus-visible')
-    const record = recordFrom({ item, section, page: seams.page, model, key: id })
-    records.set(id, record)
-    state.ids.push(id)
+    const fromKeyboard = pressedByKeys(entry, entry.cta)
+    // The clone's ids-only store keys a sticker by its card's id; a live record keeps its own key (S6).
+    const record = recordFrom({ item, section, page: seams.page, model, ...(seams.recordKey ? { key: seams.recordKey(id) } : {}) })
+    records.set(record.key, record)
+    state.ids.push(record.key)
     save(() => store.put(record))
     dropCorner({ immediate: true })
-    card.classList.remove('is-peeling')
-    card.classList.add('is-pocketed')
+    host.classList.remove('is-peeling')
+    host.classList.add('is-pocketed')
     // Keep a keyboard user's place: the chip is gone, so focus moves to "Put back".
-    if (fromKeyboard) card.querySelector('.pocket-liner__undo')?.focus({ preventScroll: true })
-    announce(`${item.title} is in your pocket. ${countLabel(state.ids.length)}.`)
-    if (reducedMotion()) {
+    if (fromKeyboard) entry.undo.focus({ preventScroll: true })
+    announce(t('{title} is in your pocket. {count}.', { title: item.title, count: countLabel(state.ids.length) }))
+    // No flight before the Pocket has its corner on the page (S11): the card peels in place.
+    if (reducedMotion() || !seams.corner) {
       openPeek({ animate: false })
       updateCount()
       return
@@ -785,59 +816,103 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   }
 
   const putBack = async (id) => {
-    if (!isPocketed(id) || state.view !== 'page' || state.busy) return
-    const card = cards.get(id)
-    const { item } = catalog.get(id)
-    const fromKeyboard = card.querySelector('.pocket-liner__undo')?.matches(':focus-visible')
-    records.delete(id)
-    state.ids = state.ids.filter((other) => other !== id)
-    save(() => store.remove(id))
+    const key = keyOf(id)
+    const entry = cards.get(id)
+    if (!entry || key === undefined || state.view !== 'page' || state.busy) return
+    const { card, host } = entry
+    const title = catalog.get(id)?.item.title ?? records.get(key).copy.title
+    const fromKeyboard = pressedByKeys(entry, entry.undo)
+    records.delete(key)
+    state.ids = state.ids.filter((other) => other !== key)
+    save(() => store.remove(key))
     updateCount()
-    announce(`${item.title} is back on the page. ${countLabel(state.ids.length)} in your pocket.`)
-    card.classList.replace('is-pocketed', 'is-returning')
+    announce(t('{title} is back on the page. {count} in your pocket.', { title, count: countLabel(state.ids.length) }))
+    host.classList.replace('is-pocketed', 'is-returning')
     if (!reducedMotion() && state.peek) {
       bumpPeek()
       const cleanup = await fly(flyBack(card))
-      card.classList.remove('is-returning')
+      host.classList.remove('is-returning')
       cleanup()
       if (destroyed) return
     } else {
-      card.classList.remove('is-returning')
+      host.classList.remove('is-returning')
     }
-    if (fromKeyboard) card.querySelector('.pocket-cta')?.focus({ preventScroll: true })
+    if (fromKeyboard) entry.cta.focus({ preventScroll: true })
     if (!state.ids.length) closePeek()
   }
 
-  const decorate = (card, id) => {
+  /**
+   * Draws "Pocket it" and the liner for card `id` on `host`: the card itself in the clone, or a slot of
+   * the overlay on Vodafone's pages (ADR-0052 §10), whose buttons stay out of the Tab order (owner,
+   * 2026-11-13: screen readers reach them in the labelled group, by name).
+   */
+  const decorate = (card, id, host = card) => {
     const { item } = catalog.get(id)
-    card.classList.add('pocket-host')
+    const inSlot = host !== card
+    // This card's listeners, so they go with it when the overlay draws it again (undecorate).
+    const mine = offs.length
+    host.classList.add('pocket-host')
     const cta = make(
       'button',
-      { type: 'button', class: 'pocket-cta', 'aria-label': t('Pocket it: {title}', { title: item.title }) },
+      { type: 'button', class: 'pocket-cta', tabindex: inSlot ? '-1' : null, 'data-pocket-for': id, 'aria-label': t('Pocket it: {title}', { title: item.title }) },
       icon('pocketAdd', 'pocket-cta__icon'),
       make('span', { class: 'pocket-cta__label' }, t('Pocket it')),
     )
     on(cta, 'pointerenter', (event) => event.pointerType !== 'touch' && liftCorner(card, id))
     on(cta, 'pointerleave', () => hover?.card === card && dropCorner())
     on(cta, 'click', () => pocketItem(id))
-    const undo = make('button', { type: 'button', class: 'pocket-liner__undo', 'aria-label': t('Put back {title}', { title: item.title }) }, t('Put back'))
+    const undo = make('button', { type: 'button', class: 'pocket-liner__undo', tabindex: inSlot ? '-1' : null, 'aria-label': t('Put back {title}', { title: item.title }) }, t('Put back'))
     on(undo, 'click', () => putBack(id))
     const liner = make(
       'div',
       { class: 'pocket-liner' },
       make('div', { class: 'pocket-liner__content' }, icon('pocket', 'pocket-liner__icon'), make('p', { class: 'pocket-liner__text' }, t('In your pocket')), undo),
     )
-    card.append(liner, cta)
-    if (isPocketed(id)) card.classList.add('is-pocketed')
-    cards.set(id, card)
+    host.append(liner, cta)
+    if (isPocketed(id)) host.classList.add('is-pocketed')
+    const entry = { card, host, cta, undo, offs: offs.splice(mine) }
+    cards.set(id, entry)
+    return entry
   }
 
-  // "Pocket it" on the cards: the clone draws it inside them; on Vodafone's pages that is step S6.
-  if (seams.chips)
+  /** Takes card `id`'s chip and liner away (the overlay, when Vodafone's card left or changed). */
+  const undecorate = (id) => {
+    const entry = cards.get(id)
+    if (!entry) return
+    if (hover?.id === id) dropCorner({ immediate: true })
+    cards.delete(id)
+    for (const off of entry.offs) off()
+    if (entry.host !== entry.card) return entry.host.remove()
+    entry.card.classList.remove('pocket-host', 'is-pocketed', 'is-peeling', 'is-returning')
+    for (const node of entry.card.querySelectorAll(':scope > .pocket-cta, :scope > .pocket-liner, :scope > .curl-host')) node.remove()
+  }
+
+  // "Pocket it" on the cards: the clone draws it inside them; on Vodafone's pages the overlay draws it (S6).
+  if (seams.chips === true)
     for (const card of sourceRoot.querySelectorAll('[data-aixc-item]')) {
       const id = card.dataset.aixcItem
       if (catalog.has(id)) decorate(card, id)
     }
+
+  /** An observer that stops when the Pocket goes. */
+  const observe = (observer) => {
+    offs.push(() => observer.disconnect())
+    return observer
+  }
+
+  /** Vodafone's page was read again (aixc:model): the cards to pocket are the new model's, in place. */
+  const setModel = (next, coverage = null) => {
+    if (destroyed) return
+    model = next ?? null
+    catalog.clear()
+    for (const section of model?.sections ?? []) for (const item of section.items) catalog.set(item.id, { item, section })
+    chips?.refresh(coverage)
+  }
+
+  chips =
+    seams.chips === 'overlay' && createChips
+      ? createChips({ ...seams.overlay, catalog, decorate, undecorate, state, page: () => seams.page, on, later, observe, wrap, mark, checkpoint, t })
+      : null
 
   /* --------------------------------------------------------- the album */
   /** The day a sticker was kept, in the page's language ("12 Nov", "١٢ نوفمبر" in Latin digits). */
@@ -925,6 +1000,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     })
     const host = make('div', {
       class: 'curl-host curl-host--flying',
+      'aria-hidden': 'true',
+      inert: true,
       style: { left: `${centre.x - width / 2}px`, top: `${centre.y - height / 2}px`, width: `${width}px`, height: `${height}px`, transform: `rotate(${tilt}deg)`, zIndex: '9' },
     })
     host.append(rig.plane, rig.lift)
@@ -945,18 +1022,22 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     rig.destroy()
   }
 
-  const unpocketCard = (id) => cards.get(id)?.classList.remove('is-pocketed', 'is-returning')
+  /** The card of the sticker under `key` stands on the page again, when that sticker was kept on this page. Call it before the record goes. */
+  const unpocketCard = (key) => {
+    const record = records.get(key)
+    if (record && onPage(record, seams.page)) cards.get(record.id)?.host.classList.remove('is-pocketed', 'is-returning')
+  }
 
-  const removeFromPocket = async (id, cell) => {
-    if (state.busy || !isPocketed(id)) return
-    const { title } = records.get(id).copy
+  const removeFromPocket = async (key, cell) => {
+    if (state.busy || !records.has(key)) return
+    const { title } = records.get(key).copy
     const next = cell.nextElementSibling ?? cell.previousElementSibling
     if (!reducedMotion()) await peelAway(cell.querySelector('.pocket-sticker'))
-    if (destroyed) return
-    records.delete(id)
-    state.ids = state.ids.filter((other) => other !== id)
-    save(() => store.remove(id))
-    unpocketCard(id)
+    if (destroyed || !records.has(key)) return
+    unpocketCard(key)
+    records.delete(key)
+    state.ids = state.ids.filter((other) => other !== key)
+    save(() => store.remove(key))
     updateCount()
     cell.remove()
     renderLead()
@@ -966,7 +1047,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
 
   on(clearButton, 'click', () => {
     if (state.busy) return
-    for (const id of state.ids) unpocketCard(id)
+    for (const key of state.ids) unpocketCard(key)
     records.clear()
     state.ids = []
     save(() => store.clear())
@@ -1020,6 +1101,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       // pocket underneath it. Both happen before the next paint, so nothing flickers.
       peek.rig.setFront(snapshotPage({ scrollY, sheet }))
       state.saved = { scrollY, cover: seams.cover(), opener }
+      // The chips stand over cards that are no longer shown.
+      chips?.view()
       checkpoint('pocket-open')
       composer?.state?.activeExperience?.unmount?.()
       renderPocket()
@@ -1118,7 +1201,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
         setPeekButton(false)
         destroyPeek()
         // Back where the visitor was: the clone's chips, else whatever opened the Pocket.
-        const back = seams.chips ? (sourceRoot.hidden ? document.querySelector('.aixc-launcher') : sourceRoot.querySelector('.pocket-cta')) : saved.opener?.isConnected && saved.opener !== document.body ? saved.opener : null
+        const back = seams.chips === true ? (sourceRoot.hidden ? document.querySelector('.aixc-launcher') : sourceRoot.querySelector('.pocket-cta')) : saved.opener?.isConnected && saved.opener !== document.body ? saved.opener : null
         back?.focus({ preventScroll: true })
       }
     } catch (error) {
@@ -1151,7 +1234,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   let settled = false
   const fromStore = (list) => {
     sync(list)
-    for (const [id, card] of cards) card.classList.toggle('is-pocketed', isPocketed(id))
+    const page = seams.page
+    for (const [id, entry] of cards) entry.host.classList.toggle('is-pocketed', isPocketed(id, page))
     updateCount()
     if (state.view === 'pocket' && !state.busy) renderPocket()
     if (state.view === 'page' && !state.busy && settled) {
@@ -1190,11 +1274,10 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       dropCorner({ immediate: true })
     } catch {}
     giveBackPage()
-    for (const card of cards.values()) {
-      card.classList.remove('pocket-host', 'is-pocketed', 'is-peeling', 'is-returning')
-      for (const node of card.querySelectorAll(':scope > .pocket-cta, :scope > .pocket-liner, :scope > .curl-host')) node.remove()
-    }
-    cards.clear()
+    try {
+      chips?.destroy()
+    } catch {}
+    for (const id of [...cards.keys()]) undecorate(id)
     for (const node of added) node.remove()
     added.clear()
     pocketRoot.remove()
@@ -1219,6 +1302,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     },
     portal,
     store,
+    setModel,
+    /** Where each chip is on Vodafone's page, by card id (ADR-0052 §12): for `?aixc-debug` and the tests. */
+    chips: () => chips?.debug() ?? null,
     destroy,
   }
 }

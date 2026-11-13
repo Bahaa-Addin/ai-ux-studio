@@ -13,10 +13,16 @@
  * - stickers are records in the Pocket's own IndexedDB store (../../pocket/store.js, ADR-0051),
  *   shown as they were saved, in their own language, dated, with or without a picture.
  *
- * Step S5 is the album alone: no "Pocket it" on the cards yet (S6), no page corner or Pocket button
- * (S11 places it beside Vodafone's accessibility button), no mascot (S12), no portal (S13).
+ * - "Pocket it" (S6, ADR-0052 §10-§14) sits on Vodafone's cards from an overlay of our own after the
+ *   content (../../pocket/chips-overlay.js): nothing is written into the cards, the buttons stay out of
+ *   the Tab order (screen readers reach them by name), and only on the website where the page was
+ *   read well enough (coverage at least CHIPS_COVERAGE).
+ *
+ * Not yet: the page corner and Pocket button (S11 places it beside Vodafone's accessibility button),
+ * so no sticker flies before then; no mascot (S12), no portal (S13).
  */
 import css from '../../pocket/pocket.css'
+import { createChips } from '../../pocket/chips-overlay.js'
 import { initPocket } from '../../pocket/pocket.js'
 import { recordFrom, siteOf } from '../../pocket/record.js'
 import { openPocketStore } from '../../pocket/store.js'
@@ -24,6 +30,9 @@ import { countItems, t } from '../../i18n.js'
 
 /** The page's own name, without the site's ("Services | Vodafone Egypt" → "Services"). */
 const titleOf = (doc) => (doc.title || '').split(/\s+[|–-]\s+/)[0].trim() || null
+
+/** Chips show where at least this share of the page's content was read (a pilot knob; ADR-0052 §11). */
+const CHIPS_COVERAGE = 0.6
 
 /** The page's back face: nothing of the copy shows through it, so one copy per turn is enough. */
 const PAGE_BACK = { base: [251, 251, 249], seeThrough: 0, rim: 0.12, gloss: 0.07, glossAt: 0.34 }
@@ -59,6 +68,8 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
           set('#main-content', was.main)
           set('#experience-output', was.output)
           set('#aixc-viewbar', was.viewbar)
+          // The chips stand where the cards were; the turning copy shows the page without them.
+          set('.pocket-chips', true)
         },
       }
     },
@@ -77,15 +88,28 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       return pageNow()
     },
     corner: false,
-    chips: false,
+    // A record keeps its own key (not the clone's card id): stickers of two pages never share one (ADR-0052 §14).
+    recordKey: null,
+    chips: 'overlay',
+    overlay: {
+      place: (root) => host.addRegion(root),
+      content: host.main,
+      cards: () => host.main.querySelectorAll('[data-aixc-item]'),
+      hidden: () => host.sourceHidden,
+      // On the website only (the shop's chips come with E16), where the page was read well enough.
+      gate: (coverage) => siteOf(location.hostname) === 'web' && (coverage?.ratio ?? 0) >= CHIPS_COVERAGE,
+      coverage: layer.coverage ?? null,
+    },
     dated: true,
     eagerImages: false,
     pageBack: PAGE_BACK,
   }
 
   const regions = { sourceRoot: host.main, outputRoot: host.outputRoot, viewbar: host.viewbar, header: host.header, main: host.main }
-  const pocket = initPocket({ adapter, regions, store, seams, model: layer.model ?? null })
+  const pocket = initPocket({ adapter, regions, store, seams, createChips, model: layer.model ?? null })
   guard.onStop(() => pocket.destroy())
+  // Vodafone's page changed and was read again: the cards to pocket are the new ones.
+  guard.listen(document, 'aixc:model', (event) => pocket.setModel(event.detail.model, event.detail.coverage))
 
   // The clone's ids-only store, if this browser has one here: moved over once, for the cards this
   // page knows; left in place while some belong to another page.
@@ -108,5 +132,7 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     store,
     open: (options) => guard.run('pocket-open', () => pocket.open(options)),
     close: () => guard.run('pocket-close', () => pocket.close()),
+    /** The chips by card id: { shown, unplaced, icon } (ADR-0052 §12). */
+    chips: () => pocket.chips(),
   }
 }

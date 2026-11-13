@@ -57,6 +57,12 @@ export const pageKeyOf = (path, { site = 'web', search = '' } = {}) => {
   return `shop:${key}${c ? `?c=${c}` : ''}`
 }
 
+/**
+ * True when `record` was kept on `page` (its path in either language, on the same site): the cards a page
+ * shows as pocketed are its own records', never another page's with the same card id (S6; ADR-0052 §14).
+ */
+export const onPage = (record, page) => record?.source?.page === pageKeyOf(page.path, page) && siteOfRecord(record) === (page.site === 'shop' ? 'shop' : 'web')
+
 /** A record's site: records kept before E5 have none and are the website's. */
 export const siteOfRecord = (r) => (r?.source?.site === 'shop' ? 'shop' : 'web')
 

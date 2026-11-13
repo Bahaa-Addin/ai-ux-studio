@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { linkKeyOf } from '../src/host/live-adapter.js'
-import { categoryOf, isRecord, pageKeyOf, recordFrom, rematch, scoreOf, seen, siteOf, siteOfRecord } from '../src/pocket/record.js'
+import { categoryOf, isRecord, onPage, pageKeyOf, recordFrom, rematch, scoreOf, seen, siteOf, siteOfRecord } from '../src/pocket/record.js'
 
 const keys = (o) => Object.entries(o).map(([kind, value]) => ({ kind, value }))
 const card = (id, k, extra = {}) => ({ id, title: extra.title || id, description: extra.description ?? null, image: extra.image ?? null, cta: extra.cta ?? { label: null, href: `https://web.vodafone.com.eg/en/${id}` }, kind: 'card-action', keys: keys(k) })
@@ -164,4 +164,15 @@ test('the adapter and the Pocket name a shop list the same way (two copies, one 
   }
   assert.equal(siteOf('eshop.vodafone.com.eg'), 'shop')
   assert.equal(siteOf('web.vodafone.com.eg'), 'web')
+})
+
+test('a record belongs to the page it was kept on, in either language, on its own site (S6)', () => {
+  const kept = recordFrom({ item: { id: 'cash-1', title: 'Cash', keys: [] }, page: { path: '/en/services', lang: 'en' } })
+  assert.equal(onPage(kept, { path: '/en/services' }), true)
+  assert.equal(onPage(kept, { path: '/ar/services' }), true, 'the same page in Arabic')
+  assert.equal(onPage(kept, { path: '/en/home' }), false, 'another page, even with a card of the same id')
+  assert.equal(onPage(kept, { path: '/en/services', site: 'shop' }), false, 'the shop is another site')
+  const shop = recordFrom({ item: { id: 'a', title: 'A', keys: [] }, page: { path: '/en/list', search: '?categoryUrls=*tablets', site: 'shop', lang: 'en' } })
+  assert.equal(onPage(shop, { path: '/ar/list', search: '?categoryUrls=%2Ftablets', site: 'shop' }), true)
+  assert.equal(onPage(shop, { path: '/en/list', search: '?categoryUrls=*smart-phones', site: 'shop' }), false)
 })

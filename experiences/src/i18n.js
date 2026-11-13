@@ -26,7 +26,8 @@ const AR = {
   'Open your pocket, {count}': 'افتح جيبك، {count}',
   'Pocket it: {title}': 'في الجيب: {title}',
   'Pocket it': 'في الجيب',
-  'Put back {title}': 'رجّع {title}',
+  // The name starts with the visible label (WCAG 2.5.3).
+  'Put back {title}': 'رجّعها: {title}',
   'Put back': 'رجّعها',
   'In your pocket': 'في جيبك',
   'View more': 'اعرف اكتر',
@@ -38,10 +39,13 @@ const AR = {
   'Play with the Pocket drone': 'العب مع درون الجيب',
   'Opening {title}': 'بنفتح {title}',
   '{title} removed from your pocket. {count} left.': 'شلت {title} من جيبك. فاضل {count}.',
+  '{title} is in your pocket. {count}.': '{title} بقت في جيبك. {count}.',
+  '{title} is back on the page. {count} in your pocket.': '{title} رجعت للصفحة. في جيبك {count}.',
   // Pocket on Vodafone's own pages (the experience layer)
   'Back to the page': 'ارجع للصفحة',
   'Kept for later: {count}.': 'محفوظة لبعدين: {count}.',
   'Saved {date}': 'اتحفظت {date}',
+  'Pocket it on this page': 'زرار «في الجيب» لخدمات الصفحة دي',
   // Reimagine this page (the composer)
   'Reimagine this page': 'غيّر شكل الصفحة',
   'Describe how you’d like to experience this page…': 'اوصف إزاي تحب تشوف الصفحة…',

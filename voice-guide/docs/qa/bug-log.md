@@ -375,3 +375,17 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** ADR-0059's review note: the alike path for any empty name, per-card reveals and readings that are heard out, names by place, joining words removed with the value, `nameOf`/`placeOf` fallbacks, ordinals normalised, titles with fallbacks, the name rule price-free and unambiguous, instalments apart.
 - **Test:** `tests/unit/value-gate.test.ts` (every price-only item of the committed manifest asked about beside other destinations; no line left dangling), `tests/unit/router.test.ts` (show both across two lists; a price-only choice; the ordinals), `tests/unit/values.test.ts`, `tests/unit/trail.test.ts`, `tests/unit/knowledge-titles.test.ts` (page-map and trail titles, a question naming a price left out), `tests/e2e/guide.e2e.test.ts` (show both on the bundles page: both cards read, the first heard out, the second in its own tab), `tests/integration/gateway.test.ts` (`sdk.listen` keeps only the site's words). Each failed before except the `sdk.listen` coverage check.
 - **Still open:** in a split deployment the gateway loads no knowledge base, so `sdk.listen` traces keep only masks and short numbers (AIXC-106).
+
+## B-48 Pocketing and putting back were announced in English on Arabic pages
+
+- **Found:** 2026-11-13, while planning phase 3 S6 (the plan's D13); on the clone's Arabic page since the Pocket had one.
+- **Cause:** the two status lines for pocketing and putting back were English templates (`experiences/src/pocket/pocket.js`), not the page's UI copy, so a screen reader on `/ar/services` heard "ڤودافون كاش is in your pocket. خدمة واحدة.".
+- **Fix:** both go through `t()` with Arabic copy ("{title} بقت في جيبك. {count}.", "{title} رجعت للصفحة. في جيبك {count}."), and Put back's name starts with its visible label in Arabic ("رجّعها: …", WCAG 2.5.3).
+- **Test:** `tests/e2e/pocket-chips.e2e.test.ts`, the keyboard test on `/ar/services`: the announcements after pocketing and putting back by name are in Arabic. It failed before with the English template.
+
+## B-49 The lift's and the flight's copies of a card kept the adapter's marks
+
+- **Found:** 2026-11-13, while planning phase 3 S6 (the plan's D13).
+- **Cause:** `snapshotCard` copied a card with its `data-aixc-item` and `data-aixc-section`, so during a lift or a flight two elements carried the card's id, and anything looking a card up by its mark (the overlay, the adapter's next reading) could find the copy.
+- **Fix:** the copy drops every `data-aixc-*` attribute (`stripMarks`, as the page turn's copy already did).
+- **Test:** `tests/e2e/pocket-chips.e2e.test.ts`, "hover, pocket, put back and the album change nothing of Vodafone's page": one element per card stays marked through the lift and the peel, sampled every frame. It failed before (two during the lift).

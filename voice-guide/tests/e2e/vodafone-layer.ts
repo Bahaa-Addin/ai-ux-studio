@@ -15,8 +15,10 @@
  *   static-theme: home, Services, RED, Vodafone Cash; not static-lite-theme), shortly after
  *   DOMContentLoaded (O23);
  * - Owl Carousel's layout of the carousels in #main-content: a stage of `.owl-item`s at the widths
- *   the carousel's own attributes give, the first ones `.active`, and Owl's copies (`.owl-item.cloned`)
- *   before and after on looping carousels (RED live: 6). Not its motion.
+ *   the carousel's own attributes give (Owl 2: the stage's width over `items`, less the margin, so 255 px
+ *   at four in 1140 px, as the capture of 2026-11-05 measures), the first ones `.active`, and Owl's
+ *   copies (`.owl-item.cloned`) before and after on looping carousels (RED live: 6). Not its motion;
+ * - Vodafone's navigation pinned once the page scrolls (`.nav-header.nav-fixed`, z-index 20), on request.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -81,6 +83,8 @@ export interface LayerOptions {
 	themeClear?: boolean
 	/** Owl Carousel's layout of the carousels. Default false. */
 	owl?: boolean
+	/** Vodafone's navigation pinned at the top, as after a scroll. Default false. */
+	fixedHeader?: boolean
 	viewport?: { width: number; height: number }
 	reducedMotion?: boolean
 	/** The experience layer; false keeps it off. Default: the site config (on). */
@@ -117,7 +121,7 @@ export async function launchLayer(gw: LayerGateway, o: LayerOptions = {}): Promi
 		experiences: o.experiences,
 		netLog: o.netLog,
 		viewport: o.viewport || DESKTOP,
-		initScripts: [SPEECH_STUB, ...(o.widget === false ? [] : [WIDGET_STAND_IN]), ...(o.banner ? [BANNER_STAND_IN] : []), ...(o.themeClear ? [THEME_CLEAR_STAND_IN] : []), ...(o.owl ? [OWL_STAND_IN] : []), ...(o.initScripts || [])],
+		initScripts: [SPEECH_STUB, ...(o.widget === false ? [] : [WIDGET_STAND_IN]), ...(o.banner ? [BANNER_STAND_IN] : []), ...(o.themeClear ? [THEME_CLEAR_STAND_IN] : []), ...(o.owl ? [OWL_STAND_IN] : []), ...(o.fixedHeader ? [FIXED_HEADER_STAND_IN] : []), ...(o.initScripts || [])],
 	})
 	if (o.reducedMotion) await b.page.emulateMedia({ reducedMotion: 'reduce' })
 	// A response a route fulfilled has no server address; one from the network has. The gateway's own
@@ -292,7 +296,7 @@ export const OWL_STAND_IN = `(() => {
 			c.classList.add('owl-loaded', 'owl-drag')
 			c.style.display = 'block'
 			const width = c.getBoundingClientRect().width
-			const iw = Math.max(1, (width - margin * (items - 1)) / items)
+			const iw = Math.max(1, width / items - margin)
 			const wrap = (el, cloned) => {
 				const it = document.createElement('div')
 				it.className = 'owl-item' + (cloned ? ' cloned' : '')
@@ -320,4 +324,19 @@ export const OWL_STAND_IN = `(() => {
 		}
 	}
 	${WHEN_READY('layout')}
+})()`
+
+/** Vodafone's navigation as it is once the page scrolls: pinned at the top, above the content (z-index 20). */
+export const FIXED_HEADER_STAND_IN = `(() => {
+	${ONLY_CMS}
+	const pin = () => {
+		const nav = document.querySelector('.nav-header')
+		if (!nav) return
+		const css = document.createElement('style')
+		css.setAttribute('data-stand-in', 'nav-fixed')
+		css.textContent = '.nav-header.nav-fixed{position:fixed;top:0;left:0;right:0;z-index:20;background:#fff}'
+		document.head.appendChild(css)
+		nav.classList.add('nav-fixed')
+	}
+	${WHEN_READY('pin')}
 })()`
