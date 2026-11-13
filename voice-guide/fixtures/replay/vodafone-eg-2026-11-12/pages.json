@@ -1,0 +1,26 @@
+{
+	"captured": "2026-11-12",
+	"source": "the demo browser's HTTP cache on the owner's Mac (signed out, public pages, raw server HTML)",
+	"pages": [
+		{
+			"url": "https://web.vodafone.com.eg/ar/home",
+			"snapshot": "ar-home.html.gz",
+			"date": "Thu, 12 Nov 2026 09:12:55 GMT"
+		},
+		{
+			"url": "https://web.vodafone.com.eg/ar/mobile-internet-bundles",
+			"snapshot": "ar-mobile-internet-bundles.html.gz",
+			"date": "Thu, 12 Nov 2026 08:23:19 GMT"
+		},
+		{
+			"url": "https://web.vodafone.com.eg/ar/services",
+			"snapshot": "ar-services.html.gz",
+			"date": "Thu, 12 Nov 2026 08:23:43 GMT"
+		},
+		{
+			"url": "https://web.vodafone.com.eg/ar/vodafone-red1",
+			"snapshot": "ar-vodafone-red1.html.gz",
+			"date": "Thu, 12 Nov 2026 10:10:30 GMT"
+		}
+	]
+}

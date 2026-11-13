@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 
 import * as esbuild from 'esbuild'
@@ -439,6 +440,102 @@ test('each card carries what it can be known by, and the same card has keys in c
 		const digits = (xs: typeof en) => new Set(xs.flatMap((x) => x.keys.filter((k) => k.kind === 'digits').map((k) => k.value)))
 		const common = [...digits(en)].filter((d) => digits(ar).has(d))
 		assert.ok(common.length >= 8, `bundles: numbers in titles shared across languages (${common.length})`)
+	} finally {
+		await page.close()
+	}
+})
+
+// ---- a Pocket sticker finds its card again (experiences/src/pocket/record.js; ADR-0051) ----
+
+type Item = { id: string; kind: string; title: string; keys: { kind: string; value: string }[] }
+type Model = { sections: { id: string; title: string | null; items: Item[] }[] }
+type Rec = { key: string; id: string }
+const recordModule = () =>
+	import(pathToFileURL(path.join(ROOT, '../experiences/src/pocket/record.js')).href) as Promise<{
+		recordFrom(o: { item: Item; section: { id: string; title: string | null }; page: { path: string; lang: string; title?: string }; key?: string }): Rec
+		rematch(records: Rec[], model: Model, o: { lang: string }): Map<string, string>
+	}>
+/** Every card of a model as a sticker, keyed by where it sits (section and place: the same in both languages). */
+const stickersOf = async (model: Model, pathname: string) => {
+	const { recordFrom } = await recordModule()
+	const lang = pathname.slice(1, 3)
+	return model.sections.flatMap((s) => s.items.map((item, i) => ({ at: `${s.id}#${i}`, id: item.id, r: recordFrom({ item, section: s, page: { path: pathname, lang }, key: `${s.id}#${i}` }) })))
+}
+const placeOf = (model: Model) => new Map<string, string>(model.sections.flatMap((s) => s.items.map((item, i) => [item.id, `${s.id}#${i}`] as const)))
+
+test('a sticker saved in one language finds its card in the other, never a wrong one (ADR-0051)', async () => {
+	const { rematch } = await recordModule()
+	const page = await browser.newPage()
+	try {
+		// At least as many as the phase 3 map measured; never a wrong card.
+		const pairs = [['/en/home', '/ar/home', 10], ['/en/vodafone-cash', '/ar/vodafone-cash', 8], ['/en/services', '/ar/services', 29], ['/en/vodafone-red1', '/ar/vodafone-red1', 7], ['/en/mobile-internet-bundles', '/ar/mobile-internet-bundles', 19]] as const
+		for (const [en, ar, atLeast] of pairs) {
+			const from = (await read(page, htmlOf(savedAt(en)), en)).model as unknown as Model
+			const to = (await read(page, htmlOf(savedAt(ar)), ar)).model as unknown as Model
+			const stickers = await stickersOf(from, en)
+			const found = rematch(stickers.map((x) => x.r), to, { lang: 'ar' })
+			// The right card: the one with the same id where the other page has it (Services lists two Shokran
+			// cards in another order in Arabic), else the one in the same section and place.
+			const at = placeOf(to)
+			const truth = new Map(stickers.map((x) => [x.r.key, at.has(x.id) ? x.id : [...at].find(([, place]) => place === x.at)?.[0]]))
+			const right = [...found].filter(([key, id]) => truth.get(key) === id).length
+			const wrong = [...found].filter(([key, id]) => truth.get(key) !== id)
+			console.log(`# ${en} -> ${ar}: ${right} of ${stickers.length} found, ${wrong.length} wrong`)
+			assert.deepEqual(wrong, [], `${en} -> ${ar}: no sticker finds a wrong card`)
+			assert.ok(right >= atLeast, `${en} -> ${ar}: ${right} of ${stickers.length} found (at least ${atLeast})`)
+		}
+	} finally {
+		await page.close()
+	}
+})
+
+test('a sticker saved on 23 Oct finds its card on 12 Nov (Arabic home, bundles, Services, RED; ADR-0051, O26)', async () => {
+	const { rematch } = await recordModule()
+	const later = path.join(ROOT, 'fixtures/replay/vodafone-eg-2026-11-12')
+	const pages = (JSON.parse(fs.readFileSync(path.join(later, 'pages.json'), 'utf8')) as { pages: { url: string; snapshot: string }[] }).pages
+	const page = await browser.newPage()
+	let total = 0
+	try {
+		for (const p of pages) {
+			const pathname = new URL(p.url).pathname
+			const before = (await read(page, htmlOf(savedAt(pathname)), pathname)).model as unknown as Model
+			const after = (await read(page, gunzipSync(fs.readFileSync(path.join(later, p.snapshot))).toString('utf8'), pathname)).model as unknown as Model
+			const stickers = await stickersOf(before, pathname)
+			const found = rematch(stickers.map((x) => x.r), after, { lang: 'ar' })
+			const ids = new Set(after.sections.flatMap((s) => s.items.map((i) => i.id)))
+			for (const x of stickers) {
+				if (!ids.has(x.id)) continue
+				assert.equal(found.get(x.r.key), x.id, `${pathname}: ${x.id} found again`)
+				total++
+			}
+			const wrong = stickers.filter((x) => found.has(x.r.key) && found.get(x.r.key) !== x.id)
+			assert.deepEqual(wrong.map((x) => x.id), [], `${pathname}: never a wrong card`)
+			console.log(`# ${pathname} 23 Oct -> 12 Nov: ${stickers.filter((x) => found.get(x.r.key) === x.id).length} of ${stickers.length} found`)
+		}
+		assert.ok(total >= 60, `cards on both dates, each found: ${total}`)
+	} finally {
+		await page.close()
+	}
+})
+
+test('Vodafone adds a card that shares a link: the cards\' ids change, every sticker still finds its own card (AIXC-41)', async () => {
+	const { rematch } = await recordModule()
+	const page = await browser.newPage()
+	try {
+		const html = htmlOf(savedAt('/en/services'))
+		const before = (await read(page, html, '/en/services')).model as unknown as Model
+		const stickers = await stickersOf(before, '/en/services')
+		// A new action card linking where "Balance transfer" links, added after it in the same carousel.
+		const balance = before.sections.flatMap((s) => s.items).find((i) => /balance transfer/i.test(i.title))!
+		const link = balance.keys.find((k) => k.kind === 'link')!.value
+		const added = html.replace(/(<div class="carousel-item">\s*<!--------- START: Card action --------->)/, `<div class="carousel-item"><div class="card-action"><a href="/en${link}"><div class="card-action-body"><h4>Transfer to a friend</h4></div></a></div></div>$1`)
+		assert.notEqual(added, html, 'the card was added')
+		const after = (await read(page, added, '/en/services')).model as unknown as Model
+		const renamed = stickers.filter((x) => !after.sections.some((s) => s.items.some((i) => i.id === x.id)))
+		assert.ok(renamed.length >= 1, `an id changed (${renamed.map((x) => x.id).join(', ')})`)
+		const found = rematch(stickers.map((x) => x.r), after, { lang: 'en' })
+		const byTitle = (m: Model, id: string) => m.sections.flatMap((s) => s.items).find((i) => i.id === id)?.title
+		for (const x of stickers) assert.equal(byTitle(after, found.get(x.r.key) ?? ''), byTitle(before, x.id), `${x.id}: found its own card again`)
 	} finally {
 		await page.close()
 	}

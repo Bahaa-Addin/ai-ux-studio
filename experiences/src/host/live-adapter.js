@@ -129,12 +129,15 @@ const keysOf = ({ href, image, title, el, origin, path }) => {
     } catch {}
   }
   const file = image?.src && /\/documents\//.test(image.src) ? fileName(image.src) : ''
-  if (file) keys.push({ kind: 'picture', value: file.replace(/\(\d+\)/g, '').replace(/\.[a-z0-9]+$/i, '').toLowerCase() })
+  // Vodafone's file names often end in a space ('roaming+' in one language, 'roaming' in the other).
+  if (file) keys.push({ kind: 'picture', value: clean(file.replace(/\(\d+\)/g, '').replace(/\.[a-z0-9]+$/i, '')).toLowerCase() })
   const words = clean(title).toLowerCase()
   if (words) keys.push({ kind: 'title', value: words })
   const pane = el.closest('[id]')
-  if (pane && pane.id && !/^p_p_id|^portlet_/.test(pane.id)) keys.push({ kind: 'tab', value: pane.id })
-  const digits = (clean(title).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).match(/\d+(?:[.,]\d+)?/g) || []).join('-')
+  // Lower case: the bundles page's TikTok tab is vf-plus-tiktok in English and vf-plus-TikTok in Arabic.
+  if (pane && pane.id && !/^p_p_id|^portlet_/.test(pane.id)) keys.push({ kind: 'tab', value: pane.id.toLowerCase() })
+  // Numbers on their own ("1400", "25-55"), not digits inside a word ("3alnota", "Edfa3ly").
+  const digits = (clean(title).replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).match(/(?<![\p{L}\d])\d+(?:[.,]\d+)?(?![\p{L}\d])/gu) || []).join('-')
   if (digits) keys.push({ kind: 'digits', value: digits })
   return keys
 }
