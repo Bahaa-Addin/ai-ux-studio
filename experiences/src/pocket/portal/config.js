@@ -11,6 +11,36 @@
 export const PORTAL_DEFAULTS = {
   enabled: true,
 
+  /**
+   * On Vodafone's live pages (live plan phase 3, step S13). Off (the clone's behaviour) by default.
+   * With it: the click listener sits on the album root (`viewEvents`) and takes only the stickers'
+   * own links (`links`); eligible hosts are this page's origin only; the destination never runs
+   * scripts; `fetchOnce` is on; the accessibility button and the guide are never written to; Escape
+   * cancels instead of skipping ahead. (resolvePortalConfig forces these; options cannot undo them.)
+   */
+  live: false,
+  /** With `live`: the links inside the album root that get the portal (the sticker's own link). */
+  links: '.pocket-sticker a[href]',
+  /**
+   * The destination is fetched once (fetch, same-origin credentials) and drawn in a script-free
+   * frame from that response (srcdoc, with a <base href>); the real navigation afterwards is meant
+   * to come from the HTTP cache. Any failure shows the preview, with no second request.
+   * null: on when `live`, off otherwise (the clone loads the frame from its URL, as before).
+   */
+  fetchOnce: null,
+  /** Puts portal.css on the page (the host's own style helper); null: a <link> next to the module. */
+  stylesheet: null,
+  /** Called on every node the portal adds to the page (returns the node); null: as is. */
+  mark: null,
+  /** Wraps every listener, timer and frame callback the portal registers (returns the function); null: as is. */
+  wrap: null,
+  /** Told about any error the portal recovered from (it navigates natively and stays off for the page). */
+  report: null,
+  /** { opening: (title) => string }, the 'Opening {title}' status; null: the clone's own strings (../../i18n.js, loaded lazily). */
+  labels: null,
+  /** Test-only: called with a step's name ('portal-start') where a test may make the portal fail (the host's checkpoint). */
+  checkpoint: null,
+
   /** Only links whose destination is on these hosts (or this page's own origin) get the portal. */
   hosts: [/(^|\.)vodafone\.com\.eg$/i],
   /** Links that always navigate natively (in addition to new-tab, download and modified clicks). */
@@ -167,7 +197,38 @@ export const resolvePortalConfig = (options = {}, search = typeof location === '
   const viewer = params.get('portal-camera')
   if (viewer === 'walk' || viewer === 'still') config = merge(config, { camera: { mode: viewer } })
   if (params.has('portal-debug')) config = { ...config, debug: true }
-  return config
+  return forLive(config)
+}
+
+const identity = (value) => value
+
+/**
+ * What `live` forces, whatever the options or the URL say: this page's origin only, no scripts in
+ * the destination, the fetch-once frame (switched off explicitly: the preview, never a frame loaded
+ * from the destination's URL). `mark` and `wrap` are
+ * always functions afterwards.
+ */
+const forLive = (config) => {
+  const out = {
+    ...config,
+    live: Boolean(config.live),
+    mark: typeof config.mark === 'function' ? config.mark : identity,
+    wrap: typeof config.wrap === 'function' ? config.wrap : identity,
+    report: typeof config.report === 'function' ? config.report : null,
+    stylesheet: typeof config.stylesheet === 'function' ? config.stylesheet : null,
+    labels: config.labels && typeof config.labels.opening === 'function' ? config.labels : null,
+    checkpoint: typeof config.checkpoint === 'function' ? config.checkpoint : null,
+    fetchOnce: config.fetchOnce === null || config.fetchOnce === undefined ? Boolean(config.live) : Boolean(config.fetchOnce),
+  }
+  if (!out.live) return out
+  return {
+    ...out,
+    hosts: [],
+    links: typeof out.links === 'string' && out.links ? out.links : PORTAL_DEFAULTS.links,
+    // Never the frame loaded from its URL on live (a second request for the page): with the
+    // fetch-once frame switched off, the preview.
+    destination: { ...out.destination, scripts: false, ...(out.fetchOnce ? {} : { embed: 'never' }) },
+  }
 }
 
 /** Timing scaled by `speed` (only durations; `hold` is a fraction). */

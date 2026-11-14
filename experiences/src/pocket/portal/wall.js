@@ -26,8 +26,27 @@
 
 import { clamp, smootherstep } from './motion.js'
 
-/** Elements that stay live above the transition (they exist on every page, so they hold still). */
-export const KEEP_LIVE = 'vg-guide, #vodafone-aw-icon'
+/**
+ * Elements that stay live above the transition and are never copied (they exist on every page, so
+ * they hold still): the guide, Vodafone's accessibility widget (on live a body-level
+ * <accessibility-widget> holding button#vodafone-aw-icon; copying it would run Vodafone's widget
+ * code again) and the cookie banner.
+ */
+export const KEEP_LIVE = 'vg-guide, accessibility-widget, #onetrust-consent-sdk, #vodafone-aw-icon'
+
+/** Elements whose copy would load or run something: each becomes an inert stub of its size. */
+const MEDIA = 'video, audio, iframe, canvas, object, embed'
+
+/** The overlay's own z-index (portal.css .vf-portal): what floats above it is seen live. */
+export const OVERLAY_Z = 2147482000
+
+/** Is `node` a custom element the page has defined (copying it would construct it again)? */
+const isDefinedCustom = (node) => {
+  if (typeof customElements !== 'object' || !customElements) return false
+  const name = node.localName
+  const is = node.getAttribute?.('is')
+  return Boolean((name.includes('-') && customElements.get(name)) || (is && customElements.get(is)))
+}
 
 const stripIds = (root) => {
   root.removeAttribute?.('id')
@@ -79,16 +98,75 @@ const freezeState = (live, copy, viewportArea) => {
   }
 }
 
-/** A frozen copy of one element for the wall: its look right now, no ids, no lazy images, no live media. */
-const freeze = (node) => {
-  const copy = node.cloneNode(true)
+/** An inert box the size and place in the flow of `live` (a custom element: nothing of it is copied). */
+const stubOf = (live, make) => {
+  const rect = live.getBoundingClientRect()
+  const style = getComputedStyle(live)
+  const display = style.display === 'none' ? 'none' : style.display === 'inline' ? 'inline-block' : style.display.includes('inline') ? 'inline-block' : 'block'
+  return make('div', {
+    class: 'vf-portal__media-stub',
+    style: {
+      display,
+      boxSizing: 'border-box',
+      width: `${rect.width}px`,
+      height: `${rect.height}px`,
+      margin: style.margin,
+      position: style.position === 'static' || style.position === 'relative' ? style.position : 'absolute',
+      ...(style.position === 'fixed' || style.position === 'absolute' ? { left: `${rect.left}px`, top: `${rect.top}px`, margin: '0', position: style.position } : {}),
+    },
+  })
+}
+
+/**
+ * A deep copy of `node` in which every defined custom element is a stub: such an element is
+ * never cloned, since a clone of it is constructed at once (Vodafone's Angular widget would run
+ * again). Only the branches that hold one are copied node by node; the rest is cloned whole.
+ */
+const copyOf = (node, make) => {
+  const defined = [node, ...node.querySelectorAll('*')].filter((element) => element.localName.includes('-') || element.hasAttribute('is')).filter(isDefinedCustom)
+  if (!defined.length) return node.cloneNode(true)
+  const branches = new Set()
+  for (const element of defined) for (let up = element.parentElement; up && up !== node.parentElement; up = up.parentElement) branches.add(up)
+  const stubs = new Set(defined)
+  const copy = (live) => {
+    if (stubs.has(live)) return stubOf(live, make)
+    if (!branches.has(live)) return live.cloneNode(true)
+    const shallow = live.cloneNode(false)
+    for (const child of live.childNodes) shallow.append(child.nodeType === 1 ? copy(child) : child.cloneNode(true))
+    return shallow
+  }
+  return copy(node)
+}
+
+/**
+ * A frozen copy of one element for the wall: its look right now, no ids, no lazy images, no live
+ * media and no custom elements (each an inert stub), the copied element itself included.
+ */
+const freeze = (node, make) => {
+  if (node.matches(MEDIA) || isDefinedCustom(node)) {
+    const stub = stubOf(node, make)
+    stub.setAttribute('aria-hidden', 'true')
+    stub.inert = true
+    return stub
+  }
+  const copy = copyOf(node, make)
   freezeState(node, copy, window.innerWidth * window.innerHeight)
   stripIds(copy)
   for (const img of copy.querySelectorAll('img[loading="lazy"]')) img.loading = 'eager'
-  for (const media of copy.querySelectorAll('video, audio, iframe, canvas')) media.replaceWith(Object.assign(document.createElement('div'), { className: 'vf-portal__media-stub' }))
+  for (const media of copy.querySelectorAll(MEDIA)) media.replaceWith(make('div', { class: 'vf-portal__media-stub' }))
   copy.setAttribute('aria-hidden', 'true')
   copy.inert = true
   return copy
+}
+
+/**
+ * The layer's own nodes ([data-aixc], live pages) floating above the overlay (the Tips, z-index
+ * 2147483500) are seen live through it; a copy on the wall would show them twice.
+ */
+const floatsAbove = (node) => {
+  if (!node.matches('[data-aixc]')) return false
+  const z = Number.parseInt(getComputedStyle(node).zIndex, 10)
+  return Number.isFinite(z) && z > OVERLAY_Z
 }
 
 const isFloating = (node) => {
@@ -119,6 +197,7 @@ const scrollbarStrip = ({ width, height, scrollY, scrollHeight, make }) => {
  */
 export const createWall = ({ camera, config, make, exclude = [] }) => {
   const { W, H } = camera
+  const mark = (node) => (config.mark ? (config.mark(node) ?? node) : node)
   const d = config.wall.thickness
   const scrollY = window.scrollY
   const scrollX = window.scrollX
@@ -132,8 +211,10 @@ export const createWall = ({ camera, config, make, exclude = [] }) => {
     if (exclude.includes(child) || child.matches('script, style, link, template, noscript') || child.matches(KEEP_LIVE)) continue
     if (child.matches('[role="status"], [aria-live]') && !child.children.length) continue
     if (!isShown(child)) continue
-    if (isFloating(child)) floating.push(freeze(child))
-    else flow.append(freeze(child))
+    // (Each copy is marked as the portal's own, as everything it adds: config.mark.)
+    if (isFloating(child)) {
+      if (!floatsAbove(child)) floating.push(mark(freeze(child, make)))
+    } else flow.append(mark(freeze(child, make)))
   }
 
   const shade = make('div', { class: 'vf-portal__shade' })

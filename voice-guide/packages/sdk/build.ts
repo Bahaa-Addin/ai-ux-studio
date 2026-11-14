@@ -77,7 +77,9 @@ const cssText: esbuild.Plugin = {
  * A picture beside a module (new URL('./x.svg', import.meta.url), the Pocket actors' rigs) would be fetched
  * from Vodafone's page or the gateway, which serves only .js: in the layer's build it becomes a data: URL
  * string instead, the SVG minified and percent-encoded (S12; smaller gzipped than base64). The clone
- * (experiences/scripts/serve.mjs) serves the sources and keeps the files.
+ * (experiences/scripts/serve.mjs) serves the sources and keeps the files. A stylesheet beside a module (the
+ * portal's own <link>, which the clone uses) becomes an empty data: URL: on live pages the portal is given
+ * its stylesheet as text instead (S13), and nothing is ever fetched for it.
  */
 const svgDataUrl = (file: string) => {
 	let svg = fs
@@ -96,6 +98,7 @@ const svgInline: esbuild.Plugin = {
 			const src = fs.readFileSync(a.path, 'utf8')
 			if (!src.includes('import.meta.url')) return undefined
 			const contents = src.replace(/new URL\((['"])(\.\.?\/[^'"]+\.svg)\1,\s*import\.meta\.url\)(\.href)?/g, (_m, _q, rel: string) => JSON.stringify(svgDataUrl(path.resolve(path.dirname(a.path), rel))))
+				.replace(/new URL\((['"])\.\.?\/[^'"]+\.css\1,\s*import\.meta\.url\)(\.href)?/g, () => JSON.stringify('data:text/css,'))
 			return { contents, loader: 'js' }
 		})
 	},

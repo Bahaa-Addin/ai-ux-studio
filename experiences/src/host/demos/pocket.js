@@ -34,7 +34,9 @@
  *   when a chip or the Pocket button is first pressed or focused. A save before it arrives has no greeting.
  *   If the chunk or the actors fail, only the actors go (seams.report); the Pocket and the layer stay.
  *
- * Not yet: no portal (S13).
+ * - The portal (S13) is a chunk of its own (./portal.js). initPocket gets a stand-in that is enabled at once
+ *   (the album's sticker links open in this tab) and loads the chunk when the album opens, or at once when
+ *   this history entry says the album was open (Back). If the chunk fails, a sticker's link is a plain link.
  */
 import css from '../../pocket/pocket.css'
 import { createChips } from '../../pocket/chips-overlay.js'
@@ -181,8 +183,27 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     })
   }
 
+  // The portal (S13): a stand-in until its chunk (./portal.js) arrives, when the album opens or at once on Back
+  // to it; the chunk then gives it the real portal's current() and destroy(). A failed import leaves plain links.
+  const portal = { enabled: true, current: () => null }
+  const loadPortal = (args) =>
+    (portal.asked ||= guard.run('portal', async () => {
+      try {
+        const demo = await import('./portal.js')
+        if (guard.stopped) return
+        await demo.attach(portal, args, { guard, store, ensureCss, seams })
+      } catch (error) {
+        console.warn('[AIXC] no portal', error)
+      }
+    }))
+  const createPortal = (args) => {
+    guard.listen(args.viewEvents, 'pocket:view', (event) => event.detail === 'pocket' && loadPortal(args))
+    if (history.state?.vfPortal) loadPortal(args)
+    return portal
+  }
+
   const regions = { sourceRoot: host.main, outputRoot: host.outputRoot, viewbar: host.viewbar, header: host.header, main: host.main }
-  const pocket = initPocket({ adapter, regions, store, seams, createChips, createActors, model: layer.model ?? null })
+  const pocket = initPocket({ adapter, regions, store, seams, createChips, createActors, createPortal, portal: { live: true }, model: layer.model ?? null })
   guard.onStop(() => pocket.destroy())
   // The actors at idle where something is pocketed or there are chips to pocket with; at once on a first press or focus.
   const actorsIfUseful = () => (pocket.state.ids.length || pocket.chips()?.shown.length) && loadActors()

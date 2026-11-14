@@ -43,7 +43,14 @@
  *
  * If the page is not ready by the hold point the portal hovers (the frame's light keeps
  * flowing, a soft shimmer shows it is loading), then continues smoothly once it is.
- * Escape skips straight to the destination. A watchdog navigates whatever happens.
+ * Escape skips straight to the destination (on Vodafone's live pages, `config.live`, it cancels:
+ * the person stays on the Pocket page). A watchdog navigates whatever happens.
+ *
+ * Failure: an error while building the scene gives the page back and is thrown to ./portal.js,
+ * which lets the click navigate natively; an error while it runs ends in the plain navigation of
+ * the link (location.assign). Either way `onError` is told (./portal.js turns the portal off for
+ * the page). Every listener, timer and frame callback goes through `wrap` (config.wrap, the host's
+ * catch-all).
  */
 
 import { timingFor } from './config.js'
@@ -53,7 +60,26 @@ import { createWall } from './wall.js'
 import { createGate, forgetFrames, prepareFrame } from './gate.js'
 import { createDestination, navigateLike } from './handoff.js'
 import { rememberPocket } from './history.js'
-import { t as say } from '../../i18n.js'
+
+/**
+ * The 'Opening {title}' status. With `config.labels` it is the host's; otherwise the clone's own
+ * strings, imported only then (so a live scene never loads the clone's dictionary).
+ */
+let cloneSay = null
+const loadCloneLabels = () =>
+  cloneSay
+    ? Promise.resolve(cloneSay)
+    : import('../../i18n.js').then((module) => {
+        cloneSay = module.t
+        return cloneSay
+      })
+const openingLabel = (config, title, put) => {
+  if (config.labels) return put(config.labels.opening(title))
+  if (cloneSay) return put(cloneSay('Opening {title}', { title }))
+  loadCloneLabels()
+    .then((say) => put(say('Opening {title}', { title })))
+    .catch(() => {})
+}
 
 /** If the browser has not left this page this long after the handoff, the page is given back. */
 const STAY_TIMEOUT = 10000
@@ -72,6 +98,7 @@ const envKey = (camera) => `${camera.W}x${camera.H}@${window.devicePixelRatio ||
  * transition starts is painted then.
  */
 export const prepareEnvironment = ({ config, make, later }) => {
+  if (!config.labels) loadCloneLabels().catch(() => {})
   const camera = cameraFor()
   const key = envKey(camera)
   if (prepared.has(key)) return
@@ -104,7 +131,10 @@ const USUAL_BOTTOM = 20
  * ../pocket.css) and settle at their usual place as the destination comes, so the first frame is
  * the Pocket page and the last is the destination. Set inline on those two elements only (never on
  * <html>, which would restyle the whole page every frame) and given back as they were at the end.
+ * The clone only (its button is a stand-in of ours): on Vodafone's live pages nothing of Vodafone's
+ * is moved or written to (ADR-0064), so `live` holds nothing.
  */
+const holdNothing = { to: () => {}, release: () => {} }
 const holdLive = () => {
   const button = document.querySelector('#vodafone-aw-icon')
   const guide = document.querySelector('vg-guide')
@@ -145,9 +175,26 @@ const takeEnvironment = ({ camera, config, make }) => {
 
 /**
  * Runs one transition to `url`, started by a click on `link`. Must be called synchronously
- * in the click handler (it snapshots the page before the next paint).
+ * in the click handler (it snapshots the page before the next paint). If building the scene
+ * throws, everything it had put on the page is removed and the error is thrown on.
  */
-export const runTransition = ({ url, link, config, make, onState = () => {}, onDone = () => {}, log = () => {} }) => {
+export const runTransition = (options) => {
+  const undo = []
+  try {
+    return transition(options, undo)
+  } catch (error) {
+    for (const step of undo.splice(0).reverse()) {
+      try {
+        step()
+      } catch {
+        // Go on giving the page back.
+      }
+    }
+    throw error
+  }
+}
+
+const transition = ({ url, link, config, make, onState = () => {}, onDone = () => {}, onError = () => {}, log = () => {}, wrap = (fn) => fn }, undo) => {
   const T = timingFor(config)
   const camera = cameraFor()
   const narrow = camera.W < 700 || camera.W < camera.H
@@ -156,6 +203,10 @@ export const runTransition = ({ url, link, config, make, onState = () => {}, onD
   let finished = false
   const timers = []
   const clicked = performance.now()
+  undo.push(() => {
+    finished = true
+    cancelAnimationFrame(raf)
+  })
 
   const setState = (next, detail = {}) => {
     if (state === next) return
@@ -168,7 +219,8 @@ export const runTransition = ({ url, link, config, make, onState = () => {}, onD
   /* ------------------------------------------------------------ build the scene */
   const root = make('div', { class: 'vf-portal', 'data-vg': '', 'data-state': 'idle', style: { perspective: `${camera.P}px` } })
   const status = make('p', { class: 'vf-portal__status', role: 'status' })
-  const destination = createDestination({ url, link, camera, config, make, timeout: T.readyTimeout })
+  const destination = createDestination({ url, link, camera, config, make, wrap, timeout: T.readyTimeout })
+  undo.push(() => destination.destroy())
   const environment = takeEnvironment({ camera, config, make })
   const misty = environment.style === 'mist'
   // The glowing white space and the misty void both have a light behind the portal; only the mist has fog.
@@ -178,21 +230,26 @@ export const runTransition = ({ url, link, config, make, onState = () => {}, onD
   // Walking, the portal starts on the floor like a door and rises a little as it comes toward the
   // viewer; coming to a still viewer, it floats.
   const gate = createGate({ camera, config, make, content: destination.node, lift: walking ? 0 : config.portal.lift, hover: walking ? config.portal.hover : 0 })
+  undo.push(() => gate.destroy())
   const wall = createWall({ camera, config, make, exclude: [root] })
   const layers = make('div', { class: 'vf-portal__scene', 'aria-hidden': 'true', style: { perspective: `${camera.P}px` } })
   layers.append(...environment.back, ...environment.pulses, gate.reflection, gate.redlight, gate.root, ...environment.front, wall.shadow, wall.root)
   root.append(layers, status)
 
   setState('preparing')
-  const live = holdLive()
+  const live = config.live ? holdNothing : holdLive()
+  undo.push(() => live.release())
   live.to(0)
+  undo.push(() => delete document.documentElement.dataset.vfPortal)
   document.documentElement.dataset.vfPortal = 'active'
+  undo.push(() => root.remove())
   document.body.append(root)
   wall.mount()
 
   /* ------------------------------------------------------------ readiness */
   let ready = null // { kind, reason, at }
   destination.ready.then((result) => {
+    if (finished && state === 'idle') return
     ready = { ...result, at: performance.now() - clicked }
     root.dataset.destination = result.kind
     log('destination', ready)
@@ -427,7 +484,7 @@ export const runTransition = ({ url, link, config, make, onState = () => {}, onD
         if (t - arrivedAt > 34) return handoff('arrived')
       }
       if (t > T.watchdog) return handoff('watchdog')
-      raf = requestAnimationFrame(frame)
+      raf = requestAnimationFrame(tick)
     } catch (error) {
       fail(error)
     }
@@ -442,28 +499,37 @@ export const runTransition = ({ url, link, config, make, onState = () => {}, onD
     for (const layer of [wall.root, gate.root]) layer.style.willChange = 'auto'
     rememberPocket(window.scrollY)
     try {
-      navigateLike(link, url, root)
-    } catch {
+      navigateLike(link, url, root, { make, wrap })
+    } catch (error) {
+      onError(error)
       location.assign(url)
     }
     setState('completed')
     // If the browser stays here (a 204, a download, a cancelled unload), give the page back.
     // Long enough for a slow server to answer: until it does, the last frame stays on screen.
-    timers.push(setTimeout(() => teardown('stayed'), STAY_TIMEOUT))
+    timers.push(setTimeout(wrap(() => teardown('stayed')), STAY_TIMEOUT))
   }
 
   const fail = (error) => {
     log('transition error, navigating natively', error)
     if (finished) return
-    setState('error', { error: String(error?.message || error) })
     finished = true
     cancelAnimationFrame(raf)
+    onError(error)
+    try {
+      setState('error', { error: String(error?.message || error) })
+    } catch {
+      // The navigation below is what matters.
+    }
     rememberPocket(window.scrollY)
     location.assign(url)
-    timers.push(setTimeout(() => teardown('stayed'), STAY_TIMEOUT))
+    timers.push(setTimeout(wrap(() => teardown('stayed')), STAY_TIMEOUT))
   }
 
+  let gone = false
   const teardown = (reason) => {
+    if (gone) return
+    gone = true
     finished = true
     cancelAnimationFrame(raf)
     for (const timer of timers) clearTimeout(timer)
@@ -478,36 +544,57 @@ export const runTransition = ({ url, link, config, make, onState = () => {}, onD
     onDone(reason)
   }
 
-  const onKey = (event) => {
+  /** A callback that runs inside the transition: an error in it ends in the native navigation. */
+  const guarded = (fn) =>
+    wrap((...args) => {
+      try {
+        return fn(...args)
+      } catch (error) {
+        fail(error)
+      }
+    })
+  // Escape: on live it cancels (the person stays on the Pocket page); on the clone it skips to the destination.
+  const onKey = guarded((event) => {
     if (event.key === 'Escape' && !finished) {
       event.preventDefault()
       event.stopPropagation()
-      handoff('skipped')
+      if (config.live) teardown('cancelled')
+      else handoff('skipped')
     }
-  }
+  })
+  undo.push(() => document.removeEventListener('keydown', onKey, true))
   document.addEventListener('keydown', onKey, true)
   // The scene is built for this viewport; if its width changes (rotation, a resized window),
   // go straight to the destination rather than finish with the wrong geometry. Height alone
   // changes as phone toolbars slide, which the scene tolerates.
-  const onResize = () => {
+  const onResize = guarded(() => {
     if (!finished && Math.abs(window.innerWidth - camera.W) > 1) handoff('resized')
-  }
+  })
+  undo.push(() => window.removeEventListener('resize', onResize))
   window.addEventListener('resize', onResize)
+  // (frame catches its own errors and fails; `wrap` is the host's catch-all around it.)
+  const tick = wrap(frame)
 
-  status.textContent = say('Opening {title}', { title: destination.facts.title })
+  openingLabel(config, destination.facts.title, (text) => {
+    if (!gone) status.textContent = text
+  })
   // Transform only on the wall: will-change: opacity would flatten its 3D (the underside, the light behind it).
   wall.root.style.willChange = 'transform'
   gate.root.style.willChange = 'transform, opacity'
   // The scene appears exactly as the page was (t = 0) and the clock starts two frames later, so
   // the first paint of every layer happens while nothing moves: the motion never starts with a jump.
   render(0, true)
-  raf = requestAnimationFrame(() => {
-    raf = requestAnimationFrame(() => {
-      started = performance.now()
-      setState('wall-falling')
-      frame()
-    })
-  })
+  raf = requestAnimationFrame(
+    guarded(() => {
+      raf = requestAnimationFrame(
+        guarded(() => {
+          started = performance.now()
+          setState('wall-falling')
+          frame()
+        }),
+      )
+    }),
+  )
 
   return {
     get state() {

@@ -1002,3 +1002,5 @@ for a plain two-page hop, so the browser's event was dispatched); the real Voice
 Vodafone's real accessibility widget (stand-ins only); live (not saved) destination pages in the
 demo browser; screen readers; whether the steps, or the move starting on the click, cause motion
 discomfort for anyone; whether people read the opening as pushing the wall; real users.
+
+**Update (2026-11-14, live plan phase 3 S13):** on Vodafone's own pages the portal runs in a `live` mode (sticker links only, one fetch drawn in a script-free frame, nothing of Vodafone's copied or written, no failure that traps a click, Escape cancels); this ADR stays the clone's. See voice-guide ADR-0065 (`voice-guide/docs/adr/0065-the-portal-on-vodafone-pages.md`).

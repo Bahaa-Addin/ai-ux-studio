@@ -27,26 +27,30 @@ import { resolvePortalConfig } from './config.js'
 import { installInterceptor } from './interceptor.js'
 import { forgetPocket, pocketToRestore } from './history.js'
 
-const make = (tag, props = {}, ...children) => {
-  const node = document.createElement(tag)
-  for (const [key, value] of Object.entries(props ?? {})) {
-    if (value === null || value === undefined || value === false) continue
-    if (key === 'class') node.className = value
-    else if (key === 'style') for (const [name, rule] of Object.entries(value)) node.style.setProperty(name.startsWith('--') ? name : name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`), rule)
-    else node.setAttribute(key, value === true ? '' : String(value))
+/** Builds an element; `mark` (config.mark) is called on every node made, so the host can tag it. */
+const maker =
+  (mark = (node) => node) =>
+  (tag, props = {}, ...children) => {
+    const node = document.createElement(tag)
+    for (const [key, value] of Object.entries(props ?? {})) {
+      if (value === null || value === undefined || value === false) continue
+      if (key === 'class') node.className = value
+      else if (key === 'style') for (const [name, rule] of Object.entries(value)) node.style.setProperty(name.startsWith('--') ? name : name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`), rule)
+      else node.setAttribute(key, value === true ? '' : String(value))
+    }
+    node.append(...children.flat().filter((child) => child !== null && child !== undefined && child !== false))
+    return mark(node) ?? node
   }
-  node.append(...children.flat().filter((child) => child !== null && child !== undefined && child !== false))
-  return node
-}
 
 const STYLESHEET = new URL('./portal.css', import.meta.url).href
 
-const addStylesheet = () => {
-  if (document.querySelector('link[data-vf-portal-css]')) return
-  document.head.append(make('link', { rel: 'stylesheet', href: STYLESHEET, 'data-vf-portal-css': '' }))
+/** The clone's way: a <link> to portal.css next to this module. Returns it if this call added it. */
+const addStylesheet = (make) => {
+  if (document.querySelector('link[data-vf-portal-css]')) return null
+  const link = make('link', { rel: 'stylesheet', href: STYLESHEET, 'data-vf-portal-css': '' })
+  document.head.append(link)
+  return link
 }
-
-const idle = (fn) => (window.requestIdleCallback ? window.requestIdleCallback(fn, { timeout: 1200 }) : setTimeout(fn, 200))
 
 /**
  * Wires the portal to the Pocket.
@@ -59,10 +63,72 @@ export const initPocketPortal = ({ options = {}, isPocketPage, openPocket, viewE
   const config = resolvePortalConfig(options)
   const api = { enabled: Boolean(config.enabled), config, current: () => null, destroy: () => {} }
   if (!config.enabled) return api
+  // On live the portal takes only the stickers' links inside the album root; without one, nothing.
+  if (config.live && !viewEvents) {
+    api.enabled = false
+    return api
+  }
 
+  const { mark, wrap } = config
+  const make = maker(mark)
   const log = config.debug ? (...args) => console.info('[portal]', ...args) : () => {}
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  addStylesheet()
+  let destroyed = false
+  // After any error the portal stays off for the rest of the page: links navigate natively.
+  let broken = false
+  const report = (error) => {
+    try {
+      config.report?.(error)
+    } catch {
+      // A reporter that fails must not change what happens to the click.
+    }
+  }
+  const breakDown = (error) => {
+    broken = true
+    log('error; the portal is off for this page, links navigate natively', error)
+    report(error)
+  }
+
+  const timers = new Set()
+  const later = (fn, ms) => {
+    const id = setTimeout(
+      wrap(() => {
+        timers.delete(id)
+        if (!destroyed) fn()
+      }),
+      ms,
+    )
+    timers.add(id)
+    return id
+  }
+  const idle = (fn) => {
+    let cancel = null
+    const run = wrap(() => {
+      timers.delete(cancel)
+      if (destroyed) return
+      try {
+        fn()
+      } catch (error) {
+        breakDown(error)
+      }
+    })
+    if (window.requestIdleCallback) {
+      const id = window.requestIdleCallback(run, { timeout: 1200 })
+      cancel = () => window.cancelIdleCallback?.(id)
+      timers.add(cancel)
+    } else later(run, 200)
+  }
+  const listeners = []
+  const on = (target, type, fn, opts) => {
+    if (!target) return
+    const handler = wrap(fn)
+    target.addEventListener(type, handler, opts)
+    listeners.push(() => target.removeEventListener(type, handler, opts))
+  }
+
+  let stylesheet = null
+  if (config.stylesheet) config.stylesheet()
+  else stylesheet = addStylesheet(make)
 
   let scene = null // the loaded controller module
   let loading = null
@@ -73,6 +139,7 @@ export const initPocketPortal = ({ options = {}, isPocketPage, openPocket, viewE
     }))
 
   const warmUp = () => {
+    if (broken || destroyed) return
     load()
       .then((module) => idle(() => isPocketPage() && module.prepareEnvironment({ config, make, later: idle })))
       .catch((error) => log('scene failed to load; links will navigate natively', error))
@@ -82,75 +149,99 @@ export const initPocketPortal = ({ options = {}, isPocketPage, openPocket, viewE
   const emit = (state, detail) => document.dispatchEvent(new CustomEvent('vf-portal:state', { detail: { state, ...detail } }))
 
   const start = (module, url, link) => {
-    current = module.runTransition({
+    config.checkpoint?.('portal-start')
+    let mine = null
+    mine = module.runTransition({
       url,
       link,
       config,
       make,
       log,
+      wrap,
       onState: emit,
+      onError: breakDown,
       onDone: (reason) => {
         log('released', reason)
-        current = null
+        if (current === mine) current = null
       },
     })
+    current = mine
   }
 
   const interceptor = installInterceptor({
-    active: () => isPocketPage() && !(config.reducedMotion === 'navigate' && reducedMotion()),
+    root: config.live ? viewEvents : document,
+    links: config.live ? config.links : null,
+    active: () => !broken && !destroyed && isPocketPage() && !(config.reducedMotion === 'navigate' && reducedMotion()),
     hosts: config.hosts,
     exclude: config.exclude,
     log,
+    wrap,
     onNavigate: ({ url, link }) => {
       // One transition at a time: the first click wins, later ones wait for it.
       if (current) return true
       try {
         if (scene) start(scene, url, link)
         else {
-          current = { pending: true }
+          const pending = {
+            pending: true,
+            cancel: () => {
+              pending.cancelled = true
+              if (current === pending) current = null
+            },
+          }
+          current = pending
           load()
-            .then((module) => start(module, url, link))
-            .catch(() => location.assign(url))
+            .then((module) => {
+              if (pending.cancelled || destroyed) return
+              current = null
+              start(module, url, link)
+            })
+            .catch((error) => {
+              // The click was taken; whatever went wrong, the person still gets where they asked.
+              if (current === pending) current = null
+              breakDown(error)
+              if (!pending.cancelled && !destroyed) location.assign(url)
+            })
         }
         return true
       } catch (error) {
-        log('could not start; navigating natively', error)
         current = null
+        breakDown(error)
         return false
       }
     },
   })
 
   // The Pocket opened: load the scene and paint the hall while the person reads.
-  const onView = (event) => {
+  on(viewEvents, 'pocket:view', (event) => {
     if (event.detail === 'pocket') warmUp()
     if (event.detail === 'page') {
       forgetPocket()
       scene?.forgetEnvironment()
     }
-  }
-  viewEvents?.addEventListener('pocket:view', onView)
+  })
   let resizeTimer = 0
-  const onResize = () => {
+  on(window, 'resize', () => {
     clearTimeout(resizeTimer)
-    resizeTimer = setTimeout(() => isPocketPage() && scene?.prepareEnvironment({ config, make, later: idle }), 250)
-  }
-  window.addEventListener('resize', onResize)
+    timers.delete(resizeTimer)
+    resizeTimer = later(() => isPocketPage() && !broken && scene?.prepareEnvironment({ config, make, later: idle }), 250)
+  })
 
   // Back from the destination. From the bfcache the page is exactly as it was, so only the
   // transition is removed; otherwise the history entry says the Pocket was open.
-  const onShow = (event) => {
+  on(window, 'pageshow', (event) => {
     if (event.persisted && current?.cancel) current.cancel()
-  }
-  window.addEventListener('pageshow', onShow)
+  })
   // After the Pocket has finished starting up, but before the first paint (a microtask).
   const saved = pocketToRestore()
   if (saved) {
-    queueMicrotask(() =>
-      Promise.resolve()
-        .then(() => openPocket({ instant: true }))
-        .then(() => window.scrollTo(0, saved.scrollY || 0))
-        .catch(() => {}),
+    queueMicrotask(
+      wrap(() =>
+        Promise.resolve()
+          .then(() => !destroyed && openPocket({ instant: true }))
+          .then(() => !destroyed && window.scrollTo(0, saved.scrollY || 0))
+          .catch(() => {}),
+      ),
     )
   }
 
@@ -158,11 +249,23 @@ export const initPocketPortal = ({ options = {}, isPocketPage, openPocket, viewE
 
   api.current = () => current
   api.destroy = () => {
+    if (destroyed) return
+    destroyed = true
     interceptor.destroy()
-    viewEvents?.removeEventListener('pocket:view', onView)
-    window.removeEventListener('resize', onResize)
-    window.removeEventListener('pageshow', onShow)
-    current?.cancel?.()
+    for (const off of listeners.splice(0)) off()
+    for (const timer of timers) typeof timer === 'function' ? timer() : clearTimeout(timer)
+    timers.clear()
+    const running = current
+    current = null
+    try {
+      running?.cancel?.()
+    } finally {
+      // Whatever the transition left, the page is given back.
+      for (const node of document.querySelectorAll('.vf-portal')) node.remove()
+      delete document.documentElement.dataset.vfPortal
+      stylesheet?.remove()
+      if (config.debug && window.__vfPortal?.config === config) delete window.__vfPortal
+    }
   }
   return api
 }

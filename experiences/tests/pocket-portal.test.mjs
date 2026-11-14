@@ -7,9 +7,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { bumpEase, cubicBezier, depthFor, fogAt, splitApproach, hermite, liftAt, perspectiveFor, planApproach, planFall, planPushedFall, project, scaleAt, strideAt, walkedFor } from '../src/pocket/portal/motion.js'
-import { whyNotEligible, linkFrom } from '../src/pocket/portal/interceptor.js'
+import { readFileSync } from 'node:fs'
+import { KEEP_LIVE, OVERLAY_Z } from '../src/pocket/portal/wall.js'
+import { whyNotEligible, linkFrom, scopeFor, installInterceptor } from '../src/pocket/portal/interceptor.js'
 import { PORTAL_DEFAULTS, resolvePortalConfig, timingFor } from '../src/pocket/portal/config.js'
-import { embedModeFor } from '../src/pocket/portal/handoff.js'
+import { embedModeFor, inertDocument, navigationAttributes, roughText, whyNotDrawn, FRAME_POLICY } from '../src/pocket/portal/handoff.js'
 
 const close = (actual, expected, epsilon = 1e-6) => assert.ok(Math.abs(actual - expected) < epsilon, `${actual} ≈ ${expected}`)
 const HALF = Math.PI / 2
@@ -461,4 +463,245 @@ test('only same-origin pages (or allow-listed origins) are framed; others get th
   assert.equal(embedModeFor('https://eshop.vodafone.com.eg/en/', allow, HERE), 'frame')
   const never = resolvePortalConfig({}, '?portal-embed=never')
   assert.equal(embedModeFor('https://web.vodafone.com.eg/en/vodafone-cash', never, HERE), 'preview')
+})
+
+/* ------------------------------------------------------------------ on Vodafone's live pages (S13) */
+
+test('the clone keeps its behaviour: live, fetch-once, mark, wrap and labels are off by default', () => {
+  const config = resolvePortalConfig({}, '')
+  assert.equal(config.live, false)
+  assert.equal(config.fetchOnce, false)
+  assert.equal(config.stylesheet, null)
+  assert.equal(config.labels, null)
+  assert.equal(config.report, null)
+  const node = {}
+  assert.equal(config.mark(node), node, 'mark is the identity')
+  const fn = () => {}
+  assert.equal(config.wrap(fn), fn, 'wrap is the identity')
+  assert.deepEqual(config.hosts, PORTAL_DEFAULTS.hosts)
+  assert.equal(config.destination.embed, 'same-origin')
+  assert.equal(resolvePortalConfig({ destination: { scripts: true } }, '').destination.scripts, true, 'the clone may still run scripts in the frame if asked')
+})
+
+test('live forces the page origin only, no scripts in the destination and the fetch-once frame', () => {
+  const config = resolvePortalConfig({ live: true, hosts: [/./], destination: { scripts: true } }, '')
+  assert.equal(config.live, true)
+  assert.deepEqual(config.hosts, [], 'hosts: the page origin only')
+  assert.equal(config.destination.scripts, false, 'scripts are off whatever the options say')
+  assert.equal(config.fetchOnce, true, 'fetch-once by default on live')
+  assert.equal(config.links, '.pocket-sticker a[href]')
+  assert.equal(resolvePortalConfig({ live: true, links: '' }, '').links, '.pocket-sticker a[href]', 'an empty selector falls back to the stickers')
+  // Without the fetch-once frame, live never loads a frame from the URL: the preview.
+  const noFetch = resolvePortalConfig({ live: true, fetchOnce: false }, '?portal-embed=same-origin')
+  assert.equal(noFetch.fetchOnce, false)
+  assert.equal(noFetch.destination.embed, 'never')
+  assert.equal(embedModeFor('https://web.vodafone.com.eg/en/vodafone-cash', noFetch, HERE), 'preview')
+  // The host's functions come through.
+  const mark = (n) => n
+  const wrap = (f) => f
+  const report = () => {}
+  const stylesheet = () => {}
+  const labels = { opening: (title) => `Opening ${title}` }
+  const given = resolvePortalConfig({ live: true, mark, wrap, report, stylesheet, labels }, '')
+  assert.equal(given.mark, mark)
+  assert.equal(given.wrap, wrap)
+  assert.equal(given.report, report)
+  assert.equal(given.stylesheet, stylesheet)
+  assert.equal(given.labels, labels)
+  assert.equal(resolvePortalConfig({ live: true, labels: { opening: 'x' } }, '').labels, null, 'labels need an opening function')
+  assert.equal(resolvePortalConfig({ live: true }, '?portal=off').enabled, false, 'the URL can still switch it off')
+})
+
+test("the host's checkpoint is kept when it is a function (a test's way to make a press fail), else none", () => {
+  const checkpoint = () => {}
+  assert.equal(resolvePortalConfig({ live: true, checkpoint }, '').checkpoint, checkpoint)
+  assert.equal(resolvePortalConfig({ live: true, checkpoint: 'portal-start' }, '').checkpoint, null)
+  assert.equal(resolvePortalConfig({}, '').checkpoint, null)
+})
+
+test('live hosts: only this page origin; eshop and other Vodafone hosts navigate natively', () => {
+  const live = resolvePortalConfig({ live: true }, '')
+  const w = (href) => whyNotEligible({ event: click(), link: fakeLink({ href }), here: HERE, hosts: live.hosts })
+  assert.equal(w('/en/vodafone-cash'), '')
+  assert.equal(w('https://web.vodafone.com.eg/ar/home'), '')
+  assert.equal(w('https://eshop.vodafone.com.eg/en/'), 'other-host')
+  assert.equal(w('http://www2.vf-live.com/VFHEProxy/index.aspx'), 'other-host')
+  assert.equal(w('javascript:logoutKeyCloak()'), 'not-http')
+})
+
+/** A tiny tree: enough for matches() and contains(). */
+const tree = () => {
+  const node = (tag, classes = [], parent = null, attrs = {}) => {
+    const n = {
+      tag,
+      classes,
+      parent,
+      attrs,
+      nodeType: 1,
+      getAttribute: (name) => (name in attrs ? attrs[name] : null),
+      hasAttribute: (name) => name in attrs,
+      contains: (other) => {
+        for (let at = other; at; at = at.parent) if (at === n) return true
+        return false
+      },
+      closest: (selector) => {
+        for (let at = n; at; at = at.parent) if (at.tag === 'a' && 'href' in at.attrs && /a\[href\]/.test(selector)) return at
+        return null
+      },
+      // Only what the live selector needs: an <a href> inside a .pocket-sticker.
+      matches: (selector) => {
+        if (selector !== '.pocket-sticker a[href]') throw new Error(`unexpected selector ${selector}`)
+        if (tag !== 'a' || !('href' in attrs)) return false
+        for (let at = parent; at; at = at.parent) if (at.classes.includes('pocket-sticker')) return true
+        return false
+      },
+    }
+    return n
+  }
+  const body = node('body')
+  const header = node('header', [], body)
+  const album = node('div', ['pocket-output'], body)
+  const sticker = node('article', ['pocket-sticker'], album)
+  const cta = node('a', ['pocket-sticker__cta'], sticker, { href: '/en/vodafone-cash', rel: 'noopener noreferrer' })
+  const icon = node('span', [], cta)
+  const otherInAlbum = node('a', [], album, { href: '/en/home' })
+  const headerLink = node('a', [], header, { href: '/en/services' })
+  const footerLink = node('a', [], body, { href: '/en/roaming', onclick: 'footerHandler(event)' })
+  // A sticker-shaped link outside the album (e.g. a copy elsewhere on the page).
+  const strayHost = node('article', ['pocket-sticker'], body)
+  const stray = node('a', [], strayHost, { href: '/en/vodafone-cash' })
+  return { body, album, cta, icon, otherInAlbum, headerLink, footerLink, stray }
+}
+
+test('live scope: only a sticker link inside the album root is in scope', () => {
+  const t = tree()
+  const inScope = scopeFor(t.album, '.pocket-sticker a[href]')
+  assert.equal(inScope(t.cta), true)
+  assert.equal(inScope(t.otherInAlbum), false, "the album's other links are not stickers")
+  assert.equal(inScope(t.headerLink), false, "Vodafone's header")
+  assert.equal(inScope(t.footerLink), false, "Vodafone's footer")
+  assert.equal(inScope(t.stray), false, 'a sticker link outside the album')
+  assert.equal(scopeFor(t.album, null)(t.headerLink), true, 'the clone: any link')
+  const w = (link) => whyNotEligible({ event: click(), link, here: HERE, hosts: [], inScope })
+  assert.equal(w(t.cta), '')
+  assert.equal(w(t.headerLink), 'out-of-scope')
+  assert.equal(w(t.footerLink), 'out-of-scope')
+})
+
+test('live interceptor: listens on the album root, takes only sticker clicks, and goes away on destroy', () => {
+  const t = tree()
+  const handlers = []
+  t.album.addEventListener = (type, fn) => handlers.push([type, fn])
+  t.album.removeEventListener = (type, fn) => handlers.splice(handlers.findIndex((h) => h[0] === type && h[1] === fn), 1)
+  const saved = { location: globalThis.location, window: globalThis.window }
+  globalThis.location = { href: HERE }
+  globalThis.window = {}
+  globalThis.window.top = globalThis.window
+  try {
+    const taken = []
+    let wrapped = 0
+    const interceptor = installInterceptor({
+      root: t.album,
+      links: '.pocket-sticker a[href]',
+      active: () => true,
+      hosts: [],
+      exclude: null,
+      onNavigate: ({ url }) => (taken.push(url), true),
+      wrap: (fn) => (wrapped++, fn),
+    })
+    assert.equal(wrapped, 1, 'the click listener goes through wrap')
+    assert.deepEqual(
+      handlers.map((h) => h[0]),
+      ['click'],
+    )
+    const fire = (target) => {
+      const event = { ...click(), target, prevented: false, preventDefault: () => (event.prevented = true) }
+      handlers[0][1](event)
+      return event.prevented
+    }
+    assert.equal(fire(t.icon), true, 'a click on the icon inside the sticker link is taken')
+    assert.deepEqual(taken, ['https://web.vodafone.com.eg/en/vodafone-cash'])
+    // (On a page these never reach the album's listener; even if they did, they are left alone.)
+    assert.equal(fire(t.otherInAlbum), false, "the album's other links are left alone")
+    assert.equal(fire(t.headerLink), false, "Vodafone's header is never prevented")
+    assert.equal(fire(t.footerLink), false, "Vodafone's footer is never prevented")
+    assert.equal(fire(t.stray), false, 'a sticker link outside the album is left alone')
+    assert.equal(taken.length, 1)
+    interceptor.destroy()
+    assert.equal(handlers.length, 0, 'destroy removes the listener')
+  } finally {
+    globalThis.location = saved.location
+    globalThis.window = saved.window
+  }
+})
+
+test('the real navigation is a fresh link: href, target, rel and referrer policy only', () => {
+  const link = fakeLink({ href: '/en/roaming', id: 'f1', class: 'footer-link', onclick: 'footerHandler(event)', 'data-track': 'x', target: '_self', rel: 'noopener noreferrer', referrerpolicy: 'origin', hreflang: 'en' })
+  const attrs = navigationAttributes(link, 'https://web.vodafone.com.eg/en/roaming')
+  assert.deepEqual(attrs, {
+    href: 'https://web.vodafone.com.eg/en/roaming',
+    target: '_self',
+    rel: 'noopener noreferrer',
+    referrerpolicy: 'origin',
+    class: 'vf-portal__go',
+    'aria-hidden': 'true',
+    tabindex: '-1',
+  })
+  assert.ok(!Object.keys(attrs).some((name) => /^on|^data-|^id$/.test(name)), 'no handlers, data or id')
+  assert.deepEqual(navigationAttributes(fakeLink({ href: '/x' }), 'https://web.vodafone.com.eg/x'), { href: 'https://web.vodafone.com.eg/x', class: 'vf-portal__go', 'aria-hidden': 'true', tabindex: '-1' })
+})
+
+const response = ({ ok = true, status = 200, type = 'text/html; charset=utf-8', url = 'https://web.vodafone.com.eg/en/vodafone-cash' } = {}) => ({ ok, status, url, headers: { get: (name) => (name.toLowerCase() === 'content-type' ? type : null) } })
+const PAGE = `<!doctype html><html><head><title>Vodafone Cash</title><script>track()</script></head><body><h1>Vodafone Cash</h1><p>${'Send and receive money from your mobile, pay bills and more. '.repeat(3)}</p></body></html>`
+
+test('fetch once: what is drawn and what gets the preview', () => {
+  assert.equal(whyNotDrawn({ response: response(), html: PAGE, here: HERE }), '')
+  assert.equal(whyNotDrawn({ response: response(), here: HERE }), '', 'headers alone: fine so far (the body is read next)')
+  assert.equal(whyNotDrawn({ response: null, here: HERE }), 'no-response')
+  assert.equal(whyNotDrawn({ response: response({ ok: false, status: 404 }), here: HERE }), 'http-404')
+  assert.equal(whyNotDrawn({ response: response({ ok: false, status: 503 }), html: PAGE, here: HERE }), 'http-503')
+  assert.equal(whyNotDrawn({ response: response({ type: 'application/json' }), here: HERE }), 'not-html')
+  assert.equal(whyNotDrawn({ response: response({ type: '' }), here: HERE }), 'not-html')
+  assert.equal(whyNotDrawn({ response: response({ type: 'application/xhtml+xml' }), html: PAGE, here: HERE }), '')
+  assert.equal(whyNotDrawn({ response: response({ url: 'https://login.vodafone.com.eg/x' }), html: PAGE, here: HERE }), 'other-origin', 'redirected off the page origin')
+  // A /spa/ shell: an Angular root and scripts, nothing to read.
+  const shell = '<!doctype html><html><head><title>My Vodafone</title><script src="/spa/main.js" type="module"></script></head><body><app-root></app-root><noscript>Please enable JavaScript to continue using this application.</noscript></body></html>'
+  assert.equal(whyNotDrawn({ response: response(), html: shell, here: HERE }), 'not-presentable')
+  assert.equal(whyNotDrawn({ response: response(), html: '<html><body><img src="/a.png"><img src="/b.png"></body></html>', here: HERE }), '', 'two pictures are enough')
+  assert.equal(whyNotDrawn({ response: response(), html: '<html><body><img data-src="/a.png"><img data-src="/b.png"></body></html>', here: HERE }), 'not-presentable', 'lazy pictures without a src do not count')
+  for (const page of ['<html><head><title>Access Denied</title></head><body>You don\'t have permission to access this server. Reference #18.</body></html>', `<html><body><div id="px-captcha"></div>${'x '.repeat(80)}</body></html>`, `<html><head><title>Just a moment...</title></head><body><script src="/cdn-cgi/challenge-platform/h/b"></script>${'y '.repeat(80)}</body></html>`])
+    assert.equal(whyNotDrawn({ response: response(), html: page, here: HERE }), 'challenge')
+  assert.equal(roughText('<style>a{}</style><p>Hi <b>there</b></p><script>x()</script><!-- c -->'), 'Hi there')
+})
+
+test('fetch once: the drawn document runs nothing and loads no other document', () => {
+  const raw = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><base href="https://elsewhere.example/"><meta http-equiv="refresh" content="0;url=/x"><link rel="prefetch" href="/next"><link rel="stylesheet" href="/theme.css"><script>alert(1)</script><script src="/a.js"></script></head><body><noscript><iframe src="https://www.googletagmanager.com/ns.html"></iframe><img src="/pixel.gif"></noscript><iframe src="/embed"></iframe><object data="/x.swf"></object><embed src="/y.swf"><p>Text</p><img src="/hero.jpg"></body></html>`
+  const out = inertDocument(raw, 'https://web.vodafone.com.eg/en/vodafone-cash')
+  for (const gone of ['<script', 'alert(1)', 'noscript', 'googletagmanager', 'pixel.gif', '<iframe', '<object', '<embed', 'refresh', 'prefetch', 'elsewhere.example'])
+    assert.ok(!out.toLowerCase().includes(gone), `${gone} is taken out`)
+  for (const kept of ['<link rel="stylesheet" href="/theme.css">', '<p>Text</p>', '<img src="/hero.jpg">', '<html lang="en">'])
+    assert.ok(out.includes(kept), `${kept} is kept`)
+  // First in the head: the policy, then the base, so every address after it resolves on the page's origin.
+  assert.ok(out.includes(`<head><meta http-equiv="Content-Security-Policy" content="${FRAME_POLICY}"><base href="https://web.vodafone.com.eg/en/vodafone-cash"><meta charset="utf-8">`))
+  for (const directive of ["script-src 'none'", "frame-src 'none'", "object-src 'none'", "connect-src 'none'", "form-action 'none'"]) assert.ok(FRAME_POLICY.includes(directive), directive)
+  // No head: one is made.
+  assert.equal(inertDocument('<!doctype html><p>x</p>', 'https://w.example/a?b="c"').startsWith(`<!doctype html><head><meta http-equiv="Content-Security-Policy" content="${FRAME_POLICY}"><base href="https://w.example/a?b=&quot;c&quot;"></head><p>x</p>`), true)
+})
+
+test('the scene does not load the clone dictionary itself, and the clone-only rules are scoped to the clone page', () => {
+  const controller = readFileSync(new URL('../src/pocket/portal/controller.js', import.meta.url), 'utf8')
+  assert.ok(!/^import[^\n]*i18n\.js/m.test(controller), 'no static import of ../../i18n.js in the scene')
+  assert.ok(/import\('\.\.\/\.\.\/i18n\.js'\)/.test(controller), 'the clone strings are imported lazily')
+  const css = readFileSync(new URL('../src/pocket/portal/portal.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const rules = [...css.matchAll(/([^{}]+)\{/g)].map((m) => m[1].trim())
+  const touching = rules.filter((selector) => /#vodafone-aw-icon|vg-guide|accessibility-widget/.test(selector))
+  assert.ok(touching.length >= 2)
+  for (const selector of touching) assert.match(selector, /:where\(body:has\(\.page-shell\)\)/, selector)
+})
+
+test("the wall never copies Vodafone's widget host, the cookie banner or the guide", () => {
+  const kept = KEEP_LIVE.split(',').map((selector) => selector.trim())
+  for (const selector of ['vg-guide', 'accessibility-widget', '#onetrust-consent-sdk', '#vodafone-aw-icon']) assert.ok(kept.includes(selector), selector)
+  const css = readFileSync(new URL('../src/pocket/portal/portal.css', import.meta.url), 'utf8')
+  assert.equal(Number(css.match(/\.vf-portal\s*\{[^}]*z-index:\s*(\d+)/)[1]), OVERLAY_Z, 'OVERLAY_Z is the overlay z-index in portal.css')
 })

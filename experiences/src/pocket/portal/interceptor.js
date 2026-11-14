@@ -13,6 +13,11 @@
  * schemes, jumps within this same page, links marked data-portal="off", links under the
  * configured exclusions, clicks another script already prevented, and the synthetic click the
  * handoff itself makes to navigate natively.
+ *
+ * On Vodafone's live pages (`live`, ADR-0005 for the clone; the phase 3 map, OD-3) the listener
+ * sits on the album root, not the document, and only the stickers' own links (`links`) are taken:
+ * Vodafone's header, footer and cards, and the guide's and the layer's own links, are never
+ * handled and never prevented. The page's own origin is the only eligible host.
  */
 
 const SAME_TAB_TARGETS = new Set(['', '_self'])
@@ -28,8 +33,9 @@ export const linkFrom = (target) => {
  * `event` needs { button, metaKey, ctrlKey, shiftKey, altKey, defaultPrevented };
  * `here` is the page's URL; `hosts` a list of RegExp; `excluded(link)` a predicate.
  */
-export const whyNotEligible = ({ event, link, here, hosts = [], excluded = () => false, topLevel = true }) => {
+export const whyNotEligible = ({ event, link, here, hosts = [], excluded = () => false, inScope = () => true, topLevel = true }) => {
   if (!link) return 'no-link'
+  if (!inScope(link)) return 'out-of-scope'
   if (event.defaultPrevented) return 'handled'
   if (event.button !== 0) return 'not-primary-button'
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return 'modified-click'
@@ -58,10 +64,17 @@ export const whyNotEligible = ({ event, link, here, hosts = [], excluded = () =>
  * Returns { bypass(link), destroy() }: `bypass` lets the very next click on that link through,
  * which is how the handoff performs the real navigation with native semantics.
  */
-export const installInterceptor = ({ root = document, active, hosts, exclude, onNavigate, log = () => {} }) => {
+/**
+ * Is `link` one the portal may take? With `links` (a selector; live), only a link matching it
+ * inside `root`; otherwise any link.
+ */
+export const scopeFor = (root, links) => (links ? (link) => Boolean(link?.matches?.(links)) && root !== link && Boolean(root?.contains?.(link)) : () => true)
+
+export const installInterceptor = ({ root = document, links = null, active, hosts, exclude, onNavigate, log = () => {}, wrap = (fn) => fn }) => {
   let bypassed = null
   const excluded = (link) => Boolean(exclude) && Boolean(link.closest(exclude))
-  const onClick = (event) => {
+  const inScope = scopeFor(root, links)
+  const onClick = wrap((event) => {
     try {
       const link = linkFrom(event.target)
       if (!link) return
@@ -70,7 +83,7 @@ export const installInterceptor = ({ root = document, active, hosts, exclude, on
         return
       }
       if (!active()) return
-      const reason = whyNotEligible({ event, link, here: location.href, hosts, excluded, topLevel: window.top === window })
+      const reason = whyNotEligible({ event, link, here: location.href, hosts, excluded, inScope, topLevel: window.top === window })
       if (reason) {
         log(`native navigation (${reason})`, link.href)
         return
@@ -80,8 +93,8 @@ export const installInterceptor = ({ root = document, active, hosts, exclude, on
       // Never break a link: whatever went wrong, the browser navigates as usual.
       log('interceptor error, navigating natively', error)
     }
-  }
-  // Bubble phase on the document: page handlers run first and can prevent or stop it.
+  })
+  // Bubble phase on the document (live: on the album root): page handlers run first and can prevent or stop it.
   root.addEventListener('click', onClick)
   return {
     bypass: (link) => {

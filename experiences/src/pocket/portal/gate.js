@@ -183,12 +183,15 @@ export const createGate = ({ camera, config, make, content, lift: liftShare = co
     const { line, trails, span } = parts.sides[side]
     line.className = 'vf-portal__line'
     for (const node of trails) node.className = 'vf-portal__trail'
+    // (Painted ahead of time, not made with `make`: marked here, as everything the portal adds.)
+    for (const node of [line, ...trails]) config.mark?.(node)
     const ends = `linear-gradient(to ${vertical ? 'bottom' : 'right'}, transparent ${band / 2 - feather}px, #000 ${band / 2 + feather}px, #000 calc(100% - ${band / 2 + feather}px), transparent calc(100% - ${band / 2 - feather}px))`
     const node = make('div', { class: `vf-portal__track vf-portal__track--${side}`, style: { '--vf-portal-band': `${band}px`, maskImage: ends, WebkitMaskImage: ends } }, line, ...trails)
     return { side, vertical, reverse, length, span, node, line, trails }
   })
   const lights = parts.lights.map((node) => {
     node.className = 'vf-portal__spark'
+    config.mark?.(node)
     return node
   })
   const frame = make('div', { class: 'vf-portal__frame', style: { '--vf-portal-frame': `${gap + band / 2}px` } }, ...sides.map((s) => s.node), ...lights)

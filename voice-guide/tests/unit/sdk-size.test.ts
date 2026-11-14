@@ -92,11 +92,34 @@ const AIXC_CORE_BUDGET = 7.75 * 1024
  * on 2026-11-14 with S12's changes to the actors (the left corner's ride across, the fixed floor, wrap
  * and mark on every node, ./obstacles.js, and the album's inline end: mascot and drone on the left of a
  * right-to-left album), so 43.25 KB; the Pocket's chunk 31,952 bytes with the actors' side seam.
+ *
+ * The portal on live pages (S13, experiences ADR-0005) is two chunks: the portal's (./demos/portal.js with
+ * the clone's portal.js, config, interceptor, history and portal.css as minified text), which the Pocket's
+ * chunk loads when the album opens or at once on Back to it, 5,627 bytes gzipped on 2026-11-14 with the
+ * code it shares with the scene; and the scene's (controller.js with the wall, the hall, the gate, the
+ * handoff and the curves), which the portal's chunk loads, 15,281 bytes. Budgets the measures rounded up
+ * to the next quarter KB, before the portal's live mode (T1) lands: measure again then. Measured again on
+ * 2026-11-14 with the live mode (sticker scope, the fetch-once frame, the wall's stubs and marks, the
+ * catch-all wrap, the 'portal-start' checkpoint): the portal's chunk 6,450 bytes, so 6.5 KB; the scene's
+ * 17,667 bytes, so 17.5 KB (raised on purpose: the live mode's handoff and wall). The Pocket's chunk
+ * with the portal's stand-in 32,102 bytes (the stand-in and the import, about 150 bytes), so 31.5 KB:
+ * raised on purpose, over the 32,000 asked for (the lead's call).
  */
-const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 31.25 * 1024, 'src/host/demos/journey.js': 8.75 * 1024, 'src/host/demos/actors.js': 43.25 * 1024 }
+const AIXC_DEMO_BUDGETS: Record<string, number> = {
+	'src/host/demos/pocket.js': 31.5 * 1024,
+	'src/host/demos/journey.js': 8.75 * 1024,
+	'src/host/demos/actors.js': 43.25 * 1024,
+	'src/host/demos/portal.js': 6.5 * 1024,
+	'src/pocket/portal/controller.js': 17.5 * 1024,
+}
 
 /** Which chunk loads a demo chunk on intent (a dynamic import), by entry; the core unless named here. */
-const AIXC_LOADED_BY: Record<string, string> = { 'src/host/demos/journey.js': 'src/host/demos/pocket.js', 'src/host/demos/actors.js': 'src/host/demos/pocket.js' }
+const AIXC_LOADED_BY: Record<string, string> = {
+	'src/host/demos/journey.js': 'src/host/demos/pocket.js',
+	'src/host/demos/actors.js': 'src/host/demos/pocket.js',
+	'src/host/demos/portal.js': 'src/host/demos/pocket.js',
+	'src/pocket/portal/controller.js': 'src/host/demos/portal.js',
+}
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
 	const sizes = await buildSdk({ minify: true })
@@ -127,8 +150,9 @@ test('the experience layer is its own small script; guide.js carries none of it'
 		assert.ok(by?.imports.some((i) => i.file === chunk.file && i.kind === 'dynamic-import'), `${loader ?? 'the core'} loads ${entry} on intent`)
 		if (loader) assert.ok(!manifest.files.find((f) => f.file === 'aixc.js')?.imports.some((i) => i.file === chunk.file), `the core does not load ${entry}`)
 		const files = closure(chunk.file)
-		// What its loader brought already is not counted again.
-		const had = by ? new Set([...eager, ...closure(by.file)]) : eager
+		// What its loaders brought already (the one that loads it, and the ones that loaded that) is not counted again.
+		const had = new Set(eager)
+		for (let at = loader; at; at = AIXC_LOADED_BY[at]) for (const f of closure(manifest.files.find((x) => x.entry === at)?.file ?? '')) had.add(f)
 		const gz = files.filter((f) => !had.has(f)).reduce((sum, f) => sum + gzipSync(fs.readFileSync(path.join(aixc, f)), { level: 9 }).length, 0)
 		assert.ok(gz <= max, `${entry} (${files.join(', ')}) is ${gz} bytes gzipped, over its ${max}-byte budget`)
 	}
@@ -146,7 +170,7 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	assert.doesNotMatch(pocket, /vf-portal|pocket-mascot|pocket-drone|generativelanguage|aixc-composer__/, 'the Pocket on live pages carries no portal, mascot, drone or composer (pocket.css only hides the composer\'s launcher)')
 	assert.match(pocket, /pocket-chips/, 'the Pocket on live pages carries its chips (S6)')
 	assert.doesNotMatch(pocket, /pocket-journey/, 'the journey is not in the Pocket\'s chunk: it loads only where a trail host can be claimed (S10)')
-	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-mascot|pocket-drone|pocket-actor|data:image\/svg/, `no mascot or drone with the Pocket (${f}): they load on their own (S12)`)
+	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-mascot|pocket-drone|pocket-actor|data:image\/svg|vf-portal/, `no mascot, drone or portal with the Pocket (${f}): they load on their own (S12, S13)`)
 })
 
 /**

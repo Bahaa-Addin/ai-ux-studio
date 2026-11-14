@@ -12,17 +12,20 @@
    things that exist on every page (Vodafone's accessibility button, the Voice Guide) stay
    above the transition. ./controller.js (holdLive) starts them where the page has them (the
    open Pocket lifts them) and brings them down to their usual place as the destination comes,
-   inline; the usual place below is the fallback. */
+   inline; the usual place below is the fallback. Those two rules are the clone's only (its
+   button is a stand-in of ours): scoped to its page (.page-shell) as ../pocket.css is, with
+   :where so their weight is unchanged; on Vodafone's live pages nothing of Vodafone's or the
+   guide's is restyled (ADR-0064). */
 html[data-vf-portal='active'] {
   overflow: hidden !important;
 }
 
-html[data-vf-portal='active'] #vodafone-aw-icon {
+html[data-vf-portal='active'] :where(body:has(.page-shell)) #vodafone-aw-icon {
   z-index: 2147482001 !important;
   bottom: 20px !important;
 }
 
-html[data-vf-portal='active'] vg-guide {
+html[data-vf-portal='active'] :where(body:has(.page-shell)) vg-guide {
   --vg-lift: 0px;
 }
 

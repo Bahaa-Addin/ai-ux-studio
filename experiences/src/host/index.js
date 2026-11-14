@@ -128,9 +128,11 @@ const start = () => {
     const named = model?.sections.filter((x) => x.destinationId).length ?? 0
     if (settings.debug) console.info(`[AIXC] ready (${host.lang}, ${host.dir}): ${model?.sections.length ?? 0} sections, coverage ${coverage.ratio}, ${layer.pageMap ? `${named} named from the page map` : 'no page map'}`)
     checkpoint('ready')
+    // Back to a page whose album the portal left open (experiences ADR-0005): the demos now, not at idle.
+    const soon = history.state?.vfPortal ? queueMicrotask : whenIdle
     for (const name of settings.demos) {
       if (!DEMOS[name]) continue
-      whenIdle(
+      soon(
         guard.wrap(`demo ${name}`, async () => {
           const demo = await DEMOS[name]()
           if (guard.stopped) return
