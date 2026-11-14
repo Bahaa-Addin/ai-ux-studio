@@ -1,6 +1,6 @@
 # ADR-0050: The trail host interface version 2: a host claims the journey at run time; the trail remembers what questions were about; a demo journey can be seeded; consent survives Vodafone's storage clear
 
-- Status: Proposed (2026-11-13). Built in parts: the run-time claim, the fallback, the consent copy and the hostUrl removal in phase 3 of the live plan; the asked questions in phase 5; `seed()` and `reset()` in phase 7. Accepted when each part's checks pass
+- Status: Proposed (2026-11-13). Built in parts: the run-time claim (the trail's side, S8, 2026-11-14), the layer's claim and the fallback, the consent copy and the hostUrl removal in phase 3 of the live plan; the asked questions in phase 5; `seed()` and `reset()` in phase 7. Accepted when each part's checks pass
 - Date: 2026-11-13
 - Area: Exploration Trail (SPEC-06), journey host, privacy; amends ADR-0037 §1 (where consent is kept), ADR-0040 §1–2 (how a page hosts the journey), ADR-0046 §4 (the journey hosted in the Pocket on every page); supersedes ADR-0043 §2 (the host page chosen by language through `trail.hostUrl`); delivers ADR-0048 §2 (the host is claimed at run time, never declared by the loader)
 - Owner decisions: 2026-11-10, one interface change, version 2, covering the run-time claim, what questions were about (the RED world revamp, `docs/wiki/Demo 5 revamp - personalization for an anonymous visitor.txt` Part A) and a consent-gated `seed()` for the demo kit; ADRs numbered in the order they are written, so this one takes 0050. 2026-11-13, where no page can host the journey it opens in the guide's own sheet
@@ -38,6 +38,14 @@ Version 1 (`packages/sdk/src/trail/host.ts`) lets a page that draws the journey 
 - The clone and its tests keep working until phase 9, through the meta.
 - With `seed()` a demo can start with a journey, but only after a person consents and presses; a page script cannot seed one.
 - The trail keeps one more kind of thing (what questions were about). The consent copy and its e2e check change with it.
+
+## Built (S8, 2026-11-14): the trail's side of the claim
+
+- `host.ts` is version 2 with a changelog; `claim()` returns `release` or null. `controller.ts`: `hosted` is a getter (the clone's meta, which is for good, or a claim); every reader used it already, so each follows a claim and a release. A claim made while the sheet is open collapses it and then, on the next tick and only if the claim still stands, dispatches `vg:trail-open`. `release` works once and only for the current claim: the journey collapses (which destroys the preview), the host's preview root is emptied, the pill works again at once. `ask()` finds a question under the language or its first two letters. The journey opens on the page the person is on when a host claimed; the clone's meta keeps the step before the Services page.
+- `journey.js` accepts any version from 1 (a host with no version, or a fake one, is still ignored), in the same commit.
+- **Where the layer claims moves from the core to the Pocket chunk, and to step S10.** The core has 79 B left of its budget, and a claim whose journey is not drawn yet would be a dead pill (the ADR's own rule: no pill is ever dead). So no layer claims in S8; step S10 draws the journey in the live Pocket and its chunk claims on `vg:trail-ready` (or at once when `voiceGuide.trailHost` exists), registers `release` with the guard, and the plan's check "a forced layer failure after the claim, then a pill press, opens the fallback" is run there.
+- Not built yet: `trail.hostUrl` and the open flag (S10), the asked questions (S14), `seed()` and `reset()` (S15), the consent copy in IndexedDB (S9).
+- Checked: `tests/integration/trail-host.test.ts` (Chromium, the real controller with a stand-in guide, 6 tests, all failing on the version 1 code): the pill asks the host and never opens the sheet while claimed, a second claim is refused, giving it back brings the sheet back at once, a claim over an open sheet hands over, a release while the host has the journey open closes it and empties its preview root, a stale release does nothing, the meta host is for good, `ask()` in `en-GB`. `trail.js` grew by 106 B gzipped (28,249 to 28,355 of 30,720, 2,365 B left); `guide.js` is byte-identical (same hash with and without the change).
 
 ## Pilot knobs
 

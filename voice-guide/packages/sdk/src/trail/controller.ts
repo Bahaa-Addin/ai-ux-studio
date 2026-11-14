@@ -132,8 +132,14 @@ export class TrailController {
 	#guideWatch = 0
 	#style: HTMLStyleElement | null = null
 	readonly reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
-	/** The page shows the journey itself (`<meta name="vg-trail-host">`): no sheet of our own, only the status pill (ADR-0040). */
-	readonly hosted = !!document.querySelector('meta[name="vg-trail-host"]')
+	/** The page declared itself a host in its HTML (`<meta name="vg-trail-host">`, the clone's; ADR-0040): for good. */
+	readonly #metaHost = !!document.querySelector('meta[name="vg-trail-host"]')
+	/** The host that claimed the journey at run time (ADR-0050), or null. */
+	#claim: object | null = null
+	/** The page shows the journey itself, declared or claimed: no sheet of our own, only the status pill (ADR-0040, ADR-0050). */
+	get hosted(): boolean {
+		return this.#metaHost || this.#claim !== null
+	}
 	#hostRoot: HTMLElement | null = null
 	#subscribers = new Set<(s: TrailHostSnapshot) => void>()
 
@@ -541,13 +547,14 @@ export class TrailController {
 	hostApi(): TrailHostApi {
 		const i = this.#intents()
 		return {
-			version: 1,
+			version: 2,
 			snapshot: () => this.#snapshot(),
 			subscribe: (fn) => {
 				this.#subscribers.add(fn)
 				fn(this.#snapshot())
 				return () => void this.#subscribers.delete(fn)
 			},
+			claim: () => this.#claimHost(),
 			setPreviewRoot: (el) => {
 				this.#hostRoot = el
 			},
@@ -563,7 +570,7 @@ export class TrailController {
 			togglePlay: () => i.togglePlay(),
 			ask: (destinationId, questionId) => {
 				const sel = this.#snapshot().explored.find((x) => x.destinationId === destinationId)
-				const q = sel ? (sel.questions[this.g.lang] || []).find((x) => x.id === questionId) : undefined
+				const q = sel ? (sel.questions[this.g.lang] || sel.questions[this.g.lang.slice(0, 2)] || []).find((x) => x.id === questionId) : undefined
 				if (sel && q) void this.#ask(sel, q)
 			},
 			allow: () => i.allow(),
@@ -574,6 +581,33 @@ export class TrailController {
 			clearAll: () => i.clearAll(),
 			turnOff: () => i.turnOff(),
 			t: (key, vars) => tt(key, this.g.lang, vars),
+		}
+	}
+
+	/**
+	 * A host takes the journey (ADR-0050): one at a time. A claim made while the guide's own sheet is open
+	 * hands over (the sheet closes, then the host is asked to open). The returned function gives it back, once:
+	 * the journey closes, its preview goes, the host's preview root is emptied, and the pill works again at once.
+	 */
+	#claimHost(): (() => void) | null {
+		if (this.hosted) return null
+		const mine = {}
+		this.#claim = mine
+		const handOver = this.state.view === 'expanded'
+		if (handOver) this.dispatch({ type: 'COLLAPSE' })
+		this.#render()
+		if (handOver)
+			setTimeout(() => {
+				if (this.#claim === mine) dispatchEvent(new CustomEvent('vg:trail-open'))
+			}, 0)
+		return () => {
+			if (this.#claim !== mine) return
+			this.#claim = null
+			// Collapsing destroys the preview (the state machine's effect).
+			this.dispatch({ type: 'COLLAPSE' })
+			this.#hostRoot?.replaceChildren()
+			this.#hostRoot = null
+			this.#render()
 		}
 	}
 
@@ -1008,7 +1042,8 @@ export class TrailController {
 		this.#writeIndex(true)
 		const pages = this.session?.steps.filter((s) => s.type === 'page') || []
 		// On the Pocket page the journey is about where the person has been, not the page they are on.
-		const start = this.hosted ? (pages.filter((p) => p.id !== this.step?.id).at(-1) ?? pages.at(-1)) : this.step?.type === 'page' ? this.step : pages.at(-1)
+		// The clone's Pocket page is not a step of interest; a live page that hosts is a real step of the visit (ADR-0050).
+		const start = this.#metaHost ? (pages.filter((p) => p.id !== this.step?.id).at(-1) ?? pages.at(-1)) : this.step?.type === 'page' ? this.step : pages.at(-1)
 		if (start) this.#intents().select(start.id, 'keyboard')
 		this.#render()
 		if (!this.hosted) requestAnimationFrame(() => this.view?.focusSheet())

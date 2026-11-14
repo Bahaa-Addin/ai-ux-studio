@@ -500,7 +500,8 @@ export const initJourney = ({ pocket }) => {
   window.addEventListener('resize', () => open && placeBand())
 
   const attach = (host) => {
-    if (api || !host || host.version !== 1) return
+    // Version 1 (the clone's meta) or later: a host with no version, or a fake one, is ignored (ADR-0050).
+    if (api || !host || !(host.version >= 1)) return
     api = host
     api.setPreviewRoot(frame)
     // With a journey to show, the page turns to the pocket even when no stickers are kept.

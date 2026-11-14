@@ -4,8 +4,17 @@
  * trail through these intents. The trail keeps recording, storage, the sandboxed preview, attention
  * and questions; nothing about the person leaves the browser through this API either.
  *
- * A page declares itself a host with `<meta name="vg-trail-host" content="pocket">` and listens for
- * `vg:trail-ready` (detail: the API) and `vg:trail-open` (the person asked to see the journey).
+ * A page declares itself a host with `<meta name="vg-trail-host" content="pocket">` (the clone's
+ * static declaration, kept until the live plan's phase 9), or claims the journey at run time with
+ * `claim()` (version 2: the experience layer on Vodafone's own pages; ADR-0050). It listens for
+ * `vg:trail-ready` (detail: the API, also `voiceGuide.trailHost`) and `vg:trail-open` (the person
+ * asked to see the journey).
+ *
+ * Changelog
+ * - 2 (ADR-0050): `claim()`, which returns the function that gives the journey back (or null when
+ *   another host holds it); `ask()` finds a question in the page's language or its first two
+ *   letters. A host written for version 1 works unchanged against version 2.
+ * - 1 (ADR-0040): the first contract, for a page that declares itself with the meta.
  */
 import type { TrailKey } from './i18n.ts'
 import type { ActionState, Consent, PreviewState, RecState } from './state.ts'
@@ -34,10 +43,18 @@ export interface TrailHostSnapshot {
 }
 
 export interface TrailHostApi {
-	version: 1
+	version: 2
 	snapshot(): TrailHostSnapshot
 	/** Called at once and after every change; returns the unsubscribe function. */
 	subscribe(fn: (s: TrailHostSnapshot) => void): () => void
+	/**
+	 * The page takes over showing the journey (version 2): "Your journey" then asks it to open
+	 * (`vg:trail-open`) instead of opening the guide's own sheet. Returns `release`, which gives the
+	 * journey back (the journey closes, its preview goes, the guide's sheet works again), or null when
+	 * another host holds it: one host at a time. A claim made while the sheet is open hands over to the host.
+	 * A host that can fail calls `release` when it does.
+	 */
+	claim(): (() => void) | null
 	/** Where the sandboxed preview renders: an element of the host's own design. */
 	setPreviewRoot(el: HTMLElement | null): void
 	open(): void
