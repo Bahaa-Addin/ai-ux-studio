@@ -2,7 +2,7 @@
 
 A read-only map made before phase 3 of the live plan (`docs/handoff/live-demos-way2.md` at the repository root), by seven readers (Pocket core, portal, journey host, storage and ids on Opus; actors, tests, build and wiring on Sonnet) and an Opus cross-check. Facts carry file:line as of commit e2d8628; probes ran on the saved pages of 2026-10-23 in Playwright Chromium with scripts stripped and no network. "Verified" means read or run; the rest is inferred. Owner answers to its questions are recorded below. This file is a snapshot: the code moves on.
 
-> **Ports as used (2026-11-13):** 4477 pocket-live, 4478 live-kit (not pocket-pages), 4479 the public demo's extension test (not pocket-actors), 4486 pocket-chips (S6). Pick the next suites' ports from 4480, 4484, 4485, 4488, 4489, 4491 and 4492.
+> **Ports as used (2026-11-13):** 4477 pocket-live, 4478 live-kit (not pocket-pages), 4479 the public demo's extension test (not pocket-actors), 4486 pocket-chips (S6), 4487 pocket-across (S7). Pick the next suites' ports from 4480, 4484, 4485, 4488, 4489, 4491 and 4492.
 >
 > **Numbering note (2026-11-13):** the reservations of ADR-0053 (the accessibility-button lift, S11) and ADR-0054 (the portal on live pages, S13) below are void: other ADRs took 0053 to 0063 first (the owner's rule: numbered in the order written). S11's and S13's ADRs take the next free number when they are written.
 

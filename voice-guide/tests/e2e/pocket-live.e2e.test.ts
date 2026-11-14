@@ -147,7 +147,7 @@ const album = (page: Page) =>
 			pictures: stickers.filter((s) => s.querySelector('img')).length,
 			dated: stickers.filter((s) => s.querySelector('.pocket-sticker__date')).length,
 			back: document.querySelector('#pocket-output .pocket-back')?.textContent?.trim() ?? null,
-			elsewhere: elsewhere ? { picture: !!elsewhere.querySelector('img'), fromLang: elsewhere.querySelector('.pocket-sticker__from')?.getAttribute('lang') ?? null, lang: elsewhere.querySelector('h2')?.getAttribute('lang') ?? null, dir: elsewhere.querySelector('h2')?.getAttribute('dir') ?? null, date: elsewhere.querySelector('.pocket-sticker__date')?.textContent ?? '' } : null,
+			elsewhere: elsewhere ? { picture: !!elsewhere.querySelector('img'), fromLang: elsewhere.querySelector('.pocket-sticker__from')?.getAttribute('lang') ?? null, lang: elsewhere.querySelector('.pocket-sticker__title')?.getAttribute('lang') ?? null, dir: elsewhere.querySelector('.pocket-sticker__title')?.getAttribute('dir') ?? null, date: elsewhere.querySelector('.pocket-sticker__date')?.textContent ?? '' } : null,
 			layersMarked: bodyLayers.length > 0 && bodyLayers.every((n) => n.hasAttribute('data-aixc') && n.hasAttribute('data-vg')),
 			css: document.querySelectorAll('style[data-aixc-css="pocket"]').length,
 			srOnly: getComputedStyle(document.querySelector('.aixc-sr-only[role="status"]') ?? document.body).position,

@@ -45,6 +45,8 @@ const AR = {
   'Back to the page': 'ارجع للصفحة',
   'Kept for later: {count}.': 'محفوظة لبعدين: {count}.',
   'Saved {date}': 'اتحفظت {date}',
+  'No longer on this page': 'مش موجودة في الصفحة دي دلوقتي',
+  'This page': 'الصفحة دي',
   'Pocket it on this page': 'زرار «في الجيب» لخدمات الصفحة دي',
   // Reimagine this page (the composer)
   'Reimagine this page': 'غيّر شكل الصفحة',

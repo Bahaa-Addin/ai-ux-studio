@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { linkKeyOf } from '../src/host/live-adapter.js'
-import { categoryOf, isRecord, onPage, pageKeyOf, recordFrom, rematch, scoreOf, seen, siteOf, siteOfRecord } from '../src/pocket/record.js'
+import { categoryOf, groupsOf, isRecord, onPage, pageKeyOf, reconcile, recordFrom, rematch, scoreOf, seen, siteOf, siteOfRecord } from '../src/pocket/record.js'
 
 const keys = (o) => Object.entries(o).map(([kind, value]) => ({ kind, value }))
 const card = (id, k, extra = {}) => ({ id, title: extra.title || id, description: extra.description ?? null, image: extra.image ?? null, cta: extra.cta ?? { label: null, href: `https://web.vodafone.com.eg/en/${id}` }, kind: 'card-action', keys: keys(k) })
@@ -175,4 +175,67 @@ test('a record belongs to the page it was kept on, in either language, on its ow
   const shop = recordFrom({ item: { id: 'a', title: 'A', keys: [] }, page: { path: '/en/list', search: '?categoryUrls=*tablets', site: 'shop', lang: 'en' } })
   assert.equal(onPage(shop, { path: '/ar/list', search: '?categoryUrls=%2Ftablets', site: 'shop' }), true)
   assert.equal(onPage(shop, { path: '/en/list', search: '?categoryUrls=*smart-phones', site: 'shop' }), false)
+})
+
+/* ---------------------------------------------------------------- S7: one Pocket across pages */
+
+test('a page read again places its stickers on the cards they stand on now; the stored id is never rewritten (S7, AIXC-41)', () => {
+  const saved = recordFrom({ item: card('spa-roaming', { link: '/spa/roaming', picture: 'roaming', title: 'roaming' }), section: { id: 's1' }, page, key: 'r' })
+  const now = model(['s1', [card('roaming', { link: '/spa/roaming', picture: 'roaming', title: 'roaming' }), card('mini-call', { link: '/spa/roaming', picture: 'mini-call', title: 'mini call' })]])
+  const out = reconcile([saved], now, { page })
+  assert.deepEqual([...out.ids], [['r', 'roaming']], 'the card, though its id changed')
+  assert.equal(out.missing.size, 0)
+  assert.equal(saved.id, 'spa-roaming', 'the record keeps the id it was saved with: ids differ between languages, and two tabs would write them back and forth')
+  assert.deepEqual(out.changed, [], 'nothing to write: the page name is already known')
+})
+
+test('stickers of other pages are left alone: not matched, not missing, not written (S7)', () => {
+  const here = recordFrom({ item: card('a', { link: '/en/a', title: 'a' }), section: { id: 's' }, page, key: 'here' })
+  const there = recordFrom({ item: card('b', { link: '/en/b', title: 'b' }), section: { id: 's' }, page: { ...page, path: '/en/vodafone-cash', title: 'Vodafone Cash' }, key: 'there' })
+  const out = reconcile([here, there], model(['s', [card('a', { link: '/en/a', title: 'a' })]]), { page })
+  assert.deepEqual([...out.ids], [['here', 'a']])
+  assert.equal(out.missing.has('there'), false)
+  assert.deepEqual(out.changed, [])
+})
+
+test('a sticker whose card is gone is missing; a sticker just made keeps its card even when the score cannot tell twins apart (S7)', () => {
+  const gone = recordFrom({ item: card('shokran', { link: '/en/shokran', title: 'shokran' }), section: { id: 's' }, page, key: 'gone' })
+  const twins = model(['s', [card('a', { link: '/en/same', title: 'same' }), card('b', { link: '/en/same', title: 'same' })]])
+  const out = reconcile([gone], twins, { page })
+  assert.deepEqual([...out.missing], ['gone'])
+  // A sticker made on card "b" in this page view (its stored id has since changed): nothing tells the twins apart but where it was made.
+  const made = { ...recordFrom({ item: twins.sections[0].items[1], section: twins.sections[0], page, model: twins, key: 'made' }), id: 'old-id' }
+  assert.deepEqual([...reconcile([made], twins, { page }).missing], ['made'], 'the score alone cannot place it')
+  const alone = reconcile([made], twins, { page, kept: new Map([['made', 'b']]) })
+  assert.deepEqual([...alone.ids], [['made', 'b']], 'it stays on the card it was made on')
+  assert.equal(reconcile([made], model(['s', [card('a', { link: '/en/same', title: 'same' })]]), { page, kept: new Map([['made', 'b']]) }).missing.has('made'), true, 'but not on a card that has gone')
+  // Two stickers cannot stand on one card: the kept card is not given twice.
+  const other = recordFrom({ item: card('c', { link: '/en/same', title: 'same' }), section: { id: 's' }, page, key: 'other' })
+  const both = reconcile([made, other], twins, { page, kept: new Map([['made', 'b'], ['other', 'b']]) })
+  assert.equal(new Set(both.ids.values()).size, both.ids.size, 'one card, one sticker')
+})
+
+test('the page\'s own name is added in the language it is read in, once (S7)', () => {
+  const saved = recordFrom({ item: card('a', { link: '/en/a', title: 'a' }), section: { id: 's' }, page: { ...page, title: 'Services' }, key: 'k' })
+  const ar = { ...page, path: '/ar/services', lang: 'ar', dir: 'rtl', title: 'الخدمات' }
+  const out = reconcile([saved], model(['s', [card('a', { link: '/en/a', title: 'a' })]]), { page: ar })
+  assert.deepEqual(out.changed.map((r) => r.source.title), [{ en: 'Services', ar: 'الخدمات' }])
+  assert.deepEqual(saved.source.title, { en: 'Services' }, 'a new record, the old one untouched')
+  assert.deepEqual(reconcile(out.changed, model(['s', []]), { page: ar }).changed, [], 'already known: nothing more to write')
+})
+
+test('the album groups stickers by the page they were kept on, this page first, then by the newest sticker (S7)', () => {
+  const at = (id, path, title, savedAt, lang = 'en') => recordFrom({ item: card(id, { link: `/${id}` }), section: { id: 's' }, page: { path, lang, dir: lang === 'ar' ? 'rtl' : 'ltr', title }, now: savedAt, key: id })
+  const rs = [at('a', '/en/mobile-internet-bundles', 'Mobile Internet Bundles', 10), at('b', '/en/vodafone-cash', 'Vodafone Cash', 30), at('c', '/ar/mobile-internet-bundles', 'باقات الإنترنت', 20, 'ar'), at('d', '/en/home', 'Home', 5)]
+  const groups = groupsOf(rs, { path: '/en/home', lang: 'en', site: 'web' })
+  assert.deepEqual(groups.map((g) => g.key), ['/home', '/vodafone-cash', '/mobile-internet-bundles'], 'this page first, then the newest')
+  assert.deepEqual(groups.map((g) => g.here), [true, false, false])
+  assert.deepEqual(groups[2].records.map((r) => r.key), ['c', 'a'], 'both languages of one page are one group, newest first')
+  assert.deepEqual(groups[2].title, { text: 'Mobile Internet Bundles', lang: 'en', dir: 'ltr' }, 'named in the page\'s language')
+  const inArabic = groupsOf(rs, { path: '/ar/home', lang: 'ar', site: 'web' })
+  assert.deepEqual(inArabic.find((g) => g.key === '/mobile-internet-bundles').title, { text: 'باقات الإنترنت', lang: 'ar', dir: 'rtl' }, 'in Arabic, the Arabic name when a sticker knows it')
+  assert.deepEqual(inArabic.find((g) => g.key === '/vodafone-cash').title, { text: 'Vodafone Cash', lang: 'en', dir: 'ltr' }, 'else the name it has, said to be English')
+  assert.equal(groupsOf([{ ...rs[0], source: { ...rs[0].source, title: {} } }], { path: '/en/home', lang: 'en' })[0].title, null, 'no name known')
+  const shop = recordFrom({ item: card('x', {}), section: null, page: { path: '/en/list', search: '?categoryUrls=*smart-phones', site: 'shop', lang: 'en', title: 'Smart phones' }, key: 'x' })
+  assert.deepEqual(groupsOf([shop, rs[0]], { path: '/en/mobile-internet-bundles', lang: 'en', site: 'web' }).map((g) => g.key), ['/mobile-internet-bundles', 'shop:/list?c=smart-phones'], 'the shop\'s lists are pages of their own')
 })

@@ -34,6 +34,9 @@ const titleOf = (doc) => (doc.title || '').split(/\s+[|–-]\s+/)[0].trim() || n
 /** Chips show where at least this share of the page's content was read (a pilot knob; ADR-0052 §11). */
 const CHIPS_COVERAGE = 0.6
 
+/** A read that counts: on the website (the shop's come with E16), where at least that share of the page's content was read. */
+const wellRead = (coverage) => siteOf(location.hostname) === 'web' && (coverage?.ratio ?? 0) >= CHIPS_COVERAGE
+
 /** The page's back face: nothing of the copy shows through it, so one copy per turn is enough. */
 const PAGE_BACK = { base: [251, 251, 249], seeThrough: 0, rim: 0.12, gloss: 0.07, glossAt: 0.34 }
 
@@ -97,10 +100,14 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       cards: () => host.main.querySelectorAll('[data-aixc-item]'),
       hidden: () => host.sourceHidden,
       // On the website only (the shop's chips come with E16), where the page was read well enough.
-      gate: (coverage) => siteOf(location.hostname) === 'web' && (coverage?.ratio ?? 0) >= CHIPS_COVERAGE,
+      gate: wellRead,
       coverage: layer.coverage ?? null,
     },
     dated: true,
+    // The album groups its stickers by the page they were kept on, and says which have lost their card
+    // when the page was read well (S7; ADR-0051 §6).
+    groups: true,
+    wellRead,
     eagerImages: false,
     pageBack: PAGE_BACK,
   }

@@ -647,6 +647,39 @@ body[data-pocket-view='open'] .aixc-composer {
   list-style: none;
 }
 
+/* Vodafone's pages: the stickers of each page it was kept on are a group (S7), the page showing first. */
+.pocket-groups {
+  display: grid;
+  gap: 56px;
+}
+
+.pocket-group__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 24px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #d6d6d6;
+}
+
+.pocket-group__title {
+  margin: 0;
+  font-family: var(--pocket-bold);
+  font-size: 1.5rem;
+  font-weight: normal;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.pocket-group__here {
+  color: #e60000;
+  font-family: var(--pocket-bold);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 /* Each kept service is a die-cut sticker: white rim, rounded, a little hand-placed tilt. */
 .pocket-sticker {
   position: relative;
@@ -745,6 +778,13 @@ body[data-pocket-view='open'] .aixc-composer {
   margin: 8px 0 0;
   color: #999;
   font-size: 0.78rem;
+}
+
+/* Its card was not found on its page when that page was last read well; the sticker keeps its link. */
+.pocket-sticker__gone {
+  margin: 8px 0 0;
+  color: #666;
+  font-size: 0.82rem;
 }
 
 .pocket-sticker__actions {

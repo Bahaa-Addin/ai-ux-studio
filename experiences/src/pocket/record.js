@@ -196,3 +196,68 @@ export function rematch(records, model, { lang }) {
 
 /** The record seen again on its page: the card's id now, and when. Copy stays as saved. */
 export const seen = (record, id, now = Date.now()) => ({ ...record, id, seenAt: now })
+
+/**
+ * A page's records read again (live plan S7; ADR-0051 §6, amended): `records` are all the Pocket
+ * holds, `page` the one showing now ({ path, site, search, lang, title }), `model` its content model,
+ * `kept` the cards some records were known to stand on in this page view (a sticker just made: Map
+ * key → id). Only the records kept on this page are looked at:
+ *
+ * - `ids` says which card each is (Map key → id), by `rematch`: a card whose id changed (an editor added
+ *   one sharing its link: AIXC-41) is still found, and a card of another language too. A record the
+ *   score cannot place keeps the card it was known to stand on, if that card is still there and no
+ *   other sticker took it. The stored id is never rewritten: ids differ between languages, so two tabs
+ *   on one page in two languages would write them back and forth;
+ * - `missing` holds the ones with no card on this page;
+ * - `changed` holds the records to write: the page's own name in this language added to each, so the
+ *   album can name the page in the language it is read in (idempotent, so tabs settle).
+ *
+ * Call it only on a page that was read well enough: a card the read missed is not a card that is
+ * gone. The Pocket never calls it on the clone, whose stickers keep the card's own id.
+ */
+export function reconcile(records, model, { page, lang = page.lang, kept = new Map() }) {
+  const mine = records.filter((r) => onPage(r, page))
+  const found = rematch(mine, model, { lang })
+  const there = new Set((model?.sections || []).flatMap((s) => s.items.map((item) => item.id)))
+  const taken = new Set(found.values())
+  const ids = new Map()
+  const missing = new Set()
+  const changed = []
+  for (const r of mine) {
+    let id = found.get(r.key)
+    const was = kept.get(r.key)
+    if (id === undefined && was !== undefined && there.has(was) && !taken.has(was)) {
+      id = was
+      taken.add(id)
+    }
+    if (id === undefined) missing.add(r.key)
+    else ids.set(r.key, id)
+    if (page.title && r.source.title?.[lang] !== page.title) changed.push({ ...r, source: { ...r.source, title: { ...r.source.title, [lang]: page.title } } })
+  }
+  return { ids, missing, changed }
+}
+
+/**
+ * The album's groups: the stickers of each page together (the page's key, the same in both languages),
+ * the page showing first, the others by their newest sticker; newest first within a group. A group is
+ * { key, here, title, records }: `title` is { text, lang, dir } in the page's language when any of its
+ * stickers knows the page by that name, else in another, else null (the album then falls back to the
+ * address).
+ */
+export function groupsOf(records, page) {
+  const byPage = new Map()
+  for (const r of [...records].sort((a, b) => b.savedAt - a.savedAt)) {
+    if (!byPage.has(r.source.page)) byPage.set(r.source.page, [])
+    byPage.get(r.source.page).push(r)
+  }
+  const named = (list, lang) => {
+    for (const r of list) if (r.source.title?.[lang]) return { text: r.source.title[lang], lang }
+    return null
+  }
+  const groups = [...byPage].map(([key, list]) => {
+    const own = named(list, page.lang)
+    const other = own ?? [...new Set(list.flatMap((r) => Object.keys(r.source.title || {})))].map((l) => named(list, l)).find(Boolean) ?? null
+    return { key, here: onPage(list[0], page), title: other && { ...other, dir: other.lang === 'ar' ? 'rtl' : 'ltr' }, records: list }
+  })
+  return groups.sort((a, b) => (b.here ? 1 : 0) - (a.here ? 1 : 0) || b.records[0].savedAt - a.records[0].savedAt)
+}

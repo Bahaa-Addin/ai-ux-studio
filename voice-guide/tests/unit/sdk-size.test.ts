@@ -71,11 +71,13 @@ const AIXC_CORE_BUDGET = 7.75 * 1024
  * gzipped, without the mascot, the drone or the portal, which are passed in only where they run;
  * 29,287 bytes the same day with S6 ("Pocket it" on Vodafone's cards: the overlay, its placement,
  * clipping and observers, the live chip's look; ADR-0052 §10-§14); 29,801 bytes on 2026-11-14 with
- * the review's fixes (AIXC-107 to AIXC-118: clips read again, slots cut to what shows, focus kept).
+ * the review's fixes (AIXC-107 to AIXC-118: clips read again, slots cut to what shows, focus kept);
+ * 31,522 bytes on 2026-11-14 with S7 (one Pocket across pages: the album's groups, the page read again
+ * against its stickers, the note on a sticker whose card is gone; ADR-0051 §7 and §8).
  * Raised on purpose; a chunk of its own for the chips, loaded only where the coverage gate lets them
  * show, is the follow-up.
  */
-const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 29.75 * 1024 }
+const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 31.25 * 1024 }
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
 	const sizes = await buildSdk({ minify: true })

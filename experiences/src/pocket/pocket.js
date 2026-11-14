@@ -26,7 +26,7 @@
 
 import { createCurl, cornerReach, fullTurn, tween as runTween, ease, lerp } from './curl.js'
 import { createIdsStore } from './ids-store.js'
-import { onPage, recordFrom } from './record.js'
+import { groupsOf, onPage, reconcile, recordFrom } from './record.js'
 import { countItems, lang as pageLang, t } from '../i18n.js'
 
 const RAD = Math.PI / 180
@@ -247,6 +247,7 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
     // The clone's ids-only store keys a sticker by its card's id; on live pages a record has its own key.
     recordKey: (id) => id,
     dated: false,
+    groups: false,
     eagerImages: true,
     pageBack: PAGE_BACK,
   }
@@ -290,13 +291,32 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   }
   sync(store.all())
   /**
+   * Stickers of this page whose card the last good read did not find: the album says so (S7). Only on
+   * Vodafone's pages, where `seams.wellRead` says whether a read counts.
+   */
+  let missing = new Set()
+  /** key → the card's id now, for this page's stickers, once a read that counts has placed them; null before (the stored id stands). */
+  let matched = null
+  /** The cards stickers made in this page view stand on: a sticker just made is never lost to a score that cannot tell twins apart. */
+  const seeds = new Map()
+  let coverage = seams.overlay?.coverage ?? null
+  /**
    * id → { card, host, cta, undo }: Vodafone's card, and the node its chip, liner and lift live on (the
    * card itself in the clone; a slot in the overlay on live pages, ADR-0052 §10).
    */
   const cards = new Map()
+  /** The id of the card a record stands on now: the one the last good read placed it on, else the id it was saved with (S7). */
+  const cardIdOf = (record) => (matched ? matched.get(record.key) : record.id)
+  /** A record taken out of the Pocket, and what was known of its card. */
+  const forget = (key) => {
+    records.delete(key)
+    seeds.delete(key)
+    matched?.delete(key)
+    missing.delete(key)
+  }
   /** This page's record for card `id`: a sticker kept on another page never marks this page's card (S6). */
   const keyOf = (id, page = seams.page) => {
-    for (const [key, record] of records) if (record.id === id && onPage(record, page)) return key
+    for (const [key, record] of records) if (cardIdOf(record) === id && onPage(record, page)) return key
     return undefined
   }
   const isPocketed = (id, page) => keyOf(id, page) !== undefined
@@ -317,6 +337,26 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
         throw error
       })(),
     )
+  }
+
+  /**
+   * This page's stickers found again among its cards (a card whose id changed gives its sticker the new
+   * one: AIXC-41), and the ones whose card is gone noted (S7; ADR-0051 §6). Only where the page was
+   * read well enough: a card the read missed is not a card that is gone. Returns whether anything changed.
+   */
+  const reconcileRecords = () => {
+    if (!seams.wellRead) return false
+    const read = model && seams.wellRead(coverage)
+    const next = read ? reconcile([...records.values()], model, { page: seams.page, kept: new Map([...seeds, ...(matched ?? [])]) }) : null
+    for (const record of next?.changed ?? []) {
+      records.set(record.key, record)
+      save(() => store.put(record))
+    }
+    const was = { ids: matched, missing }
+    matched = next?.ids ?? null
+    missing = next?.missing ?? new Set()
+    const same = (a, b) => a.size === b.size && [...a].every(([key, value]) => b.get(key) === value)
+    return !!next?.changed.length || missing.size !== was.missing.size || [...missing].some((key) => !was.missing.has(key)) || (was.ids === null) !== (matched === null) || (matched !== null && !same(matched, was.ids))
   }
 
   /* Everything the Pocket adds to the page, listens to or schedules goes through these, so it can be
@@ -381,6 +421,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const pocketTitle = make('h1', { class: 'pocket-view__title', id: 'pocket-title', tabindex: '-1' }, t('Your pocket'))
   const pocketLead = make('p', { class: 'pocket-view__lead' })
   const grid = make('ul', { class: 'pocket-grid', role: 'list' })
+  // On Vodafone's pages the stickers of each page it was kept on are a group of their own (S7).
+  const groupsRoot = make('div', { class: 'pocket-groups' })
+  const stickerList = seams.groups ? groupsRoot : grid
   const backButton = make('button', { type: 'button', class: 'pocket-back' }, icon('back', 'pocket-back__icon'), seams.labels.back)
   const clearButton = make('button', { type: 'button', class: 'pocket-clear' }, t('Empty pocket'))
   const emptyBack = make('button', { type: 'button', class: 'pocket-back pocket-back--solid' }, seams.labels.back)
@@ -402,7 +445,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       'div',
       { class: 'pocket-stage__album container' },
       make('header', { class: 'pocket-view__head' }, make('span', { class: 'pocket-view__mark' }, icon('pocket', 'pocket-view__mark-icon')), make('div', null, pocketTitle, pocketLead)),
-      grid,
+      stickerList,
       empty,
     ),
   )
@@ -800,6 +843,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const record = recordFrom({ item, section, page: seams.page, model, ...(seams.recordKey ? { key: seams.recordKey(id) } : {}) })
     records.set(record.key, record)
     state.ids.push(record.key)
+    seeds.set(record.key, id)
+    matched?.set(record.key, id)
     save(() => store.put(record))
     dropCorner({ immediate: true })
     host.classList.remove('is-peeling')
@@ -832,7 +877,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const { card, host } = entry
     const title = catalog.get(id)?.item.title ?? records.get(key).copy.title
     const fromKeyboard = pressedByKeys(entry.undo, event)
-    records.delete(key)
+    forget(key)
     state.ids = state.ids.filter((other) => other !== key)
     save(() => store.remove(key))
     updateCount()
@@ -911,12 +956,17 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   }
 
   /** Vodafone's page was read again (aixc:model): the cards to pocket are the new model's, in place. */
-  const setModel = (next, coverage = null) => {
+  const setModel = (next, read = null) => {
     if (destroyed) return
     model = next ?? null
+    if (read) coverage = read
     catalog.clear()
     for (const section of model?.sections ?? []) for (const item of section.items) catalog.set(item.id, { item, section })
+    // Stickers first (their cards' ids may have changed), so the chips are drawn pocketed or not as they now are.
+    const changed = reconcileRecords()
     chips?.refresh(coverage)
+    showPocketed()
+    if (changed && state.view === 'pocket' && !state.busy) renderPocket()
   }
 
   /* --------------------------------------------------------- the album */
@@ -947,10 +997,12 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
         { class: 'pocket-sticker__body' },
         source.section?.title ? make('p', { class: 'pocket-sticker__from', lang: own ? null : copy.lang, dir: own ? null : copy.dir }, source.section.title) : null,
         // Kept in the other language: it says so, so it is read and laid out in its own.
-        make('h2', { class: 'pocket-sticker__title', id: titleId, lang: own ? null : copy.lang, dir: own ? null : copy.dir }, copy.title),
+        make(seams.groups ? 'h3' : 'h2', { class: 'pocket-sticker__title', id: titleId, lang: own ? null : copy.lang, dir: own ? null : copy.dir }, copy.title),
         copy.description ? make('p', { class: 'pocket-sticker__desc', lang: own ? null : copy.lang, dir: own ? null : copy.dir }, copy.description) : null,
         // The copy is as it was that day, price included (ADR-0051): the day says so.
         seams.dated && record.savedAt ? make('p', { class: 'pocket-sticker__date' }, t('Saved {date}', { date: dayOf(record.savedAt) })) : null,
+        // Its card was not found on its page the last time that page was read well (S7); the link still works.
+        missing.has(key) ? make('p', { class: 'pocket-sticker__gone' }, t('No longer on this page')) : null,
         make(
           'div',
           { class: 'pocket-sticker__actions' },
@@ -973,16 +1025,35 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     return cell
   }
 
+  /** A page's group of stickers: its name (in the language it is read in when it is known so), "This page" on the page showing, then the stickers. */
+  const groupFor = (group, index) => {
+    const own = !group.title || group.title.lang === seams.page.lang
+    const id = `pocket-group-${index}`
+    const name = group.title?.text ?? group.records[0].source.path
+    return make(
+      'section',
+      { class: 'pocket-group', 'aria-labelledby': id },
+      make(
+        'div',
+        { class: 'pocket-group__head' },
+        make('h2', { class: 'pocket-group__title', id, lang: own ? null : group.title.lang, dir: group.title ? (own ? null : group.title.dir) : 'ltr' }, name),
+        group.here ? make('span', { class: 'pocket-group__here' }, t('This page')) : null,
+      ),
+      make('ul', { class: 'pocket-grid', role: 'list' }, ...group.records.map((record) => stickerFor(record.key))),
+    )
+  }
+
   const renderLead = () => {
     const n = state.ids.length
     pocketLead.textContent = seams.labels.lead(n)
-    grid.hidden = n === 0
+    stickerList.hidden = n === 0
     empty.hidden = n > 0
     clearButton.hidden = n === 0
   }
 
   const renderPocket = () => {
-    grid.replaceChildren(...[...state.ids].reverse().map(stickerFor))
+    if (seams.groups) groupsRoot.replaceChildren(...groupsOf([...records.values()], seams.page).map(groupFor))
+    else grid.replaceChildren(...[...state.ids].reverse().map(stickerFor))
     renderLead()
   }
 
@@ -1030,34 +1101,42 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   /** The card of the sticker under `key` stands on the page again, when that sticker was kept on this page. Call it before the record goes. */
   const unpocketCard = (key) => {
     const record = records.get(key)
-    if (record && onPage(record, seams.page)) cards.get(record.id)?.host.classList.remove('is-pocketed', 'is-returning')
+    if (record && onPage(record, seams.page)) cards.get(cardIdOf(record))?.host.classList.remove('is-pocketed', 'is-returning')
   }
 
   const removeFromPocket = async (key, cell) => {
     if (state.busy || !records.has(key)) return
     const { title } = records.get(key).copy
-    const next = cell.nextElementSibling ?? cell.previousElementSibling
+    // Focus goes to the next sticker's Remove, else the one before (a group's order is the album's order).
+    const buttons = [...pocketRoot.querySelectorAll('.pocket-sticker__remove')]
+    const at = buttons.indexOf(cell.querySelector('.pocket-sticker__remove'))
+    const nextButton = buttons[at + 1] ?? buttons[at - 1] ?? null
+    const group = cell.closest('.pocket-group')
     if (!reducedMotion()) await peelAway(cell.querySelector('.pocket-sticker'))
     if (destroyed || !records.has(key)) return
     unpocketCard(key)
-    records.delete(key)
+    forget(key)
     state.ids = state.ids.filter((other) => other !== key)
     save(() => store.remove(key))
     updateCount()
     cell.remove()
+    if (group && !group.querySelector('.pocket-grid__item')) group.remove()
     renderLead()
     announce(t('{title} removed from your pocket. {count} left.', { title, count: countLabel(state.ids.length) }))
-    ;(next?.querySelector('.pocket-sticker__remove') ?? (state.ids.length ? pocketTitle : emptyBack)).focus({ preventScroll: true })
+    ;(nextButton ?? (state.ids.length ? pocketTitle : emptyBack)).focus({ preventScroll: true })
   }
 
   on(clearButton, 'click', () => {
     if (state.busy) return
     for (const key of state.ids) unpocketCard(key)
     records.clear()
+    seeds.clear()
+    matched?.clear()
+    missing.clear()
     state.ids = []
     save(() => store.clear())
     updateCount()
-    grid.replaceChildren()
+    stickerList.replaceChildren()
     renderLead()
     announce(t('Your pocket is empty.'))
     emptyBack.focus({ preventScroll: true })
@@ -1237,8 +1316,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
 
   /** Another tab changed the Pocket (or the store finished reading): show what it holds now. */
   let settled = false
-  const fromStore = (list) => {
-    sync(list)
+  /** Each card of this page shows "In your pocket" or its chip, as its sticker says. */
+  const showPocketed = () => {
     const page = seams.page
     for (const [id, entry] of cards) {
       const pocketed = isPocketed(id, page)
@@ -1247,6 +1326,11 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       if (pocketed && document.activeElement === entry.cta) entry.undo.focus({ preventScroll: true })
       else if (!pocketed && document.activeElement === entry.undo) entry.cta.focus({ preventScroll: true })
     }
+  }
+  const fromStore = (list) => {
+    sync(list)
+    reconcileRecords()
+    showPocketed()
     updateCount()
     if (state.view === 'pocket' && !state.busy) renderPocket()
     if (state.view === 'page' && !state.busy && settled) {
