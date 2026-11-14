@@ -262,7 +262,8 @@ all driven by a single page-curl engine modelled on the Apple Books page turn:
    reverse: out of the pocket, over the slot, stuck down from the far corner back to the first.
    Long cards peel along their length, like a label, and droop rather than standing up tall.
 2. **Peeking corner.** While anything is pocketed, the page's bottom-right corner sits
-   half-turned. The gap under it shows the pocket, with a floating pocket button and a count.
+   half-turned (the bottom-left on Vodafone's own pages, where the host sets the seam
+   `cornerSide: 'left'` and nothing of Vodafone's is lifted: voice-guide ADR-0064). The gap under it shows the pocket, with a floating pocket button and a count.
    Hovering or focusing the button turns the corner a little further.
 3. **Page turn.** The button turns the whole page away from that corner, the same curl at page
    scale with the content faintly showing through the back of the paper, to reveal **Your

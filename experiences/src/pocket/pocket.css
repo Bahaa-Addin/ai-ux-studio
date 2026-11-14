@@ -334,18 +334,31 @@
   background: #990000;
 }
 
+/* On Vodafone's own pages the corner is the bottom-left (seams.cornerSide, ADR-0064), physical left
+   in both languages: the bottom-right stays Vodafone's accessibility button and the Voice Guide's. */
+.pocket-peek[data-side='left'] {
+  right: auto;
+  left: max(22px, env(safe-area-inset-left));
+}
+
+/* Everything from here to the accessibility button's rules lifts or tucks something because the
+   corner shows, the album is open or the reimagined view shows. It is the Services clone's alone
+   (its .page-shell): on Vodafone's own pages none of it matches, so nothing of Vodafone's and nothing
+   of the Voice Guide's moves there (AGENTS.md 4.6, ADR-0064). :where() adds nothing to the rules'
+   weight, so the clone behaves exactly as before. */
+
 /* While the corner peeks, it owns the bottom-right: Vodafone's accessibility button and the
    Voice Guide's microphone (--vg-lift, voice-guide launcher.ts) move up the same column, clear
    of the curl (also when it lifts further on hover) and the mascot behind the button. In the
    open pocket the mascot stands in the bottom-right too (under the drone), so they stay up. */
-body:has(.pocket-peek[data-state='shown']),
-body[data-pocket-view='open'] {
+body:where(:has(.page-shell)):has(.pocket-peek[data-state='shown']),
+body:where(:has(.page-shell))[data-pocket-view='open'] {
   --pocket-corner-lift: 230px;
 }
 
 @media (max-width: 767px) {
-  body:has(.pocket-peek[data-state='shown']),
-  body[data-pocket-view='open'] {
+  body:where(:has(.page-shell)):has(.pocket-peek[data-state='shown']),
+  body:where(:has(.page-shell))[data-pocket-view='open'] {
     --pocket-corner-lift: 150px;
   }
 }
@@ -356,41 +369,41 @@ body[data-pocket-view='open'] {
    microphone and the accessibility button keep their lifted places even with nothing pocketed:
    at their usual place the accessibility button covered the tunnel's "Next service". Opening the
    Pocket from here turns the page as usual (data-pocket-view is set before the turn is drawn). */
-body:not([data-pocket-view]):has(#experience-output:not([hidden])) {
+body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not([hidden])) {
   --pocket-corner-lift: 230px;
 }
 
 @media (max-width: 767px) {
-  body:not([data-pocket-view]):has(#experience-output:not([hidden])) {
+  body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not([hidden])) {
     --pocket-corner-lift: 150px;
   }
 }
 
 /* Opacity, not visibility: the curl's parts set their own visibility. */
-body:not([data-pocket-view]):has(#experience-output:not([hidden])) :is(.pocket-layer--plane, .pocket-layer--lift) {
+body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not([hidden])) :is(.pocket-layer--plane, .pocket-layer--lift) {
   opacity: 0;
 }
 
 /* 16px under the accessibility button, whose foot is 20px + the lift above the bottom. */
-body:not([data-pocket-view]):has(#experience-output:not([hidden])) .pocket-peek {
+body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not([hidden])) .pocket-peek {
   bottom: calc(20px + var(--pocket-corner-lift) - 16px - 58px);
 }
 
 @media (max-width: 639px) {
-  body:not([data-pocket-view]):has(#experience-output:not([hidden])) .pocket-peek {
+  body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not([hidden])) .pocket-peek {
     bottom: calc(20px + var(--pocket-corner-lift) - 16px - 52px);
   }
 }
 
-body:has(.pocket-peek[data-state='shown']) vg-guide,
-body[data-pocket-view='open'] vg-guide,
-body:not([data-pocket-view]):has(#experience-output:not([hidden])) vg-guide {
+body:where(:has(.page-shell)):has(.pocket-peek[data-state='shown']) vg-guide,
+body:where(:has(.page-shell))[data-pocket-view='open'] vg-guide,
+body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not([hidden])) vg-guide {
   --vg-lift: var(--pocket-corner-lift);
 }
 
 /* The accessibility button is moved on the clone's page only (its .page-shell). On Vodafone's own
-   pages these rules never match: its widget keeps its own transition and place (AGENTS.md 4.6),
-   apart from the owner's lift exception, which has rules of its own (live plan phase 3, S11).
+   pages these rules never match: its widget keeps its own transition and place, in every state of
+   the Pocket (AGENTS.md 4.6; no lift on live, the corner is the bottom-left there, ADR-0064).
    :where() adds nothing to their weight, so the portal's rule (portal.css) still wins in its turn. */
 :where(body:has(.page-shell)) #vodafone-aw-icon {
   transition: bottom 0.28s ease;
@@ -457,6 +470,18 @@ body:where(:has(.page-shell)):not([data-pocket-view]):has(#experience-output:not
 .pocket-peek:hover .pocket-peek__tip,
 .pocket-peek:focus-visible .pocket-peek__tip {
   opacity: 1;
+  transform: translate(0, -50%);
+}
+
+/* In the bottom-left corner the tooltip opens to the right of the button, mirrored. */
+.pocket-peek[data-side='left'] .pocket-peek__tip {
+  right: auto;
+  left: calc(100% + 12px);
+  transform: translate(-6px, -50%);
+}
+
+.pocket-peek[data-side='left']:hover .pocket-peek__tip,
+.pocket-peek[data-side='left']:focus-visible .pocket-peek__tip {
   transform: translate(0, -50%);
 }
 
@@ -899,6 +924,11 @@ body[data-pocket-view='open'] .aixc-composer {
     height: 52px;
     right: max(16px, env(safe-area-inset-right));
     bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  .pocket-peek[data-side='left'] {
+    right: auto;
+    left: max(16px, env(safe-area-inset-left));
   }
 
   .pocket-peek__icon {

@@ -23,8 +23,12 @@
  *   its own (./journey.js), loaded once; nowhere else is anything loaded. When the layer stops, the
  *   claim is given back and the trail's pill opens the guide's own sheet.
  *
- * Not yet: the page corner and Pocket button (S11 places it beside Vodafone's accessibility button),
- * so no sticker flies before then; no mascot (S12), no portal (S13).
+ * - The page corner and the Pocket button (S11, ADR-0064) sit at the page's bottom-left, physical left in
+ *   both languages: nothing of Vodafone's moves, and the Voice Guide's microphone keeps its place above
+ *   the accessibility button at the bottom-right. A pocketed sticker flies there, and the page turns
+ *   from there to the album.
+ *
+ * Not yet: no mascot (S12), no portal (S13).
  */
 import css from '../../pocket/pocket.css'
 import { createChips } from '../../pocket/chips-overlay.js'
@@ -98,7 +102,9 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     get page() {
       return pageNow()
     },
-    corner: false,
+    // The corner at the bottom-left: the bottom-right is Vodafone's accessibility button and the guide's (ADR-0064).
+    corner: true,
+    cornerSide: 'left',
     // A record keeps its own key (not the clone's card id): stickers of two pages never share one (ADR-0052 §14).
     recordKey: null,
     chips: 'overlay',

@@ -6,6 +6,8 @@ A read-only map made before phase 3 of the live plan (`docs/handoff/live-demos-w
 >
 > **Numbering note (2026-11-13):** the reservations of ADR-0053 (the accessibility-button lift, S11) and ADR-0054 (the portal on live pages, S13) below are void: other ADRs took 0053 to 0063 first (the owner's rule: numbered in the order written). S11's and S13's ADRs take the next free number when they are written.
 
+> **S11 redesigned by the owner (2026-11-14):** the accessibility-button lift described below (the exception in AGENTS.md §4.6, the banner check, the scoped `transition`, the walker) is **withdrawn**. Nothing of Vodafone's is lifted; the Voice Guide's microphone stays above the accessibility button; the Pocket's corner, button, flight and page turn go to the **bottom-left** on live pages. Decided and recorded in ADR-0064 (`docs/adr/0064-pocket-corner-at-the-bottom-left-on-vodafone-pages.md`). The text below is kept as the record of what was measured; read S11 and the lift questions with that in mind.
+
 ## Unsafe on a live page as built (before phase 3)
 
 - Opening the Pocket throws on a null `.page-shell` (pocket.js:187, 338) as an unhandled rejection, and state.busy stays true. When the shell does exist, a sticker with `image: null` (all 20 bundles) throws at pocket.js:706 after #main-content has already been hidden (pocket.js:840-842), so Vodafone's content stays hidden with no way back.

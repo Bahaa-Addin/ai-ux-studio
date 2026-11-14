@@ -403,18 +403,23 @@ test('hover, pocket, put back and the album change nothing of Vodafone\'s page; 
 			const liftMarks = await marksOver(l.page, id, 400)
 			assert.equal(await l.page.evaluate(() => document.querySelectorAll('.pocket-chips .curl-host--inside[aria-hidden="true"][inert]').length), 1, `${where}: the lift runs, hidden from assistive technology`)
 			assert.equal(liftMarks, 1, `${where}: one element marked as the card during the lift (B-49)`)
-			// Pocket: the peel in place (no flight before the corner exists, S11).
+			// Pocket: the peel, and the flight to the Pocket's corner at the bottom-left (S11, ADR-0064).
 			await l.page.mouse.click(at.x, at.y)
 			assert.equal(await marksOver(l.page, id, 700), 1, `${where}: one element marked as the card during the peel (B-49)`)
-			assert.equal(await l.page.evaluate(() => document.querySelectorAll('.curl-host--flying').length), 0, `${where}: nothing flies before the Pocket has its corner`)
+			assert.equal(await l.page.evaluate(() => document.querySelectorAll('.curl-host--flying').length), 1, `${where}: the sticker flies to the Pocket's corner`)
+			await l.page.waitForFunction(() => document.querySelectorAll('.curl-host--flying').length === 0, null, { timeout: 8_000 })
+			assert.equal(await l.page.evaluate(() => document.querySelector('.pocket-peek')?.getAttribute('data-state')), 'shown', `${where}: the Pocket's button shows`)
 			// Put back.
 			const undo = await chipAt(l.page, id, 'undo')
 			await l.page.mouse.click(undo.x, undo.y)
 			await l.page.waitForTimeout(700)
+			// The sticker flies back from the corner onto its card (S11): until it lands, the card shows neither.
+			await l.page.waitForFunction(() => document.querySelectorAll('.curl-host--flying').length === 0, null, { timeout: 8_000 })
 			// The album: the chips stand aside while it shows and come back where they were.
 			const keep = await chipAt(l.page, ids[0])
 			await l.page.mouse.click(keep.x, keep.y)
 			await l.page.waitForTimeout(700)
+			await l.page.waitForFunction(() => document.querySelectorAll('.curl-host--flying').length === 0, null, { timeout: 8_000 })
 			const boxes = () => l.page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.pocket-chips .pocket-cta')].filter((c) => c.offsetParent).map((c) => [c.dataset.pocketFor, ...Object.values(c.getBoundingClientRect().toJSON()).map((v) => Math.round(v as number))].join(' ')))
 			const y = await l.page.evaluate(() => scrollY)
 			const was = await boxes()

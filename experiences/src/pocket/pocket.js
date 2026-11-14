@@ -4,8 +4,9 @@
  *
  *   1. "Pocket it" on a card peels it off (Apple Books curl from its top-right corner),
  *      it lifts, and flies into the pocket. A liner stays in its place with "Put back".
- *   2. While anything is pocketed, the page's bottom-right corner sits half-turned,
- *      peeking at the pocket underneath, with a floating pocket button in the gap.
+ *   2. While anything is pocketed, the page's bottom-right corner (bottom-left on Vodafone's own
+ *      pages, ADR-0064) sits half-turned, peeking at the pocket underneath, with a floating pocket
+ *      button in the gap.
  *   3. The button turns the whole page away (same curl) to reveal the pocket: a sticker
  *      album of everything peeled off. "Back to Services" turns the page back.
  *
@@ -36,8 +37,10 @@ const THROW_MS = 820 // thrown into the pocket
 const FLIGHT_MS = PEEL_MS + LIFT_MS + THROW_MS // a pocketed sticker lands in the corner this long after the click
 const LIFTED_ANGLE = 0.72 * Math.PI // how steeply a small freed sticker is held up
 const LIFT_HEIGHT = 170 // px: a long sticker droops instead, so it never rises higher than this
-const PEEK_PHI = 38 * RAD // the page corner curls from the bottom-right
-const TURNED_PHI = 12 * RAD // a turning page straightens toward a vertical fold
+// The page corner curls from the bottom-right, or from the bottom-left where the host puts its corner
+// there (seams.cornerSide, ADR-0064): the same angles mirrored about the vertical.
+const PEEK_PHI = { right: 38 * RAD, left: (180 - 38) * RAD }
+const TURNED_PHI = { right: 12 * RAD, left: (180 - 12) * RAD } // a turning page straightens toward a vertical fold
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 const PAGE_BACK = { base: [251, 251, 249], seeThrough: 0.12, rim: 0.12, gloss: 0.07, glossAt: 0.34 }
@@ -243,6 +246,8 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
     },
     page: { path: location.pathname, lang: pageLang, dir: pageLang === 'ar' ? 'rtl' : 'ltr', title: document.title },
     corner: true,
+    // Which bottom corner the page peeks from and the Pocket button sits in: 'right' or 'left' (physical).
+    cornerSide: 'right',
     chips: true,
     // The clone's ids-only store keys a sticker by its card's id; on live pages a record has its own key.
     recordKey: (id) => id,
@@ -268,6 +273,10 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   let model = givenModel !== undefined ? givenModel : adapter.extractContent(sourceRoot).model
   // The clone has no Pocket without its page; on Vodafone's pages the album is there on every page.
   if (!model && seams.chips === true) return null
+  const side = seams.cornerSide === 'left' ? 'left' : 'right'
+  const peekPhi = PEEK_PHI[side]
+  const turnedPhi = TURNED_PHI[side]
+  const spin = side === 'left' ? -1 : 1
 
   /** id → { item, section } for everything that can be pocketed (not the closing promo). */
   const catalog = new Map()
@@ -411,7 +420,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const peekCount = make('span', { class: 'pocket-peek__count', 'aria-hidden': 'true' }, '0')
   const peekButton = make(
     'button',
-    { type: 'button', class: 'pocket-peek', 'data-state': 'hidden', 'aria-label': t('Open your pocket'), inert: true },
+    { type: 'button', class: 'pocket-peek', 'data-side': side, 'data-state': 'hidden', 'aria-label': t('Open your pocket'), inert: true },
     icon('pocket', 'pocket-peek__icon'),
     peekCount,
     make('span', { class: 'pocket-peek__tip', 'aria-hidden': 'true' }, t('Your pocket')),
@@ -578,8 +587,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     })
     planeLayer.replaceChildren(rig.plane)
     liftLayer.replaceChildren(rig.lift)
-    state.peek = { rig, sheet, phi: PEEK_PHI, R: peekRadius(), tween: null }
-    rig.update({ x, phi: PEEK_PHI, R: state.peek.R })
+    state.peek = { rig, sheet, phi: peekPhi, R: peekRadius(), tween: null }
+    rig.update({ x, phi: peekPhi, R: state.peek.R })
     return state.peek
   }
 
@@ -784,7 +793,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       const bx = (1 - e) ** 2 * from.x + 2 * (1 - e) * e * via.x + e * e * to.x
       const by = (1 - e) ** 2 * from.y + 2 * (1 - e) * e * via.y + e * e * to.y
       const scale = lerp(1.04, endScale, ease.inOutCubic(clamp((t - 0.08) / 0.92, 0, 1))) * (1 + 0.05 * Math.sin(Math.min(1, t / 0.3) * Math.PI))
-      place(point, bx - (left + point.x), by - (top + point.y), scale, 16 * t - 9 * Math.sin(t * Math.PI))
+      // The spin follows the throw: clockwise into a right-hand corner, mirrored into a left-hand one.
+      place(point, bx - (left + point.x), by - (top + point.y), scale, spin * (16 * t - 9 * Math.sin(t * Math.PI)))
       host.style.opacity = t > 0.84 ? String(1 - (t - 0.84) / 0.16) : '1'
       host.style.filter = shadow(1)
     }
@@ -852,7 +862,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     // Keep a keyboard user's place: the chip is gone, so focus moves to "Put back".
     if (fromKeyboard) entry.undo.focus({ preventScroll: true })
     announce(t('{title} is in your pocket. {count}.', { title: item.title, count: countLabel(state.ids.length) }))
-    // No flight before the Pocket has its corner on the page (S11): the card peels in place.
+    // Without a corner on the page (a host that gives it no place) the card peels in place.
     if (reducedMotion() || !seams.corner) {
       openPeek({ animate: false })
       updateCount()
@@ -1204,7 +1214,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       await tween(
         reducedMotion() || instant ? 0 : 1150,
         (e, t) => {
-          const phi = lerp(from.phi, TURNED_PHI, ease.inOutSine(t))
+          const phi = lerp(from.phi, turnedPhi, ease.inOutSine(t))
           const R = lerp(from.R, toR, ease.inOutSine(t))
           peek.rig.update({ x: lerp(from.x, fullTurn(sheet.width, sheet.height, phi, R) + 80, e), phi, R })
           actors?.openProgress(t)
@@ -1250,13 +1260,13 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       liftLayer.replaceChildren(rig.lift)
       // Snapshot only once mounted: the copy needs layout to restore its scroll position.
       rig.setFront(snapshotPage({ scrollY: saved.scrollY, sheet, prepare: restoreInCopy }))
-      state.peek = { rig, sheet, phi: PEEK_PHI, R: toR, tween: null }
-      rig.update({ x: fullTurn(sheet.width, sheet.height, TURNED_PHI, fromR) + 80, phi: TURNED_PHI, R: fromR })
+      state.peek = { rig, sheet, phi: peekPhi, R: toR, tween: null }
+      rig.update({ x: fullTurn(sheet.width, sheet.height, turnedPhi, fromR) + 80, phi: turnedPhi, R: fromR })
 
       await tween(
         reducedMotion() ? 0 : 1100,
         (e, t) => {
-          const phi = lerp(TURNED_PHI, PEEK_PHI, ease.inOutSine(t))
+          const phi = lerp(turnedPhi, peekPhi, ease.inOutSine(t))
           const R = lerp(fromR, toR, ease.inOutSine(t))
           const start = fullTurn(sheet.width, sheet.height, phi, R) + 80
           rig.update({ x: lerp(start, landX, e), phi, R })
