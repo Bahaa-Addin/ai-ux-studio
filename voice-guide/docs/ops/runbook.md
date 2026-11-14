@@ -329,7 +329,7 @@ The trail is **off** for `vodafone-eg` (D2). To show it:
 | The same, in Arabic | `npm run demo:live -- --replay --trail --start https://web.vodafone.com.eg/ar/home` | After Arabic pages the pill opens the journey in the Arabic Pocket at `/ar/services`, right to left, in Arabic |
 | After a knowledge refresh | `npm run experience -- --site vodafone-eg --activate` | A profile for the new version; the old one is never served for a different version |
 
-Reset the trail in the demo browser: **Your journey → Clear journey** in the Pocket, or clear the site's data in Chrome.
+Reset the trail in the demo browser: **Your journey → Clear journey** in the Pocket, or clear the site's data in Chrome. The person's choice is kept twice (ADR-0050 §8, S9): the `vg-trail:<siteKey>:consent` key in `localStorage`, which Vodafone's theme clears on home, Services, RED and Vodafone Cash, and a copy in the IndexedDB database `vg-trail-consent`, from which the key is put back at the next page. To forget the choice in a browser, clear the site's data in Chrome (both go), or run `localStorage.removeItem('vg-trail:<siteKey>:consent'); indexedDB.deleteDatabase('vg-trail-consent')` in the console; removing the key alone brings it back.
 
 Expected in the X-ray for a chip: `router.hint` with `agree` (or `override`), then a `replay` plan. `ignored` means the profile and the knowledge version do not match: rebuild the profile.
 

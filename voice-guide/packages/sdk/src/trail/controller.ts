@@ -8,7 +8,7 @@
 import { AttentionTracker } from './attention.ts'
 import { decideStep, type PendingTransition, type RouteSignal } from './boundaries.ts'
 import { TRAIL_CONFIG } from './config.ts'
-import { consentKey, notNow, readConsent, writeConsent } from './consent.ts'
+import { consentKey, notNow, parseConsent, recoverConsent, writeConsent } from './consent.ts'
 import { tt } from './i18n.ts'
 import { type CatalogEntry, selectTop } from './interest.ts'
 import { contributionBatch } from './aggregate.ts'
@@ -159,7 +159,8 @@ export class TrailController {
 		// No IndexedDB (some private windows): no trail, and no offer of one. The database itself is
 		// created only once the person has said yes: nothing is stored before consent.
 		if (typeof indexedDB === 'undefined') return
-		const consent = readConsent(this.siteKey)
+		// Vodafone's theme clears localStorage on some pages: the copy in IndexedDB is the second place to look (T-806).
+		const consent = await recoverConsent(this.siteKey)
 		if (consent === 'granted' || consent === 'paused') await this.#openStore()
 		this.map = await this.g.api.get<PageMap>(`/v1/experience?url=${encodeURIComponent(location.href)}`).catch(() => null)
 		this.#mountView()
@@ -252,8 +253,10 @@ export class TrailController {
 		// Another tab changed consent or cleared journeys: follow it at once.
 		addEventListener('storage', (ev) => {
 			const e = ev as StorageEvent
+			// What the other tab wrote, not what is left in storage now: a clear that follows must not undo it. A clear
+			// ("key" null) or a removal reads as no change.
 			if (e.key === consentKey(this.siteKey)) {
-				const c = readConsent(this.siteKey)
+				const c = parseConsent(e.newValue)
 				if (c === 'off') this.dispatch({ type: 'TURN_OFF' })
 				else if (c === 'paused' || c === 'declined') this.dispatch({ type: 'PAUSE' })
 				else if (c === 'granted' && this.state.rec === 'paused') void this.#openStore().then(() => this.dispatch({ type: 'RESUME', eligible: this.#eligible() }))
