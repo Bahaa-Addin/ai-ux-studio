@@ -292,20 +292,38 @@ for (const failAt of ['journey-open', 'journey-claim']) {
 	})
 }
 
-/** Rests the pointer on each of the page's first sections, as someone reading them would. */
+/**
+ * Rests the pointer on one card or link of each of the page's first sections, as someone reading them
+ * would. (Random positions moved the pointer between items and sometimes left the trail with no dwell on
+ * any of them: a flake from S11 on. A fixed spot of the section missed the items altogether.)
+ */
 async function read(l: Layer, ms: number) {
 	const boxes = await l.page.evaluate(() =>
 		[...(document.getElementById('main-content')?.children ?? [])]
-			.map((n) => n.getBoundingClientRect())
-			.filter((r) => r.height > 120 && r.width > 200)
+			.map((n, index) => ({ index, r: n.getBoundingClientRect() }))
+			.filter(({ r }) => r.height > 120 && r.width > 200)
 			.slice(0, 3)
-			.map((r) => ({ y: r.top + scrollY, h: r.height, x: r.left, w: r.width })),
+			.map(({ index, r }) => ({ index, y: r.top + scrollY, h: r.height, x: r.left, w: r.width })),
 	)
 	for (const b of boxes) {
 		await l.page.evaluate((y) => scrollTo(0, Math.max(0, y - 120)), b.y)
+		// The first visible card or link of the section, now in view; else the old spot.
+		const at = await l.page.evaluate((index) => {
+			const section = document.getElementById('main-content')?.children[index]
+			const items = [...(section?.querySelectorAll('[data-aixc-item], a[href]') ?? [])]
+			for (const item of items) {
+				const r = item.getBoundingClientRect()
+				if (r.width > 80 && r.height > 40 && r.top >= 130 && r.bottom <= innerHeight - 10 && r.left >= 0 && r.right <= innerWidth) return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+			}
+			return null
+		}, b.index)
+		const x = at?.x ?? b.x + b.w * 0.5
+		const y = at?.y ?? 200 + Math.min(b.h, 280) * 0.25
 		const end = Date.now() + ms
+		let drift = 0
 		while (Date.now() < end) {
-			await l.page.mouse.move(b.x + b.w * (0.3 + Math.random() * 0.4), 200 + Math.min(b.h, 280) * Math.random() * 0.5, { steps: 5 })
+			drift = (drift + 1) % 3
+			await l.page.mouse.move(x + drift, y + drift, { steps: 2 })
 			await l.page.waitForTimeout(250)
 		}
 	}
