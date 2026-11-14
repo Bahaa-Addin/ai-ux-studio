@@ -246,7 +246,7 @@ own scope (including the cursor), and closing disposes it. `document.hidden` set
 transient state at once and restarts the idle clock on return, so nothing stale replays.
 
 QA hooks: `data-mascot-state`, `data-drone-state`, `data-drone-anchor`,
-`body[data-pocket-actor-ready]`; on the mascot `data-body-yaw` (degrees), `data-look` (`cursor`,
+`#pocket-output[data-pocket-actor-ready]` (the album root; it was Vodafone's `body` before S12); on the mascot `data-body-yaw` (degrees), `data-look` (`cursor`,
 `cards`, `drone`, `remote`, `ride`, `ripple` …), `data-remote` (`none`, `moving`, `held`),
 `data-sticks` (across, depth, turn, climb, each -1 to 1), `data-board` (`none`, `riding`,
 `hovering`, `down`) and `data-board-pose` (hover height, roll, pitch, heading, depth, glow); on its
@@ -418,3 +418,22 @@ listed in `manifest.json → illustratorRequests`.
   wide and 200% zoom (no content crossed during the ride, both on the content's margin at every
   width, no drone on phones, the board on phones covering nothing).
   `POCKET_SHOTS=dir` saves the comparison screenshots.
+
+## 10. On Vodafone's own pages (live plan phase 3, S12; voice-guide ADR-0052 part 3 and ADR-0064)
+
+The same actors run on Vodafone's real pages, with the Pocket button at the page's **bottom-left**. They are told so by options of `createPocketActors`, whose defaults are the clone's (so the clone behaves exactly as before):
+
+| Option | Clone (default) | Live (`host/demos/pocket.js`, `host/demos/actors.js`) |
+|---|---|---|
+| `corner` | `'right'`: the pocket button is at the bottom-right | `'left'`: bottom-left in both languages |
+| `side` | `'right'`: the album's physical-right content margin | `'left'` when the album is right to left (Arabic), through the seam `actorSide: 'inline-end'`; `'right'` in English |
+| `floor` | `'sticky'` | `'fixed'`, bounded above the footer (Vodafone's `html` and `body` are `overflow: hidden auto`, where sticky does not stick) |
+| `obstacles` | `null` | `fixedObstacles()` (`src/pocket/obstacles.js`) |
+| `wrap`, `mark`, `report`, `checkpoint` | identity, identity, none, none | the Pocket's actor wrapper, the layer's mark (`data-aixc` and `data-vg` on every node), `seams.report`, the layer's checkpoints |
+
+- **With the corner at the left** the mascot still hides and rises behind the button (the peek follows the button's box; only his emerging turn and look are mirrored). On the page turn he rides his board from the button across the screen to his place and stands; on closing he dashes back and sinks behind the button. With `side` and `corner` both left and his place within 60 px of the button he rises there with no ride. His place and the drone's are the album's inline-end margin: right in English, left in Arabic (the drone's upper home under "Empty pocket", the mascot at the foot of the screen). The art is never flipped; the board rests turned so its nose points at the content.
+- **Padding.** With `obstacles` he keeps 16 px between his drawn box and each fixed control (Vodafone's accessibility button, the Voice Guide's microphone, keyboard button and bar, the trail's pill and card, the cookie banner, the Pocket button), moving inward only as far as needed (`insetForObstacles`); the drone's follow regions stop above them (`stopAbove`). They never move or cover anything of Vodafone's.
+- **Failure.** `wrap` runs every listener, timer, frame and observer callback; an error drops only the actors (nodes removed, `report` called) and the Pocket carries on. `checkpoint('actors-frame')` is reached inside the mascot's frame so a test can force it.
+- **Hygiene.** Every node the actors add goes through `mark`; one instance at a time; the ready attribute is on `#pocket-output`, never on `body`.
+- **Assets.** On live the two rigs are `data:` URLs made by the aixc build's `svg-inline` plugin and decoded locally; the clone still fetches its SVG files.
+

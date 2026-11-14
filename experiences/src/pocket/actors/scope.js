@@ -3,6 +3,10 @@
  * started through it is released by one `dispose()`. The actors open a scope per pocket
  * visit (and one for their whole life), so closing the pocket or destroying the controller
  * leaves nothing running. The clock and frame source are injectable for tests.
+ *
+ * `wrap` (default: none) wraps every listener, timer and frame callback started through it (and
+ * `wrap(fn)` hands it out for observer callbacks and promises): pocket.js passes
+ * one that catches, so an error in an actor drops only the actors and never reaches the page.
  */
 
 const browserFrames = {
@@ -15,7 +19,7 @@ const browserClock = {
   clearTimeout: (id) => globalThis.clearTimeout(id),
 }
 
-export const createScope = ({ clock = browserClock, frames = browserFrames } = {}) => {
+export const createScope = ({ clock = browserClock, frames = browserFrames, wrap = (fn) => fn } = {}) => {
   const controller = new AbortController()
   const timers = new Set()
   const rafs = new Set()
@@ -26,20 +30,22 @@ export const createScope = ({ clock = browserClock, frames = browserFrames } = {
 
   return {
     signal: controller.signal,
+    wrap,
     get disposed() {
       return disposed
     },
 
     on(target, type, listener, options = {}) {
       if (disposed || !target) return
-      target.addEventListener(type, listener, { ...options, signal: controller.signal })
+      target.addEventListener(type, wrap(listener), { ...options, signal: controller.signal })
     },
 
     timeout(fn, ms) {
       if (disposed) return null
+      const run = wrap(fn)
       const id = clock.setTimeout(() => {
         timers.delete(id)
-        fn()
+        run()
       }, ms)
       timers.add(id)
       return id
@@ -53,9 +59,10 @@ export const createScope = ({ clock = browserClock, frames = browserFrames } = {
 
     frame(fn) {
       if (disposed) return null
+      const run = wrap(fn)
       const id = frames.request((time) => {
         rafs.delete(id)
-        fn(time)
+        run(time)
       })
       rafs.add(id)
       return id

@@ -151,6 +151,16 @@
   pointer-events: none;
 }
 
+/* Vodafone's pages (options.floor 'fixed'): their html and body scroll in a way a sticky floor does
+   not follow, so it is fixed to the viewport's bottom; the JS lifts it above the album's end (the
+   footer) as the sticky one stopped there. */
+.pocket-actor-floor--fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* Clips only below the floor line, where the mascot hides (and pops up from). */
 .pocket-mascot-stage {
   position: absolute;

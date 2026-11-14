@@ -414,7 +414,7 @@ async def main():
 
         # ------------------------------------------------------------ actors: the save
         ctx, page = await new_page(browser, width=1440, height=900, actors=True)
-        await page.wait_for_selector("body[data-pocket-actor-ready]", timeout=5000)
+        await page.wait_for_selector("#pocket-output[data-pocket-actor-ready]", state="attached", timeout=5000)
         header_before = await page.evaluate("document.querySelector('#site-header').outerHTML + document.querySelector('footer').outerHTML")
         check("actors: no mascot on the page before anything is pocketed", await page.evaluate("document.querySelectorAll('.pocket-mascot').length") == 0)
         await scroll_to(page, "stay-in-control")
@@ -780,7 +780,7 @@ async def main():
         # ------------------------------------------------- actors: responsive sweep
         for width, height, label in ((1440, 900, "1440x900"), (1280, 800, "1280x800"), (1024, 768, "1024x768"), (768, 1024, "768x1024"), (390, 844, "390x844"), (320, 568, "320x568"), (720, 450, "200% zoom")):
             ctx, page = await new_page(browser, width=width, height=height, actors=True, pocket=["roaming", "calls-services", "vf-play"])
-            await page.wait_for_selector("body[data-pocket-actor-ready]", timeout=5000)
+            await page.wait_for_selector("#pocket-output[data-pocket-actor-ready]", state="attached", timeout=5000)
             await page.wait_for_selector(".pocket-peek[data-state='shown']", timeout=5000)
             await page.wait_for_timeout(800)
             await page.evaluate(CROSSING_PROBE)
@@ -848,7 +848,7 @@ async def main():
         await page.click('[data-aixc-item="roaming"] .pocket-cta')
         check("reduced motion: pocketing is immediate, nothing flies", await page.evaluate(
             "!document.querySelector('.curl-host') && document.querySelector('.pocket-peek').dataset.state === 'shown'") and await count_badge(page) == "1")
-        await page.wait_for_selector("body[data-pocket-actor-ready]", timeout=5000)
+        await page.wait_for_selector("#pocket-output[data-pocket-actor-ready]", state="attached", timeout=5000)
         await page.wait_for_timeout(1900)
         check("reduced motion: no greeting from the mascot", not [s for s in await states(page) if s != "hidden"], await states(page))
         await page.click(".pocket-peek")

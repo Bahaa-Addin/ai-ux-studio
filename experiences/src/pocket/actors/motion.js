@@ -60,7 +60,16 @@ const quad = (from, via, to, n) =>
  * paces the flight like a pen: it slows into sharp turns (the notch and the tip) and runs on
  * the open curves; sample it with sampleFlight().
  */
-export const heartFlight = ({ home, box, samples = 96, wobble = 0.35, slow = 2.4 }) => {
+export const heartFlight = ({ home, box, samples = 96, wobble = 0.35, slow = 2.4, mirror = false }) => {
+  if (mirror) {
+    // The same flight seen in a mirror about the heart's middle (the heart is symmetric, so its box is
+    // the same): from a home on its right it enters at the left lobe and loops out the other way.
+    const axis = 2 * box.x + box.w
+    const flight = heartFlight({ home: { ...home, x: axis - home.x }, box, samples, wobble, slow })
+    const points = flight.points.map((p) => ({ x: axis - p.x, y: p.y }))
+    const heartPoints = points.slice(flight.heart.from, flight.heart.to + 1)
+    return { ...flight, points, d: smoothPath(points), heart: { ...flight.heart, d: smoothPath(heartPoints) } }
+  }
   const raw = Array.from({ length: samples + 1 }, (_, index) => heartAt(Math.PI / 2 - (index / samples) * 2 * Math.PI))
   const xs = raw.map((p) => p.x)
   const ys = raw.map((p) => p.y)
@@ -204,35 +213,40 @@ export const chooseAnchor = ({ candidates, obstacles, bounds, margin = 8 }) =>
   candidates.find((candidate) => candidate && contains(bounds, candidate.rect) && !obstacles.some((obstacle) => rectsOverlap(candidate.rect, obstacle, margin))) ?? null
 
 /**
- * Plans the heart flight: the biggest heart (up to `max`) left of the drone's home whose whole
+ * Plans the heart flight: the biggest heart (up to `max`) left of the drone's home (`toward` -1, the
+ * default; +1: right of it, mirrored, for a home at the album's left margin) whose whole
  * flight keeps the drone's footprint (`drone` w × h, centred on the path) inside `bounds` and
  * clear of every obstacle. It shrinks the heart until it fits and returns { box, flight }, or
  * null when even a `min`-sized heart would brush content (the drone then just hovers home).
  */
-export const planHeart = ({ home, band, obstacles, bounds, drone, gap = 18, min = 64, max = 132, margin = 6 }) => {
+export const planHeart = ({ home, band, obstacles, bounds, drone, gap = 18, min = 64, max = 132, margin = 6, toward = -1 }) => {
   const centre = { x: home.left + home.width / 2, y: home.top + home.height / 2 }
-  let left = bounds.left
+  const right = toward > 0
+  // How far out the heart may go: to the bounds, or short of an obstacle in the band on that side.
+  let limit = right ? bounds.right : bounds.left
   for (const obstacle of obstacles) {
     const overlapsBand = obstacle.top < band.bottom && obstacle.bottom > band.top
-    if (overlapsBand && obstacle.right <= home.left) left = Math.max(left, obstacle.right + margin)
+    if (!overlapsBand) continue
+    if (!right && obstacle.right <= home.left) limit = Math.max(limit, obstacle.right + margin)
+    if (right && obstacle.left >= home.right) limit = Math.min(limit, obstacle.left - margin)
   }
-  const right = home.left - gap
+  const near = right ? home.right + gap : home.left - gap
   const top = band.top + drone.h / 2
   const bottom = band.bottom - drone.h / 2
   const clears = (point) => {
     const footprint = rect(point.x - drone.w / 2, point.y - drone.h / 2, drone.w, drone.h)
     return contains(bounds, footprint) && !obstacles.some((obstacle) => rectsOverlap(footprint, obstacle, margin))
   }
-  // Biggest heart first; for each size try it close to home, then further left (a longer
-  // loop out), with its entry level with home, then centred in the band.
+  // Biggest heart first; for each size try it close to home, then further out (a longer loop
+  // out), with its entry level with home, then centred in the band.
   for (let size = Math.min(max, (bottom - top) * 1.12); size >= min; size *= 0.9) {
     const h = size * 0.9
     for (const shift of [0, size * 0.35, size * 0.7]) {
-      const x = right - shift - size
-      if (x - drone.w / 2 < left) break
+      const x = right ? near + shift : near - shift - size
+      if (right ? x + size + drone.w / 2 > limit : x - drone.w / 2 < limit) break
       for (const y of [centre.y - h * 0.3, (top + bottom) / 2 - h / 2]) {
         const box = { x, y: clamp(y, top, bottom - h), w: size, h }
-        const flight = heartFlight({ home: centre, box })
+        const flight = heartFlight({ home: centre, box, mirror: right })
         if (flight.points.every(clears)) return { box, flight }
       }
     }

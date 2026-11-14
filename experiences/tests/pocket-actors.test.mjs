@@ -20,6 +20,7 @@ import { gazeOffset, smoothToward, curlSide, oppositeSide, heartFlight, samplePa
 import { createSpring, stepSpring, stepAngleSpring, resetSpring, springSettled, angleDelta, createWander } from '../src/pocket/actors/physics.js'
 import { planRide, ridePoint, shuffle } from '../src/pocket/actors/gait.js'
 import { createFlight, stepFlight, followPoint, kick, flightSettled, command, sticksFor, spool, FLIGHT, BOARD_FLIGHT } from '../src/pocket/actors/drone-flight.js'
+import { crossPace, DASH_PACE } from '../src/pocket/pocket-actors.js'
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -924,6 +925,35 @@ test('heart plan: the drone never brushes content anywhere along the flight, or 
   assert.equal(planHeart({ home, band: { top: 200, bottom: 300 }, obstacles: [rect(150, 180, 1000, 80)], bounds, drone }), null)
 })
 
+test('heart plan mirrored (S12, a right-to-left album): from a home at the left margin the heart is drawn to its right, the mirror of the left one, never brushing content', () => {
+  const drone = { w: 96, h: 67 }
+  const W = 1440
+  const mirror = (r) => rect(W - r.right, r.top, r.width, r.height)
+  const home = rect(1187, 218, drone.w, drone.h)
+  const sky = { top: 112, bottom: 320 }
+  const bounds = rect(8, 108, 1424, 220)
+  const obstacles = [rect(150, 210, 510, 74), rect(1196, 135, 87, 40), rect(1030, 328, 260, 300)]
+  const left = planHeart({ home, band: sky, obstacles, bounds, drone })
+  const right = planHeart({ home: mirror(home), band: sky, obstacles: obstacles.map(mirror), bounds: mirror(bounds), drone, toward: 1 })
+  assert.ok(left && right, 'a heart fits on both sides')
+  assert.ok(right.box.x >= mirror(home).right, 'to the right of its home')
+  assert.equal(right.box.w, left.box.w, 'the same size')
+  assert.ok(Math.abs(right.box.x - (W - left.box.x - left.box.w)) < 1e-6, 'the mirror of the left heart')
+  assert.equal(right.flight.points.length, left.flight.points.length)
+  right.flight.points.forEach((p, i) => {
+    assert.ok(Math.abs(p.x - (W - left.flight.points[i].x)) < 1e-6 && Math.abs(p.y - left.flight.points[i].y) < 1e-6, `point ${i} mirrored`)
+    const footprint = rect(p.x - drone.w / 2, p.y - drone.h / 2, drone.w, drone.h)
+    assert.ok(contains(mirror(bounds), footprint))
+    for (const obstacle of obstacles.map(mirror)) assert.ok(!rectsOverlap(footprint, obstacle), 'clear of content')
+  })
+  // It starts and ends at home, and its inked heart is a path of its own.
+  assert.deepEqual(right.flight.points[0], { x: mirror(home).left + drone.w / 2, y: home.top + drone.h / 2 })
+  assert.match(right.flight.heart.d, /^M/)
+  assert.ok(right.flight.heart.end > right.flight.heart.start)
+  // The default stays to the left (the clone).
+  assert.ok(left.box.x + left.box.w <= home.left)
+})
+
 /* ------------------------------------------------------------------ scope */
 
 test('scope: one dispose releases listeners, timers, frames, observers and animations', () => {
@@ -958,6 +988,43 @@ test('scope: one dispose releases listeners, timers, frames, observers and anima
   assert.equal(heard, 1)
   assert.equal(fired, 0)
   assert.equal(scope.timeout(() => {}, 10), null) // nothing new after dispose
+})
+
+test('scope: with a wrap, every listener, timer and frame callback runs through it (an error is caught and reported, not thrown)', () => {
+  const clock = fakeClock()
+  const frames = new Map()
+  let frameSeq = 0
+  const caught = []
+  const wrap = (fn) => (...args) => {
+    try {
+      return fn(...args)
+    } catch (error) {
+      caught.push(error.message)
+    }
+  }
+  const scope = createScope({ clock, wrap, frames: { request: (fn) => (frames.set(++frameSeq, fn), frameSeq), cancel: (id) => frames.delete(id) } })
+  assert.equal(scope.wrap, wrap, 'handed out for observer callbacks and promises')
+  const target = new EventTarget()
+  scope.on(target, 'ping', () => {
+    throw new Error('listener')
+  })
+  scope.timeout(() => {
+    throw new Error('timer')
+  }, 10)
+  scope.frame(() => {
+    throw new Error('frame')
+  })
+  target.dispatchEvent(new Event('ping'))
+  clock.advance(20)
+  for (const fn of [...frames.values()]) fn(16)
+  assert.deepEqual(caught, ['listener', 'timer', 'frame'])
+  assert.deepEqual(scope.live, { timers: 0, frames: 0, observers: 0, animations: 0, cleanups: 0 }, 'a caught timer or frame is still forgotten')
+  // Without one (the default) nothing changes: callbacks run as given.
+  const plain = createScope({ clock })
+  let ran = 0
+  plain.timeout(() => (ran += 1), 5)
+  clock.advance(5)
+  assert.equal(ran, 1)
 })
 
 /* ------------------------------------------------------------- 3D kit */
@@ -1276,7 +1343,9 @@ test('clips: pose tracks use known keys with ordered times; decal tracks resolve
 })
 
 // 250 KB until ADR-0004: the hoverboard took the layer's source past it (about 1.8 KB gzipped in the build).
-test('budget: the whole actor layer (models, decals, motion, cursor, JS, CSS) stays under 270 KB of source', async () => {
+// 270 KB until S12: Vodafone's pages (the left corner's ride across, the fixed floor, wrap and mark, and
+// ./obstacles.js, 5.4 KB) added about 14 KB, to 278.7 KB; 285 KB keeps about the 6 KB of headroom it had.
+test('budget: the whole actor layer (models, decals, motion, cursor, obstacles, JS, CSS) stays under 285 KB of source', async () => {
   const files = [
     '../src/pocket/actors/assets/mascot.svg',
     '../src/pocket/actors/assets/drone.svg',
@@ -1297,8 +1366,50 @@ test('budget: the whole actor layer (models, decals, motion, cursor, JS, CSS) st
     '../src/pocket/pocket-actors.css',
     '../src/pocket/pocket-cursor.js',
     '../src/pocket/pocket-cursor.css',
+    '../src/pocket/obstacles.js',
   ]
   let total = 0
   for (const file of files) total += (await stat(new URL(file, import.meta.url))).size
-  assert.ok(total < 270 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
+  assert.ok(total < 285 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
+})
+
+/* -------------------------------------------------- Vodafone's pages (S12) */
+
+test('ready flag and nodes: on the album root, never Vodafone\'s body; one instance at a time; data: rigs are read, not fetched', async () => {
+  const source = await readFile(new URL('../src/pocket/pocket-actors.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(source, /document\.body\.dataset/, 'nothing is written on <body>')
+  assert.match(source, /pocketRoot\.dataset\.pocketActorReady = 'true'/)
+  assert.match(source, /if \(instance\) \{/, 'a second instance is refused (the rigs\' SVG ids are fixed)')
+  assert.match(source, /if \(\/\^data:\/i\.test\(url\)\) text = dataText\(url\)/)
+  // Every node is made through make()/makeSvg() (marked), none with the bare helpers.
+  const body = source.slice(source.indexOf('export const createPocketActors'))
+  assert.doesNotMatch(body, /[^.\w]el\('/, 'no unmarked el() inside the actors')
+  const created = body.match(/document\.createElement(NS)?\(/g) ?? []
+  assert.equal(created.length, 1, 'only makeSvg() creates SVG nodes itself')
+})
+
+test('ride across: from the left corner the board turns round so its nose (-x) leads right, and keeps its pace', () => {
+  // The cross ride keeps the board's pace (base, per px, least) and only has more room at the top.
+  const most = TIMING.ride[3]
+  const cross = crossPace(TIMING.ride)
+  const short = planRide({ from: 100, to: 0, timing: TIMING.ride })
+  const across = planRide({ from: -1150, to: 0, timing: cross })
+  assert.equal(short.dir, -1)
+  assert.equal(across.dir, 1)
+  assert.ok(across.duration > most && across.duration <= 2700, `${across.duration} ms across 1150 px`)
+  assert.equal(planRide({ from: -200, to: 0, timing: cross }).duration, planRide({ from: -200, to: 0, timing: TIMING.ride }).duration, 'a short ride is no faster or slower')
+  // The board's flight turns it round (an angle spring, the short way) and its x still follows the path.
+  const f = createFlight(180)
+  f.x = across.from
+  let lead = 0 // how far the board ever got ahead of its path's end (it must not fly past by much)
+  for (let t = 0; t < across.duration + 1500; t += 16) {
+    stepFlight(f, 16, { x: ridePoint(across, t).x, y: -22, z: 0 }, 180, BOARD_FLIGHT)
+    lead = Math.max(lead, f.x)
+  }
+  assert.ok(lead < 30, `overshoots its spot by ${lead.toFixed(1)} px at most`)
+  assert.ok(Math.abs(f.x) < 3, `arrives (${f.x.toFixed(1)})`)
+  assert.ok(Math.abs(angleDelta(f.yaw.x, 180)) < 1, 'nose still leading right at the end of the ride')
+  // The way back is a dash that is there before the page lands (1100 ms), whatever the width.
+  assert.ok(planRide({ from: 0, to: -1150, timing: DASH_PACE }).duration <= 760)
+  assert.ok(planRide({ from: 0, to: -280, timing: DASH_PACE }).duration >= 420)
 })

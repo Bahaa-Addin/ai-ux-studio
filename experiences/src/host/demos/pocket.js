@@ -28,7 +28,13 @@
  *   the accessibility button at the bottom-right. A pocketed sticker flies there, and the page turns
  *   from there to the album.
  *
- * Not yet: no mascot (S12), no portal (S13).
+ * - The mascot and the drone (S12) are a chunk of their own (./actors.js). Until it is needed, initPocket
+ *   gets a stand-in that does nothing (its stage is an empty marked holder, swapped for the real one when
+ *   the actors arrive): it loads at idle where something is pocketed or the page has chips, and at once
+ *   when a chip or the Pocket button is first pressed or focused. A save before it arrives has no greeting.
+ *   If the chunk or the actors fail, only the actors go (seams.report); the Pocket and the layer stay.
+ *
+ * Not yet: no portal (S13).
  */
 import css from '../../pocket/pocket.css'
 import { createChips } from '../../pocket/chips-overlay.js'
@@ -105,6 +111,9 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     // The corner at the bottom-left: the bottom-right is Vodafone's accessibility button and the guide's (ADR-0064).
     corner: true,
     cornerSide: 'left',
+    // The mascot and the drone stand at the album's inline end: the right in English, the left in Arabic,
+    // where the album runs right to left (S12, the owner 2026-11-14).
+    actorSide: 'inline-end',
     // A record keeps its own key (not the clone's card id): stickers of two pages never share one (ADR-0052 §14).
     recordKey: null,
     chips: 'overlay',
@@ -124,13 +133,69 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     wellRead,
     eagerImages: false,
     pageBack: PAGE_BACK,
+    report: (error) => console.warn('[AIXC] the Pocket actors stopped; the Pocket carries on', error),
+  }
+
+  // The mascot and drone (S12): a stand-in until their chunk arrives, then the real ones; every call forwards.
+  let actorsWith = null // what initPocket gave them
+  let actors = null
+  let actorsGone = false // destroyed, or failed to arrive
+  let actorsAsked = false
+  const holders = []
+  const createActors = (options) => {
+    actorsWith = options
+    return new Proxy(
+      {},
+      {
+        get: (_, name) =>
+          name === 'then'
+            ? undefined
+            : (...args) => {
+                if (actors) return actors[name]?.(...args)
+                if (name === 'destroy') actorsGone = true
+                if (name === 'underStage') return holders[holders.push(seams.mark(document.createElement('div'))) - 1]
+              },
+      },
+    )
+  }
+  const loadActors = () => {
+    if (actorsAsked || !actorsWith) return
+    actorsAsked = true
+    void guard.run('actors', async () => {
+      try {
+        const demo = await import('./actors.js')
+        if (guard.stopped || actorsGone) return
+        actors = demo.createActors(actorsWith, { ensureCss })
+        const stage = actors.underStage()
+        const shown = holders.find((holder) => holder.isConnected)
+        for (const holder of holders) holder === shown ? holder.replaceWith(stage) : holder.remove()
+        holders.length = 0
+      } catch (error) {
+        actorsGone = true
+        try {
+          actors?.destroy()
+        } catch {}
+        actors = null
+        seams.report(error)
+      }
+    })
   }
 
   const regions = { sourceRoot: host.main, outputRoot: host.outputRoot, viewbar: host.viewbar, header: host.header, main: host.main }
-  const pocket = initPocket({ adapter, regions, store, seams, createChips, model: layer.model ?? null })
+  const pocket = initPocket({ adapter, regions, store, seams, createChips, createActors, model: layer.model ?? null })
   guard.onStop(() => pocket.destroy())
+  // The actors at idle where something is pocketed or there are chips to pocket with; at once on a first press or focus.
+  const actorsIfUseful = () => (pocket.state.ids.length || pocket.chips()?.shown.length) && loadActors()
+  const atIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 200))
+  void store.ready.then(() => atIdle(guard.wrap('pocket actors', actorsIfUseful)))
+  const pressed = (event) => event.target?.closest?.('.pocket-cta, .pocket-peek') && loadActors()
+  guard.listen(document, 'pointerdown', pressed, true)
+  guard.listen(document, 'focusin', pressed, true)
   // Vodafone's page changed and was read again: the cards to pocket are the new ones.
-  guard.listen(document, 'aixc:model', (event) => pocket.setModel(event.detail.model, event.detail.coverage))
+  guard.listen(document, 'aixc:model', (event) => {
+    pocket.setModel(event.detail.model, event.detail.coverage)
+    atIdle(guard.wrap('pocket actors', actorsIfUseful))
+  })
 
   // The clone's ids-only store, if this browser has one here: moved over once, for the cards this
   // page knows; left in place while some belong to another page.

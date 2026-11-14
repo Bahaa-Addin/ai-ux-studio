@@ -81,11 +81,22 @@ const AIXC_CORE_BUDGET = 7.75 * 1024
  * The journey in the live Pocket (S10, ADR-0050 §2-§3) is a chunk of its own that the Pocket's chunk
  * loads, never the core: journey.js and journey.css as minified text, 8,226 bytes gzipped on
  * 2026-11-14; budget a little above.
+ *
+ * The mascot and the drone on live pages (S12) are a chunk of their own that the Pocket's chunk loads
+ * (at idle where something is pocketed or chips show, at once on a first press): actors.js with
+ * pocket-actors.js, the cursor, the rigs as data: URLs and both stylesheets as minified text, 41,871
+ * bytes gzipped on 2026-11-14 before the S12 changes to the actors themselves, without what it shares
+ * with the Pocket's chunk (already loaded when it loads; 8,209 bytes then). Budget the measure rounded
+ * up to a quarter KB, raised on purpose when the actors grow. The Pocket's chunk with its stand-in for
+ * them measured 31,718 bytes (the code it shares with the actors now a chunk of its own). 44,170 bytes
+ * on 2026-11-14 with S12's changes to the actors (the left corner's ride across, the fixed floor, wrap
+ * and mark on every node, ./obstacles.js, and the album's inline end: mascot and drone on the left of a
+ * right-to-left album), so 43.25 KB; the Pocket's chunk 31,952 bytes with the actors' side seam.
  */
-const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 31.25 * 1024, 'src/host/demos/journey.js': 8.75 * 1024 }
+const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 31.25 * 1024, 'src/host/demos/journey.js': 8.75 * 1024, 'src/host/demos/actors.js': 43.25 * 1024 }
 
 /** Which chunk loads a demo chunk on intent (a dynamic import), by entry; the core unless named here. */
-const AIXC_LOADED_BY: Record<string, string> = { 'src/host/demos/journey.js': 'src/host/demos/pocket.js' }
+const AIXC_LOADED_BY: Record<string, string> = { 'src/host/demos/journey.js': 'src/host/demos/pocket.js', 'src/host/demos/actors.js': 'src/host/demos/pocket.js' }
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
 	const sizes = await buildSdk({ minify: true })
@@ -116,14 +127,26 @@ test('the experience layer is its own small script; guide.js carries none of it'
 		assert.ok(by?.imports.some((i) => i.file === chunk.file && i.kind === 'dynamic-import'), `${loader ?? 'the core'} loads ${entry} on intent`)
 		if (loader) assert.ok(!manifest.files.find((f) => f.file === 'aixc.js')?.imports.some((i) => i.file === chunk.file), `the core does not load ${entry}`)
 		const files = closure(chunk.file)
-		const gz = files.filter((f) => !eager.has(f)).reduce((sum, f) => sum + gzipSync(fs.readFileSync(path.join(aixc, f)), { level: 9 }).length, 0)
+		// What its loader brought already is not counted again.
+		const had = by ? new Set([...eager, ...closure(by.file)]) : eager
+		const gz = files.filter((f) => !had.has(f)).reduce((sum, f) => sum + gzipSync(fs.readFileSync(path.join(aixc, f)), { level: 9 }).length, 0)
 		assert.ok(gz <= max, `${entry} (${files.join(', ')}) is ${gz} bytes gzipped, over its ${max}-byte budget`)
 	}
 	for (const f of manifest.files) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f.file), 'utf8'), /new URL\(["'`]\.\//, `no asset beside a module in ${f.file}`)
+	// The actors' rigs are data: URLs in their chunk (S12); only the core names import.meta.url, to find its own script and the gateway.
+	for (const f of manifest.files) {
+		const src = fs.readFileSync(path.join(aixc, f.file), 'utf8')
+		assert.doesNotMatch(src, /new URL\([^)]*\.svg|new URL\([^)]*import\.meta\.url/, `no new URL(...) to a picture or beside a module in ${f.file}`)
+		if (f.file !== 'aixc.js') assert.doesNotMatch(src, /import\.meta\.url/, `no import.meta.url in ${f.file}`)
+	}
+	const actors = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/actors.js')?.file ?? ''), 'utf8')
+	assert.equal(actors.match(/data:image\/svg\+xml,%3Csvg /g)?.length, 2, 'the mascot\'s and the drone\'s rigs are in the actors\' chunk as data: URLs')
+	assert.match(actors, /pocket-actor-floor/, 'the actors\' stylesheet is in their chunk as text')
 	const pocket = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/pocket.js')?.file ?? ''), 'utf8')
 	assert.doesNotMatch(pocket, /vf-portal|pocket-mascot|pocket-drone|generativelanguage|aixc-composer__/, 'the Pocket on live pages carries no portal, mascot, drone or composer (pocket.css only hides the composer\'s launcher)')
 	assert.match(pocket, /pocket-chips/, 'the Pocket on live pages carries its chips (S6)')
 	assert.doesNotMatch(pocket, /pocket-journey/, 'the journey is not in the Pocket\'s chunk: it loads only where a trail host can be claimed (S10)')
+	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-mascot|pocket-drone|pocket-actor|data:image\/svg/, `no mascot or drone with the Pocket (${f}): they load on their own (S12)`)
 })
 
 /**

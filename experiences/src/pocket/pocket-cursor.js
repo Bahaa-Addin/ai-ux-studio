@@ -32,9 +32,11 @@ const make = (tag, className, attributes = {}) => {
  * @param {() => boolean} options.reducedMotion
  * @param {(ripple: {x:number,y:number,at:number}) => void} [options.onRipple]
  * @param {(pointer: object) => void} [options.onMove]
+ * @param {(fn: Function) => Function} [options.wrap]  wraps every callback it registers (pocket-actors.js's)
+ * @param {(node: Element) => Element} [options.mark]  called on every node it adds
  * @returns {{ pointer: object, light: object, active: boolean, destroy(): void }}
  */
-export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () => {}, onMove = () => {} }) => {
+export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () => {}, onMove = () => {}, wrap = (fn) => fn, mark = (node) => node }) => {
   const pointer = { x: -1, y: -1, vx: 0, vy: 0, speed: 0, at: 0, over: 'none', inside: false, slowSince: 0 }
   const light = { x: -1, y: -1 }
   const off = []
@@ -45,16 +47,17 @@ export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () 
   let layout = null // cards' boxes and the album's top, measured when the layout changes (not per frame)
   let leanDue = false
 
-  const cursor = make('div', 'pocket-cursor', { 'aria-hidden': 'true' })
-  const halo = make('div', 'pocket-cursor__halo')
-  const dot = make('div', 'pocket-cursor__dot')
+  const cursor = mark(make('div', 'pocket-cursor', { 'aria-hidden': 'true' }))
+  const halo = mark(make('div', 'pocket-cursor__halo'))
+  const dot = mark(make('div', 'pocket-cursor__dot'))
   cursor.append(halo, dot)
-  const pool = make('div', 'pocket-light', { 'aria-hidden': 'true' })
-  const ripples = make('div', 'pocket-ripples', { 'aria-hidden': 'true' })
+  const pool = mark(make('div', 'pocket-light', { 'aria-hidden': 'true' }))
+  const ripples = mark(make('div', 'pocket-ripples', { 'aria-hidden': 'true' }))
 
   const on = (target, type, handler, options) => {
-    target.addEventListener(type, handler, options)
-    off.push(() => target.removeEventListener(type, handler, options))
+    const wrapped = wrap(handler)
+    target.addEventListener(type, wrapped, options)
+    off.push(() => target.removeEventListener(type, wrapped, options))
   }
 
   const usable = () => !disposed && finePointer() && !reducedMotion() && !root.hidden && root.dataset.journey !== 'open'
@@ -116,7 +119,7 @@ export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () 
     }
   }
 
-  const tick = (now) => {
+  const tick = wrap((now) => {
     frame = null
     if (!active) return
     const dt = last ? Math.min(64, now - last) : 16
@@ -138,7 +141,7 @@ export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () 
     const moving = Math.hypot(pointer.x - light.x, pointer.y - light.y) > 0.4 || pointer.speed > 2 || leanDue
     if (moving) frame = requestAnimationFrame(tick)
     else last = 0
-  }
+  })
 
   const wake = () => {
     if (frame === null && active) frame = requestAnimationFrame(tick)
@@ -191,14 +194,16 @@ export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () 
   }
   on(window, 'scroll', remeasure, { passive: true })
   on(window, 'resize', remeasure)
-  const resized = new ResizeObserver(remeasure)
+  const resized = new ResizeObserver(wrap(remeasure))
   resized.observe(root)
   off.push(() => resized.disconnect())
   // The journey opening over the album (or the album closing) hands the cursor back at once,
   // even if the pointer does not move.
-  const watched = new MutationObserver(() => {
-    if (active && !usable()) setActive(false)
-  })
+  const watched = new MutationObserver(
+    wrap(() => {
+      if (active && !usable()) setActive(false)
+    }),
+  )
   watched.observe(root, { attributes: true, attributeFilter: ['data-journey', 'hidden'] })
   off.push(() => watched.disconnect())
 
@@ -207,7 +212,7 @@ export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () 
     const over = classify(event.target)
     cursor.toggleAttribute('data-pressed', true)
     if (over === 'outside' || over === 'drone' || over === 'text') return
-    const ripple = make('div', 'pocket-ripple')
+    const ripple = mark(make('div', 'pocket-ripple'))
     ripple.style.left = `${event.clientX}px`
     ripple.style.top = `${event.clientY}px`
     ripple.style.setProperty('--reach', `${timing.rippleReach}px`)
@@ -220,8 +225,7 @@ export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () 
       ],
       { duration: timing.rippleSpan, easing: 'cubic-bezier(.2,.7,.35,1)' },
     )
-    animation.onfinish = () => ripple.remove()
-    animation.oncancel = () => ripple.remove()
+    animation.onfinish = animation.oncancel = () => ripple.remove()
     onRipple({ x: event.clientX, y: event.clientY, at: performance.now() })
   })
 

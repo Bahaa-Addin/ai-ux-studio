@@ -240,6 +240,8 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
     mark: (node) => node,
     wrap: (_step, fn) => fn,
     checkpoint: () => {},
+    // The actors failed and were taken away (the Pocket carries on); Vodafone's pages say so their own way.
+    report: (error) => console.error('Pocket actors:', error),
     labels: {
       back: t('Back to Services'),
       lead: (n) => (n ? `${n} ${n === 1 ? 'service' : 'services'} you peeled off the Services page, kept here for later.` : t('Nothing here yet.')),
@@ -248,6 +250,10 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
     corner: true,
     // Which bottom corner the page peeks from and the Pocket button sits in: 'right' or 'left' (physical).
     cornerSide: 'right',
+    // Where the mascot and the drone stand in the album: 'right' (physical, in both languages: the clone)
+    // or 'inline-end' (the album's inline end, read from the page's direction when the Pocket starts:
+    // the left on a right-to-left page; Vodafone's pages, S12).
+    actorSide: 'right',
     chips: true,
     // The clone's ids-only store keys a sticker by its card's id; on live pages a record has its own key.
     recordKey: (id) => id,
@@ -493,12 +499,45 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     portal = { enabled: false }
   }
 
-  /** Mascot and drone. Optional: if they cannot start, the pocket works exactly as before. */
+  /** Mascot and drone. Optional: if they cannot start, or fail later, the pocket works exactly as before. */
   let actors = null
-  try {
-    actors = createActors?.({ pocketRoot, peekButton, sheet: () => state.peek?.sheet ?? sheetRect(), reducedMotion }) ?? null
-  } catch {
+  // Every node they add (marked with the host's mark), so a failure can take them all away.
+  const actorNodes = []
+  const actorMark = (node) => {
+    if (actorNodes.length >= 128) actorNodes.splice(64, Infinity, ...actorNodes.slice(64).filter((n) => n.isConnected))
+    actorNodes.push(node)
+    return mark(node)
+  }
+  /** An actor failed: only the actors go (ADR-0052); the Pocket and the layer stay up, and the host hears of it. */
+  const dropActors = (error) => {
+    const gone = actors
     actors = null
+    try {
+      gone?.destroy()
+    } catch {}
+    for (const node of actorNodes.splice(0)) node.remove()
+    try {
+      seams.report?.(error)
+    } catch {}
+  }
+  /** The physical side the actors stand on (seams.actorSide); 'inline-end' follows the page's direction now. */
+  const actorSide = () => (seams.actorSide === 'inline-end' && (seams.page?.dir || document.documentElement.dir) === 'rtl' ? 'left' : 'right')
+  /** Every listener, timer, frame and observer callback of the actors runs through this. */
+  const actorWrap = (fn) =>
+    function actorCallback(...args) {
+      if (!actors) return undefined
+      try {
+        return fn.apply(this, args)
+      } catch (error) {
+        dropActors(error)
+        return undefined
+      }
+    }
+  try {
+    actors = createActors?.({ pocketRoot, peekButton, sheet: () => state.peek?.sheet ?? sheetRect(), reducedMotion, corner: side, side: actorSide(), wrap: actorWrap, mark: actorMark, report: (error) => seams.report?.(error), checkpoint }) ?? null
+  } catch (error) {
+    actors = null
+    if (createActors) dropActors(error)
   }
 
   /* ----------------------------------------------------- page geometry */

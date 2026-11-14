@@ -73,6 +73,34 @@ const cssText: esbuild.Plugin = {
 	},
 }
 
+/**
+ * A picture beside a module (new URL('./x.svg', import.meta.url), the Pocket actors' rigs) would be fetched
+ * from Vodafone's page or the gateway, which serves only .js: in the layer's build it becomes a data: URL
+ * string instead, the SVG minified and percent-encoded (S12; smaller gzipped than base64). The clone
+ * (experiences/scripts/serve.mjs) serves the sources and keeps the files.
+ */
+const svgDataUrl = (file: string) => {
+	let svg = fs
+		.readFileSync(file, 'utf8')
+		.replace(/<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->/g, '')
+		.replace(/>\s+</g, '><')
+		.replace(/\s+/g, ' ')
+		.trim()
+	if (!svg.includes("'")) svg = svg.replace(/"/g, "'")
+	return `data:image/svg+xml,${svg.replace(/[%#<>"\x00-\x1f\x7f]|[^\x00-\x7f]/gu, encodeURIComponent)}`
+}
+const svgInline: esbuild.Plugin = {
+	name: 'svg-inline',
+	setup(b) {
+		b.onLoad({ filter: /[\\/]experiences[\\/]src[\\/].*\.js$/ }, (a) => {
+			const src = fs.readFileSync(a.path, 'utf8')
+			if (!src.includes('import.meta.url')) return undefined
+			const contents = src.replace(/new URL\((['"])(\.\.?\/[^'"]+\.svg)\1,\s*import\.meta\.url\)(\.href)?/g, (_m, _q, rel: string) => JSON.stringify(svgDataUrl(path.resolve(path.dirname(a.path), rel))))
+			return { contents, loader: 'js' }
+		})
+	},
+}
+
 /** Resolves the repo's `#kb` alias for browser builds (types only are imported by the SDK). */
 const alias: esbuild.Plugin = {
 	name: 'alias',
@@ -121,7 +149,7 @@ export async function buildAixc(opts: { minify?: boolean } = {}): Promise<Record
 		entryNames: '[name]',
 		chunkNames: '[name]-[hash]',
 		loader: { '.css': 'text' },
-		plugins: (opts.minify ?? true) ? [cssText] : [],
+		plugins: (opts.minify ?? true) ? [cssText, svgInline] : [svgInline],
 		metafile: true,
 	})
 	const files: AixcManifestFile[] = Object.entries(result.metafile.outputs)

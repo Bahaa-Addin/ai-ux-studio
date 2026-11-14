@@ -41,9 +41,22 @@
  * drone-flight.js, clips.js. State: ./actors/*-brain.js. pocket.js drives this through a
  * handful of lifecycle calls (itemPocketed, itemLanded, openRequested, openStart/Progress/
  * Complete, closeStart/Complete, destroy). QA hooks: data-mascot-state, data-drone-state,
- * body[data-pocket-actor-ready], and on the mascot data-look / data-body-yaw / data-remote /
+ * #pocket-output[data-pocket-actor-ready] (the album root, never Vodafone's body), and on the mascot data-look / data-body-yaw / data-remote /
  * data-sticks / data-board (none, riding, hovering, down) / data-board-pose (hover, roll, pitch,
  * yaw, depth, glow).
+ *
+ * Corner (S12, ADR-0064): on Vodafone's pages the pocket button is at the bottom-LEFT (`corner`
+ * 'left'). The mascot hides and rises behind it there; its home in the album does not move (the
+ * right content margin, in both languages), so on the page turn it rides its board right across the
+ * screen to it, and back to the corner on the way out. The drone does not move at all.
+ *
+ * Side (S12): the album's inline end, where both stand. 'right' (the default, the clone in both
+ * languages): the mascot at the bottom-right of the album, the drone in the upper-right. 'left' (live
+ * pages in Arabic, the album right-to-left): mirrored, the mascot at the bottom-left of the album and
+ * the drone in the upper-left; every place and direction anchored on a side takes the sign `inward`.
+ * The art is never flipped (the board turns round, as it does to ride). The page view's peek follows
+ * the button, not the side. With the corner on the same side, a home within RIDE_MIN px of the button
+ * has no ride: he rises there.
  */
 
 import { realClock, seededRandom, withTiming, pick } from './actors/timing.js'
@@ -61,6 +74,7 @@ import { shuffle, planRide, ridePoint } from './actors/gait.js'
 import { createFlight, stepFlight, followPoint, kick, command, sticksFor, spool, FLIGHT, BOARD_FLIGHT } from './actors/drone-flight.js'
 import { normalize, v3 } from './actors/space.js'
 import { createPocketCursor } from './pocket-cursor.js'
+import { insetForObstacles, stopAbove } from './obstacles.js'
 
 const ASSETS = {
   mascot: new URL('./actors/assets/mascot.svg', import.meta.url).href,
@@ -70,9 +84,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 const MASCOT_ASPECT = 120 / 150
 const DEPTH = 380 // px: how far in front of the screen the characters imagine what they look at
 const SVG_W = 120 // the mascot sheet's viewBox width
+const OBSTACLE_PAD = 16 // px the mascot keeps from a fixed control (options.obstacles)
+const RIDE_MIN = 60 // px: nearer than this to its home from the button, it does not ride (side 'left')
 
 // Album content the mascot must never cover where it stands.
-const CONTENT = '.pocket-grid__item, .pocket-empty, .pocket-view__bar, .pocket-view__head'
+const CONTENT = '.pocket-grid__item, .pocket-empty, .pocket-view__bar, .pocket-view__head, .pocket-group__head'
 
 const finePointer = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches
 const small = () => window.innerWidth < 640
@@ -97,11 +113,26 @@ const easeOutCubic = (t) => 1 - (1 - t) ** 3
 const easeInCubic = (t) => t * t * t
 const easeOutBack = (t) => 1 + 2.2 * (t - 1) ** 3 + 1.2 * (t - 1) ** 2 // a small pop past the end
 
+/** The text of a data: URL (base64 or percent-encoded), read here: nothing is fetched for it. */
+const dataText = (url) => {
+  const comma = url.indexOf(',')
+  if (comma < 0) throw new Error('Pocket actor asset is not a data URL')
+  const body = url.slice(comma + 1)
+  if (!/;base64$/i.test(url.slice(0, comma))) return decodeURIComponent(body)
+  const bytes = Uint8Array.from(atob(body), (c) => c.charCodeAt(0))
+  return new TextDecoder().decode(bytes)
+}
+
 /** Loads a local SVG rig and returns it as a live element (scripts and handlers stripped). */
 const loadRig = async (url, signal) => {
-  const response = await fetch(url, { signal })
-  if (!response.ok) throw new Error(`Pocket actor asset ${response.status}`)
-  const doc = new DOMParser().parseFromString(await response.text(), 'image/svg+xml')
+  let text
+  if (/^data:/i.test(url)) text = dataText(url)
+  else {
+    const response = await fetch(url, { signal })
+    if (!response.ok) throw new Error(`Pocket actor asset ${response.status}`)
+    text = await response.text()
+  }
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml')
   const svg = doc.documentElement
   if (svg.localName !== 'svg' || doc.querySelector('parsererror')) throw new Error('Pocket actor asset is not SVG')
   for (const node of svg.querySelectorAll('script, foreignObject')) node.remove()
@@ -113,6 +144,15 @@ const loadRig = async (url, signal) => {
   live.setAttribute('focusable', 'false')
   return live
 }
+
+/**
+ * The ride across the screen from the left corner (S12): the board's own pace (TIMING.ride's base,
+ * ms per px and least), with more room at the top for the width of a screen. A short ride is
+ * timed exactly as before.
+ */
+export const crossPace = ([base, perPx, least, most]) => [base, perPx, least, Math.round(most * 1.53)]
+/** The way back to the left corner: a dash, there (and sunk behind the button) as the page lands (1100 ms). */
+export const DASH_PACE = [0, 0.55, 420, 760]
 
 /** Test seam: a frozen config read once at start-up (seeded randomness, faster idle clock). */
 const testConfig = () => {
@@ -144,63 +184,100 @@ const lightToward = (base, at, source, strength = 0.7) => {
  * @param {HTMLElement} options.peekButton   the floating pocket button in the curl
  * @param {() => {top:number,width:number,height:number}} options.sheet  the turning sheet's box
  * @param {() => boolean} options.reducedMotion
+ * @param {'right'|'left'} [options.corner]  the side of the pocket button (physical); 'left' on Vodafone's pages
+ * @param {'right'|'left'} [options.side]  the album's inline end, where they stand (physical); 'left' for a right-to-left album on Vodafone's pages
+ * @param {'sticky'|'fixed'} [options.floor]  the album floor: sticky (the clone) or fixed, bounded above the footer
+ * @param {(fn: Function) => Function} [options.wrap]  wraps every listener, timer, frame and observer callback
+ * @param {(node: Element) => Element} [options.mark]  called on every node the actors add
+ * @param {() => Array<{left:number,top:number,right:number,bottom:number}>} [options.obstacles]  fixed
+ *   controls to keep 16 px from (viewport px; ./obstacles.js fixedObstacles); null: none
+ * @param {(error: unknown) => void} [options.report]
+ * @param {(step: string) => void} [options.checkpoint]  test seam: reached as 'actors-frame' in the mascot's frame
+ * @returns the lifecycle API, or null when another instance is alive (the rigs' SVG ids are fixed: one at a time)
  */
-export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotion }) => {
+let instance = null
+
+export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotion, corner = 'right', side = 'right', floor: floorMode = 'sticky', wrap = (fn) => fn, mark = (node) => node, obstacles = null, report = null, checkpoint = null }) => {
+  if (instance) {
+    console.warn('Pocket actors: one instance at a time; this one is not created (null)')
+    return null
+  }
+  const self = {}
   const config = testConfig()
   const timing = withTiming(config.timing)
   const random = seededRandom(Number.isFinite(config.seed) ? config.seed : (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0)
   const clock = realClock
-  const life = createScope()
+  const leftCorner = corner === 'left'
+  const leftSide = side === 'left'
+  const inward = leftSide ? 1 : -1 // toward the content from where they stand
+  const restNose = leftSide ? 180 : 0 // the board's nose (-x) toward the content at rest
+  const openSide = leftCorner ? 'right' : 'left' // where the drone waits on the floor as the pocket opens
+  const inwardFirst = leftSide ? ['right', 'left'] : ['left', 'right'] // parking spots, toward the content first
+  const fixedFloor = floorMode === 'fixed'
+  const scope = () => createScope({ wrap })
+  const life = scope()
+  const make = (tag, className, attributes) => mark(el(tag, className, attributes))
+  const makeSvg = (tag) => mark(document.createElementNS(SVG_NS, tag))
+  /** The obstacles now (none without the option); never throws. */
+  const fixedBoxes = () => {
+    if (!obstacles) return []
+    try {
+      return obstacles() ?? []
+    } catch {
+      return []
+    }
+  }
   let visit = null // one pocket visit: opened → closed
   let cursor = null // the album cursor, during a visit
   let ready = false
 
   /* ------------------------------------------------------------ the DOM */
-  const mascot = el('div', 'pocket-mascot', { 'aria-hidden': 'true', 'data-mascot-state': 'hidden' })
-  const mover = el('div', 'pocket-mascot__mover')
+  const mascot = make('div', 'pocket-mascot', { 'aria-hidden': 'true', 'data-mascot-state': 'hidden' })
+  const mover = make('div', 'pocket-mascot__mover')
   mascot.append(mover)
 
   // Inside the curl's `under` box (sheet coordinates): clipped by the paper, covered by the roll.
-  const peekStage = el('div', 'pocket-actor-peek', { 'aria-hidden': 'true' })
-  const peekClip = el('div', 'pocket-actor-peek__clip')
+  const peekStage = make('div', 'pocket-actor-peek', { 'aria-hidden': 'true' })
+  const peekClip = make('div', 'pocket-actor-peek__clip')
   peekStage.append(peekClip)
   peekClip.append(mascot)
 
   // The mascot's hands on the button's rim, drawn over the button (under its count badge).
-  const grip = document.createElementNS(SVG_NS, 'svg')
+  const grip = makeSvg('svg')
   grip.setAttribute('class', 'pocket-actor-grip')
   grip.setAttribute('aria-hidden', 'true')
   grip.setAttribute('focusable', 'false')
-  const gripHands = [document.createElementNS(SVG_NS, 'g'), document.createElementNS(SVG_NS, 'g')]
+  const gripHands = [makeSvg('g'), makeSvg('g')]
   grip.append(...gripHands)
   const badge = peekButton.querySelector('.pocket-peek__count')
   peekButton.insertBefore(grip, badge ?? null)
 
   // In the album: the drone layer (after the content, so it is last in tab order) and the floor.
-  const layer = el('div', 'pocket-actor-layer')
-  const trail = document.createElementNS(SVG_NS, 'svg')
+  const layer = make('div', 'pocket-actor-layer')
+  const trail = makeSvg('svg')
   trail.setAttribute('class', 'pocket-drone-trail')
   trail.setAttribute('aria-hidden', 'true')
   trail.setAttribute('focusable', 'false')
   trail.innerHTML =
     '<defs><mask id="pocket-drone-trail-mask" maskUnits="userSpaceOnUse"><path class="pocket-drone-trail__reveal" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></mask></defs>' +
     '<path class="pocket-drone-trail__line" fill="none" mask="url(#pocket-drone-trail-mask)"/>'
+  for (const node of trail.querySelectorAll('*')) mark(node)
   const trailReveal = trail.querySelector('.pocket-drone-trail__reveal')
   const trailLine = trail.querySelector('.pocket-drone-trail__line')
   const trailMask = trail.querySelector('mask')
   // Two shadows: one cast on the page behind it (it always goes with the drone), and a contact
   // shadow on the floor that shows only while it is down there (landing, parked, taking off).
-  const droneShadow = el('div', 'pocket-drone-shadow', { 'aria-hidden': 'true', hidden: true })
-  const groundShadow = el('div', 'pocket-drone-shadow pocket-drone-shadow--ground', { 'aria-hidden': 'true', hidden: true })
-  const drone = el('button', 'pocket-drone', { type: 'button', 'aria-label': t('Play with the Pocket drone'), 'data-drone-state': 'hidden', hidden: true })
-  const droneTilt = el('span', 'pocket-drone__tilt', { 'aria-hidden': 'true' })
-  const droneBob = el('span', 'pocket-drone__bob')
+  const droneShadow = make('div', 'pocket-drone-shadow', { 'aria-hidden': 'true', hidden: true })
+  const groundShadow = make('div', 'pocket-drone-shadow pocket-drone-shadow--ground', { 'aria-hidden': 'true', hidden: true })
+  const drone = make('button', 'pocket-drone', { type: 'button', 'aria-label': t('Play with the Pocket drone'), 'data-drone-state': 'hidden', hidden: true })
+  const droneTilt = make('span', 'pocket-drone__tilt', { 'aria-hidden': 'true' })
+  const droneBob = make('span', 'pocket-drone__bob')
   droneTilt.append(droneBob)
   drone.append(droneTilt)
   layer.append(groundShadow, droneShadow, trail, drone)
 
-  const floor = el('div', 'pocket-actor-floor', { 'aria-hidden': 'true' })
-  const stage = el('div', 'pocket-mascot-stage')
+  const floor = make('div', fixedFloor ? 'pocket-actor-floor pocket-actor-floor--fixed' : 'pocket-actor-floor', { 'aria-hidden': 'true' })
+  const stage = make('div', 'pocket-mascot-stage')
   floor.append(stage)
   pocketRoot.append(layer, floor)
 
@@ -209,12 +286,20 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   let droneView = null
 
   const mountRigs = (mascotSvg, droneSvg) => {
+    mark(mascotSvg)
+    mark(droneSvg)
     mover.append(mascotSvg)
     const view = createMascotView(mascotSvg)
     rig = { svg: mascotSvg, view, iris: view.parts.iris }
     // The mitten for the hands on the button: the sheet's hand artwork.
     const hand = mascotSvg.querySelector('[data-limb="arm-r"] [data-place="hand-r"] > *')
-    if (hand) gripHands.forEach((g) => g.append(hand.cloneNode(true)))
+    // Every node of the copy is the actors' own (marked, as everything they add).
+    const handCopy = () => {
+      const copy = hand.cloneNode(true)
+      for (const node of [copy, ...copy.querySelectorAll('*')]) mark(node)
+      return copy
+    }
+    if (hand) gripHands.forEach((g) => g.append(handCopy()))
     droneBob.append(droneSvg)
     droneView = createDroneView(droneSvg)
     applyExpression({})
@@ -249,7 +334,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     try {
       const vb = rig.svg.viewBox.baseVal
       const onIt = { board: 1, hover: BOARD.hover, y: BOARD.hover + BOARD.thickness - BOARD.feet }
-      rig.view.draw({ ...restPose(), yaw, pitch, ...onIt }, { light: MASCOT_MODEL.light })
+      rig.view.draw({ ...restPose(), yaw, pitch, ...onIt, boardYaw: restNose }, { light: MASCOT_MODEL.light })
       const outline = rig.svg.querySelector('[data-part="outline"]')
       const deck = rig.svg.querySelector('[data-part="board-deck"]')
       const stroke = parseFloat(outline?.getAttribute('stroke-width')) || 0
@@ -298,11 +383,11 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     }
   }
 
-  /** The right edge of the album's content (the cards, "Empty pocket"), in viewport px. */
+  /** The edge of the album's content on their side (the cards, "Empty pocket"), in viewport px. */
   const contentEdge = () => {
     const inner = pocketRoot.querySelector('.pocket-view__inner')
-    if (inner?.getClientRects().length) return inner.getBoundingClientRect().right
-    return document.documentElement.clientWidth - 16
+    if (inner?.getClientRects().length) return leftSide ? inner.getBoundingClientRect().left : inner.getBoundingClientRect().right
+    return leftSide ? 16 : document.documentElement.clientWidth - 16
   }
 
   /* ===================================================== the mascot */
@@ -415,7 +500,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   const resetBoard = (x = 0) => {
     const f = board.flight
     Object.assign(f, { x, y: -BOARD.hover, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 })
-    for (const spring of [f.roll, f.pitch, f.yaw, board.lean, board.tip, board.crouch, board.balance]) resetSpring(spring, 0)
+    for (const spring of [f.roll, f.pitch, board.lean, board.tip, board.crouch, board.balance]) resetSpring(spring, 0)
+    resetSpring(f.yaw, restNose)
     resetSpring(f.rpm, BOARD_FLIGHT.rpm.idle)
     resetSpring(board.glow, 1)
     board.base = x
@@ -435,7 +521,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     if (reduced) {
       board.plan = null
       resetBoard(place.x)
-      return { board: { board: 1, hover: BOARD.hover, boardRoll: 0, boardPitch: 0, boardYaw: 0, boardX: 0, boardZ: 0, glow: 0.85 }, pose: { y: BOARD.hover + BOARD.thickness - BOARD.feet }, balance: 0, counter: 0, nod: 0 }
+      return { board: { board: 1, hover: BOARD.hover, boardRoll: 0, boardPitch: 0, boardYaw: restNose, boardX: 0, boardZ: 0, glow: 0.85 }, pose: { y: BOARD.hover + BOARD.thickness - BOARD.feet }, balance: 0, counter: 0, nod: 0 }
     }
     const w = (i, t = now) => boardWander[i](t)
     const live = down ? 0 : 1
@@ -443,9 +529,13 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     // inward of its spot (never out, so the rider keeps to the margin), bobs, sways in depth.
     const targetAt = (t) => {
       const x = board.plan ? ridePoint(board.plan, t - board.plan.start).x : board.base
-      return { x: x - live * wx * (1 + w(0, t)) * 0.5, y: -live * (BOARD.hover + wBob * w(1, t)), z: live * wDepth * w(2, t) }
+      return { x: x + inward * live * wx * (1 + w(0, t)) * 0.5, y: -live * (BOARD.hover + wBob * w(1, t)), z: live * wDepth * w(2, t) }
     }
-    const heading = live * wYaw * w(5) - (board.plan ? board.plan.dir * 6 : 0)
+    // The nose (-x) leads. Riding right from the left corner, the board turns round so it still does,
+    // and swings back to face the content once it is there (on the left side, the content is to its
+    // right: it rests turned round).
+    const nose = board.plan ? (leftCorner && board.plan.dir > 0 ? 180 : 0) : restNose
+    const heading = nose + live * wYaw * w(5) - (board.plan ? (nose ? -6 : 6) * board.plan.dir : 0)
     // A little turbulence: a bump now and then (more often while it rides).
     if (now >= board.bumpAt) {
       if (board.bumpAt && live) kick(f, 0, (random() - 0.5) * (riding() ? 46 : 28), 0)
@@ -453,7 +543,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     }
     // The flight runs on the real time since the last frame (up to 0.25 s), in short steps along
     // the path, so slow frames (the page turning on a slow device) never leave it behind its path.
-    const options = down ? { ...BOARD_FLIGHT, frequency: 0.8, damping: 1 } : BOARD_FLIGHT
+    const options = down ? { ...BOARD_FLIGHT, frequency: 0.8, damping: 1 } : board.plan?.dash ? { ...BOARD_FLIGHT, frequency: 2.6, damping: 0.72, maxAccel: 9000 } : BOARD_FLIGHT
     let elapsed = board.last ? clamp(now - board.last, 0, 250) : dt
     board.last = now
     while (elapsed > 0) {
@@ -590,7 +680,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       bodyPitch = mode === 'drone' ? clamp(-0.15 * toTarget.pitch, -9, 3) : clamp(-0.12 * toTarget.pitch, -6, 3)
     } else {
       // On the Services page it faces the flying item a little, never far from the button.
-      bodyYaw = clamp(toTarget.yaw * 0.4, -24, 18)
+      bodyYaw = leftCorner ? clamp(toTarget.yaw * 0.4, -18, 24) : clamp(toTarget.yaw * 0.4, -24, 18)
       bodyPitch = clamp(-0.1 * toTarget.pitch, -5, 3)
     }
     return { bodyYaw, bodyPitch, eye: target ? toTarget : null }
@@ -872,6 +962,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   const tickMascot = (now) => {
     mascotFrameId = null
     if (!rig) return
+    checkpoint?.('actors-frame')
     const dt = mascotLast ? Math.min(64, now - mascotLast) : 16
     mascotLast = now
     // Breathing alone, with the pointer at rest, only needs every other frame.
@@ -924,12 +1015,13 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   /**
    * Rides the board to `x` (px from its spot), starting `delay` ms from now. The board chases an
    * eased path on the flight model, so it lags, banks and overshoots a little as it brakes.
-   * `away`: it leaves (speeds up and does not brake). Returns how long until it has come to rest
-   * there (0: it is there already).
+   * `away`: it leaves (speeds up and does not brake). `pace`: the ride's timing (TIMING.ride's
+   * form); `dash`: a brisker board (the way back to the left corner). Returns how long until it has
+   * come to rest there (0: it is there already).
    */
-  const rideTo = (x, { delay = 0, away = false } = {}) => {
+  const rideTo = (x, { delay = 0, away = false, pace = timing.ride, dash = false } = {}) => {
     travel = null
-    const plan = planRide({ from: place.x, to: x, timing: timing.ride, away })
+    const plan = planRide({ from: place.x, to: x, timing: pace, away })
     board.flight.x = place.x
     if (!plan) {
       board.plan = null
@@ -938,7 +1030,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       board.base = x
       return 0
     }
-    board.plan = { ...plan, start: performance.now() + delay }
+    board.plan = { ...plan, dash, start: performance.now() + delay }
     board.dir = plan.dir
     wakeMascot()
     return delay + plan.duration + (away ? 0 : timing.rideSettle)
@@ -953,7 +1045,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   }
 
   /* ---------------------------------------------------- mascot: layout */
-  const layout = { width: 0, height: 0, lift: 0, homeLeft: 16, startX: 0, hideY: 120, sink: 0, covered: false, peekHide: { x: 0, y: 72 } }
+  const layout = { width: 0, height: 0, lift: 0, homeLeft: 16, startX: 0, hideY: 120, sink: 0, covered: false, blocked: false, peekHide: { x: 0, y: 72 } }
 
   /** Places the mascot under the page-tip curl, behind the pocket button. */
   const placeForPeek = () => {
@@ -974,6 +1066,20 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     // Hiding place: straight down behind the button, below the clip line at its middle. It rises
     // from there and sinks back there.
     layout.peekHide = { x: 0, y: Math.round(height * 1.15 + size * 0.1) }
+  }
+
+  /**
+   * The fixed floor (Vodafone's pages: their html and body do not let a sticky one stick) stops at
+   * the album's end, as the sticky one did: above the footer once it scrolls into view.
+   */
+  let floorShift = 0
+  const boundFloor = () => {
+    if (!fixedFloor) return
+    const shift = Math.min(0, Math.round(layerBox().top - window.innerHeight))
+    if (shift === floorShift) return
+    floorShift = shift
+    floor.style.transform = shift ? `translateY(${shift}px)` : ''
+    mascotBox = null
   }
 
   /**
@@ -1005,6 +1111,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
    */
   const measureFloor = () => {
     remeasureMascot()
+    boundFloor()
     if (mascot.parentElement !== stage) stage.append(mascot)
     mascot.style.removeProperty('--pocket-mascot-h')
     mascot.style.bottom = '0px'
@@ -1014,22 +1121,39 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     // On its board it stands higher than its box: the lift, at the top of its bob.
     layout.lift = Math.ceil(((BOARD.hover + BOARD.thickness - BOARD.feet + timing.boardWander[1]) * layout.width) / SVG_W)
     const button = small() ? 16 + 26 : 22 + 29 // where the button's middle was, from the right edge
-    const start = line.width - button - layout.width / 2
+    let start = line.width - button - layout.width / 2
+    if (leftCorner) {
+      // From the button itself, at the bottom-left (it is fading out, round its middle).
+      const box = peekButton.getBoundingClientRect()
+      start = (box.width ? box.left + box.width / 2 - line.left : button) - layout.width / 2
+    }
     const edge = contentEdge() - line.left
-    const homeFor = () => clamp(edge - layout.width * (1 - insets.mascot), 0, Math.max(0, line.width - layout.width))
+    // Its visible edge on the content's edge: the right one (its right inset), or the left one (its left inset).
+    const homeFor = () => clamp(leftSide ? edge - layout.width * insets.mascotLeft : edge - layout.width * (1 - insets.mascot), 0, Math.max(0, line.width - layout.width))
     // Standing there it turns toward the cards (as aim() has it); measure its right edge in that pose.
     const cards = cardsPoint()
     const eye = { x: line.left + homeFor() + layout.width * 0.5, y: line.top - layout.height * 0.47 - layout.lift }
     const toCards = cards ? facing(eye, cards) : { yaw: 0, pitch: 0 }
     measureMascotInset(clamp(toCards.yaw, -timing.bodyMaxTurn, timing.bodyMaxTurn), clamp(-0.12 * toCards.pitch, -6, 3))
-    const home = homeFor()
+    let home = homeFor()
+    // Fixed controls (Vodafone's accessibility button, the guide's): it keeps 16 px from each, moving
+    // in toward the content only as far as that takes; with no room it tucks away.
+    layout.blocked = false
+    const boxes = fixedBoxes()
+    if (boxes.length) {
+      const floorLine = Math.min(window.innerHeight, line.top)
+      const drawn = { left: line.left + home + layout.width * insets.mascotLeft, right: line.left + home + layout.width * (1 - insets.mascot), top: floorLine - layout.height - layout.lift, bottom: floorLine }
+      const inset = insetForObstacles(drawn, boxes, OBSTACLE_PAD, { min: line.left + 8, max: line.right - 8, toward: inward })
+      home = clamp(home + inset.dx, 0, Math.max(0, line.width - layout.width))
+      layout.blocked = !inset.clear
+    }
     // Cards where it stands: it stands a little lower, or tucks away (it keeps to the margin).
     const spot = measureSpot(line, home)
     layout.homeLeft = Math.round(home)
     layout.startX = Math.round(start - home)
     layout.hideY = Math.round((layout.height + layout.lift) * 1.12)
     layout.sink = spot.sink
-    layout.covered = spot.covered
+    layout.covered = spot.covered || layout.blocked
     mascot.style.left = `${layout.homeLeft}px`
     mascot.style.bottom = `${-layout.sink}px`
   }
@@ -1089,7 +1213,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
           place.y = layout.peekHide.y
           // In this same frame: it turns visible now, and must not show at its last place first.
           applyPlace()
-          resetSpring(body.yaw, -30)
+          resetSpring(body.yaw, leftCorner ? 30 : -30)
           // Straight up from behind the button, a small pop past the rim, settling onto it.
           travelTo({ x: 0, y: 0 }, timing.emerge * 0.75, { ease: easeOutBack })
           play('emerge', { duration: timing.emerge })
@@ -1126,7 +1250,16 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
           stopClip()
           applyExpression({}, EXPRESSION_DEFAULTS)
           look.mode = 'ride'
-          rideTo(layout.startX + layout.width, { away: true })
+          if (leftCorner) {
+            // Back across to the corner, in time for the page landing over it, and down behind
+            // where the button comes back.
+            const until = rideTo(layout.startX, { pace: DASH_PACE, dash: true })
+            visit?.timeout(() => {
+              if (mascotBrain.state !== 'leaving') return
+              board.base = layout.startX // it stays in the corner (the board hovers where it sank)
+              travelTo({ x: layout.startX, y: layout.hideY }, 240, { ease: easeInCubic })
+            }, Math.max(0, until - timing.rideSettle))
+          } else rideTo(layout.startX + layout.width, { away: true })
           return
         case 'tucked':
           if (reduced || info.instant) {
@@ -1194,7 +1327,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const z = az * droneWander[2](now)
     const grow = (Math.max(0, z) * (anchor?.rect.width ?? 0)) / 520
     const hover = {
-      x: clamp(ax * (0.4 * droneWander[0](now) - 0.1) - grow, -slack.left, slack.right),
+      x: clamp(-inward * (ax * (0.4 * droneWander[0](now) - 0.1) - grow), -slack.left, slack.right),
       y: clamp(ay * droneWander[1](now), -slack.up, slack.down),
       z,
     }
@@ -1216,7 +1349,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       case 'evading': {
         const t = clamp((now - fly.hop.start) / timing.droneHop, 0, 1)
         const up = Math.sin(Math.PI * t)
-        return { target: { x: -9 * up, y: -12 * up, z: 6 * up }, heading: fly.hop.yaw + 360 * easeInOutSine(t), options: { continuous: true, heading: { frequency: 3, damping: 0.9 } } }
+        return { target: { x: 9 * inward * up, y: -12 * up, z: 6 * up }, heading: fly.hop.yaw + 360 * easeInOutSine(t), options: { continuous: true, heading: { frequency: 3, damping: 0.9 } } }
       }
       case 'dragging':
         return { target: fly.drag ?? { x: flight.x, y: flight.y }, heading: rest.yaw + clamp(flight.vx * 0.05, -40, 40), options: { frequency: 3.2, damping: 0.9, maxAccel: 9000 } }
@@ -1316,10 +1449,11 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
   /**
    * The spot on the floor beside the mascot where it lands the drone, or null when there is no
-   * free one (content, a floating button or the window edge in the way). `sides`: 'left' (toward
-   * the content) and/or 'right'. The drone's visible edge stays 10 px from the mascot's.
+   * free one (content, a floating button or the window edge in the way). `sides`: 'left' and/or
+   * 'right' (physical), the side toward the content first by default. The drone's visible edge stays
+   * 10 px from the mascot's.
    */
-  const parkingSpot = (sides = ['left', 'right']) => {
+  const parkingSpot = (sides = inwardFirst) => {
     if (!anchor || !fly.home || small() || !layout.width) return null
     if (mascot.hasAttribute('data-covered')) return null
     const line = stage.getBoundingClientRect()
@@ -1340,6 +1474,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       const node = document.querySelector(selector)
       if (node?.getClientRects().length && getComputedStyle(node).visibility !== 'hidden') blockers.push(node.getBoundingClientRect())
     }
+    blockers.push(...fixedBoxes())
     for (const side of sides) {
       const left = lefts[side]
       const spot = { left, top, right: left + w, bottom: top + h }
@@ -1534,8 +1669,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   let anchor = null
 
   /**
-   * Picks a collision-free home for the drone in an upper corner (the right gutter first when
-   * it is wide enough for the mascot to stand under it too), room for the heart, how far it may
+   * Picks a collision-free home for the drone in an upper corner on their side (the gutter on that
+   * side next when the band above the cards has no room), room for the heart, how far it may
    * drift, and where it may fly to follow the cursor.
    */
   const measureDrone = () => {
@@ -1557,7 +1692,11 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const rowTop = Math.min(...cards.map((r) => r.top), local(q('.pocket-empty'))?.top ?? Infinity)
     // "Empty pocket" is destructive: the drone keeps at least 24 px from it (16 here + the 8 px margin).
     const clearZone = clear ? rect(clear.left - 16, clear.top - 16, clear.width + 32, clear.height + 32) : null
-    const obstacles = [back, clearZone, local(q('.pocket-view__mark')), local(q('#pocket-title')), local(q('.pocket-view__lead')), local(q('.pocket-empty')), ...cards.filter((r) => r.top < rowTop + 8)].filter(Boolean)
+    const heads = [...pocketRoot.querySelectorAll('.pocket-group__head')].map(local).filter(Boolean)
+    const obstacles = [back, clearZone, local(q('.pocket-view__mark')), local(q('#pocket-title')), local(q('.pocket-view__lead')), local(q('.pocket-empty')), ...heads, ...cards.filter((r) => r.top < rowTop + 8)].filter(Boolean)
+    // Fixed controls (options.obstacles), in the layer's terms as it lies now: its drift and its
+    // flights stop short of them; they never move its home.
+    const fixed = fixedBoxes().map((o) => rect(o.left - box.left, o.top - box.top, o.right - o.left, o.bottom - o.top))
     const viewportWidth = document.documentElement.clientWidth
     const bounds = rect(8 - box.left, view.top + 4, viewportWidth - 16, Math.max(0, (Number.isFinite(rowTop) ? rowTop : view.bottom) - view.top))
     const w = drone.offsetWidth
@@ -1568,23 +1707,30 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const rightGutter = viewportWidth - box.left - inner.right
     const leftGutter = inner.left + box.left
     const mascotWidth = mascot.offsetWidth || 80
-    // Its visible right edge on the content's right margin (as "Empty pocket" above it).
-    const upperRight = { name: 'upper-right', rect: rect(inner.right - w * (1 - insets.drone), (bandTop + bandBottom) / 2 - h / 2, w, h), band: { top: bandTop, bottom: bandBottom } }
-    // In the gutter it hovers level with the band above the cards (below the bar), so its flights
-    // pass under "Empty pocket" rather than through it.
-    const rightGutterSpot = rightGutter >= w + 24 ? { name: 'right-gutter', rect: rect(inner.right + (rightGutter - w) / 2, (bandTop + bandBottom) / 2 - h / 2, w, h), band: { top: bandTop, bottom: bandBottom } } : null
+    const bandMiddle = (bandTop + bandBottom) / 2 - h / 2
+    const band = { top: bandTop, bottom: bandBottom }
+    // Its visible edge on the content's margin on their side (as "Empty pocket" above it): the right
+    // one, or the left one for a right-to-left album.
+    const upper = leftSide
+      ? { name: 'upper-left', rect: rect(inner.left - w * insets.droneLeft, bandMiddle, w, h), band }
+      : { name: 'upper-right', rect: rect(inner.right - w * (1 - insets.drone), bandMiddle, w, h), band }
+    // In the gutter on their side it hovers level with the band above the cards (below the bar), so
+    // its flights pass under "Empty pocket" rather than through it.
+    const endGutter = leftSide
+      ? leftGutter >= w + 24 ? { name: 'left-gutter', rect: rect(inner.left - leftGutter + (leftGutter - w) / 2, bandMiddle, w, h), band, end: true } : null
+      : rightGutter >= w + 24 ? { name: 'right-gutter', rect: rect(inner.right + (rightGutter - w) / 2, bandMiddle, w, h), band, end: true } : null
+    // The gutter on the far side, level with the bar.
+    const farGutter = leftSide
+      ? rightGutter >= w + 24 ? { name: 'right-gutter', rect: rect(inner.right + (rightGutter - w) / 2, bar.top, w, h), band: { top: bar.top, bottom: bandBottom } } : null
+      : leftGutter >= w + 24 ? { name: 'left-gutter', rect: rect(inner.left - leftGutter + (leftGutter - w) / 2, bar.top, w, h), band: { top: bar.top, bottom: bandBottom } } : null
     // The margin first; the gutters only when the band above the cards has no room.
-    const candidates = [
-      upperRight,
-      rightGutterSpot,
-      leftGutter >= w + 24 ? { name: 'left-gutter', rect: rect(inner.left - leftGutter + (leftGutter - w) / 2, bar.top, w, h), band: { top: bar.top, bottom: bandBottom } } : null,
-    ]
+    const candidates = [upper, endGutter, farGutter]
     const choice = chooseAnchor({ candidates, obstacles, bounds, margin: 8 })
     if (!choice) return null
     // How far it may drift each way without nearing anything.
     const free = (dx, dy) => {
       const moved = rect(choice.rect.left + dx, choice.rect.top + dy, w, h)
-      return obstacles.every((o) => !rectsOverlap(moved, o, 8)) && moved.left >= bounds.left && moved.right <= bounds.right && moved.top >= bounds.top - 40
+      return obstacles.every((o) => !rectsOverlap(moved, o, 8)) && fixed.every((o) => !rectsOverlap(moved, o, 8)) && moved.left >= bounds.left && moved.right <= bounds.right && moved.top >= bounds.top - 40
     }
     const room = (sx, sy, max) => {
       let d = 0
@@ -1597,16 +1743,25 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const growY = Math.ceil((h * az) / 260 / 2) + 1
     const slack = { left: Math.max(0, room(-1, 0, ax + growX) - growX), right: Math.max(0, room(1, 0, ax + growX) - growX), up: Math.max(0, room(0, -1, ay + growY) - growY), down: Math.max(0, room(0, 1, ay + growY) - growY) }
     // Where it may fly to keep the cursor company: the open band above the cards, the gutter.
-    const regions = []
-    if (Number.isFinite(rowTop) && rowTop - bar.bottom > h + 20) regions.push(rect(inner.left, bar.bottom + 8, viewportWidth - box.left - 8 - w - inner.left, rowTop - 8 - h - (bar.bottom + 8)))
-    if (rightGutter >= w + 16) regions.push(rect(inner.right + 8, bar.top, rightGutter - w - 16, Math.max(0, window.innerHeight - box.top - (mascotWidth * 1.25 + 40) - h - bar.top)))
+    let regions = []
+    const gutterHeight = Math.max(0, window.innerHeight - box.top - (mascotWidth * 1.25 + 40) - h - bar.top)
+    if (Number.isFinite(rowTop) && rowTop - bar.bottom > h + 20) {
+      // The open band above the cards, out to the window's edge on their side.
+      const from = leftSide ? 8 - box.left : inner.left
+      const to = leftSide ? inner.right - w : viewportWidth - box.left - 8 - w
+      regions.push(rect(from, bar.bottom + 8, to - from, rowTop - 8 - h - (bar.bottom + 8)))
+    }
+    // The gutter on their side, down to above the mascot.
+    if (!leftSide && rightGutter >= w + 16) regions.push(rect(inner.right + 8, bar.top, rightGutter - w - 16, gutterHeight))
+    if (leftSide && leftGutter >= w + 16) regions.push(rect(8 - box.left, bar.top, leftGutter - w - 16, gutterHeight))
+    if (fixed.length) regions = regions.map((region) => stopAbove(region, fixed, { w, h }, 8)).filter(Boolean)
     // The heart may use the clear canvas of both top rows (from the gutter: below the bar, so it
     // is not walled in by "Empty pocket"); every point of the flight is checked.
-    const sky = { top: choice.name === 'right-gutter' ? bar.bottom + 6 : view.top + 8, bottom: Number.isFinite(rowTop) ? rowTop - 8 : bandBottom }
+    const sky = { top: choice.end ? bar.bottom + 6 : view.top + 8, bottom: Number.isFinite(rowTop) ? rowTop - 8 : bandBottom }
     // The heart is a brief flight: it only has to clear "Empty pocket" itself, not the resting margin.
-    const allObstacles = [...obstacles.filter((obstacle) => obstacle !== clearZone), clear, ...cards].filter(Boolean)
-    const heart = planHeart({ home: choice.rect, band: sky, obstacles: allObstacles, bounds, drone: { w, h }, max: timing.heartMax })
-    return { ...choice, heart, slack, regions, obstacles, layerBox: { left: box.left, top: box.top } }
+    const allObstacles = [...obstacles.filter((obstacle) => obstacle !== clearZone), clear, ...cards, ...fixed].filter(Boolean)
+    const heart = planHeart({ home: choice.rect, band: sky, obstacles: allObstacles, bounds, drone: { w, h }, max: timing.heartMax, toward: inward })
+    return { ...choice, heart, slack, regions, obstacles: [...obstacles, ...fixed], layerBox: { left: box.left, top: box.top } }
   }
 
   const placeDrone = () => {
@@ -1713,14 +1868,15 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const margin = `${-Math.round(top)}px ${-Math.round(viewportWidth - right)}px ${-Math.round(viewportHeight - bottom)}px ${-Math.round(left)}px`
     spotWatch = visit.observe(
       new IntersectionObserver(
-        (entries) => {
+        wrap((entries) => {
           for (const entry of entries) {
             if (entry.isIntersecting) covering.add(entry.target)
             else covering.delete(entry.target)
           }
-          mascot.toggleAttribute('data-covered', covering.size > 0)
-          mascotBrain.setTucked(covering.size > 0)
-        },
+          const covered = covering.size > 0 || layout.blocked
+          mascot.toggleAttribute('data-covered', covered)
+          mascotBrain.setTucked(covered)
+        }),
         { rootMargin: margin, threshold: 0 },
       ),
     )
@@ -1735,10 +1891,11 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       droneBrain.relayout()
       if (droneBrain.state !== 'drawing-heart') placeDrone()
       if (!['riding', 'leaving'].includes(mascotBrain.state)) measureFloor()
+      else boundFloor()
       watchSpot()
       // On the floor (or on its way down): find the spot again, or fly it up if there is none.
       if (DRONE_GROUNDED.has(droneBrain.state) && droneBrain.state !== 'taking-off') {
-        const spot = parkingSpot(fly.openParked ? ['left'] : ['left', 'right'])
+        const spot = parkingSpot(fly.openParked ? [openSide] : inwardFirst)
         if (spot) {
           fly.spot = spot.flight
           if (droneBrain.state === 'landed') {
@@ -1849,7 +2006,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
   const beginVisit = () => {
     visit?.dispose()
-    visit = createScope()
+    visit = scope()
     dwell = null
     look.card = null
     const v = visit
@@ -1865,23 +2022,27 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       () => {
         remeasureMascot()
         fly.layerBox = null
+        boundFloor()
         noteActivity()
       },
-      { passive: true },
+      // A fixed floor: the page may scroll an element rather than the window (Vodafone's body).
+      { passive: true, capture: fixedFloor },
     )
     v.on(window, 'resize', relayout)
-    v.observe(new ResizeObserver(relayout)).observe(pocketRoot)
+    v.observe(new ResizeObserver(wrap(relayout))).observe(pocketRoot)
     // The drone flies only while it is on screen.
     v.observe(
-      new IntersectionObserver(([entry]) => {
-        fly.onScreen = entry.isIntersecting
-        startDrone()
-      }),
+      new IntersectionObserver(
+        wrap(([entry]) => {
+          fly.onScreen = entry.isIntersecting
+          startDrone()
+        }),
+      ),
     ).observe(drone)
 
     // The cursor (mouse or trackpad): its light, the cards leaning toward it, its ripples.
     try {
-      cursor = createPocketCursor({ root: pocketRoot, timing, reducedMotion, onRipple, onMove: onCursorMove })
+      cursor = createPocketCursor({ root: pocketRoot, timing, reducedMotion, onRipple, onMove: onCursorMove, wrap, mark })
       v.defer(() => {
         cursor?.destroy()
         cursor = null
@@ -2038,15 +2199,17 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
   /* ------------------------------------------------------------ assets */
   Promise.all([loadRig(ASSETS.mascot, life.signal), loadRig(ASSETS.drone, life.signal)])
-    .then(([mascotSvg, droneSvg]) => {
-      if (life.disposed) return
-      mountRigs(mascotSvg, droneSvg)
-      placeForPeek()
-      place.x = layout.peekHide.x
-      place.y = layout.peekHide.y
-      ready = true
-      document.body.dataset.pocketActorReady = 'true'
-    })
+    .then(
+      wrap(([mascotSvg, droneSvg]) => {
+        if (life.disposed) return
+        mountRigs(mascotSvg, droneSvg)
+        placeForPeek()
+        place.x = layout.peekHide.x
+        place.y = layout.peekHide.y
+        ready = true
+        pocketRoot.dataset.pocketActorReady = 'true'
+      }),
+    )
     .catch(() => {
       // The actors are decoration: without their assets the Pocket simply works without them.
     })
@@ -2061,13 +2224,17 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
           try {
             return fn(...args)
           } catch (error) {
-            console.error(`Pocket actors (${name}):`, error)
+            try {
+              if (report) report(error)
+              else console.error(`Pocket actors (${name}):`, error)
+            } catch {}
             return undefined
           }
         },
       ]),
     )
 
+  instance = self
   return guard({
     /** The element pocket.js puts in the curl's `under` layer (what the page tip uncovers). */
     underStage: () => peekStage,
@@ -2110,22 +2277,33 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       applyPlace() // no frame at its old place
       resetBoard(layout.startX)
       resetSpring(body.yaw, layout.startX > 0 ? -30 : 30)
+      // From the left corner it rides right: the board starts turned round, its nose leading.
+      if (leftCorner && layout.startX < 0) resetSpring(board.flight.yaw, 180)
       const reduced = reducedMotion()
-      const rideFor = reduced || layout.covered ? 0 : rideTo(0, { delay: timing.rideLead })
+      // Its home on the corner's side and the button just by it (Arabic on Vodafone's pages): no ride, it rises there.
+      const rises = leftSide && leftCorner && Math.abs(layout.startX) < RIDE_MIN
+      const rideFor = reduced || layout.covered || rises ? 0 : rideTo(0, { delay: timing.rideLead, pace: leftCorner ? crossPace(timing.ride) : timing.ride })
       if (!rideFor) {
         board.plan = null
         place.x = 0
         resetBoard(0)
       }
-      // The drone waits on the floor where the mascot will stand beside it (toward the content, so
-      // the mascot does not ride through it), and takes off once the mascot has raised the remote.
+      // The drone waits on the floor where the mascot will stand beside it (on the side it does not
+      // ride in from, so it does not ride through it: toward the content from the right corner,
+      // the outer side from the left one), and takes off once the mascot has raised the remote.
       // No free spot there: it hovers at home from the start, as before.
       resetSpring(pilot.hold, 0)
-      const parked = anchor && !reduced && !layout.covered ? parkingSpot(['left']) : null
+      const parked = anchor && !reduced && !layout.covered ? parkingSpot([openSide]) : null
       fly.spot = parked?.flight ?? null
       fly.openParked = Boolean(parked)
       if (anchor) droneBrain.open({ parked: Boolean(parked) })
-      mascotBrain.revealStart({ rideFor, covered: layout.covered })
+      const reveal = mascotBrain.revealStart({ rideFor, covered: layout.covered })
+      if (rises && reveal === 'there' && !reduced) {
+        // Up from below the floor, as it untucks.
+        place.y = layout.hideY
+        applyPlace()
+        travelTo({ x: 0, y: 0 }, timing.untuck, { ease: easeOutCubic, arc: 4 })
+      }
       // Drawn now, on its board where it starts: never a frame in its old pose at the new place.
       if (rig && mascotAlive()) drawMascot(performance.now(), 0)
       wakeMascot()
@@ -2151,7 +2329,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       endDwell()
       cursor?.destroy()
       cursor = null
-      const distance = Math.max(0, layout.startX + layout.width - place.x)
+      const distance = leftCorner ? Math.max(0, place.x - layout.startX) : Math.max(0, layout.startX + layout.width - place.x)
       mascotBrain.closeStart({ rideFor: reducedMotion() ? 0 : distance })
       droneBrain.close()
     },
@@ -2170,6 +2348,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     },
 
     destroy: () => {
+      if (instance === self) instance = null
       visit?.dispose()
       visit = null
       mascotBrain.destroy()
@@ -2181,7 +2360,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       peekStage.remove()
       grip.remove()
       peekButton.removeAttribute('data-actor-hold')
-      delete document.body.dataset.pocketActorReady
+      delete pocketRoot.dataset.pocketActorReady
     },
   })
 }
