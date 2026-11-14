@@ -4,7 +4,7 @@
 - Date: 2026-11-10
 - Area: delivery, build, gateway, site config, failure isolation; phase 1 of the live plan (`docs/handoff/live-demos-way2.md` at the repository root), under ADR-0046
 - Amended: §3 by [ADR-0052](0052-pocket-on-vodafone-pages.md) (2026-11-13): a demo's CSS is minified at build time and put on the page once by the core's `ensureCss`; every demo chunk has a budget of its own; the asset plugin waits for the first chunk that needs it
-- Owner decisions: 2026-11-10, ADRs are numbered in the order they are written, so this one takes 0048 and the trail host interface version 2 (asked questions, `seed()`, and the run-time host claim below) takes the next number
+- Owner decisions: 2026-11-10, ADRs are numbered in the order they are written, so this one takes 0048 and the trail host interface version 2 (asked questions, `seed()`, and the run-time host claim below) took ADR-0050 (built in live plan steps S8 to S10)
 
 ## Context
 
@@ -21,7 +21,7 @@ ADR-0046 runs the five demos on Vodafone's real pages as one experience layer be
 ## Decision
 
 1. **A second tag from the same loader.** After `guide.js`, the demo browser's loader adds `<script type="module" src="<origin>/__vg/sdk/aixc/aixc.js" data-aixc-demo="1">` when the site's `experiences.enabled` is on, the page is on the site's first (web) origin, its path matches `experiences.paths`, it has `#main-content`, it is not a page the clone already runs on (replay mounts), and the URL has no `aixc=off`. Mode A (Vodafone's tag manager) later adds the same two tags; nothing in the layer depends on the demo browser except `data-aixc-demo`.
-2. **No trail-host meta from the loader.** The page becomes the journey's host only when the layer's Pocket has actually attached, through a run-time claim on the trail host interface (version 2, the next ADR), and gives it back if the layer stops. Until then "Your journey" behaves as today (`hostUrl` or the guide's own sheet). The clone's static meta stays valid until phase 9.
+2. **No trail-host meta from the loader.** The page becomes the journey's host only when the layer's Pocket has actually attached, through a run-time claim on the trail host interface (version 2, ADR-0050), and gives it back if the layer stops. Until then "Your journey" behaves as today (`hostUrl` or the guide's own sheet). The clone's static meta stays valid until phase 9.
 3. **Build.** `packages/sdk/build.ts` builds `experiences/src/host/index.js` as ES modules with splitting into `packages/sdk/dist/aixc/` (entry `aixc.js`, chunks `[name]-[hash].js`), CSS as text injected once by the layer, and writes `dist/aixc/manifest.json` (each file, its entry, its imports) for the size budgets. The step is skipped when the entry does not exist, so no other build depends on it. Asset references (`new URL(…, import.meta.url)`) get a build plugin when the first module that uses them is bundled (phase 3); the modules stay runnable unbundled for the clone until phase 9.
 4. **Serving.** The gateway serves `GET /sdk/aixc/:file` (`.js` and `.js.map` only) from `dist/aixc/` with the same headers as `guide.js` (`text/javascript`, `Access-Control-Allow-Origin: *`, `no-store` outside production).
 5. **Config.** The site config gains `experiences: { enabled, paths, demos }` with a schema (default off; `paths` are regular expressions on the path; `demos` switches each demo). `config/sites/vodafone-eg.yaml` turns it on for `/en/` and `/ar/` pages.
