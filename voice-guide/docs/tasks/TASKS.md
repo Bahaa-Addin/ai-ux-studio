@@ -194,7 +194,7 @@ Offline-first: E1, E4 and T-302 are built and tested on fixtures before anything
 
 ### T-504 Performance budgets · S · [~]
 - **Status 2026-10-23**: measured 2026-10-23: `guide.js` 68.9 KB, 22.7 KB gzipped, 20.0 KB brotli: **over the 20 KB gzip budget by 2.7 KB**. CSS whitespace is now collapsed at build. Next: load the X-ray as its own chunk; then enforce the budget in CI.
-- Size check: `guide.js` ≤ 20 KB gzipped (fail the build above); long-task observer in end-to-end tests (no SDK task > 50ms on load); CLS contribution 0.
+- Size check: `guide.js` ≤ 21 KB gzipped (20 KB until 2026-11-13, ADR-0057; fail the build above); long-task observer in end-to-end tests (no SDK task > 50ms on load); CLS contribution 0.
 - **Acceptance**: budgets enforced in CI.
 
 ## E6 Demo readiness

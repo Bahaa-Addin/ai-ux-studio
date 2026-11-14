@@ -3,6 +3,7 @@
 Only these two source files are uploaded; local weights and credentials are not.
 Weights are downloaded directly into the cloud image from pinned HF snapshots.
 """
+import os
 from pathlib import Path
 
 import modal
@@ -39,10 +40,14 @@ image = (
 )
 app = modal.App("vodafone-voicetut")
 
+# Capacity for the public demo (ADR-0053 §5): one L4 per container. Deploy with
+# MAX_CONTAINERS=2 modal deploy ... to serve more visitors at once; keep a Modal spending limit set.
+MAX_CONTAINERS = int(os.environ.get("MAX_CONTAINERS", "1"))
+
 
 @app.function(
     image=image, gpu="L4", cpu=2, memory=8192,
-    min_containers=0, max_containers=1, scaledown_window=60,
+    min_containers=0, max_containers=MAX_CONTAINERS, scaledown_window=60,
     timeout=600, startup_timeout=600,
 )
 @modal.concurrent(max_inputs=100)

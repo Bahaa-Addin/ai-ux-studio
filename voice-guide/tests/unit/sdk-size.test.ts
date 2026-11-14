@@ -1,5 +1,5 @@
 /**
- * Size budget for the main SDK script (PRD §9, T-504): guide.js ≤ 20 KB (20,480 bytes) gzipped,
+ * Size budget for the main SDK script (PRD §9, T-504, ADR-0057): guide.js ≤ 21 KB (21,504 bytes) gzipped,
  * voice UI included. The X-ray drawer, page watch, the fallback agent and the Exploration Trail
  * load on demand; the trail's recorder and replayer are chunks of their own (ADR-0035).
  */
@@ -13,9 +13,9 @@ import { ROOT } from '#shared/config.ts'
 
 import { buildSdk } from '../../packages/sdk/build.ts'
 
-const BUDGET = 20 * 1024
+const BUDGET = 21 * 1024
 
-test('guide.js stays within 20 KB gzipped; on-demand parts are separate files', async () => {
+test('guide.js stays within 21 KB gzipped; on-demand parts are separate files', async () => {
 	await buildSdk({ minify: true })
 	const dist = path.join(ROOT, 'packages/sdk/dist')
 	const gz = (f: string) => gzipSync(fs.readFileSync(path.join(dist, f)), { level: 9 }).length

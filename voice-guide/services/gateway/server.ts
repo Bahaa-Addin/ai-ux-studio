@@ -12,12 +12,13 @@ import { InterestContributionBatch } from '#kb'
 import type { Services } from '../index.ts'
 import type { SiteConfig } from '../shared/config.ts'
 import { agentModelConfigured, ROOT } from '../shared/config.ts'
-import { clientIp, HttpError, readJson, Router, sendJson } from '../shared/http.ts'
+import { clientIp as clientIpOf, HttpError, readBody, readJson, Router, sendJson } from '../shared/http.ts'
 import { newId, signToken, verifyToken } from '../shared/ids.ts'
 import { log } from '../shared/log.ts'
 import type { RpcContext } from '../shared/rpc.ts'
 import type { TraceEvent } from '../shared/store/index.ts'
 import { newContext } from '../shared/trace.ts'
+import { createWhisperClient, type WhisperClient } from '../speech-in/whisper.ts'
 import { Metrics, RateLimiter } from './limits.ts'
 
 const AGENT_TOKEN_TTL_SEC = 30 * 60
@@ -42,6 +43,8 @@ export interface GatewayOptions {
 	services: Services
 	sdkDir?: string
 	adminToken?: string
+	/** Speech-to-text (ADR-0055); default: Whisper on Modal from VG_WHISPER_URL, or none. */
+	whisper?: WhisperClient
 }
 
 export function createGateway(opts: GatewayOptions) {
@@ -63,6 +66,13 @@ export function createGateway(opts: GatewayOptions) {
 	const speechEngine = (site: SiteConfig): 'voicetut' | 'system' => (site.speech.out.engine === 'voicetut' && (platform.voicetut.url || platform.serviceUrls.speechOut) ? 'voicetut' : 'system')
 	const metrics = new Metrics()
 	const router = new Router()
+	const clientIp = (req: http.IncomingMessage) => clientIpOf(req, platform.clientIpHeader)
+	const whisper = opts.whisper || createWhisperClient(platform)
+	// Speech-to-text clips: a person's own pace, per session, and the site's seconds per day (ADR-0055).
+	const sttLimiter = new RateLimiter(platform.stt.perSessionPerHour / 60, Math.min(10, platform.stt.perSessionPerHour))
+	/** Public gateways (ADR-0053): no page watch (no service worker on Vodafone's origin), X-ray hidden unless asked. */
+	const watchOn = (site: SiteConfig) => site.watch.enabled && !platform.public
+	const uiFor = (site: SiteConfig) => (platform.public ? { ...site.ui, xray: platform.publicXray } : site.ui)
 
 	// ---- live X-ray fan-out: one store subscription per process ----
 	const listeners = new Map<string, Set<(ev: TraceEvent) => void>>()
@@ -137,8 +147,8 @@ export function createGateway(opts: GatewayOptions) {
 			agent: session.agent ?? null,
 			agentToken: agentOn ? agentToken(site.id, session.id) : null,
 			page,
-			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { stt: site.speech.stt, tts: site.speech.tts, onDevice: site.speech.onDevice, phrases: (page as { phrases?: string[] }).phrases || [], out: { engine: speechEngine(site), firstAudioMs: site.speech.out.firstAudioMs } }, ui: site.ui, agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: site.watch.enabled }, trail: trailSettings(site, platform.trailAggregation) },
-			push: site.watch.enabled ? s.local.watch.publicKey() : null,
+			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { stt: site.speech.stt, tts: site.speech.tts, onDevice: site.speech.onDevice, phrases: (page as { phrases?: string[] }).phrases || [], out: { engine: speechEngine(site), firstAudioMs: site.speech.out.firstAudioMs }, server: whisper.configured }, ui: uiFor(site), agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: watchOn(site) }, trail: trailSettings(site, platform.trailAggregation) },
+			push: watchOn(site) ? s.local.watch.publicKey() : null,
 		})
 	})
 
@@ -169,8 +179,42 @@ export function createGateway(opts: GatewayOptions) {
 		const ctx = ctxFor(req, site, String(body.sessionId || 'speech'), typeof body.turnId === 'string' ? body.turnId : undefined)
 		const two = String(body.lang || '').slice(0, 2)
 		const lang = site.languages.includes(two) ? two : site.defaultLanguage
+		// The day's VoiceTut cap (ADR-0053 §5): past it, the browser voice speaks; audio already made still plays.
+		const cap = platform.voicetut.sentencesPerDay
+		const capScope = `speech-made:${site.id}:${new Date().toISOString().slice(0, 10)}`
+		if (cap > 0 && (await s.store.addUsage(capScope, 0)) >= cap) {
+			metrics.inc('speech.capped')
+			return sendJson(res, 200, { engine: 'voicetut', hash: null, ready: false, cached: false, reason: 'cap', url: null })
+		}
 		const r = await s.speechOut.speak({ siteId: site.id, lang, text: String(body.text || '').slice(0, 600) }, ctx)
+		if (cap > 0 && r.ready && !r.cached) await s.store.addUsage(capScope, 1)
 		sendJson(res, 200, { ...r, url: r.ready && r.hash ? `/v1/speech/${r.hash}.wav` : null })
+	})
+
+	// ---- listening for browsers without recognition (ADR-0055): one clip, its text ----
+	router.on('POST', '/v1/stt', async (req, res, _p, url) => {
+		const site = siteFor(req, url)
+		if (!whisper.configured) throw new HttpError(404, 'speech-to-text is off', 'stt_off')
+		const sessionId = url.searchParams.get('session') || ''
+		const ctx = ctxFor(req, site, sessionId)
+		await s.sessions.get({ siteId: site.id, sessionId }, ctx)
+		if (!sttLimiter.take(`${site.id}:${sessionId}`) || !turnLimiter.take(`stt:${site.id}:${clientIp(req)}`)) throw new HttpError(429, 'too many clips', 'rate_limited')
+		const ms = Math.max(0, Math.min(platform.stt.maxSeconds * 1000, Number(url.searchParams.get('ms') || 0)))
+		const dayScope = `stt-ms:${site.id}:${new Date().toISOString().slice(0, 10)}`
+		if ((await s.store.addUsage(dayScope, 0)) >= platform.stt.secondsPerDay * 1000) throw new HttpError(429, 'speech-to-text budget for today is used up', 'rate_limited')
+		const audio = await readBody(req, platform.stt.maxBytes)
+		if (audio.length < 200) throw new HttpError(400, 'empty clip', 'bad_audio')
+		const two = String(url.searchParams.get('lang') || '').slice(0, 2)
+		const lang = site.languages.includes(two) ? two : site.defaultLanguage
+		const t0 = performance.now()
+		const r = await whisper.transcribe(audio, String(req.headers['content-type'] || ''), lang)
+		const took = performance.now() - t0
+		await s.store.addUsage(dayScope, Math.round(r.duration ? r.duration * 1000 : ms || 5000))
+		metrics.inc('stt.clips')
+		metrics.observe('stt', took)
+		// Never the text or the audio (ADR-0018): lengths and timing only.
+		await s.tracer('gateway').event(ctx.trace, 'stt.done', { bytes: audio.length, clipMs: Math.round(ms), chars: r.text.length, lang: r.language || lang }, took)
+		sendJson(res, 200, { text: r.text, lang: r.language || lang })
 	})
 	router.on('GET', '/v1/speech/:file', async (req, res, p, url) => {
 		const site = siteFor(req, url)

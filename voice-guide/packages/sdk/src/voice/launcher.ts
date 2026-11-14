@@ -287,16 +287,34 @@ export class VoiceLauncher {
 		this.el.words.append(s, c)
 	}
 
-	#message(text: string, typeInstead = false): void {
+	/**
+	 * One line with one action in the transcript bar: "tap to hear" after a page change (ADR-0053 §4)
+	 * or the speech-to-text notice (ADR-0055). The action is a real button, so a tap on it is the
+	 * gesture the browser asks for. Cleared by the next state change.
+	 */
+	offer(text: string, label: string, onTap: () => void): void {
+		this.#resetWords()
+		this.#message(text, label, (e) => {
+			e.stopPropagation()
+			this.showBar(false)
+			onTap()
+		})
+		this.el.bar.removeAttribute('aria-hidden')
+		this.showBar(true)
+		this.announce(`${text} ${label}`)
+	}
+
+	/** A line in the bar, with one button when given (by default "type instead"). */
+	#message(text: string, label?: string | true, onTap: (e: Event) => void = () => this.el.kbd.click()): void {
 		this.el.words.innerHTML = ''
 		const s = document.createElement('span')
 		s.className = 'msg'
 		s.textContent = `${text} `
-		if (typeInstead) {
+		if (label) {
 			const b = document.createElement('button')
 			b.type = 'button'
-			b.textContent = t('keyboard', this.lang)
-			b.addEventListener('click', () => this.el.kbd.click())
+			b.textContent = label === true ? t('keyboard', this.lang) : label
+			b.addEventListener('click', onTap)
 			s.appendChild(b)
 		}
 		this.el.words.appendChild(s)

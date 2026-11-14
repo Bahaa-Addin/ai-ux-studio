@@ -3,7 +3,9 @@
  * pages, without changing Vodafone's site and without a browser extension.
  *
  * - Every top-level document of an allowed origin gets the same <script> tag the Tealium tag would
- *   add, pointing at <page origin>/__vg/sdk/guide.js.
+ *   add, pointing at <page origin>/__vg/sdk/guide.js (packages/loader, shared with the extension).
+ *   The loader also keeps the guide's localStorage keys through Vodafone's localStorage.clear(),
+ *   on live and replayed pages alike (T-806).
  * - Requests to <page origin>/__vg/** are answered from the local gateway (Node forwards them), so
  *   the page only ever talks to its own origin: no mixed content, no CORS, no local-network prompt.
  *   The SDK therefore uses long polling for live events (data-events="poll").
@@ -24,6 +26,11 @@ import { type BrowserContext, chromium, type Page, type Route } from 'playwright
 import { loadCrawl } from '#jobs/crawler/crawl.ts'
 import { normalizeUrl } from '#jobs/crawler/url.ts'
 import type { SiteConfig } from '#shared/config.ts'
+
+import { KEEP_GUIDE_STORAGE, type LoaderExperiences, loaderScript } from '../packages/loader/src/loader.ts'
+
+// The loader lives in packages/loader (ADR-0053), shared with the public demo extension.
+export { KEEP_GUIDE_STORAGE, type LoaderExperiences, loaderScript }
 
 export interface DemoBrowserOptions {
 	site: SiteConfig
@@ -83,18 +90,6 @@ export interface DemoBrowser {
 	close(): Promise<void>
 }
 
-/** Where the loader adds the experience layer (ADR-0048); null: nowhere. */
-export interface LoaderExperiences {
-	/** The site's first (web) origin only, never the shop. */
-	origin: string
-	/** Regular expressions on the path. */
-	paths: string[]
-	/** Paths the clone is mounted on in replay (it runs the demos itself until phase 9). */
-	exclude: string[]
-	/** Enabled demos, passed to the layer. */
-	demos: string[]
-}
-
 /**
  * Where this demo browser adds the experience layer: the site config's paths on its first (web)
  * origin, the enabled demos, and in replay the paths the clone is mounted on left out. Null when the
@@ -111,50 +106,6 @@ export function loaderExperiences(o: Pick<DemoBrowserOptions, 'site' | 'replayDi
 			.filter(([, on]) => on)
 			.map(([name]) => name),
 	}
-}
-
-/**
- * The loader the demo browser runs in every document: the same tags mode A adds through Tealium.
- * guide.js on every page of an allowed origin; then the experience layer, aixc.js (ADR-0048), on the
- * web origin's matching pages that have #main-content, unless the URL says ?aixc=off.
- */
-export function loaderScript(o: { siteKey: string; origins: string[]; xray?: string; experiences?: LoaderExperiences | null }): string {
-	return `(() => { try {
-	if (window.top !== window) return
-	if (!${JSON.stringify(o.origins)}.includes(location.origin)) return
-	if (window.__vgLoader) return
-	window.__vgLoader = true
-	const add = () => {
-		if (document.querySelector('script[data-vg-loader]')) return
-		const s = document.createElement('script')
-		s.src = location.origin + '/__vg/sdk/guide.js'
-		s.async = true
-		s.dataset.siteKey = ${JSON.stringify(o.siteKey)}
-		s.dataset.events = 'poll'
-		s.dataset.vgLoader = '1'
-		${o.xray ? `s.dataset.xray = ${JSON.stringify(o.xray)}` : ''}
-		;(document.head || document.documentElement).appendChild(s)
-	}
-	const x = ${JSON.stringify(o.experiences ?? null)}
-	const addLayer = () => {
-		if (!x || location.origin !== x.origin || /[?&]aixc=off(&|$)/.test(location.search)) return
-		if (!document.getElementById('main-content') || document.querySelector('script[data-aixc-demo]')) return
-		if (x.exclude.includes(location.pathname.replace(/\\/$/, '')) || !x.paths.some((p) => new RegExp(p).test(location.pathname))) return
-		const m = document.createElement('script')
-		m.type = 'module'
-		m.src = location.origin + '/__vg/sdk/aixc/aixc.js'
-		m.dataset.aixcDemo = '1'
-		m.dataset.aixcDemos = x.demos.join(' ')
-		m.dataset.aixcSiteKey = ${JSON.stringify(o.siteKey)}
-		;(document.head || document.documentElement).appendChild(m)
-	}
-	const both = () => {
-		add()
-		try { addLayer() } catch (e) {}
-	}
-	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', both, { once: true })
-	else both()
-} catch (e) {} })()`
 }
 
 /** A non-functional stand-in at the audited size and place of Vodafone's accessibility button (audit §5). */
@@ -270,7 +221,8 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 		})
 	}
 
-	await context.addInitScript(loaderScript({ siteKey: o.site.siteKey, origins, xray: o.xray, experiences: loaderExperiences(o) }))
+	// The same loader the extension runs, pointed at the routed gateway (/__vg on the page's own origin) with long polling.
+	await context.addInitScript(loaderScript({ siteKey: o.site.siteKey, origins, events: 'poll', xray: o.xray, experiences: loaderExperiences(o) }))
 	if (o.replayDir && o.accessibilityStandIn !== false) await context.addInitScript(ACCESSIBILITY_STAND_IN)
 	for (const s of o.initScripts || []) await context.addInitScript(s)
 
@@ -420,14 +372,6 @@ function norm(u: string): string {
 		return u
 	}
 }
-
-/**
- * Vodafone's live pages call localStorage.clear() on load (theme scripts.js, found 2026-11-03),
- * which would also forget the person's trail consent and the guide's settings. On live pages
- * opened from the demo browser, clear() keeps the guide's own `vg-` keys. Real-site follow-up:
- * T-806 (consent must survive the site's own storage clean-up).
- */
-const KEEP_GUIDE_STORAGE = `(() => { const P = Storage.prototype, clear = P.clear; P.clear = function () { if (this !== window.localStorage) return clear.call(this); const keep = []; for (let i = 0; i < this.length; i++) { const k = this.key(i); if (k && k.startsWith('vg-')) keep.push([k, this.getItem(k)]) } clear.call(this); for (const [k, v] of keep) this.setItem(k, v) } })()`
 
 function notInReplay(url: string, pages: number): string {
 	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Not in this replay</title></head>

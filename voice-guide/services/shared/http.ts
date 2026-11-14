@@ -27,6 +27,18 @@ export async function readJson<T = any>(req: http.IncomingMessage, limitBytes = 
 	}
 }
 
+/** The raw body, up to a limit (an audio clip for speech-to-text). */
+export async function readBody(req: http.IncomingMessage, limitBytes: number): Promise<Buffer> {
+	const chunks: Buffer[] = []
+	let size = 0
+	for await (const c of req) {
+		size += (c as Buffer).length
+		if (size > limitBytes) throw new HttpError(413, 'request body too large', 'too_large')
+		chunks.push(c as Buffer)
+	}
+	return Buffer.concat(chunks)
+}
+
 export function sendJson(res: http.ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
 	if (res.headersSent) return
 	const data = JSON.stringify(body)
@@ -64,7 +76,12 @@ export class Router {
 	}
 }
 
-export function clientIp(req: http.IncomingMessage): string {
+export function clientIp(req: http.IncomingMessage, trustedHeader: string | undefined = process.env.VG_CLIENT_IP_HEADER?.toLowerCase()): string {
+	// Behind a public proxy only its own header counts: anyone can send X-Forwarded-For (ADR-0053 §2).
+	if (trustedHeader) {
+		const v = req.headers[trustedHeader]
+		return (typeof v === 'string' && v.trim()) || req.socket.remoteAddress || 'unknown'
+	}
 	const fwd = req.headers['x-forwarded-for']
 	if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim()
 	return req.socket.remoteAddress || 'unknown'

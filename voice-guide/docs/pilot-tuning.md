@@ -190,3 +190,22 @@ Agent cost per session:
 select session_id, count(*) as calls, sum((attrs->>'promptTokens')::int + (attrs->>'completionTokens')::int) as tokens
 from trace_events where name = 'agent.llm' group by 1 order by 3 desc limit 20;
 ```
+
+## Public demo (ADR-0053 to ADR-0056, 2026-11-13)
+
+| Knob | Default | What it does |
+|---|---|---|
+| `VG_PUBLIC` | off | `on`: a gateway for the internet; refuses unsafe settings at start, page watch off, X-ray hidden |
+| `VG_PUBLIC_XRAY` | `off` | X-ray in public sessions: `button` or `open` for a supervised session |
+| `VG_CLIENT_IP_HEADER` | unset | The proxy's client-address header for rate limits (Fly: `fly-client-ip`); required in public |
+| `VG_TRAIL` | off | `on`: the Exploration Trail for this gateway's sites (consent still asked) |
+| `VG_KB_SEED` | unset | `committed`: activate `config/kb/<site>.manifest.json` at start when none is active (automatic for a public memory-store gateway) |
+| `VG_LLM_PROVIDER` | `openai` | `anthropic`: Claude through Anthropic's SDK for the agent |
+| `VG_LLM_EFFORT` | `low` | Claude's effort per agent step: `low`, `medium`, `high` |
+| `VG_WHISPER_URL`, `VG_WHISPER_TOKEN` | unset | Whisper on Modal for browsers without speech recognition |
+| `VG_WHISPER_TIMEOUT_MS` | 20000 | One clip's wait |
+| `VG_STT_MAX_SECONDS`, `VG_STT_MAX_BYTES` | 15, 524288 | One clip's limits |
+| `VG_STT_PER_SESSION_PER_HOUR` | 40 | Clips per session |
+| `VG_STT_SECONDS_PER_DAY` | 14400 | Audio seconds per site per day |
+| `VG_VOICETUT_SENTENCES_PER_DAY` | 0 (no cap); 300 on the public gateway | Sentences VoiceTut makes per site per day; then the browser voice (VoiceTut allowed in public, capped per day: owner, 2026-11-13) |
+| Modal `MAX_CONTAINERS` | VoiceTut 1, Whisper 2 | GPUs at once, set when deploying |

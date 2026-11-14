@@ -109,13 +109,14 @@ test('the theme\'s storage clear runs where Vodafone\'s signed-out theme does it
 		const clears = { '/en/home': true, '/en/services': true, '/en/vodafone-red1': true, '/ar/vodafone-cash': true, '/en/mobile-internet-bundles': false, '/en/wireless-net': false, '/en/promotions': false }
 		for (const [pathname, clears_] of Object.entries(clears)) {
 			await open(l.page, pathname)
-			await l.page.evaluate(() => localStorage.setItem('aixc.kit-test', 'kept'))
+			// A key of the site's own, and one of the layer's: the loader's storage keeper (ADR-0053, T-806) keeps the layer's.
+			await l.page.evaluate(() => (localStorage.setItem('kit-test', 'kept'), localStorage.setItem('aixc.kit-test', 'kept')))
 			await l.page.reload({ waitUntil: 'load' })
 			await l.page.waitForTimeout(200)
-			const s = await l.page.evaluate(() => ({ kept: localStorage.getItem('aixc.kit-test'), loggedIn: localStorage.getItem('isLogedIn'), cleared: (window as unknown as { __themeCleared?: number }).__themeCleared ?? 0 }))
-			if (clears_) assert.deepEqual(s, { kept: null, loggedIn: 'false', cleared: 1 }, `${pathname}: cleared on load`)
-			else assert.deepEqual([s.kept, s.cleared], ['kept', 0], `${pathname}: left alone`)
-			await l.page.evaluate(() => localStorage.removeItem('aixc.kit-test'))
+			const s = await l.page.evaluate(() => ({ kept: localStorage.getItem('kit-test'), ours: localStorage.getItem('aixc.kit-test'), loggedIn: localStorage.getItem('isLogedIn'), cleared: (window as unknown as { __themeCleared?: number }).__themeCleared ?? 0 }))
+			if (clears_) assert.deepEqual(s, { kept: null, ours: 'kept', loggedIn: 'false', cleared: 1 }, `${pathname}: cleared on load, the layer's key kept`)
+			else assert.deepEqual([s.kept, s.ours, s.cleared], ['kept', 'kept', 0], `${pathname}: left alone`)
+			await l.page.evaluate(() => (localStorage.removeItem('kit-test'), localStorage.removeItem('aixc.kit-test')))
 		}
 	} finally {
 		await l.close()

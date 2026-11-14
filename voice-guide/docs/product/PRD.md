@@ -125,7 +125,7 @@ The walk-through with exact requests and fallbacks is the [demo script](demo-scr
 
 | Area | Requirement |
 |---|---|
-| Performance (live site, demo machine, public gateway) | Microphone ready (listening) ≤ 300ms after the press once permission is granted; word render p95 ≤ 50ms; server time per request p95 ≤ 150ms; first visible movement after the final words p50 ≤ 400ms; SDK main script ≤ 20 KB gzipped including the voice UI; no layout shift caused by the guide (CLS contribution 0); no SDK long task > 50ms on page load |
+| Performance (live site, demo machine, public gateway) | Microphone ready (listening) ≤ 300ms after the press once permission is granted; word render p95 ≤ 50ms; server time per request p95 ≤ 150ms; first visible movement after the final words p50 ≤ 400ms; SDK main script ≤ 21 KB gzipped including the voice UI (20 KB until 2026-11-13, ADR-0057); no layout shift caused by the guide (CLS contribution 0); no SDK long task > 50ms on page load |
 | Reliability | Every SDK error is caught; the page never breaks because of the guide; a gateway outage turns the guide into a polite "not available right now" |
 | Privacy | Values never stored; masking before content leaves the browser; traces retained 7 days; speech engine choice and consent category signed off by Vodafone's data protection owner before any customer exposure |
 | Security | Site key and origin checks; signed agent tokens; rate limits (ADR-0022); demo browser profile used only for the demo; no secrets in the repository |

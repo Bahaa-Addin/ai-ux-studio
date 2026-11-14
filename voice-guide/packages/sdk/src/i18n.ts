@@ -28,6 +28,8 @@ const S = {
 	switchLang: { ar: 'English', en: 'عربي' },
 	planStopped: { ar: 'وقفت. قولي عايز إيه.', en: 'Stopped. Tell me what you need.' },
 	guide: { ar: 'المرشد', en: 'Guide' },
+	tapToHear: { ar: 'اضغط علشان تسمع الرد', en: 'Tap to hear the reply' },
+	hear: { ar: 'اسمع', en: 'Hear it' },
 } as const
 
 export type UiKey = keyof typeof S

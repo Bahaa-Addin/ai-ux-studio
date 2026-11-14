@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Voice guide preview</title>
+<style>
+	:root { color-scheme: light dark; --fg: #1a1a1a; --muted: #555; --bg: #fff; --line: #ddd; }
+	@media (prefers-color-scheme: dark) { :root { --fg: #f2f2f2; --muted: #b5b5b5; --bg: #1d1f21; --line: #3a3d40; } }
+	body { margin: 0; width: 320px; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+	main { padding: 16px; display: grid; gap: 12px; }
+	h1 { font-size: 16px; margin: 0; }
+	p { margin: 0; color: var(--muted); }
+	label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-weight: 600; }
+	input { width: 18px; height: 18px; }
+	a { color: inherit; }
+	small { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+	<h1>Voice guide preview</h1>
+	<p>An independent prototype. It is not made by, endorsed by or affiliated with Vodafone. It adds a voice guide and a few demo experiences to the site's public pages, in this browser only.</p>
+	<label>On for this browser <input id="on" type="checkbox"></label>
+	<p>Questions you ask go to the prototype's server to be answered. In browsers without built-in speech recognition, your voice is sent to the prototype's speech-to-text service outside Egypt, after a notice, and deleted once it is written as text.</p>
+	<p><a id="open" href="#">Open the site</a></p>
+	<small id="gw"></small>
+</main>
+<script src="popup.js"></script>
+</body>
+</html>

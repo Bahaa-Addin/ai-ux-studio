@@ -38,9 +38,11 @@
     "live-crawl:import": "node tools/live-crawl/import.ts",
     "live-crawl:bundle": "node tools/live-crawl/bundle.ts",
     "experience": "node jobs/experience.ts",
-    "speech:warm": "node tools/speech-warm.ts"
+    "speech:warm": "node tools/speech-warm.ts",
+    "extension:build": "node tools/extension/build.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.2.0",
     "pg": "8.23.1",
     "playwright": "1.56.0",
     "yaml": "2.9.0",

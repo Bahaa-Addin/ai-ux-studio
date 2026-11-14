@@ -14,7 +14,7 @@ import { AudioPlayer } from './voice/player.ts'
 interface GuideLike {
 	api: { base: string; siteKey: string; post<T>(path: string, body: unknown): Promise<T> }
 	session: { sessionId: string; site: { speech: { out?: { engine: string; firstAudioMs: number } } } }
-	speech: { speak(text: string, tag: string): Promise<void>; cancelSpeech(): void; readonly speaking: boolean; muted: boolean }
+	speech: { speak(text: string, tag: string): Promise<void>; cancelSpeech(): void; readonly speaking: boolean; muted: boolean; onBlocked: ((text: string, lang: string) => void) | null }
 }
 
 function start(g: GuideLike): void {
@@ -42,6 +42,8 @@ function start(g: GuideLike): void {
 			maskContent(text, () => (hit = true))
 			return hit
 		},
+		// Autoplay refused after a page change: the guide's "tap to hear" (ADR-0053 §4), read when the guide installs it.
+		onBlocked: (text, tag) => (sys.onBlocked ? sys.onBlocked(text, tag) : void fallback.speak(text, tag)),
 		report: (attrs, ms) => void g.api.post('/v1/progress', { sessionId: g.session.sessionId, cursor: -1, events: [{ name: 'sdk.speak', attrs, ms: Math.round(ms) }] }).catch(() => {}),
 	})
 	;(sys as { __vgVoiceOut?: boolean }).__vgVoiceOut = true

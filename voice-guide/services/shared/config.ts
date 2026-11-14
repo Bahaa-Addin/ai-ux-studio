@@ -19,6 +19,16 @@ const num = (v: string | undefined, d: number) => (v === undefined || v === '' ?
 export interface PlatformConfig {
 	port: number
 	publicUrl: string
+	/**
+	 * A gateway anyone on the internet can reach (ADR-0053): VG_PUBLIC=on. startup refuses unsafe
+	 * settings (checkPublicConfig), page watch is off (no service worker on Vodafone's origin), and
+	 * X-ray is hidden unless VG_PUBLIC_XRAY says otherwise.
+	 */
+	public: boolean
+	/** X-ray in a public gateway's sessions: off unless VG_PUBLIC_XRAY=button|open. */
+	publicXray: 'off' | 'button' | 'open'
+	/** The header a trusted proxy puts the visitor's address in (Fly: fly-client-ip). Unset: X-Forwarded-For, then the socket. */
+	clientIpHeader?: string
 	store: 'postgres' | 'memory'
 	databaseUrl: string
 	dbPoolMax: number
@@ -34,10 +44,20 @@ export interface PlatformConfig {
 	rateLimit: { turnsPerMinute: number; burst: number }
 	jev: { baseUrl: string; apiKey?: string; model: string; timeoutMs: number }
 	laya: { baseUrl?: string; apiKey?: string; timeoutMs: number }
-	llm: { baseUrl?: string; apiKey?: string; model?: string; fallbackBaseUrl?: string; fallbackApiKey?: string; fallbackModel?: string; timeoutMs: number; preset?: string; body?: Record<string, unknown>; sendOrigin?: boolean }
+	/**
+	 * The fallback agent's model (ADR-0018, ADR-0042, ADR-0054). `provider` says how the primary is
+	 * called: an OpenAI-compatible /chat/completions (`openai`, the default and every preset) or
+	 * Anthropic's Messages API through the official SDK (`anthropic`, VG_LLM_PROVIDER=anthropic).
+	 */
+	llm: { provider: 'openai' | 'anthropic'; effort: 'low' | 'medium' | 'high'; baseUrl?: string; apiKey?: string; model?: string; fallbackBaseUrl?: string; fallbackApiKey?: string; fallbackModel?: string; timeoutMs: number; preset?: string; body?: Record<string, unknown>; sendOrigin?: boolean }
+	/**
+	 * Server speech-to-text (ADR-0055): Whisper on Modal, for browsers without speech recognition
+	 * (Firefox, some Brave setups) or whose service fails. Off unless VG_WHISPER_URL is set.
+	 */
+	stt: { url?: string; token?: string; timeoutMs: number; maxSeconds: number; maxBytes: number; perSessionPerHour: number; secondsPerDay: number }
 	vision: { baseUrl?: string; apiKey?: string; model?: string }
 	/** VoiceTut for the guide's voice (ADR-0047): the endpoint stays out of the page and the repository. */
-	voicetut: { url?: string; infoTimeoutMs: number; synthTimeoutMs: number }
+	voicetut: { url?: string; infoTimeoutMs: number; synthTimeoutMs: number; sentencesPerDay: number }
 	agentQuota: { stepsPerSession: number; tokensPerSession: number; tokensPerSiteDay: number }
 	vapid: { subject: string; keyFile: string }
 	sitesDir: string
@@ -50,6 +70,9 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 	return {
 		port,
 		publicUrl: env.VG_PUBLIC_URL || `http://localhost:${port}`,
+		public: env.VG_PUBLIC === 'on',
+		publicXray: env.VG_PUBLIC_XRAY === 'open' || env.VG_PUBLIC_XRAY === 'button' ? env.VG_PUBLIC_XRAY : 'off',
+		clientIpHeader: env.VG_CLIENT_IP_HEADER?.toLowerCase() || undefined,
 		store: env.VG_STORE === 'memory' ? 'memory' : 'postgres',
 		databaseUrl: env.DATABASE_URL || 'postgres://postgres:devpass@127.0.0.1:54329/voiceguide',
 		dbPoolMax: num(env.VG_DB_POOL_MAX, 10),
@@ -77,16 +100,37 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 		},
 		laya: { baseUrl: env.LAYA_BASE_URL, apiKey: env.LAYA_API_KEY, timeoutMs: num(env.LAYA_TIMEOUT_MS, 1500) },
 		llm: {
+			provider: env.VG_LLM_PROVIDER === 'anthropic' ? 'anthropic' : 'openai',
+			effort: env.VG_LLM_EFFORT === 'medium' || env.VG_LLM_EFFORT === 'high' ? env.VG_LLM_EFFORT : 'low',
 			// A preset fills the primary model only when none is configured (ADR-0042).
-			...(env.VG_LLM_BASE_URL ? {} : presetModel(llmPreset(env.VG_LLM_PRESET), env.VG_LLM_PRESET)),
+			...(env.VG_LLM_BASE_URL || env.VG_LLM_PROVIDER === 'anthropic' ? {} : presetModel(llmPreset(env.VG_LLM_PRESET), env.VG_LLM_PRESET)),
 			...(env.VG_LLM_BASE_URL ? { baseUrl: env.VG_LLM_BASE_URL, apiKey: env.VG_LLM_API_KEY, model: env.VG_LLM_MODEL } : {}),
+			// Claude through Anthropic's own SDK (ADR-0054): the key from VG_LLM_API_KEY, else ANTHROPIC_API_KEY.
+			...(env.VG_LLM_PROVIDER === 'anthropic'
+				? { baseUrl: env.VG_LLM_BASE_URL || 'https://api.anthropic.com', apiKey: env.VG_LLM_API_KEY || env.ANTHROPIC_API_KEY, model: env.VG_LLM_MODEL || 'claude-opus-5-5' }
+				: {}),
 			fallbackBaseUrl: env.VG_LLM_FALLBACK_BASE_URL,
 			fallbackApiKey: env.VG_LLM_FALLBACK_API_KEY,
 			fallbackModel: env.VG_LLM_FALLBACK_MODEL,
 			timeoutMs: num(env.VG_LLM_TIMEOUT_MS, 30000),
 		},
 		vision: { baseUrl: env.VG_VISION_BASE_URL, apiKey: env.VG_VISION_API_KEY, model: env.VG_VISION_MODEL },
-		voicetut: { url: env.VG_VOICETUT_URL || undefined, infoTimeoutMs: num(env.VG_VOICETUT_INFO_TIMEOUT_MS, 300_000), synthTimeoutMs: num(env.VG_VOICETUT_SYNTH_TIMEOUT_MS, 120_000) },
+		voicetut: {
+			url: env.VG_VOICETUT_URL || undefined,
+			infoTimeoutMs: num(env.VG_VOICETUT_INFO_TIMEOUT_MS, 300_000),
+			synthTimeoutMs: num(env.VG_VOICETUT_SYNTH_TIMEOUT_MS, 120_000),
+			// Spend cap (ADR-0053 §5): sentences VoiceTut makes per site per day (cache hits are free); then the browser voice. 0: no cap.
+			sentencesPerDay: num(env.VG_VOICETUT_SENTENCES_PER_DAY, 0),
+		},
+		stt: {
+			url: env.VG_WHISPER_URL || undefined,
+			token: env.VG_WHISPER_TOKEN || undefined,
+			timeoutMs: num(env.VG_WHISPER_TIMEOUT_MS, 20_000),
+			maxSeconds: num(env.VG_STT_MAX_SECONDS, 15),
+			maxBytes: num(env.VG_STT_MAX_BYTES, 512 * 1024),
+			perSessionPerHour: num(env.VG_STT_PER_SESSION_PER_HOUR, 40),
+			secondsPerDay: num(env.VG_STT_SECONDS_PER_DAY, 4 * 3600),
+		},
 		agentQuota: {
 			stepsPerSession: num(env.VG_AGENT_STEPS_PER_SESSION, 60),
 			tokensPerSession: num(env.VG_AGENT_TOKENS_PER_SESSION, 400_000),
@@ -275,6 +319,26 @@ export type SiteConfig = z.infer<typeof SiteConfig>
 /** Whether the agent proxy has a model to call (ADR-0018). Without one, nothing is routed to the agent. */
 function presetModel(p: LlmPreset | undefined, name: string | undefined): Partial<PlatformConfig['llm']> {
 	return p ? { baseUrl: p.baseUrl, apiKey: p.apiKey, model: p.model, preset: name, body: p.body, sendOrigin: p.sendOrigin } : {}
+}
+
+/** Presets (ADR-0042) that must never serve a public gateway: evaluation-only terms, data abroad without a decision. */
+const NOT_FOR_PUBLIC = new Set(['page-agent-testing'])
+
+/**
+ * What a public gateway (VG_PUBLIC=on) refuses to start with (ADR-0053 §2). Empty: safe to start.
+ * Not a security review; the settings that would be wrong for strangers on the internet.
+ */
+export function checkPublicConfig(p: PlatformConfig, env: NodeJS.ProcessEnv = process.env): string[] {
+	if (!p.public) return []
+	const out: string[] = []
+	if (!p.publicUrl.startsWith('https://')) out.push(`VG_PUBLIC_URL must be the gateway's https:// address (got ${p.publicUrl})`)
+	if (p.secret === 'dev-only-secret-change-me' || p.secret.length < 32) out.push('VG_SECRET must be set to a random value of at least 32 characters')
+	if (!env.VG_ADMIN_TOKEN || env.VG_ADMIN_TOKEN.length < 24) out.push('VG_ADMIN_TOKEN must be set (24+ characters): admin routes are not limited to localhost behind a proxy')
+	if (p.llm.preset && NOT_FOR_PUBLIC.has(p.llm.preset)) out.push(`VG_LLM_PRESET=${p.llm.preset} is for technical evaluation only (ADR-0042); configure our own model (VG_LLM_PROVIDER=anthropic, ADR-0054) or leave the agent off`)
+	if (p.llm.provider === 'anthropic' && !p.llm.apiKey) out.push('VG_LLM_PROVIDER=anthropic needs VG_LLM_API_KEY or ANTHROPIC_API_KEY')
+	if (!p.clientIpHeader) out.push("VG_CLIENT_IP_HEADER must name the proxy's client-address header (Fly: fly-client-ip); X-Forwarded-For can be forged, which would defeat the rate limits")
+	if (p.trailAggregation) out.push('VG_TRAIL_AGGREGATION must stay off in public (ADR-0037 §6)')
+	return out
 }
 
 export function agentModelConfigured(p: PlatformConfig): boolean {

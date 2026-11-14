@@ -2,7 +2,7 @@
  * Builds the SDK (ADR-0007): guide.js (loader, UI, executor), xray.js (X-ray drawer, on demand), agent.js (page-agent,
  * loaded only on the fallback path), sw.js (push service worker), and the Exploration Trail's three on-demand chunks
  * (ADR-0035): trail.js (timeline, consent, storage), trail-record.js (rrweb record) and trail-replay.js (rrweb replay);
- * voice-out.js, the guide's voice from VoiceTut (ADR-0047), on demand;
+ * voice-out.js, the guide's voice from VoiceTut (ADR-0047), on demand; stt.js, listening through the gateway (ADR-0055), on demand;
  * and the experience layer from ../experiences (ADR-0048): aixc/aixc.js and its chunks, ES modules.
  */
 import fs from 'node:fs'
@@ -112,7 +112,7 @@ const alias: esbuild.Plugin = {
 	},
 }
 
-export const SDK_FILES = ['guide.js', 'agent.js', 'xray.js', 'watch.js', 'sw.js', 'trail.js', 'trail-record.js', 'trail-replay.js', 'voice-out.js']
+export const SDK_FILES = ['guide.js', 'agent.js', 'xray.js', 'watch.js', 'sw.js', 'trail.js', 'trail-record.js', 'trail-replay.js', 'voice-out.js', 'stt.js']
 
 /** The experience layer's sources (the demos' modules, ADR-0046) and its build output (ADR-0048). */
 export const EXPERIENCES = path.resolve(ROOT, '../experiences')
@@ -196,6 +196,7 @@ export async function buildSdk(opts: { minify?: boolean } = {}): Promise<Record<
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'trail-record-chunk.ts')], outfile: path.join(OUT, 'trail-record.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'trail-replay-chunk.ts')], outfile: path.join(OUT, 'trail-replay.js') }),
 		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'voice-out-chunk.ts')], outfile: path.join(OUT, 'voice-out.js') }),
+		esbuild.build({ ...common, entryPoints: [path.join(SRC, 'stt-chunk.ts')], outfile: path.join(OUT, 'stt.js') }),
 	])
 	const sizes: Record<string, number> = {}
 	for (const f of SDK_FILES) sizes[f] = fs.statSync(path.join(OUT, f)).size

@@ -36,7 +36,7 @@ interface SessionResponse {
 		id: string
 		languages: string[]
 		defaultLanguage: string
-		speech: { stt: Record<string, string>; tts: Record<string, string>; onDevice?: 'prefer' | 'require' | 'off'; phrases?: string[]; out?: { engine: 'system' | 'voicetut'; firstAudioMs: number } }
+		speech: { stt: Record<string, string>; tts: Record<string, string>; onDevice?: 'prefer' | 'require' | 'off'; phrases?: string[]; out?: { engine: 'system' | 'voicetut'; firstAudioMs: number }; server?: boolean }
 		ui: { accent?: string; xray: string; theme?: 'page' | 'vodafone'; voiceFirst?: boolean }
 		agent: { enabled: boolean; maxSteps: number; timeoutSec: number }
 		watch: { enabled: boolean }
@@ -70,6 +70,8 @@ export class Guide {
 	readonly speech = new Speech()
 	/** The X-ray model, once the X-ray chunk is loaded (`loadXray`); events are kept until then. */
 	xray: XrayModel | null = null
+	/** The words around the gateway's speech-to-text, set by stt.js (ADR-0055). */
+	stt: { gate(go: () => void): boolean; failed(code: string): boolean } | null = null
 	#trace: TraceEv[] = []
 	#kbVersion: string | undefined
 	ui!: GuideUi
@@ -164,6 +166,22 @@ export class Guide {
 		if (this.session.site.trail?.enabled) setTimeout(() => this.#chunk('trail').then((m) => m.start(this)).catch((e) => console.warn('[voice-guide] trail', e)), 600)
 		// The guide's voice from VoiceTut, when the gateway says so (ADR-0047); the browser voice otherwise.
 		if (this.session.site.speech.out?.engine === 'voicetut') this.#chunk('voice-out').then((m) => m.start(this)).catch(() => {})
+		// No recognition in this browser (Firefox): listen through the gateway when it can (ADR-0055).
+		if (this.session.site.speech.server && !this.speech.canListen) void this.#loadStt()
+		/*
+		 * The browser would not speak without a tap in this page (ADR-0053 §4): Safari, Firefox and iOS
+		 * after a page change, outside the demo browser. The line waits behind a "tap to hear" button;
+		 * the tap is the gesture, so it plays. The log and screen readers already have the text.
+		 */
+		this.speech.onBlocked = (text, tag) => {
+			const v = this.ui.voice
+			if (!v) return this.ui.note(text)
+			if (v.state === 'speaking') v.setState('idle')
+			v.offer(t('tapToHear', this.lang), t('hear', this.lang), () => {
+				v.setState('speaking')
+				void this.speech.speak(text, tag).then(() => v.state === 'speaking' && !this.speech.speaking && v.setState('idle'))
+			})
+		}
 
 		let wasOpen = false
 		try {
@@ -317,6 +335,17 @@ export class Guide {
 		this.ui.setLang(lang)
 	}
 
+	/** The microphone's level while the guide listens (the gateway's speech-to-text ends a clip on a pause). */
+	micLevel(): number | undefined {
+		return this.#mic?.live ? this.#mic.sample().level : undefined
+	}
+
+	#loadStt(): Promise<boolean> {
+		return this.#chunk('stt')
+			.then((m) => (m.start(this), true))
+			.catch(() => false)
+	}
+
 	async #say(text: string, opts: { wait?: boolean } = {}): Promise<void> {
 		if (!text) return
 		this.#lastSpoken = text
@@ -363,6 +392,8 @@ export class Guide {
 			this.speech.stopListening()
 			return
 		}
+		// The voice leaves the browser for the gateway's speech-to-text: stt.js says so once (ADR-0055).
+		if (this.stt?.gate(() => void this.#toggleMic())) return
 		if (!this.speech.canListen) {
 			v?.setState('unsupported')
 			this.ui.open()
@@ -393,12 +424,14 @@ export class Guide {
 			const mic = this.#mic
 			v.startWave(() => mic.sample())
 		}
-		const failed = (code: string) => {
+		const failed = async (code: string) => {
 			this.#endListen()
 			if (code === 'aborted') return v?.setState('idle')
+			// A network failure or a busy gateway: stt.js answers when the gateway has speech-to-text (ADR-0055).
+			if (/^(network|server-busy)$/.test(code) && this.session.site.speech.server && (await this.#loadStt()) && this.stt?.failed(code)) return
 			// No speech service (Chromium builds, offline, a language the service lacks) is said
 			// plainly; "I didn't catch that" would make people repeat themselves for nothing.
-			const key = /not-allowed|audio-capture/.test(code) ? 'micDenied' : /network|language-not-supported/.test(code) ? 'speechUnavailable' : 'noSpeech'
+			const key = /not-allowed|audio-capture/.test(code) ? 'micDenied' : /network|language-not-supported|server-busy/.test(code) ? 'speechUnavailable' : 'noSpeech'
 			console.warn(`[voice-guide] speech: ${code}`)
 			if (v) v.setState('error', t(key, this.lang))
 			if (key === 'noSpeech') return v && setTimeout(() => v.state === 'error' && v.setState('idle'), 4000)

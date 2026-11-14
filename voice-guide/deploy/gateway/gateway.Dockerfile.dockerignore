@@ -1,0 +1,17 @@
+**/node_modules
+**/.DS_Store
+.git
+.worktrees
+.local-voice
+.claude
+Claude outputs
+output
+experiments
+voice-guide/data
+voice-guide/fixtures
+voice-guide/tests
+voice-guide/docs
+voice-guide/packages/sdk/dist
+voice-guide/extension/dist
+**/.env
+**/*.env

@@ -11,6 +11,7 @@ import type { Store } from '#shared/store/index.ts'
 import type { Tracer } from '#shared/trace.ts'
 
 import { maskContent } from '../../packages/sdk/src/agent-mask.ts'
+import { claudeChat } from './anthropic.ts'
 
 export interface AgentDeps {
 	platform: PlatformConfig
@@ -22,6 +23,8 @@ export interface AgentDeps {
 
 interface Provider {
 	name: 'primary' | 'fallback'
+	/** How it is called: OpenAI-compatible /chat/completions, or Claude through Anthropic's SDK (ADR-0054). */
+	kind: 'openai' | 'anthropic'
 	baseUrl: string
 	apiKey?: string
 	model: string
@@ -45,8 +48,8 @@ export function createAgentProxy(deps: AgentDeps) {
 	const providers = (): Provider[] => {
 		const l = deps.platform.llm
 		const out: Provider[] = []
-		if (l.baseUrl && l.model) out.push({ name: 'primary', baseUrl: l.baseUrl, apiKey: l.apiKey, model: l.model, body: l.body, sendOrigin: l.sendOrigin })
-		if (l.fallbackBaseUrl && l.fallbackModel) out.push({ name: 'fallback', baseUrl: l.fallbackBaseUrl, apiKey: l.fallbackApiKey, model: l.fallbackModel })
+		if (l.baseUrl && l.model) out.push({ name: 'primary', kind: l.provider, baseUrl: l.baseUrl, apiKey: l.apiKey, model: l.model, body: l.body, sendOrigin: l.sendOrigin })
+		if (l.fallbackBaseUrl && l.fallbackModel) out.push({ name: 'fallback', kind: 'openai', baseUrl: l.fallbackBaseUrl, apiKey: l.fallbackApiKey, model: l.fallbackModel })
 		return out
 	}
 
@@ -92,20 +95,31 @@ export function createAgentProxy(deps: AgentDeps) {
 			for (const p of list) {
 				const t0 = performance.now()
 				try {
-					const res = await doFetch(`${p.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json', ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}), ...(p.sendOrigin ? { Origin: new URL(site.origins[0].url).origin } : {}) },
-						body: JSON.stringify({ ...body, ...p.body, model: p.model }),
-						signal: AbortSignal.timeout(deps.platform.llm.timeoutMs),
-					})
-					const text = await res.text()
-					if (!res.ok) {
-						lastError = `${p.name} ${res.status}: ${text.slice(0, 200)}`
-						// Client errors are the request's fault; another provider will not help.
-						if (res.status >= 400 && res.status < 500 && res.status !== 429 && res.status !== 408) break
-						continue
+					let json: any
+					if (p.kind === 'anthropic') {
+						const r = await claudeChat(body, { apiKey: p.apiKey || '', baseUrl: p.baseUrl, model: p.model, effort: deps.platform.llm.effort, timeoutMs: deps.platform.llm.timeoutMs, fetch: deps.fetchImpl })
+						if (!r.json) {
+							lastError = `${p.name} ${r.status}: ${String(r.error).slice(0, 200)}`
+							if (r.status >= 400 && r.status < 500 && r.status !== 429 && r.status !== 408) break
+							continue
+						}
+						json = r.json
+					} else {
+						const res = await doFetch(`${p.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json', ...(p.apiKey ? { Authorization: `Bearer ${p.apiKey}` } : {}), ...(p.sendOrigin ? { Origin: new URL(site.origins[0].url).origin } : {}) },
+							body: JSON.stringify({ ...body, ...p.body, model: p.model }),
+							signal: AbortSignal.timeout(deps.platform.llm.timeoutMs),
+						})
+						const text = await res.text()
+						if (!res.ok) {
+							lastError = `${p.name} ${res.status}: ${text.slice(0, 200)}`
+							// Client errors are the request's fault; another provider will not help.
+							if (res.status >= 400 && res.status < 500 && res.status !== 429 && res.status !== 408) break
+							continue
+						}
+						json = JSON.parse(text)
 					}
-					const json = JSON.parse(text)
 					const tokens = Number(json.usage?.total_tokens ?? 0)
 					const usage = { agentSteps: session.usage.agentSteps + 1, agentTokens: session.usage.agentTokens + tokens }
 					await deps.store.patchSession(session.id, { usage }, deps.platform.sessionTtlMin)

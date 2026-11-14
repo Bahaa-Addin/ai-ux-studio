@@ -303,3 +303,18 @@ test('the X-ray shows each line\'s voice, timings and fallbacks, never its words
 	assert.match(rows[4].detail, /not sent \(personal data\)/)
 	assert.equal(rows[4].kind, '', 'keeping personal data back is not an error')
 })
+
+test('autoplay blocked with a "tap to hear" hook: the rest of the line waits for the tap, the browser voice stays quiet (ADR-0053 §4)', async () => {
+	const held: { text: string; tag: string }[] = []
+	const spoken: string[] = []
+	const vo = new VoiceOut({
+		request: async (text) => ready(text),
+		player: { play: () => Promise.reject(Object.assign(new Error('not allowed'), { name: 'NotAllowedError' })), stop: () => {} },
+		fallback: { speak: async (t) => void spoken.push(t), cancel: () => {}, speaking: false },
+		firstAudioMs: 60,
+		onBlocked: (text, tag) => void held.push({ text, tag }),
+	})
+	await vo.speak(LINE, 'en-US')
+	assert.deepEqual(held, [{ text: `${S1} ${S2}`, tag: 'en-US' }])
+	assert.deepEqual(spoken, [])
+})

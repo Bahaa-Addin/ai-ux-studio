@@ -50,8 +50,14 @@ export interface ListenInfo {
 }
 
 export class Speech {
-	readonly canListen: boolean
+	/** The browser has speech recognition, or stt.js gave it the gateway's (ADR-0055; it wraps listen, stop and abort). */
+	canListen: boolean
 	readonly canSpeak: boolean
+	/**
+	 * The browser refused to speak without a tap in this page (autoplay rules after a page change).
+	 * The guide shows "tap to hear" with the line (ADR-0053 §4).
+	 */
+	onBlocked: ((text: string, lang: string) => void) | null = null
 	#rec: Rec | null = null
 	#voices: SpeechSynthesisVoice[] = []
 	muted = false
@@ -191,13 +197,25 @@ export class Speech {
 			if (v) u.voice = v
 			u.rate = 1.02
 			const cap = setTimeout(done, Math.min(12_000, 900 + text.length * 70))
+			let check: ReturnType<typeof setTimeout> | undefined
+			const blocked = () => {
+				speechSynthesis.cancel()
+				this.onBlocked?.(text, lang)
+				done()
+			}
 			function done() {
 				clearTimeout(cap)
+				clearTimeout(check)
 				resolve()
 			}
+			// Started: not blocked.
+			u.onstart = () => clearTimeout(check)
 			u.onend = done
-			u.onerror = done
+			// Chrome says "not-allowed" when a page that was never tapped asks to speak.
+			u.onerror = (e: SpeechSynthesisErrorEvent) => (e.error === 'not-allowed' ? blocked() : done())
 			speechSynthesis.speak(u)
+			// Safari stays silent without an error: a page never tapped that has not started speaking in 1.5 s is blocked.
+			if ((navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive === false) check = setTimeout(blocked, 1500)
 		})
 	}
 

@@ -42,6 +42,12 @@ export interface VoiceOutDeps {
 	 * browser voice says it. Checked on the line, the line normalised, and each sentence as sent.
 	 */
 	isPrivate?(text: string): boolean
+	/**
+	 * The browser would not play without a tap in this page (autoplay rules after a page change).
+	 * Given: the rest of the line is handed here (the guide shows "tap to hear") instead of to the
+	 * browser voice, which the same rules silence too (ADR-0053 §4).
+	 */
+	onBlocked?(text: string, tag: string): void
 	now?(): number
 	wait?(ms: number): Promise<void>
 }
@@ -95,7 +101,9 @@ export class VoiceOut {
 		const report = (fallback: string | null, played: number, firstAudio: number | null) => this.#d.report?.({ engine: 'voicetut', sentences: sentences.length, played, fallback, firstAudioMs: firstAudio === null ? null : Math.round(firstAudio) }, now() - t0)
 		const fallBack = async (from: number, reason: string, played: number, firstAudio: number | null) => {
 			report(reason, played, firstAudio)
-			if (gen === this.#gen) await this.#d.fallback.speak(sentences.slice(from).join(' '), tag)
+			if (gen !== this.#gen) return
+			if (reason === 'blocked' && this.#d.onBlocked) return this.#d.onBlocked(sentences.slice(from).join(' '), tag)
+			await this.#d.fallback.speak(sentences.slice(from).join(' '), tag)
 		}
 		const isPrivate = this.#d.isPrivate
 		// The line as written, as one normalised line (a number broken over lines is whole again), and each sentence as sent.

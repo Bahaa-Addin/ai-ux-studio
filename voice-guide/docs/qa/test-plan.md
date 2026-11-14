@@ -42,7 +42,7 @@
 | R4.4 | Esc cancels; push to talk; barge-in ≤ 100ms; auto end after 1.2s silence | e2e |
 | R4.5 | Only the final transcript in the live region; keyboard-only walkthrough | e2e + manual |
 | R4.6 | Permission denied → error state + "Type instead"; no recognition → panel | e2e |
-| NFR performance | `guide.js` ≤ 20 KB gz; word render p95 ≤ 50ms; frame p95 ≤ 1ms; no SDK long task > 50ms; CLS 0 | CI + e2e |
+| NFR performance | `guide.js` ≤ 21 KB gz (ADR-0057); word render p95 ≤ 50ms; frame p95 ≤ 1ms; no SDK long task > 50ms; CLS 0 | CI + e2e |
 
 ## 4. Manual checks (each release candidate)
 

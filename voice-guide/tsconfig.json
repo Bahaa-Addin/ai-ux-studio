@@ -19,6 +19,7 @@
   "include": [
     "packages/text/src/**/*.ts",
     "packages/kb/src/**/*.ts",
+    "packages/loader/src/**/*.ts",
     "services/**/*.ts",
     "jobs/**/*.ts",
     "tools/**/*.ts",

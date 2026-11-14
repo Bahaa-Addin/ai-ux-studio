@@ -136,6 +136,20 @@ The guide speaks with VoiceTut, an Egyptian Arabic and English voice, when `VG_V
    - Values read on the page stay in memory only.
    - Settings are in `config/sites/vodafone-eg.yaml` under `speech.out`: a voice per language (pick by ear, D9), steps 16, 32 or 48, speed 0.85, 1 or 1.15, and `firstAudioMs`.
 
+## 3c. The public demo: gateway, Whisper and the extension (ADR-0053 to ADR-0056)
+
+The demo browser stays the stage and test setup. For people who open the real site in their own browser:
+
+1. **Whisper on Modal** (speech-to-text for Firefox and Brave, ADR-0055): `modal secret create vg-whisper WHISPER_TOKEN=<random 32+ chars>`, then `MAX_CONTAINERS=2 modal deploy voice-guide/deploy/whisper/modal_app.py`. Note the URL it prints. Set a workspace spending limit in Modal's settings.
+2. **VoiceTut** (optional; allowed for public visitors, capped per day, owner 2026-11-13): `MAX_CONTAINERS=2 modal deploy experiments/voicetut/modal_app.py`, then add `VG_VOICETUT_URL` to the gateway's secrets. `fly.toml` caps it at 300 new sentences per site per day (`VG_VOICETUT_SENTENCES_PER_DAY`); past that, visitors hear the browser voice. Without `VG_VOICETUT_URL` the browser voice speaks.
+3. **The gateway on Fly.io**, from the repository root: `fly launch --no-deploy --config voice-guide/deploy/gateway/fly.toml` (once), then
+   `fly secrets set --config voice-guide/deploy/gateway/fly.toml VG_SECRET=$(openssl rand -hex 32) VG_ADMIN_TOKEN=$(openssl rand -hex 24) ANTHROPIC_API_KEY=... VG_WHISPER_URL=... VG_WHISPER_TOKEN=...` and `fly deploy --config voice-guide/deploy/gateway/fly.toml`. Set `VG_PUBLIC_URL` in `fly.toml` to the app's https address. The gateway refuses to start with an unsafe setting and says which (`fly logs`).
+   Check: `curl https://<app>.fly.dev/health` shows `"agent":{"available":true,...}` and the site.
+4. **The extension**: `npm run extension:build -- --gateway https://<app>.fly.dev`. Chrome/Edge: `chrome://extensions`, Developer mode, Load unpacked, `extension/dist/chrome`. Firefox: `about:debugging#/runtime/this-firefox`, Load Temporary Add-on, `extension/dist/firefox/manifest.json`. For the stores, zip each folder's contents and upload it unlisted (Chrome Web Store, $5 once; addons.mozilla.org, free).
+5. Open `https://web.vodafone.com.eg/en/home`: the microphone appears; in Firefox the first press shows the speech-to-text notice. After a page change in Safari or Firefox a reply may wait behind **Tap to hear**.
+
+Budgets to watch in `/metrics` and the traces: `agent.calls`, `stt.clips`, `speech.capped`; the day's caps are `VG_AGENT_TOKENS_PER_SITE_DAY`, `VG_STT_SECONDS_PER_DAY` and `VG_VOICETUT_SENTENCES_PER_DAY` (300 on the public gateway).
+
 ## 3b. What the experience layer reads on a page (live adapter, ADR-0046 §3, ADR-0049)
 
 The layer reads Vodafone's cards into the demos' content model: `experiences/src/host/live-adapter.js`, with one row per Vodafone component in `recognisers.js`. A demo is offered on a page only when coverage is above its threshold: Reimagine 0.9, Pocket 0.6. Coverage is the share of cards with a title and an action, either a link or one of the page's own dialogs.
