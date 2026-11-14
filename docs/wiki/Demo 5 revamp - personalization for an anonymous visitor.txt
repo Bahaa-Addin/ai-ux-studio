@@ -1,0 +1,272 @@
+# # Demo 5 revamp: personalization for an anonymous visitor
+
+## Context
+
+Demo 5 (`vodafone-services-clone/src/personalization/`) was built as if the visitor were a logged-in
+RED customer: a known rate plan, usage (minutes, SMS, data, DSL), a bill, RED Points, family and
+entertainment spots, plan-included perks and an Elite+ upsell. The Services page is public, so the
+visitor is not logged in and none of that is known. Plan benefits, consumption and upsells already
+live on the logged-in homepage.
+
+The revamp keeps the experience: the Dock at the album's end, the push, the separate widget layer,
+the spotlight with the compact bento, and exact scroll restore. It rebuilds the content from what a
+public page can know:
+- services the visitor kept in the Pocket;
+- public pages they visited and what they explored there (the voice guide's trail, with consent);
+- what their questions were about (a new trail interface version);
+- facts about the site and about the benefits Vodafone offers every line.
+
+Decisions (user, 2026-11-10):
+- **Journey.** Use live signals (Pocket, trail) whenever they exist, plus 3 seeded demo visitors
+  via `?pz=`, labelled as demo data.
+- **Questions.** Extend the voice guide's trail host interface to a new version. It exposes what
+  each question was about: spoken, typed, a chip from the journey, or a press on the host's cards.
+  It keeps the detailed resolved topic (destination, page, intent, origin, and a knowledge-base
+  label such as "Roaming 2-week plans"), never the visitor's words. Documented with an ADR and a
+  changelog.
+- **Journey stats.** Named facts, no counts, so the trail spec's rule (SPEC-06: never times or
+  counts of what someone did) stands. Only facts about the site use numbers.
+- **Dock.** Keep the 8 categories without "RED" in any label: Lifestyle, Home Connectivity,
+  Entertainment, Roaming, Experiences, Fitness, Food & Groceries, Shopping. Present them as public
+  benefits the company is bringing to every rate plan.
+- **Name.** Neutral, no "RED world". Plans appear only as public information when the journey
+  points there, never as an upgrade pitch.
+
+## Part A — voice-guide: trail host interface v2 (what questions were about)
+
+Today no question is stored anywhere in the trail. The consent card says "Never saved: anything
+you type", and the clone's `journey.js` refuses any host object whose `version !== 1`.
+
+**Record** (in the trail chunk; `guide.js` is ~27–79 B under its gzip budget, `trail.js` has
+~3.5 KB of room):
+- `packages/sdk/src/trail/controller.ts` wraps the Guide instance's `request` (voice / typed /
+  chip) and `api.post` (to read the `/v1/turn` plan).
+- From the plan's `meta` it records one `AskedQuestion` on the current step:
+  `{ id, at, lang, origin: 'voice'|'typed'|'chip'|'host', destinationId, pageId?, intent, route,
+  label? }`.
+- When nothing is recorded:
+  - only while `rec === 'recording'` and the step is a page;
+  - nothing when the plan resolved no destination;
+  - never the utterance, never answer text (live reads carry prices).
+- Trail chips use `hint.trailStepId` for the step they are about.
+
+**Store.** `types.ts` adds `TrailStepSummary.asked?: AskedQuestion[]` (at most 10 per step),
+validated in `isStep`. The field rides on the existing per-step persistence:
+- the stash survives navigation;
+- `#writeIndex` writes it;
+- eviction, step roll-off, `deleteSession`, `clearAll`, `#clear`, `#forgetSession` and `TURN_OFF`
+  remove it.
+
+No IndexedDB version bump. Nothing is recorded while paused.
+
+**Label from the server.** `services/router/planner.ts` adds `meta.pageId` and `meta.label`, typed
+in `packages/kb/src/plan.ts`. The label is the resolved destination's title in the turn's language,
+at most 60 characters. It is price-free: a price check is copied from `questionTextIssues` in
+`packages/kb/src/experience.ts`, and a priced title falls back to its parent's title. This is an
+additive change to the plan contract.
+
+**Expose** (`host.ts`, with a changelog in its header comment):
+- `TrailHostApi` becomes `version: 2` = v1 plus:
+  - `snapshot().asked`: newest first, each with `stepId` and page title;
+  - `askAbout(destinationId, questionId?)` for host cards, resolved against the page map and every
+    step's explored list;
+  - `questionsFor(destinationId)`: the verified chips for a host card.
+- `#snapshot` strips `asked` from `steps`, so nothing leaks under the v1 shape.
+- `ask` gets the two-letter language fallback that `journey.js` already uses.
+
+**Copy.** `trail/i18n.ts` (en and ar) changes the consent wording to say the trail saves "the pages
+you visit, what you explore and what your questions were about, never the words you say or type".
+`tests/e2e/trail.e2e.test.ts:160` is updated to match.
+
+**Clone.** `src/pocket/journey.js` `attach` accepts `version >= 1` (it reads v2 fields only when
+present) and adds asked items to its render key.
+
+**Docs** (additive edits; several of these files hold uncommitted work, including ADR-0045 and
+ADR-0046):
+- ADR-0048: "The trail remembers what questions were about, never their words; the host interface
+  becomes version 2". It amends 0040 and relates to 0036, 0037, 0016, SPEC-05 and SPEC-06. It notes
+  that 0047 and the planned `seed()` are reserved, and that 0046 moves the journey later.
+- The README row, and the 0040 status line ("amended by 0048").
+- SPEC-06: §2 (what is saved), §3a (host interface v2 and its changelog), §6.
+- HANDOFF §8, TASKS T-809, runbook §7a, diagram 10 (Layer A), pilot-tuning (asked-per-step knob).
+- `docs/qa/bugs-and-open-issues.md` O23: customer exposure still needs D2, and any page script can
+  read `voiceGuide.trailHost`.
+
+## Part B — the clone
+
+### B1. Signals: `src/personalization/journey.js` (new, pure)
+
+`readJourney({ keptIds, trail, demo })` returns:
+```
+{ kept:  [{ serviceId }],                                   // pocket.state.ids, oldest first
+  pages: [{ pageId, title, explored: [destinationId] }],    // trail steps
+  asked: [{ destinationId, pageId, intent, origin, label }],
+  consent: 'granted'|'paused'|'declined'|'off'|'absent',
+  source: { trail: 'live'|'demo'|null, demoId } }
+```
+- Trail data counts only with consent `granted` or `paused`. Declined, turned off or cleared means
+  `pages` and `asked` are empty and anything derived from them is dropped.
+- Demo visitors (`?pz=traveller|cash|fan`) supply `pages` and `asked` only when no live trail
+  exists. Kept services always come from the real Pocket, because the Dock can only be reached after
+  keeping some. Without `?pz` the layer uses live signals only.
+- `index.js` wiring:
+  - It reads the Pocket ids when the Dock is revealed and when the world opens, so `pocket.js` does
+    not change.
+  - It reads the trail through `vg:trail-ready`, then `trailHost.subscribe`.
+  - It passes `pocket` and `trailHost` to the world for "Keep in Pocket" and "Ask the guide".
+
+### B2. Data: `data.js`
+
+- **Categories.** `CATEGORIES` and `LIFESTYLE` keep their ids; their labels drop "RED".
+- **`CATALOG`: benefits for every line.** Public information: no claims, no codes, no tier gates.
+  - The benefits: Talabat Pro, the QANZ card, BeFit, a roaming bundle, partner offers (ZARA, Mango,
+    KIKO, Massimo Dutti, Stradivarius), partner cafés, 0% installments, a members' night, a home
+    internet bonus, a free streaming service.
+  - Drop `included`, `minTier`, `maxTier`, `capacity`, `requires`, `relieves` and the
+    `{plan}`/`{spots}`/`{roaming}` templates.
+  - Add `topics` and `evidence` to each item: `serviceIds`, `pageIds`, `destinationIds`.
+- **`SERVICES`.** Derived from `src/content/vodafone-services.js` (import it, never copy it). Each of
+  the 29 services maps to a topic. For example, roaming, visiting-egypt,
+  international-standard-rates and visa-appointment map to Roaming; the 7 Great Entertainment items
+  map to Entertainment.
+- **`PUBLIC_PAGES`.** About 20 curated public pages, using ids from
+  `voice-guide/config/kb/vodafone-eg.manifest.json`: `web.homedslcatalog`, `web.wireless-net`,
+  `web.mobile-internet-bundles`, `web.vodafone-cash*`, `web.international-calls`,
+  `web.visiting-egypt`, plan pages, store locator, coverage checker. Each entry has a title, a public
+  path and a topic. Never prices.
+- **`DEMO_VISITORS`.** Each is a set of visited pages, explored destinations and asked topics:
+  - traveller: Visiting Egypt and international calls; asked about roaming week plans;
+  - cash: Vodafone Cash and card-to-wallet; asked about sending money;
+  - fan: Great Entertainment and the YouTube bundle; asked about watching matches.
+
+### B3. Engine: `engine.js`
+
+`personalize(journey)` returns the view `{ journey, items, glance, facts }`.
+
+Rules are pure; each returns a score and the reason a card shows:
+- `keptInPocket`: "You kept Roaming Services in your Pocket".
+- `visitedPage`: "You looked at Visiting Egypt on the site".
+- `explored`: weighs a destination explored on a page, or returned to.
+- `askedAbout`: "You asked about Roaming 2-week plans".
+- A cold start uses editorial order only, with no popularity claims.
+
+Kept from today: `scoreItem`, the formatters, `fill`, `alreadySettled` (for dismissed items).
+
+Removed: `PLANS`, `INCLUDED_BENEFITS`, `GLANCE_METRICS`, `PROFILES`, and the rules
+unclaimedIncluded, capacityLeft, usagePressure, upgradeOpportunity. Also the view's account fields
+and the dead `latest`.
+
+### B4. Topics: `topics.js`
+
+- The Dock shows all 8 categories, always.
+- Bento-only topics:
+  - **From your visit**: kept services and visited pages, with links back.
+  - **Your questions**: asked topics, with chips that ask again through `trailHost.askAbout` or
+    `questionsFor`. Hidden when the guide is absent.
+  - **Vodafone Cash**, **Stay in control**, **Help & stores**.
+  - **Plans**: public information, shown only when the journey visited plan pages.
+- Topics are ranked by evidence. The default is the best-evidenced topic, else Lifestyle.
+- These go: for-you, family, bill, points, upgrade, and the account-based hooks.
+
+### B5. Components, world and copy
+
+- **Hero.** It is neutral: "Picked for you", "Benefits and services that fit what you explored, for
+  every Vodafone line". The signals pill names what was used: "From your Pocket and your visit", or
+  "Explore and this fills up" on a cold start. The condensed band reads "Picked for you".
+  The bar title is "For you".
+- **Cards:**
+  - `benefitCard`: "For every Vodafone line"; its "How to get it" sheet says to activate in Ana
+    Vodafone, with the app link the page already uses.
+  - `serviceCard`: the page's own image and description, "View more ↗" from the page data, and
+    "Keep in Pocket" through `pocket.pocket(id)`.
+  - `pageCard`: a public page link.
+  - `questionCard`: an asked topic, with chips.
+- Vouchers show the offer, never a code.
+- **"Why these?"** lists exactly what was used:
+  - the kept services, by name;
+  - the visited pages, only with consent;
+  - the question topics.
+
+  It also says what is never used: number, plan, usage. It offers the demo visitors, "Forget this"
+  (this layer's own state) and "Clear my journey" (`trailHost.clear()`).
+- **Removed:** planOverview, familyCard, entertainmentCard, billCard, points, upgrade, perkCard; the
+  invite, bill, plan and upgrade sheets and act cases; their art (`eliteArt`, `pointsArt`, avatars)
+  and CSS (`.pz-fam`, `.pz-ent`, `.pz-elite`, `.pz-compare`, `.pz-points`, `.pz-latest`, `.pz-home`,
+  `.pz-plan`, `.pz-metric--bill`).
+- "Your RED world", "RED Benefits" and "RED …" are renamed in the copy, aria labels and `lipCopy`.
+
+### B6. Widget: "Your visit" (same shell, new metrics, named facts)
+
+- **Primary row** (and the floating pill), each navigating to its topic:
+  - Kept: "Roaming Services +2";
+  - Last looked at: "Visiting Egypt" (or "Not recorded" without consent);
+  - Asked about: "Roaming 2-week plans";
+  - Most explored: "Roaming".
+- **Second row, the site:** 29 services on this page, the number of benefits for every line, the
+  number of partner brands. These are counts from the data, never from traffic.
+- **`status-widget.js` shell changes:**
+  - the primary row is driven by a metric `primary` flag instead of the fixed
+    minutes/sms/data/dsl set;
+  - cells are rebuilt when the set of metrics changes;
+  - the identity line reads "Your visit · this browser only", or "Demo visitor: Traveller";
+  - "account" is dropped from aria labels.
+- Value cells take text, not only numbers. The bars appear only for `kind: 'usage'`, and none
+  remain.
+
+### B7. Store: `store.js`
+
+`aixc.pz.v2` holds only this layer's own decisions: dismissed items and the chosen demo visitor.
+The old `aixc.pz.v1` (demo-customer claims) is deleted on load. No copy of trail data is stored.
+
+### B8. Tests and docs
+
+- `tests/personalization.test.mjs` is rewritten:
+  - data integrity: every service and page maps to a topic; 8 Dock categories, none labelled "RED";
+  - `readJourney`: consent gating, demo vs live, ordering;
+  - each rule and its reason;
+  - ranking per demo visitor: traveller → Roaming, cash → Vodafone Cash, fan → Entertainment;
+  - cold start, widget metrics (no counts of the visitor's activity), `bentoSpans`, `topicFor`.
+- Docs: the clone README section under its new name; the README's journey/host section (v2);
+  `docs/design-system.md`; the root README line.
+- Wiki: the 2026-11-10 decisions marked; the RED-customer decisions marked superseded, with what
+  replaced them.
+
+## Order of work
+
+1. Part A: types and recording, then planner meta, then host v2 and copy, then voice-guide tests,
+   then docs.
+2. Clone `journey.js` accepts v2.
+3. B2, B1, B3, B4 with their unit tests.
+4. B5, B6, B7.
+5. Browser verification, then docs and wiki.
+
+No commits unless asked. The working tree holds uncommitted Tips and ADR-0045/0046 work: edit
+around it, never reformat it.
+
+## Verification
+
+- **voice-guide** (Postgres at 127.0.0.1:54329 for `npm test`):
+  - `timeout 600 npm run typecheck`, `npm run test:unit`, `npm test`, then
+    `tests/e2e/pocket-journey.e2e.test.ts` and `tests/e2e/trail.e2e.test.ts`.
+  - New cases:
+    - a spoken question (via `SPEECH_STUB`), a typed one, a trail chip and a host `askAbout` each
+      appear in `snapshot().asked` with destination and label;
+    - the utterance never appears in the IndexedDB dump;
+    - declined or paused consent records nothing; Clear removes everything;
+    - v1-shaped `steps` carry no `asked`;
+    - the planner's `meta.label` is price-free;
+    - `sdk-size` stays within budget.
+- **Clone:** `npm test` and `npx vite build`.
+  - Headless Chrome over CDP (the existing scratch drivers `spot`, `fixes`, `checks`, `flow`,
+    `motion`, `ar` from session cf2e6b02 are reused and updated):
+    - `?pz=traveller|cash|fan` lead with Roaming, Vodafone Cash and Entertainment;
+    - the widget shows named facts and no counts of the visitor's activity;
+    - no "RED", plan, usage or bill text anywhere in the layer;
+    - Keep in Pocket works; Why these? lists the real sources;
+    - exact scroll restore, monotonic motion, no horizontal overflow at 320–1600px, no console
+      errors, the Arabic page untouched.
+- **End to end with the guide:** `cd voice-guide && npm run demo:trail`, open /en/services, consent,
+  ask by voice stub and by typing.
+  - The widget shows "Asked about: …", and Your questions lists the topics.
+  - Clearing the journey empties them.
+  - Declining consent leaves only the Pocket signals.

@@ -5,7 +5,7 @@
 - Architecture decisions: [ADR-0046](../../voice-guide/docs/adr/0046-all-demos-live-on-vodafone-pages.md) (the demos live) and [ADR-0047](../../voice-guide/docs/adr/0047-voicetut-speaks-for-the-guide.md) (VoiceTut is the guide's voice; added 2026-11-10 after the owner resolved Modal's billing). This file is how to build them.
 - Start from `integration/main` at the commit that adds this file (after 695df1d) or later. Work on a new branch `feature/live-way2`.
 
-**The five demos:** (1) voice guide / page agent, speaking with VoiceTut's Egyptian Arabic and English voice, (2) Pocket (with its actors and the portal), (3) Reimagine this page, (4) Exploration Trail ("Your journey"), (5) Your RED world. Page watch and Tips come along: page watch moves to its phase 1 form, Tips becomes the hub for the quick start.
+**The five demos:** (1) voice guide / page agent, speaking with VoiceTut's Egyptian Arabic and English voice, (2) Pocket (with its actors and the portal), (3) Reimagine this page, (4) Exploration Trail ("Your journey"), (5) Your RED world Revamp. Page watch and Tips come along: page watch moves to its phase 1 form, Tips becomes the hub for the quick start.
 
 Work through the phases in order. Every phase ends with checks. If a check fails, stop, record it (bug log or open issue), and fix it before the next phase.
 
@@ -17,7 +17,7 @@ Work through the phases in order. Every phase ends with checks. If a check fails
 
 - Repository root `README.md`; `voice-guide/AGENTS.md`, `voice-guide/CLAUDE.md`, `voice-guide/docs/handoff/HANDOFF.md`.
 - `voice-guide/docs/adr/README.md`, then ADR-0020 (one shadow root), ADR-0023 (page watch on the platform), ADR-0026 and ADR-0031 (demo browser), ADR-0035 to ADR-0040 (trail), ADR-0041, ADR-0042 (the agent preset, the model for ADR-0047's demo-only rule), ADR-0043 to ADR-0047.
-- `vodafone-services-clone/README.md` (every demo's behaviour, including "Tips" and "Your RED world"), `vodafone-services-clone/docs/design-system.md`, `docs/wiki/Your RED world (demo 5).md`.
+- `vodafone-services-clone/README.md` (every demo's behaviour, including "Tips" and "Your RED world Revamp”), `vodafone-services-clone/docs/design-system.md`, `docs/wiki/Your RED world (demo 5).md` & `'/Users/monterey/Workspace/Projs/Vodafone/ai-ux-studio/docs/wiki/Demo 5 revamp - personalization for an anonymous visitor.txt'`
 - The clone-local ADRs on the feature branches: `vodafone-services-clone/docs/adr/0001`–`0004` (actors, on `feature/pocket-actors-live`) and `0005` (portal, on `feature/pocket-portal`).
 - `experiments/voicetut/README.md` (VoiceTut: API, measurements, licence) and `experiments/voicetut/modal_app.py`.
 - Project docs `page-watch-phase1.md` and `page-watch-adrs.md` (claude.ai project "AIXC").
@@ -44,17 +44,17 @@ Work through the phases in order. Every phase ends with checks. If a check fails
 
 ## 1. What changes, in one table
 
-| | Today | After this plan |
-|---|---|---|
-| Where the demos run | Pocket, Reimagine, RED world, Tips and the hosted journey only on the clone of `/en/services` and `/ar/services`, only in replay | All of them on Vodafone's live CMS pages (`web.vodafone.com.eg/{en,ar}/…`), and on the saved real pages offline |
-| How they reach the page | The clone's own `index.html` and `main.js` | The demo browser's loader adds `aixc.js` beside `guide.js` on every page, from `/__vg/sdk/aixc/` |
-| What they read | A hand-typed content file (`src/content/vodafone-services*.js`) rendered by `src/adapters/vodafone-services.js` | Vodafone's markup, read by a live adapter into the same content model |
-| The page frame | The clone's shell (`src/shell.js`): header, `#source-content`, `#experience-output`, `#aixc-viewbar` | `PageHost` over Vodafone's DOM: `#main-content` is the source; output and view bar are inserted beside it |
-| Your journey | Opens on the Services clone (`trail.hostUrl`) | Opens in the Pocket on the page you are on |
-| The guide's voice | The browser's system voice (`speechSynthesis`) | VoiceTut (Egyptian Arabic and English) through the gateway, cached and synthesised ahead; the system voice as the fallback |
-| Demo data | The RED world's three sample customers (`?pz=`) | "Fill with demo data" and "Reset demo" for every demo, from a demo kit captured from real pages |
-| Offline fallback and tests | Replay of 14 saved pages with the clone mounted | Replay of saved real pages (refreshed), with the experience layer on them |
-| `vodafone-services-clone/` | The demo | Moved to `experiences/` (modules kept, page and shell deleted at phase 9) |
+|                            | Today                                                        | After this plan                                              |
+|----------------------------|--------------------------------------------------------------|--------------------------------------------------------------|
+| Where the demos run        | Pocket, Reimagine, RED world, Tips and the hosted journey only on the clone of `/en/services` and `/ar/services`, only in replay | All of them on Vodafone's live CMS pages (`web.vodafone.com.eg/{en,ar}/…`), and on the saved real pages offline |
+| How they reach the page    | The clone's own `index.html` and `main.js`                   | The demo browser's loader adds `aixc.js` beside `guide.js` on every page, from `/__vg/sdk/aixc/` |
+| What they read             | A hand-typed content file (`src/content/vodafone-services*.js`) rendered by `src/adapters/vodafone-services.js` | Vodafone's markup, read by a live adapter into the same content model |
+| The page frame             | The clone's shell (`src/shell.js`): header, `#source-content`, `#experience-output`, `#aixc-viewbar` | `PageHost` over Vodafone's DOM: `#main-content` is the source; output and view bar are inserted beside it |
+| Your journey               | Opens on the Services clone (`trail.hostUrl`)                | Opens in the Pocket on the page you are on                   |
+| The guide's voice          | The browser's system voice (`speechSynthesis`)               | VoiceTut (Egyptian Arabic and English) through the gateway, cached and synthesised ahead; the system voice as the fallback |
+| Demo data                  | The RED world Revamp’s three sample customers (`?pz=`)       | "Fill with demo data" and "Reset demo" for every demo, from a demo kit captured from real pages |
+| Offline fallback and tests | Replay of 14 saved pages with the clone mounted              | Replay of saved real pages (refreshed), with the experience layer on them |
+| `vodafone-services-clone/` | The demo                                                     | Moved to `experiences/` (modules kept, page and shell deleted at phase 9) |
 
 ---
 
@@ -162,15 +162,15 @@ flowchart LR
 
 ### 3.5 Each demo, live
 
-| Demo | What changes for live | Offered on |
-|---|---|---|
-| **1. Voice guide / page agent** | Speaks with VoiceTut (section 3.11). Otherwise nothing in `guide.js`. Reimagined cards carry `data-vg-destination`, so answers spotlight them. The agent stays the replaceable preset (ADR-0042). | Every allowed page (already) |
-| **2. Pocket** (peel, album, actors, portal) | "Pocket it" on live cards (from `data-aixc-item`); the page curl turns `#main-content` (protected header and footer stay put); the album, the actors and the portal as built. The portal's same-origin iframe is allowed (`X-Frame-Options: SAMEORIGIN`). Stickers from any page share one Pocket (`aixc.pocket.v1`), each with its source page. | CMS pages where Pocket coverage passes |
-| **3. Reimagine this page** | Composer and the 13 experiences read the live model; the reimagined view hides `#main-content` and shows `#aixc-output`; "Original" restores it exactly (scroll position too). Images load from Vodafone's URLs. | Pages where Reimagine coverage passes and there are at least 2 sections with 3 or more items (Services, bundles, RED, home to be measured) |
-| **4. Exploration Trail** | Hosted by the Pocket on every page: "Your journey" opens the Pocket on the journey page in place; `hostUrl` goes. Recording, consent, Pause and Clear unchanged. | Every allowed page |
-| **5. Your RED world** | Under the Pocket album on every page, as built. Plans and partners come from the live RED page (`/{lang}/vodafone-red1`: `card-plan`, `card-collapsing`, the "Red points partners" portlet) through the adapter, or from the demo kit when that page is not open. The customer is a sample (no sign-in) and says so on the status widget. Arabic is open (D4). | Wherever the Pocket is |
-| **Page watch** | Phase 1 form once the owner approves its ADR: watch a pocketed sticker or a section ("Tell me when this changes"), check on visit in the browser (same-origin fetch, compare the section), "What changed since your last visit" in place. No scheduled server checks of production. | Every allowed page |
-| **Tips** | The hub: tour of the five demos plus "Fill with demo data" and "Reset demo"; scenes take their pictures from the live model; the invitation waits until the cookie banner has been answered and never shows under automation (as now). | Every allowed page |
+| Demo                                        | What changes for live                                        | Offered on                                                   |
+|---------------------------------------------|--------------------------------------------------------------|--------------------------------------------------------------|
+| **1. Voice guide / page agent**             | Speaks with VoiceTut (section 3.11). Otherwise nothing in `guide.js`. Reimagined cards carry `data-vg-destination`, so answers spotlight them. The agent stays the replaceable preset (ADR-0042). | Every allowed page (already)                                 |
+| **2. Pocket** (peel, album, actors, portal) | "Pocket it" on live cards (from `data-aixc-item`); the page curl turns `#main-content` (protected header and footer stay put); the album, the actors and the portal as built. The portal's same-origin iframe is allowed (`X-Frame-Options: SAMEORIGIN`). Stickers from any page share one Pocket (`aixc.pocket.v1`), each with its source page. | CMS pages where Pocket coverage passes                       |
+| **3. Reimagine this page**                  | Composer and the 13 experiences read the live model; the reimagined view hides `#main-content` and shows `#aixc-output`; "Original" restores it exactly (scroll position too). Images load from Vodafone's URLs. | Pages where Reimagine coverage passes and there are at least 2 sections with 3 or more items (Services, bundles, RED, home Revamp to be measured) |
+| **4. Exploration Trail**                    | Hosted by the Pocket on every page: "Your journey" opens the Pocket on the journey page in place; `hostUrl` goes. Recording, consent, Pause and Clear unchanged. | Every allowed page                                           |
+| **5. Your RED world Revamp**                | Under the Pocket album on every page, as built. Plans and partners come from the live RED page (`/{lang}/vodafone-red1`: `card-plan`, `card-collapsing`, the "Red points partners" portlet) through the adapter, or from the demo kit when that page is not open. The customer is a sample (no sign-in) and says so on the status widget. Arabic is open (D4). | Wherever the Pocket is                                       |
+| **Page watch**                              | Phase 1 form once the owner approves its ADR: watch a pocketed sticker or a section ("Tell me when this changes"), check on visit in the browser (same-origin fetch, compare the section), "What changed since your last visit" in place. No scheduled server checks of production. | Every allowed page                                           |
+| **Tips**                                    | The hub: tour of the five demos plus "Fill with demo data" and "Reset demo"; scenes take their pictures from the live model; the invitation waits until the cookie banner has been answered and never shows under automation (as now). | Every allowed page                                           |
 
 ### 3.6 Demo data: "Fill with demo data" and "Reset demo"
 
@@ -178,29 +178,29 @@ Shown only when the loader marks the page as a demo (`data-aixc-demo="1"`; `?aix
 
 The demo kit is captured on demand by **`node tools/demo-kit.ts --site vodafone-eg`** (new; public pages only, 1 page per second, stops on a bot check, uses the same live adapter inside Playwright) and committed as `config/demo-kit/vodafone-eg.json` with its capture date. The runbook gets a "refresh the demo kit" step for demo day.
 
-| Demo | "Fill with demo data" does | Source (all real except where said) |
-|---|---|---|
-| Voice guide | Shows 5 starter questions per language as chips; pressing one asks it | The router tuning set and the experience profile's verified questions |
-| Pocket | Puts about 6 stickers in the Pocket from several pages (for example a bundle, Vodafone Cash, a RED plan, a Shokran service) | Items the live adapter read from those pages at capture time; titles, copy, images and links as published |
-| Reimagine | Nothing to fill; "Surprise me" applies a ready-made view to the live page | The page itself |
-| Exploration Trail | After the person consents, loads a sample journey (home → bundles → RED → Services) with its replay and explored items | A journey recorded by the trail itself on the live pages during the kit capture (signed out, masked); imported through a new consent-gated `seed()` on the trail host API that writes with `TrailStore.putSession/putChunk/putInterest` |
-| Your RED world | Picks a sample customer (Ahmed, Mariam or Karim) and opens the world | Plans and partners from the live RED page; the customer and their usage are samples, labelled "Sample customer" on the widget |
-| Page watch | Watches 2 sections, with a baseline from an earlier real capture, so the next visit shows a real "what changed" | The saved pages of 2026-10-23 (or a later kit) against today's page; if nothing changed, it says "No change since 23 Oct" |
+| Demo                  | "Fill with demo data" does                                   | Source (all real except where said)                          |
+|-----------------------|--------------------------------------------------------------|--------------------------------------------------------------|
+| Voice guide           | Shows 5 starter questions per language as chips; pressing one asks it | The router tuning set and the experience profile's verified questions |
+| Pocket                | Puts about 6 stickers in the Pocket from several pages (for example a bundle, Vodafone Cash, a rate plan benefits, a Shokran service) | Items the live adapter read from those pages at capture time; titles, copy, images and links as published |
+| Reimagine             | Nothing to fill; "Surprise me" applies a ready-made view to the live page | The page itself                                              |
+| Exploration Trail     | After the person consents, loads a sample journey (home → bundles → Benefits → Services) with its replay and explored items | A journey recorded by the trail itself on the live pages during the kit capture (signed out, masked); imported through a new consent-gated `seed()` on the trail host API that writes with `TrailStore.putSession/putChunk/putInterest` |
+| Your RED world Revamp | Picks a sample customer (Ahmed, Mariam or Karim) and opens the world | Plans and partners from the live RED page; the customer and their usage are samples, labelled "Sample customer" on the widget |
+| Page watch            | Watches 2 sections, with a baseline from an earlier real capture, so the next visit shows a real "what changed" | The saved pages of 2026-10-23 (or a later kit) against today's page; if nothing changed, it says "No change since 23 Oct" |
 
-"Reset demo" clears the Pocket (`aixc.pocket.v1`), the trail (`TrailStore.clearAll()` and consent), the RED world's state, watches and Tips' seen state, then reloads. It never touches Vodafone's cookies or the cookie answer.
+"Reset demo" clears the Pocket (`aixc.pocket.v1`), the trail (`TrailStore.clearAll()` and consent), the RED world Revamp’s state, watches and Tips' seen state, then reloads. It never touches Vodafone's cookies or the cookie answer.
 
 ### 3.7 Floating controls on live pages
 
-| Control | Owner | Place (start from these, measure, then fix) |
-|---|---|---|
-| Accessibility button | Vodafone | Fixed, 1291,825 desktop; 300,737 phone. Never moved. |
-| Microphone and keyboard | Guide | Above the accessibility button (`--vg-lift`), as now |
-| Pocket corner and button | Layer | Bottom-right curl when something is pocketed; the right-hand column lifts (ADR-0044's 230/150 px); tucks in during a reimagined view |
-| Your journey pill | Guide | Top-right, below Vodafone's header (`#main-content` top: 120 desktop, 71 phone) |
-| Reimagine this page | Layer | Directly below the pill (as on the clone, B-23) |
-| Tips | Layer | Bottom-left; waits for the cookie banner to go |
-| RED world Dock | Layer | Inside the Pocket album only |
-| Cookie banner | Vodafone | On a first visit it covers the page. Our controls sit under it; never above it. |
+| Control                  | Owner    | Place (start from these, measure, then fix)                  |
+|--------------------------|----------|--------------------------------------------------------------|
+| Accessibility button     | Vodafone | Fixed, 1291,825 desktop; 300,737 phone. Never moved.         |
+| Microphone and keyboard  | Guide    | Above the accessibility button (`--vg-lift`), as now         |
+| Pocket corner and button | Layer    | Bottom-right curl when something is pocketed; the right-hand column lifts (ADR-0044's 230/150 px); tucks in during a reimagined view |
+| Your journey pill        | Guide    | Top-right, below Vodafone's header (`#main-content` top: 120 desktop, 71 phone) |
+| Reimagine this page      | Layer    | Directly below the pill (as on the clone, B-23)              |
+| Tips                     | Layer    | Bottom-left; waits for the cookie banner to go               |
+| RED world Revamp Dock    | Layer    | Inside the Pocket album only                                 |
+| Cookie banner            | Vodafone | On a first visit it covers the page. Our controls sit under it; never above it. |
 
 Extend `tools/demo-walkthrough.ts` and the overlap test (`tests/e2e/reimagine-floating.e2e.test.ts`) to these pages and states: on load, Pocket peeking, Pocket open, reimagined, Tips open; 1366×900 and 375×812; English and Arabic; with and without the cookie banner answered.
 
@@ -212,7 +212,7 @@ Extend `tools/demo-walkthrough.ts` and the overlap test (`tests/e2e/reimagine-fl
 
 ### 3.9 Privacy
 
-- Nothing new leaves the browser. The Pocket, the RED world, Tips and watch baselines stay in `localStorage` / IndexedDB; the trail keeps its consent, 24-hour expiry, Pause and Clear.
+- Nothing new leaves the browser. The Pocket, the RED world Revamp, Tips and watch baselines stay in `localStorage` / IndexedDB; the trail keeps its consent, 24-hour expiry, Pause and Clear.
 - The demo kit is captured signed out, masked by the trail's own sanitiser, and contains only public content.
 - Speech in: server recognition is allowed for the owner's own demos only (O15).
 - Speech out (ADR-0047): only the guide's own reply text goes to VoiceTut on Modal (outside Egypt), never the person's audio, transcript or typed words. Say so in the runbook and the X-ray. Owner's demos only (CC-BY-NC weights).
@@ -250,17 +250,17 @@ Extend `tools/demo-walkthrough.ts` and the overlap test (`tests/e2e/reimagine-fl
 
 ## 4. Decisions to ask the owner (ask before the phase that needs them)
 
-| | Question | Recommendation | Blocks |
-|---|---|---|---|
-| D1 | Approve the page watch phase 1 ADR (browser-only, check-on-visit, topic watches; replaces ADR-0001/0003 of the prototype) | Yes; it is the only form that runs live without scheduled checks of production | Phase 6 |
-| D2 | "Pocket it" on live pages: always visible (as on the clone) or on hover and focus, with a small tab on phones | Hover and focus on desktop, always on phones; live pages carry many more cards | Phase 3 |
-| D3 | Which pages offer Reimagine | Every CMS page that passes coverage, and a curated "demo pages" list for the walkthrough | Phase 4 |
-| D4 | RED world in Arabic, and whether its catalogue comes from the live RED page | Arabic yes; catalogue from the live page, customer stays a labelled sample | Phase 5 |
-| D5 | Merge order of the in-flight branches before the move | actors → portal → template credits, each checked (phase 0) | Phase 0 |
-| D6 | Phones: the demo browser only emulates phones. Is a real phone needed (needs a Chrome extension or Vodafone's tag manager)? | Not for this round | — |
-| D7 | Retire the clone's Page Agent panel and the VoiceTut panel with the clone (VoiceTut itself moves into the guide)? | Yes (the guide's agent fallback covers the page agent) | Phase 9 |
-| D8 | Deploy the Modal app again (`modal deploy experiments/voicetut/modal_app.py` with your Modal login) and set its spending limit; keep `scaledown_window=60` with the keep-warm loop, or raise it | Deploy now; keep 60 s plus keep-warm; a spending limit you are comfortable with | Phase 1b |
-| D9 | Which VoiceTut voice for Arabic and for English | Choose by ear in phase 1b from 3 candidates on the same 10 lines | Phase 1b |
+|     | Question                                                     | Recommendation                                               | Blocks   |
+|-----|--------------------------------------------------------------|--------------------------------------------------------------|----------|
+| D1  | Approve the page watch phase 1 ADR (browser-only, check-on-visit, topic watches; replaces ADR-0001/0003 of the prototype) | Yes; it is the only form that runs live without scheduled checks of production | Phase 6  |
+| D2  | "Pocket it" on live pages: always visible (as on the clone) or on hover and focus, with a small tab on phones | Hover and focus on desktop, always on phones; live pages carry many more cards | Phase 3  |
+| D3  | Which pages offer Reimagine                                  | Every CMS page that passes coverage, and a curated "demo pages" list for the walkthrough | Phase 4  |
+| D4  | RED world Revamp in Arabic, and whether its catalogue comes from the live RED page | Arabic yes; catalogue from the live page, customer stays a labelled sample | Phase 5  |
+| D5  | Merge order of the in-flight branches before the move        | actors → portal → template credits, each checked (phase 0)   | Phase 0  |
+| D6  | Phones: the demo browser only emulates phones. Is a real phone needed (needs a Chrome extension or Vodafone's tag manager)? | Not for this round                                           | —        |
+| D7  | Retire the clone's Page Agent panel and the VoiceTut panel with the clone (VoiceTut itself moves into the guide)? | Yes (the guide's agent fallback covers the page agent)       | Phase 9  |
+| D8  | Deploy the Modal app again (`modal deploy experiments/voicetut/modal_app.py` with your Modal login) and set its spending limit; keep `scaledown_window=60` with the keep-warm loop, or raise it | Deploy now; keep 60 s plus keep-warm; a spending limit you are comfortable with | Phase 1b |
+| D9  | Which VoiceTut voice for Arabic and for English              | Choose by ear in phase 1b from 3 candidates on the same 10 lines | Phase 1b |
 
 ---
 
@@ -323,11 +323,11 @@ Checks: pocket and portal e2e moved to Playwright TS against the saved pages (`v
 ### Phase 4: Reimagine on live pages
 
 1. Composer and launcher from the live model; output beside `#main-content`; "Original" restores exactly; the view bar under the pill (B-23 rule).
-2. Each of the 13 experiences against the Services, bundles, RED and home models: images from Vodafone's URLs, Arabic and right-to-left, ADR-0044's tuck-in.
+2. Each of the 13 experiences against the Services, bundles, Benefits and home models: images from Vodafone's URLs, Arabic and right-to-left, ADR-0044's tuck-in.
 
 Checks: `aixc_e2e.py`'s 292 checks ported or re-pointed to the saved pages; the guide spotlights a reimagined card (the O19 Cash routing is still open: record, do not hide); overlap matrix in the reimagined view.
 
-### Phase 5: Your RED world on live pages
+### Phase 5: Your RED world Revamp on live pages
 
 1. Mount under the Pocket album wherever the Pocket is; the Dock at the album's end; the widget as its own layer (owner decisions in the wiki stay).
 2. Catalogue from the live RED page through the adapter (or the demo kit); the customer labelled as a sample; Arabic if D4 says so.
