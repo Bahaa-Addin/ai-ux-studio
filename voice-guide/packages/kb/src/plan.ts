@@ -61,6 +61,10 @@ export const Plan = z.object({
 		route: z.enum(['replay', 'agent', 'clarify', 'control', 'none']),
 		destinationId: z.string().optional(),
 		confidence: z.number().optional(),
+		/** The destination's page in the knowledge base (ADR-0050 §5): what the trail's asked questions are about. */
+		pageId: z.string().optional(),
+		/** The destination's title in the plan's language, only when it names no price, currency amount or percentage (ADR-0050 §5). */
+		label: z.string().optional(),
 	}),
 })
 

@@ -157,7 +157,8 @@ test('the journey: consent, private recording, timeline, scrubbing, explored ite
 		// 1. Consent, plainly worded.
 		await tr(page, '.tr-pill').click()
 		const card = await tr(page, '.tr-card').innerText()
-		for (const re of [/Remember my journey on this device/, /What is saved/, /Never saved: anything you type/, /stays in this browser and deletes itself after 24 hours/, /Pause or clear it any time/, /No anonymous statistics are sent/]) assert.match(card, re)
+		// What is saved includes what the questions were about, never their words (ADR-0050 §5, S14).
+		for (const re of [/Remember my journey on this device/, /What is saved: the public pages you visited .*what you explored there, and what your questions were about, never the words you said or typed/, /Never saved: the words you say or type, the guide’s answers/, /stays in this browser and deletes itself after 24 hours/, /Pause or clear it any time/, /No anonymous statistics are sent/]) assert.match(card, re)
 		await tr(page, '.tr-allow').click()
 		await recording(page)
 		assert.ok(requests.some((r) => r.url.endsWith('/sdk/trail-record.js')), 'the recorder chunk loads after consent')

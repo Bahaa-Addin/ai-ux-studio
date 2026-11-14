@@ -15,11 +15,15 @@
  * - 2 (ADR-0050): `claim()`, which returns the function that gives the journey back (or null when
  *   another host holds it); `ask()` finds a question in the page's language or its first two
  *   letters. A host written for version 1 works unchanged against version 2.
+ * - 2, part 2 (ADR-0050 §5, S14): what questions were about. `snapshot().asked` (newest first, across
+ *   the visit's steps, each with its `stepId`; present only while there is a journey, consent granted
+ *   or paused), `askAbout(destinationId, questionId?)` and `questionsFor(destinationId)`. Never the
+ *   words said or typed, never the answer. `snapshot().steps` keep the version 1 shape (no `asked`).
  * - 1 (ADR-0040): the first contract, for a page that declares itself with the meta.
  */
 import type { TrailKey } from './i18n.ts'
 import type { ActionState, Consent, PreviewState, RecState } from './state.ts'
-import type { ExploredItem, TrailStepSummary } from './types.ts'
+import type { AskedQuestion, ExploredItem, TrailStepSummary } from './types.ts'
 
 export interface TrailHostSnapshot {
 	consent: Consent
@@ -30,6 +34,8 @@ export interface TrailHostSnapshot {
 	action: ActionState
 	lang: string
 	steps: TrailStepSummary[]
+	/** What questions were about, newest first (version 2; absent without a journey). Read it only when present. */
+	asked?: (AskedQuestion & { stepId: string })[]
 	currentStepId: string | null
 	selectedStepId: string | null
 	/** 0..1 within the selected step. */
@@ -69,6 +75,14 @@ export interface TrailHostApi {
 	togglePlay(): void
 	/** A question chip: becomes an ordinary guide turn with a verified hint (ADR-0038). */
 	ask(destinationId: string, questionId: string): void
+	/**
+	 * Version 2: the asked questions about a destination (newest first; empty for one nothing was asked
+	 * about, or an unknown id). With `questionId`, also asks that verified question of the destination,
+	 * found across every step and the page map, as an ordinary guide turn (like `ask`).
+	 */
+	askAbout(destinationId: string, questionId?: string): (AskedQuestion & { stepId: string })[]
+	/** Version 2: the verified questions of a destination in the guide's language, from every step and the page map; empty when none. */
+	questionsFor(destinationId: string): { id: string; text: string; intent: string }[]
 	allow(): void
 	notNow(): void
 	pause(): void

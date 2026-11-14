@@ -32,7 +32,12 @@ export function buildPlan(input: PlanInput): PlanOutput {
 	const lang = u.lang
 	const m = kb.manifest
 	const steps: PlanStep[] = []
-	const meta = (route: Plan['meta']['route'], destinationId?: string): Plan['meta'] => ({ intent: u.flowId ? `flow:${u.flowId}` : u.intent, route, destinationId, confidence: u.decision.confidence })
+	// What the trail keeps of an answered turn (ADR-0050 §5): the destination's page and a price-free title, never the words.
+	const meta = (route: Plan['meta']['route'], destinationId?: string): Plan['meta'] => {
+		const d = destinationId ? kb.dest.get(destinationId) : undefined
+		const label = d && priceFreeLabel(pick(d.labels, lang, m.site.defaultLanguage)?.[0])
+		return { intent: u.flowId ? `flow:${u.flowId}` : u.intent, route, destinationId, confidence: u.decision.confidence, ...(d ? { pageId: d.pageId } : {}), ...(label ? { label } : {}) }
+	}
 	// Every plan leaves through the value gate (ADR-0059 §3): nothing the guide says or shows carries a
 	// stored price or stock; the live page answers. What the session keeps of an item is its key and a
 	// price-free name.
@@ -325,6 +330,21 @@ export function cardAround(t: Target): Target | undefined {
 		return undefined
 	}
 	return upTo((p) => /^a([.#:[]|$)/.test(p)) ?? upTo((p) => /\.(tiles?|card|banner)(-(?!img|image)[\w-]*)?($|[.:[])/.test(p))
+}
+
+// A number written with a currency, either side, in English or Arabic (EGP, LE, L.E, جنيه, ج.م, ...).
+const CUR = String.raw`(?:e\.?g\.?p|l\.?e\.?|£e?|e£|pounds?|piasters?|pt|جني[هة]|جنيهات|ج\.?\s?م|ج|قروش|قرش)`
+const PRICED = new RegExp(String.raw`[%٪]|[0-9٠-٩۰-۹][0-9٠-٩۰-۹.,٬٫]*\s*${CUR}(?![\p{L}])|(?<![\p{L}])${CUR}\s*[0-9٠-٩۰-۹]`, 'iu')
+
+/**
+ * A destination's title as the trail may keep it (ADR-0050 §5): left out, not cleaned, when it names a
+ * price, an amount with a currency or a percentage, or anything else the value gate would take out.
+ * At most 60 characters.
+ */
+export function priceFreeLabel(title: string | undefined): string | undefined {
+	const t = String(title || '').replace(/\s+/g, ' ').trim()
+	if (!t || PRICED.test(t) || valueFree(t) !== t) return undefined
+	return t.slice(0, 60)
 }
 
 /** A line through the value gate; nothing when only a value was left. */

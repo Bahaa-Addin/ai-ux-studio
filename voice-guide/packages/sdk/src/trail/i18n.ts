@@ -14,8 +14,11 @@ const S = {
 		ar: 'نحفظ صورة خاصة للصفحات العامة اللي بتزورها. بتفضل على الجهاز ده بس، وتقدر تمسحها في أي وقت.',
 		en: 'Save a private visual history of the public pages you explore. It stays on this device and can be cleared at any time.',
 	},
-	consentWhat: { ar: 'اللي بيتحفظ: شكل الصفحات العامة، مكان المؤشر والتمرير، والأجزاء اللي اهتميت بيها.', en: 'What is saved: how public pages looked, where the pointer moved and scrolled, and which parts you explored.' },
-	consentNot: { ar: 'اللي مش بيتحفظ: أي حاجة بتكتبها، الحقول، تسجيل الدخول، حسابك، الدفع، والصفحات الخاصة.', en: 'Never saved: anything you type, form fields, sign-in, your account, payment, or private pages.' },
+	consentWhat: {
+		ar: 'اللي بيتحفظ: الصفحات العامة اللي زرتها (شكلها، ومكان المؤشر والتمرير)، اللي اكتشفته فيها، وأسئلتك كانت عن إيه، من غير أبدًا الكلام اللي قلته أو كتبته.',
+		en: 'What is saved: the public pages you visited (how they looked, where the pointer moved and scrolled), what you explored there, and what your questions were about, never the words you said or typed.',
+	},
+	consentNot: { ar: 'اللي مش بيتحفظ: الكلام اللي بتقوله أو بتكتبه، ردود المرشد، الحقول، تسجيل الدخول، حسابك، الدفع، والصفحات الخاصة.', en: 'Never saved: the words you say or type, the guide’s answers, form fields, sign-in, your account, payment, or private pages.' },
 	consentWhere: { ar: 'بتفضل في المتصفح ده بس وبتتمسح لوحدها بعد {hours} ساعة.', en: 'It stays in this browser and deletes itself after {hours} hours.' },
 	consentControl: { ar: 'تقدر توقفها مؤقتًا أو تمسحها من «رحلتك» في أي وقت.', en: 'Pause or clear it any time from “Your journey”.' },
 	consentAggregateOff: { ar: 'مفيش أي إحصائيات مجهّلة بتتبعت.', en: 'No anonymous statistics are sent.' },

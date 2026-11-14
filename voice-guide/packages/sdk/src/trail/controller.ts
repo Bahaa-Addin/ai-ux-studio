@@ -5,6 +5,7 @@
  * every listener, timer, observer, recorder and replayer it starts and releases them on teardown.
  * Every failure is caught: the page and the guide keep working without the trail.
  */
+import { addAsked, allAsked, askedFrom, type AskOrigin, watchTurns } from './asked.ts'
 import { AttentionTracker } from './attention.ts'
 import { decideStep, type PendingTransition, type RouteSignal } from './boundaries.ts'
 import { TRAIL_CONFIG } from './config.ts'
@@ -139,6 +140,8 @@ export class TrailController {
 		return this.#metaHost || this.#claim !== null
 	}
 	#hostRoot: HTMLElement | null = null
+	/** Gives the guide's `request` and `api.post` back (ADR-0050 §5). */
+	#unwatch: (() => void) | null = null
 	#subscribers = new Set<(s: TrailHostSnapshot) => void>()
 
 	constructor(g: GuideLike, settings: TrailSettings) {
@@ -157,6 +160,8 @@ export class TrailController {
 		// No IndexedDB (some private windows): no trail, and no offer of one. The database itself is
 		// created only once the person has said yes: nothing is stored before consent.
 		if (typeof indexedDB === 'undefined') return
+		// What questions were about, from each answered turn's plan meta; never the words or the answer (ADR-0050 §5).
+		this.#unwatch = watchTurns(this.g, (origin, plan) => this.#answered(origin, plan))
 		// Vodafone's theme clears localStorage on some pages: the copy in IndexedDB is the second place to look (T-806).
 		const consent = await recoverConsent(this.siteKey)
 		if (consent === 'granted' || consent === 'paused') await this.#openStore()
@@ -526,7 +531,9 @@ export class TrailController {
 			preview: s.preview,
 			action: s.action,
 			lang: this.g.lang,
-			steps: structuredClone(steps),
+			// The asked questions are their own field, present only with a journey (ADR-0050 §5); steps keep the version 1 shape.
+			steps: steps.map(({ asked: _, ...st }) => structuredClone(st)),
+			...(s.consent === 'granted' || s.consent === 'paused' ? { asked: allAsked(steps) } : {}),
 			currentStepId: this.step?.id || null,
 			selectedStepId: s.selectedStepId,
 			position: this.#position,
@@ -569,6 +576,14 @@ export class TrailController {
 				const q = sel ? (sel.questions[this.g.lang] || sel.questions[this.g.lang.slice(0, 2)] || []).find((x) => x.id === questionId) : undefined
 				if (sel && q) void this.#ask(sel, q)
 			},
+			askAbout: (destinationId, questionId) => {
+				const d = this.#destination(destinationId)
+				const q = questionId ? this.#questions(d).find((x) => x.id === questionId) : undefined
+				if (d && q) void this.#ask(d, q)
+				// The asked questions do not depend on the destination being on this page's map: they were kept on their own step.
+				return this.state.consent === 'granted' || this.state.consent === 'paused' ? allAsked(this.session?.steps || []).filter((x) => x.destinationId === destinationId) : []
+			},
+			questionsFor: (destinationId) => structuredClone(this.#questions(this.#destination(destinationId))),
 			allow: () => i.allow(),
 			notNow: () => i.notNow(),
 			pause: () => i.pause(),
@@ -1110,7 +1125,36 @@ export class TrailController {
 
 	// ---- questions: an ordinary guide turn, with a hint the server checks (ADR-0038) ----
 
-	async #ask(item: ExploredItem, q: { id: string; text: string }): Promise<void> {
+	/** An answered turn: what it was about goes on the current page step, while recording (ADR-0050 §5). */
+	#answered(origin: AskOrigin, plan: unknown): void {
+		const step = this.step
+		if (this.state.rec !== 'recording' || step?.type !== 'page' || !this.session) return
+		const q = askedFrom(plan, origin, Date.now(), rid('ask'))
+		if (!q) return
+		addAsked(step, q)
+		this.#writeIndex(true)
+		this.#render()
+	}
+
+	/** A destination by id: from what was explored on any step (newest first), else this page's map, else the site's pages. */
+	#destination(id: string): Pick<ExploredItem, 'destinationId' | 'pageId' | 'questions'> | undefined {
+		for (const st of [...(this.session?.steps || [])].reverse()) {
+			const x = (st.id === this.step?.id ? this.#exploredNow() : st.explored).find((e) => e.destinationId === id)
+			if (x) return x
+		}
+		const m = this.map
+		const d = m?.destinations.find((x) => x.id === id)
+		if (d) return { destinationId: d.id, pageId: m!.page?.id || '', questions: d.questions }
+		const p = m?.pages.find((x) => x.id === id)
+		return p && { destinationId: p.id, pageId: p.id, questions: p.questions }
+	}
+
+	/** The verified questions of a destination in the guide's language, or its first two letters. */
+	#questions(d: Pick<ExploredItem, 'questions'> | undefined): { id: string; text: string; intent: string }[] {
+		return (d && (d.questions[this.g.lang] || d.questions[this.g.lang.slice(0, 2)])) || []
+	}
+
+	async #ask(item: Pick<ExploredItem, 'destinationId' | 'pageId'>, q: { id: string; text: string }): Promise<void> {
 		this.#activeQuestion = q.id
 		this.dispatch({ type: 'QUESTION' })
 		const v = this.g.ui.voice
@@ -1155,6 +1199,8 @@ export class TrailController {
 
 	destroy(): void {
 		this.dispatch({ type: 'TEARDOWN' })
+		this.#unwatch?.()
+		this.#unwatch = null
 		this.#flush(true)
 		this.attention?.stop()
 		this.attention = null

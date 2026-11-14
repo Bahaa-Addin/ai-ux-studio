@@ -29,7 +29,7 @@ A page can opt out of journeys with `<meta name="vg-trail" content="off">`: it i
 | Clear all saved journeys | Sheet menu | Deletes every journey on this device for this origin |
 | Turn off | Sheet menu | Stops recording in every tab, deletes everything, and keeps the offer closed until re-enabled from the trail button |
 
-The consent card says what is saved (how public pages looked, pointer and scroll, which parts were explored), what is never saved (anything typed, fields, sign-in, account, payment, private pages), that it stays in this browser, the retention (24 hours), how to pause and clear, and that anonymous statistics are off. Copy is in `packages/sdk/src/trail/i18n.ts` (Arabic in the guide's Egyptian register, English).
+The consent card says what is saved (the public pages visited and how they looked, pointer and scroll, which parts were explored, and what the questions were about, never their words), what is never saved (the words said or typed, the guide's answers, fields, sign-in, account, payment, private pages), that it stays in this browser, the retention (24 hours), how to pause and clear, and that anonymous statistics are off. Copy is in `packages/sdk/src/trail/i18n.ts` (Arabic in the guide's Egyptian register, English).
 
 ## 3. Timeline
 
@@ -103,7 +103,7 @@ Each wording is run through `understand` + `buildPlan` from the destination's pa
 
 | Layer | Where | Contents | Leaves the browser |
 |---|---|---|---|
-| A. Journey memory `vg-trail/v1` | IndexedDB `vg-trail-v1`: `sessions`, `chunks` (gzip, by step), `interest` | rrweb events, steps, local times, attention per destination, local fingerprints | **Never** |
+| A. Journey memory `vg-trail/v1` | IndexedDB `vg-trail-v1`: `sessions`, `chunks` (gzip, by step), `interest` | rrweb events, steps, local times, attention per destination, local fingerprints, and per step at most 10 asked questions (what an answered turn was about: destination, page, intent, route, a price-free label; **never the words said or typed, never the answer**; ADR-0050 §5) | **Never** |
 | B. Site knowledge `site-knowledge/0.1` | `kb_versions` | Unchanged | Public |
 | C. Experience profile `site-experience-profile/v1` | `experience_profiles`, `experience_active` | Questions with evidence and validation; optional cohort rank | Verified questions only, through `GET /v1/experience` |
 | Approved aggregate (off) | `experience_interest` | Daily counts per destination: warm, hot, activated | Only `vg-interest-contribution/v1`, only when enabled |

@@ -3,8 +3,10 @@
  * knowledge service sends (`vg-experience-page/v1`). Everything read back from IndexedDB is
  * checked here before use: storage is the person's to clear or corrupt, never trusted.
  */
+import { TRAIL_CONFIG } from './config.ts'
 
 export const TRAIL_SCHEMA = 'vg-trail/v1' as const
+const ASKED_MAX = TRAIL_CONFIG.storage.maxAskedPerStep
 
 export type Lang = string
 export type I18n = Record<Lang, string>
@@ -25,6 +27,23 @@ export interface ExploredItem {
 	reason: 'explored' | 'returned' | 'opened'
 	questions: Record<Lang, { id: string; text: string; intent: string }[]>
 	popular?: boolean
+}
+
+/**
+ * What one answered question was about (ADR-0050 §5), from the plan's meta: the destination the guide
+ * resolved, its page, the intent and a price-free label. Never the words said or typed, never the answer.
+ */
+export interface AskedQuestion {
+	id: string
+	at: number
+	lang: Lang
+	/** How it was asked, as the guide's request names it. */
+	origin: 'voice' | 'typed' | 'chip'
+	destinationId: string
+	pageId?: string
+	intent: string
+	route: string
+	label?: string
 }
 
 export interface TrailStepSummary {
@@ -51,6 +70,8 @@ export interface TrailStepSummary {
 	explored: ExploredItem[]
 	/** Replay is gone (evicted for space, or corrupt): the step stays, without a preview. */
 	replay: 'ok' | 'evicted' | 'none'
+	/** What questions on this step were about, oldest first, at most `maxAskedPerStep` (ADR-0050 §5). Absent on older sessions. */
+	asked?: AskedQuestion[]
 }
 
 export interface TrailSession {
@@ -147,12 +168,29 @@ function isStep(v: unknown): v is TrailStepSummary {
 	return str(v.id) && str(v.sessionId) && (v.type === 'page' || v.type === 'boundary') && num(v.enteredAt) && num(v.durationMs) && obj(v.navigationCause) && obj(v.title) && Array.isArray(v.explored) && Array.isArray(v.topDestinationIds)
 }
 
+const opt = (v: unknown) => v === undefined || str(v)
+
+export function isAsked(v: unknown): v is AskedQuestion {
+	if (!obj(v)) return false
+	return str(v.id) && num(v.at) && str(v.lang) && (v.origin === 'voice' || v.origin === 'typed' || v.origin === 'chip') && str(v.destinationId) && !!v.destinationId && str(v.intent) && str(v.route) && opt(v.pageId) && opt(v.label)
+}
+
+/** Only the fields of an asked question, and only valid ones, at most the limit (the newest). */
+export function cleanAsked(v: unknown, max: number): AskedQuestion[] {
+	if (!Array.isArray(v)) return []
+	return v.filter(isAsked).slice(-max).map(({ id, at, lang, origin, destinationId, pageId, intent, route, label }) => ({ id, at, lang, origin, destinationId, ...(pageId ? { pageId } : {}), intent, route, ...(label ? { label } : {}) }))
+}
+
 /** A session index read from storage, or null when it is not one of ours or is damaged. */
 export function parseSession(v: unknown): TrailSession | null {
 	if (!obj(v) || v.schema !== TRAIL_SCHEMA) return null
 	if (!str(v.id) || !str(v.siteId) || !str(v.locale) || !num(v.startedAt) || !num(v.updatedAt) || !num(v.expiresAt) || !num(v.bytes)) return null
 	if (!['recording', 'paused', 'stopped'].includes(v.recordingState as string) || !Array.isArray(v.steps)) return null
-	const steps = v.steps.filter(isStep)
+	// A step from before the asked questions has none; a damaged list keeps only the valid ones, nothing else.
+	const steps = v.steps.filter(isStep).map((st) => {
+		const { asked, ...rest } = st
+		return asked === undefined ? st : { ...rest, asked: cleanAsked(asked, ASKED_MAX) }
+	})
 	return { ...(v as unknown as TrailSession), steps }
 }
 

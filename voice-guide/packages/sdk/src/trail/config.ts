@@ -38,6 +38,8 @@ export const TRAIL_CONFIG = {
 		retentionHours: 24,
 		maxSessions: 3,
 		maxSteps: 20,
+		/** What questions were about, per step (ADR-0050 §5): the oldest goes first. */
+		maxAskedPerStep: 10,
 		maxSessionMs: 30 * 60_000,
 		maxBytes: 20 * 1024 * 1024,
 		chunkBytes: 256 * 1024,
