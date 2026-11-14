@@ -1,9 +1,11 @@
 /**
- * The journey in the Pocket, on Vodafone pages only (ADR-0040, SPEC-06 §6a). The saved pages of
- * web.vodafone.com.eg are replayed under their real URLs, and /en/services is the Services clone
- * with Pocket (../experiences), exactly as `npm run demo:trail` runs it. The SDK, the
- * gateway, every service, the committed knowledge base and the committed experience profile are
- * real; speech synthesis is recorded at the browser boundary (ADR-0024). No microphone is used.
+ * The journey in the Services clone's Pocket, on Vodafone pages only (ADR-0040, SPEC-06 §6a). The saved
+ * pages of web.vodafone.com.eg are replayed under their real URLs, and /en/services is the Services
+ * clone with Pocket (../experiences), exactly as `npm run demo:trail` runs it; the clone hosts the
+ * journey through its static meta (ADR-0050, until phase 9). Since S10 the pill never navigates: on
+ * every other page the layer's Pocket draws the journey in place, which ./pocket-journey-live.e2e.test.ts
+ * covers. The SDK, the gateway, every service, the committed knowledge base and the committed experience
+ * profile are real; speech synthesis is recorded at the browser boundary (ADR-0024). No microphone is used.
  */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -128,51 +130,6 @@ test('on the Services clone, the pill opens the journey inside the Pocket: frost
 		assert.ok(!requests.some((r) => r.url.includes('/v1/experience/contributions')), 'no aggregate is sent')
 		const blocked = await page.evaluate(() => [...document.querySelectorAll('.pocket-journey, .pocket-journey-layer, .pocket-journey-cta')].every((el) => el.hasAttribute('data-vg')))
 		assert.ok(blocked, 'every piece of the journey is marked data-vg (blocked from recordings)')
-	} finally {
-		await b.close()
-	}
-})
-
-test('the pill on any other Vodafone page takes you to the Pocket and opens the journey there', async () => {
-	const { b, page } = await launch({ consented: true })
-	try {
-		await page.goto(`${V}/en/home`, { waitUntil: 'domcontentloaded' })
-		await recording(page)
-		await page.waitForTimeout(1500)
-		await page.goto(`${V}/en/vodafone-cash`, { waitUntil: 'domcontentloaded' })
-		await recording(page)
-		await page.waitForTimeout(1500)
-		await tr(page, '.tr-pill').click()
-		await page.waitForURL(`${V}/en/services#journey`)
-		await layerOpen(page)
-		assert.equal(await page.evaluate(() => document.body.dataset.pocketView), 'open')
-		assert.equal(await tr(page, '.tr-sheet:not([hidden])').count(), 0)
-		assert.match((await page.locator('.pocket-journey-rail').getAttribute('aria-valuetext'))!, /^Page 2 of 3: Cash/)
-	} finally {
-		await b.close()
-	}
-})
-
-test('Arabic: the pill on an Arabic page opens the journey in the Arabic Pocket, right to left (ADR-0043)', async () => {
-	const { b, page } = await launch({ consented: true })
-	try {
-		await page.goto(`${V}/ar/home`, { waitUntil: 'domcontentloaded' })
-		await recording(page)
-		await page.waitForTimeout(1500)
-		await page.goto(`${V}/ar/vodafone-cash`, { waitUntil: 'domcontentloaded' })
-		await recording(page)
-		await page.waitForTimeout(1500)
-		await tr(page, '.tr-pill').click()
-		await page.waitForURL(`${V}/ar/services#journey`)
-		await layerOpen(page)
-		assert.equal(await page.evaluate(() => document.documentElement.dir), 'rtl')
-		assert.equal(await page.evaluate(() => document.body.dataset.pocketView), 'open')
-		assert.equal(await tr(page, '.tr-sheet:not([hidden])').count(), 0)
-		assert.match((await page.locator('.pocket-back').first().textContent())!, /ارجع للخدمات/)
-		const value = (await page.locator('.pocket-journey-rail').getAttribute('aria-valuetext'))!
-		assert.match(value, /[\u0600-\u06FF]/, `the journey speaks Arabic: ${value}`)
-		// The clone's sections still carry the destinations they recreate, in Arabic too.
-		assert.equal(await page.locator('[data-vg-destination="web.services.vodafone-cash"]').count(), 1)
 	} finally {
 		await b.close()
 	}

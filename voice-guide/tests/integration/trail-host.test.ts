@@ -2,7 +2,8 @@
  * The trail's host interface, version 2 (ADR-0050; live plan phase 3 S8), in a real Chromium with the
  * real controller and a stand-in guide: a host claims the journey at run time, the pill then asks the
  * host to open it instead of opening the guide's own sheet, and giving it back (or a host that fails)
- * brings the sheet back at once. Nothing here records: the consent is "paused".
+ * brings the sheet back at once. Nothing here records: the consent is "paused". Since S10 the pill never
+ * navigates: a site setting that still names a host page (the old `hostUrl`) is ignored.
  */
 import assert from 'node:assert/strict'
 import path from 'node:path'
@@ -35,15 +36,19 @@ after(async () => {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** A page with the trail started on it: its controller, a stand-in guide, and a count of `vg:trail-open`. */
-async function trailPage(o: { meta?: boolean; lang?: string } = {}): Promise<Page> {
+async function trailPage(o: { meta?: boolean; lang?: string; settings?: Record<string, unknown>; openFlag?: boolean } = {}): Promise<Page> {
 	const page = await browser.newPage()
+	// Nothing leaves the test origin, whatever a setting names.
+	await page.route((url) => url.origin !== ORIGIN, (route) => route.abort())
 	await page.route(`${ORIGIN}/**`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Trail host</title></head><body><main><h1>A page</h1></main></body></html>' }))
 	await page.goto(`${ORIGIN}/en/page`)
 	await page.addScriptTag({ content: bundle })
 	await page.evaluate(
-		async ({ meta, lang }) => {
+		async ({ meta, lang, settings, openFlag }) => {
 			const w = window as any
 			localStorage.setItem('vg-trail:k:consent', JSON.stringify({ v: 1, state: 'paused', at: 1, retentionHours: 24 }))
+			// The flag the pill used to leave before navigating to the host page (before S10).
+			if (openFlag) sessionStorage.setItem('vg-trail:k:open', 'true')
 			if (meta) document.head.append(Object.assign(document.createElement('meta'), { name: 'vg-trail-host', content: 'pocket' }))
 			const holder = document.createElement('div')
 			document.body.append(holder)
@@ -60,8 +65,9 @@ async function trailPage(o: { meta?: boolean; lang?: string } = {}): Promise<Pag
 				busy: false,
 				request: async (...args: unknown[]) => void asked.push(args),
 			}
-			const c = new w.__TrailController(g, { enabled: true, retentionHours: 24, excludePaths: [], privateSelectors: [], aggregation: false })
+			const c = new w.__TrailController(g, { enabled: true, retentionHours: 24, excludePaths: [], privateSelectors: [], aggregation: false, ...settings })
 			w.__c = c
+			w.__href = location.href
 			w.__root = root
 			w.__asked = asked
 			w.__opens = 0
@@ -70,7 +76,7 @@ async function trailPage(o: { meta?: boolean; lang?: string } = {}): Promise<Pag
 			await c.start()
 			w.__api = await w.__ready
 		},
-		{ meta: !!o.meta, lang: o.lang ?? 'en' },
+		{ meta: !!o.meta, lang: o.lang ?? 'en', settings: o.settings ?? {}, openFlag: !!o.openFlag },
 	)
 	return page
 }
@@ -83,6 +89,10 @@ const seen = (page: Page) =>
 	})
 const press = (page: Page) => page.evaluate(() => (window as any).__root.querySelector('.tr-pill').click())
 const settle = (page: Page) => page.waitForTimeout(80)
+/** The page was not left: the same address, and the same document (its controller is still there). */
+const stayed = (page: Page) => page.evaluate(() => ({ href: location.href, same: location.href === (window as any).__href && !!(window as any).__c }))
+/** A site setting from before S10 that named the host page; the pill must ignore it. */
+const OLD_HOST_URL = { hostUrl: `${ORIGIN}/{lang}/services#journey` } as any
 
 test('a claimed journey: the pill asks the host to open it and never the sheet; giving it back brings the sheet back at once (S8)', async () => {
 	const page = await trailPage()
@@ -214,6 +224,54 @@ test('a question chip is found in the page\'s language or its first two letters 
 		assert.equal(asked.length, 1, 'asked once')
 		assert.equal(asked[0][0], 'What is X?')
 		assert.equal(asked[0][1], 'chip')
+	} finally {
+		await page.close()
+	}
+})
+
+test('no host and an old setting that names a host page: the pill opens the guide\'s own sheet and never navigates (S10)', async () => {
+	const page = await trailPage({ settings: OLD_HOST_URL })
+	try {
+		await press(page)
+		await settle(page)
+		assert.equal((await stayed(page)).same, true, 'the page was not left')
+		assert.deepEqual(await seen(page), { view: 'expanded', sheet: true, hosted: false, opens: 0 }, 'the built-in sheet opens')
+		await press(page)
+		await settle(page)
+		assert.equal((await stayed(page)).same, true)
+		assert.deepEqual(await seen(page), { view: 'collapsed', sheet: false, hosted: false, opens: 0 }, 'and closes')
+	} finally {
+		await page.close()
+	}
+})
+
+test('a claimed journey: each press asks the host exactly once and never touches the address, before or after it is given back (S10)', async () => {
+	const page = await trailPage({ settings: OLD_HOST_URL })
+	try {
+		await page.evaluate(() => ((window as any).__release = (window as any).__api.claim()))
+		await press(page)
+		await settle(page)
+		assert.equal((await seen(page)).opens, 1, 'one press, one request')
+		await press(page)
+		await settle(page)
+		assert.deepEqual(await seen(page), { view: 'collapsed', sheet: false, hosted: true, opens: 2 }, 'two presses, two requests, no sheet')
+		assert.equal((await stayed(page)).same, true, 'the page was not left')
+		await page.evaluate(() => (window as any).__release())
+		await press(page)
+		await settle(page)
+		assert.equal((await stayed(page)).same, true, 'given back: still no navigation')
+		assert.deepEqual(await seen(page), { view: 'expanded', sheet: true, hosted: false, opens: 2 }, 'given back: the sheet, and the host is not asked')
+	} finally {
+		await page.close()
+	}
+})
+
+test('the open flag the pill used to leave before navigating asks no host to open at start (S10)', async () => {
+	const page = await trailPage({ meta: true, openFlag: true })
+	try {
+		await page.waitForTimeout(600)
+		assert.equal((await seen(page)).opens, 0, 'no vg:trail-open at start')
+		assert.equal((await seen(page)).view, 'collapsed')
 	} finally {
 		await page.close()
 	}

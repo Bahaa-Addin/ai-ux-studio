@@ -41,8 +41,6 @@ export interface TrailSettings {
 	excludePaths: string[]
 	privateSelectors: string[]
 	topOffset?: number
-	/** Where the journey is shown when this page does not show it itself (the Pocket page, ADR-0040). */
-	hostUrl?: string
 	/** Same-origin folders a replay may copy files from despite a query or no extension (checked by type after fetching). */
 	replayAssetPaths?: string[]
 	aggregation: boolean
@@ -371,14 +369,9 @@ export class TrailController {
 					else this.dispatch({ type: 'OFFER' })
 					return
 				}
-				// The journey lives on the Pocket page (ADR-0040): open it there, here or after navigating.
+				// A page that shows the journey itself (the meta or a claim; ADR-0040, ADR-0050) is asked to open it;
+				// anywhere else the guide's own sheet opens. The pill never leaves the page (S10, OD-5).
 				if (this.hosted) return void dispatchEvent(new CustomEvent('vg:trail-open'))
-				if (this.settings.hostUrl) {
-					ssSet(SS(this.siteKey, 'open'), true)
-					this.#flush(true)
-					// `{lang}` picks the host page in the page's language (ADR-0043).
-					return location.assign(this.settings.hostUrl.replace('{lang}', this.g.lang.slice(0, 2)))
-				}
 				this.dispatch({ type: s.view === 'expanded' ? 'COLLAPSE' : 'EXPAND' })
 			},
 			allow: () => {
@@ -503,7 +496,7 @@ export class TrailController {
 		this.view.render({
 			...s,
 			consentCard: s.consentCard || (s.rec === 'awaiting-consent' && s.view === 'expanded'),
-			// On the Pocket page the pill's job is done once the journey is open there (ADR-0040).
+			// On a page that hosts, the pill's job is done once the journey is open there (ADR-0040, ADR-0050).
 			pillHidden: ((s.consent === 'unset' || s.consent === 'declined') && notNow(this.siteKey)) || (this.hosted && s.view === 'expanded'),
 			lang: this.g.lang,
 			steps,
@@ -516,11 +509,11 @@ export class TrailController {
 			notice,
 			reducedMotion: this.reducedMotion,
 			transition: this.#transition,
-			hosted: this.hosted || !!this.settings.hostUrl,
+			hosted: this.hosted,
 		})
 	}
 
-	// ---- a page that shows the journey itself (the Vodafone clone's Pocket, ADR-0040) ----
+	// ---- a page that shows the journey itself (the clone's Pocket by its meta, ADR-0040; the experience layer's Pocket by a claim, ADR-0050) ----
 
 	#snapshot(): TrailHostSnapshot {
 		const s = this.state
@@ -614,15 +607,11 @@ export class TrailController {
 		}
 	}
 
-	/** Tells a host page the trail is ready; a page arriving from the pill is asked to open the journey. */
+	/** Tells a host page the trail is ready (the API as `voiceGuide.trailHost` and the event's detail). */
 	#announceHost(): void {
 		const api = this.hostApi()
 		;(this.g as unknown as { trailHost?: TrailHostApi }).trailHost = api
 		dispatchEvent(new CustomEvent('vg:trail-ready', { detail: api }))
-		if (this.hosted && ssGet<boolean>(SS(this.siteKey, 'open'))) {
-			ssSet(SS(this.siteKey, 'open'), null)
-			setTimeout(() => dispatchEvent(new CustomEvent('vg:trail-open')), 300)
-		}
 	}
 
 	// ---- steps ----
@@ -1044,8 +1033,8 @@ export class TrailController {
 		this.#flush()
 		this.#writeIndex(true)
 		const pages = this.session?.steps.filter((s) => s.type === 'page') || []
-		// On the Pocket page the journey is about where the person has been, not the page they are on.
-		// The clone's Pocket page is not a step of interest; a live page that hosts is a real step of the visit (ADR-0050).
+		// On the clone's Pocket page (the meta) the journey is about where the person has been, not the page
+		// they are on: that page is not a step of interest. A live page that hosts is a real step of the visit (ADR-0050).
 		const start = this.#metaHost ? (pages.filter((p) => p.id !== this.step?.id).at(-1) ?? pages.at(-1)) : this.step?.type === 'page' ? this.step : pages.at(-1)
 		if (start) this.#intents().select(start.id, 'keyboard')
 		this.#render()

@@ -24,7 +24,7 @@ export interface ViewModel extends TrailState {
 	transition: string | null
 	/** "Not now" this session: no offer at all. */
 	pillHidden: boolean
-	/** The page (or the site's Pocket page) shows the journey: no sheet here, only the pill and consent. */
+	/** This page shows the journey itself (the meta or a claim; ADR-0040, ADR-0050): no sheet here, only the pill and consent. */
 	hosted: boolean
 }
 

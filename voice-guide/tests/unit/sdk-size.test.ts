@@ -75,9 +75,17 @@ const AIXC_CORE_BUDGET = 7.75 * 1024
  * 31,522 bytes on 2026-11-14 with S7 (one Pocket across pages: the album's groups, the page read again
  * against its stickers, the note on a sticker whose card is gone; ADR-0051 §7 and §8).
  * Raised on purpose; a chunk of its own for the chips, loaded only where the coverage gate lets them
- * show, is the follow-up.
+ * show, is the follow-up. 31,715 bytes on 2026-11-14 with S10 (the Pocket finds a trail host it can
+ * claim and loads the journey's chunk).
+ *
+ * The journey in the live Pocket (S10, ADR-0050 §2-§3) is a chunk of its own that the Pocket's chunk
+ * loads, never the core: journey.js and journey.css as minified text, 8,226 bytes gzipped on
+ * 2026-11-14; budget a little above.
  */
-const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 31.25 * 1024 }
+const AIXC_DEMO_BUDGETS: Record<string, number> = { 'src/host/demos/pocket.js': 31.25 * 1024, 'src/host/demos/journey.js': 8.75 * 1024 }
+
+/** Which chunk loads a demo chunk on intent (a dynamic import), by entry; the core unless named here. */
+const AIXC_LOADED_BY: Record<string, string> = { 'src/host/demos/journey.js': 'src/host/demos/pocket.js' }
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
 	const sizes = await buildSdk({ minify: true })
@@ -92,7 +100,7 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	for (const file of eager) for (const i of manifest.files.find((f) => f.file === file)?.imports ?? []) if (i.kind === 'import-statement') eager.add(i.file)
 	const core = [...eager].reduce((sum, f) => sum + gzipSync(fs.readFileSync(path.join(aixc, f)), { level: 9 }).length, 0)
 	assert.ok(core <= AIXC_CORE_BUDGET, `the core (${[...eager].join(', ')}) is ${core} bytes gzipped, over the ${AIXC_CORE_BUDGET}-byte budget`)
-	for (const f of eager) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-peek|pocket-chips|aixc-composer|pz-world|tips-coach|vf-portal/, `no demo code in the core (${f})`)
+	for (const f of eager) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-peek|pocket-chips|pocket-journey|aixc-composer|pz-world|tips-coach|vf-portal/, `no demo code in the core (${f})`)
 	assert.doesNotMatch(fs.readFileSync(path.join(dist, 'guide.js'), 'utf8'), /experience-output|aixc-viewbar|__aixc/, 'nothing of the layer in guide.js')
 	// Each demo chunk within its budget; a file next to a module (new URL('./x', import.meta.url)) would 404 on the gateway, which serves only .js.
 	const closure = (file: string) => {
@@ -103,7 +111,10 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	for (const [entry, max] of Object.entries(AIXC_DEMO_BUDGETS)) {
 		const chunk = manifest.files.find((f) => f.entry === entry)
 		assert.ok(chunk, `${entry} is built as its own chunk`)
-		assert.ok(manifest.files.find((f) => f.file === 'aixc.js')?.imports.some((i) => i.file === chunk.file && i.kind === 'dynamic-import'), `the core loads ${entry} on intent`)
+		const loader = AIXC_LOADED_BY[entry]
+		const by = loader ? manifest.files.find((f) => f.entry === loader) : manifest.files.find((f) => f.file === 'aixc.js')
+		assert.ok(by?.imports.some((i) => i.file === chunk.file && i.kind === 'dynamic-import'), `${loader ?? 'the core'} loads ${entry} on intent`)
+		if (loader) assert.ok(!manifest.files.find((f) => f.file === 'aixc.js')?.imports.some((i) => i.file === chunk.file), `the core does not load ${entry}`)
 		const files = closure(chunk.file)
 		const gz = files.filter((f) => !eager.has(f)).reduce((sum, f) => sum + gzipSync(fs.readFileSync(path.join(aixc, f)), { level: 9 }).length, 0)
 		assert.ok(gz <= max, `${entry} (${files.join(', ')}) is ${gz} bytes gzipped, over its ${max}-byte budget`)
@@ -112,6 +123,7 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	const pocket = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/pocket.js')?.file ?? ''), 'utf8')
 	assert.doesNotMatch(pocket, /vf-portal|pocket-mascot|pocket-drone|generativelanguage|aixc-composer__/, 'the Pocket on live pages carries no portal, mascot, drone or composer (pocket.css only hides the composer\'s launcher)')
 	assert.match(pocket, /pocket-chips/, 'the Pocket on live pages carries its chips (S6)')
+	assert.doesNotMatch(pocket, /pocket-journey/, 'the journey is not in the Pocket\'s chunk: it loads only where a trail host can be claimed (S10)')
 })
 
 /**

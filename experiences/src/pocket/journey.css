@@ -1,7 +1,9 @@
 /*
  * Your journey, in the pocket (./journey.js). Drawn with the album's own materials: white
  * die-cut rims, hand-placed tilts, the dot grid seen through a light frost, and Vodafone red
- * for the thread you followed. Every class is .pocket-journey- prefixed.
+ * for the thread you followed. Every class is .pocket-journey- prefixed. Its faces are the
+ * album's (--pocket-bold, --pocket-regular, --pocket-light in pocket.css, set on :root): on
+ * Vodafone's Arabic pages they name the theme's -ar families first (voice-guide ADR-0052).
  */
 
 /* ------------------------------------------------ the button beside Back */
@@ -45,6 +47,22 @@
   transition:
     background-color 0.25s ease,
     box-shadow 0.25s ease;
+}
+
+/* On Vodafone's pages (./journey.js, holdBand): the slot keeps the band's place, and the band is
+   held fixed below Vodafone's pinned chrome while the album scrolls, as sticky does on the clone. */
+.pocket-journey-slot {
+  margin: -14px 0 26px;
+}
+
+.pocket-journey-slot > .pocket-journey {
+  position: relative;
+  top: auto;
+  margin: 0;
+}
+
+.pocket-journey-slot > .pocket-journey.is-held {
+  position: fixed;
 }
 
 .pocket-output[data-journey='open'] .pocket-journey {
@@ -130,14 +148,14 @@
 .pocket-journey-step__title {
   overflow: hidden;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1rem;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .pocket-journey-step:not(.is-selected) .pocket-journey-step__title {
-  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-family: var(--pocket-regular);
 }
 
 .pocket-journey-step__here {
@@ -254,7 +272,7 @@
 .pocket-journey-layer__title {
   margin: 0;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1.95rem;
   font-weight: normal;
   line-height: 1.1;
@@ -267,7 +285,7 @@
   gap: 2px 4px;
   margin: 4px 0 0;
   color: #666;
-  font-family: vodafone-light-en, vf-light, sans-serif;
+  font-family: var(--pocket-light);
   font-size: 1.05rem;
 }
 
@@ -408,7 +426,7 @@
   border-radius: 6px;
   background: #e60000;
   color: #fff;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.88rem;
   box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
 }
@@ -424,7 +442,7 @@
 .pocket-journey-memory__from {
   flex: 0 0 auto;
   color: #e60000;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -433,7 +451,7 @@
 .pocket-journey-memory__title {
   overflow: hidden;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1.1rem;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -470,7 +488,7 @@
 .pocket-journey-heading {
   margin: 4px 0 16px;
   color: #e60000;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.78rem;
   font-weight: normal;
   letter-spacing: 0.06em;
@@ -504,7 +522,7 @@
 .pocket-journey-note__title {
   margin: 2px 0 0;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1.2rem;
   line-height: 1.25;
 }
@@ -544,7 +562,7 @@
   border-radius: 18px;
   background: #fff;
   color: #333;
-  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-family: var(--pocket-regular);
   font-size: 0.92rem;
   line-height: 1.3;
   text-align: start;
@@ -606,7 +624,7 @@
 .pocket-journey-consent__title {
   margin: 0;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 1.45rem;
   font-weight: normal;
 }

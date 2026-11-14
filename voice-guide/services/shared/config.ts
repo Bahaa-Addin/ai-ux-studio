@@ -235,8 +235,6 @@ export const SiteConfig = z.object({
 			privateSelectors: z.array(z.string()).default([]),
 			/** Fixed distance from the top for the timeline, in px, when the header cannot be measured. */
 			topOffset: z.number().int().min(0).optional(),
-			/** The page that shows the journey (the Pocket on the Services clone, ADR-0040); other pages keep only the status pill. */
-			hostUrl: z.url().optional(),
 			/**
 			 * Same-origin path prefixes whose files a replay may copy even without a file extension or with
 			 * a query (a CMS's images, e.g. /documents/). The copy is still credential-free, GET only, no

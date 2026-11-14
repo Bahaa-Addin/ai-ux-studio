@@ -193,7 +193,7 @@ await step('services clone', async () => {
 	await ready()
 	await recording()
 	await page.waitForTimeout(1500)
-	check('the clone is the host page', (await page.locator('meta[name="vg-trail-host"]').getAttribute('content')) === 'pocket')
+	check('the clone declares itself the journey host (its static meta, until phase 9)', (await page.locator('meta[name="vg-trail-host"]').getAttribute('content')) === 'pocket')
 	await measure('on load')
 	await snap('services')
 	await dwell('[data-vg-destination="web.services.vodafone-cash"]')

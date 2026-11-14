@@ -18,6 +18,11 @@
  *   the Tab order (screen readers reach them by name), and only on the website where the page was
  *   read well enough (coverage at least CHIPS_COVERAGE).
  *
+ * - "Your journey" (S10, ADR-0050 §2-§3): where the guide's Exploration Trail runs and offers a host
+ *   API that can be claimed (version 2), the journey is drawn in this album, in place, from a chunk of
+ *   its own (./journey.js), loaded once; nowhere else is anything loaded. When the layer stops, the
+ *   claim is given back and the trail's pill opens the guide's own sheet.
+ *
  * Not yet: the page corner and Pocket button (S11 places it beside Vodafone's accessibility button),
  * so no sticker flies before then; no mascot (S12), no portal (S13).
  */
@@ -36,6 +41,9 @@ const CHIPS_COVERAGE = 0.6
 
 /** A read that counts: on the website (the shop's come with E16), where at least that share of the page's content was read. */
 const wellRead = (coverage) => siteOf(location.hostname) === 'web' && (coverage?.ratio ?? 0) >= CHIPS_COVERAGE
+
+/** A trail host this album can claim the journey from (ADR-0050): version 2 or later, with claim(). A fake or version 1 host is not. */
+const claimable = (api) => !!api && typeof api.version === 'number' && api.version >= 2 && typeof api.claim === 'function'
 
 /** The page's back face: nothing of the copy shows through it, so one copy per turn is enough. */
 const PAGE_BACK = { base: [251, 251, 249], seeThrough: 0, rim: 0.12, gloss: 0.07, glossAt: 0.34 }
@@ -134,11 +142,32 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     }),
   )
 
+  const open = (options) => guard.run('pocket-open', () => pocket.open(options))
+  const close = () => guard.run('pocket-close', () => pocket.close())
+
+  // Your journey, in this album, when the trail offers a host to claim: now, or when it starts (S10).
+  let journey = null
+  let journeyAsked = false
+  const hostJourney = (api) => {
+    if (journeyAsked || !claimable(api)) return undefined
+    journeyAsked = true
+    return guard.run('journey', async () => {
+      const demo = await import('./journey.js')
+      if (guard.stopped) return
+      const handle = { state: pocket.state, dock: pocket.dock, openWhenEmpty: pocket.openWhenEmpty, open, close }
+      journey = await demo.start({ host, guard, ensureCss, checkpoint, pocket: handle, api })
+    })
+  }
+  guard.listen(window, 'vg:trail-ready', (event) => hostJourney(event.detail))
+  void hostJourney(window.voiceGuide?.trailHost)
+
   return {
     state: pocket.state,
     store,
-    open: (options) => guard.run('pocket-open', () => pocket.open(options)),
-    close: () => guard.run('pocket-close', () => pocket.close()),
+    open,
+    close,
+    /** The journey drawn in this album ({ open, close, destroy }), or null: for `?aixc-debug` and the tests. */
+    journey: () => journey,
     /** The chips by card id: { shown, unplaced, icon } (ADR-0052 §12). */
     chips: () => pocket.chips(),
   }

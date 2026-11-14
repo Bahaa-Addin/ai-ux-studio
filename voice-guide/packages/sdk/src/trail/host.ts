@@ -8,7 +8,8 @@
  * static declaration, kept until the live plan's phase 9), or claims the journey at run time with
  * `claim()` (version 2: the experience layer on Vodafone's own pages; ADR-0050). It listens for
  * `vg:trail-ready` (detail: the API, also `voiceGuide.trailHost`) and `vg:trail-open` (the person
- * asked to see the journey).
+ * asked to see the journey). The pill never navigates (S10): where no host claims the journey, the
+ * guide's own sheet shows it.
  *
  * Changelog
  * - 2 (ADR-0050): `claim()`, which returns the function that gives the journey back (or null when

@@ -407,6 +407,12 @@ person's journey lives in the Pocket (voice-guide ADR-0040). `index.html` declar
 The trail does the recording, storage, sandboxed replay and wording; this file only draws and
 forwards intents. Without the guide on the page, nothing of the journey appears.
 
+This page is the clone's own host, and its meta stays until phase 9 of the live plan. Since step S10
+(2026-11-14) the journey is not only drawn here: on Vodafone's own pages the layer's Pocket
+(`src/host/demos/`) claims the journey at run time and draws it in place, on the page the
+person is on. The pill never navigates to this page (`trail.hostUrl` is gone), and where nothing
+hosts the journey the guide's own sheet opens (voice-guide ADR-0050).
+
 ---
 
 ## Tips: the walkthrough of the four demos
@@ -563,7 +569,7 @@ and "Pay" only change this page.
 
 ## The Arabic page (`/ar/`)
 
-`ar/index.html` is the [Arabic Services page](https://web.vodafone.com.eg/ar/services), captured on 2026-11-05: the same app, sections, items, ids and pictures as the English page, with Vodafone's Arabic copy and links (`src/content/vodafone-services-ar.js`), right to left. Open http://127.0.0.1:5173/ar/ (`npm run dev` or `node scripts/serve.mjs`). In the voice-guide demo it is mounted at `/ar/services`, and after Arabic pages the journey opens in its Pocket (voice-guide ADR-0043).
+`ar/index.html` is the [Arabic Services page](https://web.vodafone.com.eg/ar/services), captured on 2026-11-05: the same app, sections, items, ids and pictures as the English page, with Vodafone's Arabic copy and links (`src/content/vodafone-services-ar.js`), right to left. Open http://127.0.0.1:5173/ar/ (`npm run dev` or `node scripts/serve.mjs`). In the voice-guide demo it is mounted at `/ar/services`, and the journey opens in its Pocket there (voice-guide ADR-0043; on other Arabic pages the layer's Pocket draws it in place, ADR-0050).
 
 - **Same pictures.** Every picture on the Arabic page was compared with the English clone's file and is pixel-identical, so they are shared.
 - **Vodafone's Arabic faces.** `src/rtl.css` registers `vodafone-*-ar.woff` (GE SS Two) under the English family names with an Arabic `unicode-range`, as the live site splits its fonts.

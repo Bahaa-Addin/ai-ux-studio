@@ -25,7 +25,7 @@ A voice guide for websites: one script tag on a page, stateless services behind 
 | `npm run sync -- --site vodafone-eg [--origin web] [--dry-run]` | On-demand knowledge refresh from public pages; gated; `--scheduled` refused while paused |
 | `npm run kb -- --site <id> --status` | Knowledge-base versions; `--activate`, `--rollback`, `--import`, `--export` |
 | `npm run experience -- --site <id> [--activate] [--dry-run]` | Build and verify the site experience profile (Exploration Trail questions, ADR-0036) |
-| `npm run demo:trail` | The Exploration Trail on the saved Vodafone pages, journey in the clone's Pocket, no Postgres (SPEC-06, ADR-0040) |
+| `npm run demo:trail` | The Exploration Trail on the saved Vodafone pages, journey drawn in place in the Pocket of the page you are on, no Postgres (SPEC-06, ADR-0040, ADR-0050) |
 | `npm run measure:trail [-- --minutes 10]` | Trail bundle, storage, preview and memory numbers |
 
 Before you say a task is done: `npm run typecheck && npm test && npm run test:e2e` all pass, and you ran the commands yourself.

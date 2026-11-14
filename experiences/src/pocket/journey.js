@@ -1,21 +1,43 @@
 /**
  * Your journey, in the pocket. When the Voice Guide's Exploration Trail runs on this page
- * (voice-guide ADR-0040), the journey is shown here, in the album's own design, instead of
- * in a sheet of the guide's:
+ * (voice-guide ADR-0040, ADR-0050), the journey is shown here, in the album's own design,
+ * instead of in a sheet of the guide's:
  *
- *   1. "Your journey" sits beside "Back to Services", and the pages you visited run under the
- *      bar as stepped tabs, one per page, each with its own red thread to scrub along.
+ *   1. "Your journey" sits beside the album's Back button, and the pages you visited run under
+ *      the bar as stepped tabs, one per page, each with its own red thread to scrub along.
  *   2. Pressing either lays a lightly frosted layer over the album. The memory of a page
  *      (a sandboxed replay the trail renders into our frame), what you explored there and
  *      the questions you could ask float in one after another.
- *   3. A question turns the page back to Services and asks the guide, which answers there.
+ *   3. A question turns the page back to the page the album was opened from and asks the
+ *      guide, which answers there.
  *
  * The trail owns recording, storage, the replay and every word (api.t); this file only draws
  * and forwards intents. Everything here is marked data-vg, so it is never recorded itself.
  * Without the guide on the page nothing here appears.
+ *
+ * Two hosts (seams): the Services clone, whose <meta name="vg-trail-host"> holds the journey for
+ * good (the defaults below), and the experience layer on Vodafone's own pages (../host/demos/journey.js,
+ * voice-guide ADR-0050 §2-§3, ADR-0052), which claims the journey at run time, marks every node it adds
+ * with data-aixc, runs every handler through its guard and gives the journey back when it stops.
  */
 
-import { make } from './pocket.js'
+/**
+ * The album's element helper, the same as pocket.js's `make`, kept here on purpose: on Vodafone's pages
+ * this file is a chunk of its own, and a module it shared with the Pocket's chunk would split that chunk
+ * in two (measured 2026-11-14: +750 B gzipped on the Pocket, over its budget).
+ */
+const make = (tag, props = {}, ...children) => {
+  const node = document.createElement(tag)
+  for (const [key, value] of Object.entries(props ?? {})) {
+    if (value === null || value === undefined || value === false) continue
+    if (key === 'class') node.className = value
+    else if (key === 'style') for (const [name, rule] of Object.entries(value)) node.style.setProperty(name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`), rule)
+    else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value)
+    else node.setAttribute(key, value === true ? '' : String(value))
+  }
+  node.append(...children.flat().filter((child) => child !== null && child !== undefined && child !== false))
+  return node
+}
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const STAGGER_FROM = 4 // explored notes float in after the heading, memory and tools
@@ -51,9 +73,38 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 const granted = (s) => s.consent === 'granted' || s.consent === 'paused'
 const titleIn = (lang) => (t) => (t ? t[lang] || t[lang.slice(0, 2)] || t.en || Object.values(t)[0] || '' : '')
 
-export const initJourney = ({ pocket }) => {
+/** The clone's host: its own header, nothing marked or guarded, the meta's claim (ADR-0040). */
+const CLONE_SEAMS = {
+  header: () => document.querySelector('.site-header'),
+  mark: (node) => node,
+  wrap: (step, fn) => fn,
+  listen: (target, type, handler, options) => {
+    target.addEventListener(type, handler, options)
+    return handler
+  },
+  claim: false,
+  checkpoint: () => {},
+  /** Where the band holds while the album scrolls, from the top of the window; null: CSS sticky below the header. */
+  bandTop: null,
+}
+
+/** The trail host API this journey can draw: version 1 (the clone's meta) or later; a host with no version, or a fake one, is not. */
+export const usableHost = (host) => !!host && typeof host.version === 'number' && host.version >= 1
+
+/**
+ * `api` is a trail host already found by the caller (the layer, which loads this file after
+ * vg:trail-ready); without it the journey looks for window.voiceGuide.trailHost and listens.
+ */
+export const initJourney = ({ pocket, seams: given = {}, api: offered = null }) => {
+  const seams = { ...CLONE_SEAMS, ...given }
   const { root, view, barStart, stage } = pocket.dock
-  const header = document.querySelector('.site-header')
+  /** Every handler the journey adds runs through the host's guard (a no-op on the clone). */
+  const on = (node, type, step, handler) => node.addEventListener(type, seams.wrap(`journey ${step}`, handler))
+  const offs = []
+  const listen = (target, type, handler, options) => {
+    const fn = seams.listen(target, type, handler, options) ?? handler
+    offs.push(() => target.removeEventListener(type, fn, options))
+  }
 
   let api = null
   let snap = null
@@ -69,13 +120,13 @@ export const initJourney = ({ pocket }) => {
 
   /* ---------------------------------------------- the button beside Back */
   const ctaLabel = make('span')
-  const cta = make(
+  const cta = seams.mark(make(
     'button',
     { type: 'button', class: 'pocket-back pocket-journey-cta', 'aria-expanded': 'false', 'aria-controls': 'pocket-journey-layer', hidden: true, 'data-vg': '' },
     icon('journey', 'pocket-journey-cta__icon'),
     ctaLabel,
     make('span', { class: 'pocket-journey-cta__dot', 'aria-hidden': 'true' }),
-  )
+  ))
   barStart.append(cta)
 
   /* ------------------------------------------ the slim slider under the bar */
@@ -83,8 +134,32 @@ export const initJourney = ({ pocket }) => {
   // The whole row is one slider for keyboards and screen readers; pointers press and drag on a tab.
   const tabs = make('ol', { class: 'pocket-journey-steps', 'aria-hidden': 'true' })
   const rail = make('div', { class: 'pocket-journey-rail', role: 'slider', tabindex: '0', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }, tabs)
-  const band = make('div', { class: 'pocket-journey', hidden: true, 'data-vg': '' }, make('div', { class: 'container pocket-journey__inner' }, rail))
-  view.insertBefore(band, stage)
+  const band = seams.mark(make('div', { class: 'pocket-journey', hidden: true, 'data-vg': '' }, make('div', { class: 'container pocket-journey__inner' }, rail)))
+  // Vodafone's themes set overflow-x: hidden on html and body, so position: sticky never holds there
+  // (measured 2026-11-14 on home, Services, bundles and Vodafone Cash): with seams.bandTop the band sits
+  // in a slot that keeps its place, and is held fixed below that line by script while the album scrolls.
+  const slot = seams.bandTop ? seams.mark(make('div', { class: 'pocket-journey-slot', 'data-vg': '' }, band)) : null
+  view.insertBefore(slot ?? band, stage)
+
+  /** The band held below seams.bandTop() (Vodafone's pinned chrome), and carried up by the album's end. */
+  const holdBand = () => {
+    // Nothing to read while the album is not showing: the page scrolls all the time, and this runs on every scroll.
+    if (!slot || (root.hidden && !band.classList.contains('is-held'))) return
+    const box = slot.getBoundingClientRect()
+    const line = Math.max(0, Math.round(seams.bandTop() || 0))
+    const held = !root.hidden && !band.hidden && box.height > 0 && box.top < line
+    band.classList.toggle('is-held', held)
+    if (!held) {
+      for (const name of ['top', 'left', 'width']) band.style.removeProperty(name)
+      slot.style.removeProperty('height')
+      return
+    }
+    const height = band.offsetHeight
+    slot.style.height = `${height}px`
+    band.style.top = `${Math.round(Math.min(line, view.getBoundingClientRect().bottom - height))}px`
+    band.style.left = `${Math.round(box.left)}px`
+    band.style.width = `${Math.round(box.width)}px`
+  }
 
   /* -------------------------------------------------- the frosted layer */
   const layerTitle = make('h2', { class: 'pocket-journey-layer__title', id: 'pocket-journey-title' })
@@ -133,7 +208,7 @@ export const initJourney = ({ pocket }) => {
     make('div', { class: 'pocket-journey-consent__actions' }, allowButton, notNowButton),
   )
 
-  const layer = make(
+  const layer = seams.mark(make(
     'div',
     { id: 'pocket-journey-layer', class: 'pocket-journey-layer', role: 'region', 'aria-labelledby': 'pocket-journey-title', hidden: true, 'data-vg': '' },
     make(
@@ -148,7 +223,7 @@ export const initJourney = ({ pocket }) => {
       ),
       consent,
     ),
-  )
+  ))
   stage.append(layer)
 
   /* ----------------------------------------------------------- render */
@@ -220,7 +295,7 @@ export const initJourney = ({ pocket }) => {
         icon('ask', 'pocket-journey-chip__icon'),
         make('span', null, q.text),
       )
-      chip.addEventListener('click', () => ask(item, q))
+      on(chip, 'click', 'ask', () => ask(item, q))
       return chip
     })
     const context = title(item.context)
@@ -267,6 +342,7 @@ export const initJourney = ({ pocket }) => {
     ctaLabel.textContent = t('journey')
     cta.setAttribute('aria-label', open ? t('close') : t('open'))
     band.hidden = !granted(s) || pages.length === 0
+    holdBand()
     renderTabs(s)
     renderRail(s)
 
@@ -313,7 +389,10 @@ export const initJourney = ({ pocket }) => {
   }
 
   /* ---------------------------------------------------- open and close */
-  const placeBand = () => band.style.setProperty('--pocket-journey-top', `${Math.round(header?.getBoundingClientRect().height ?? 0)}px`)
+  const placeBand = () => {
+    band.style.setProperty('--pocket-journey-top', `${Math.round(seams.header()?.getBoundingClientRect().height ?? 0)}px`)
+    holdBand()
+  }
 
   const showLayer = () => {
     window.clearTimeout(leaving)
@@ -341,16 +420,20 @@ export const initJourney = ({ pocket }) => {
     if (reducedMotion()) layer.hidden = true
     else {
       layer.classList.add('is-leaving')
-      leaving = window.setTimeout(() => {
-        layer.hidden = true
-        layer.classList.remove('is-leaving')
-      }, LEAVE_MS)
+      leaving = window.setTimeout(
+        seams.wrap('journey leave', () => {
+          layer.hidden = true
+          layer.classList.remove('is-leaving')
+        }),
+        LEAVE_MS,
+      )
     }
     focus?.focus({ preventScroll: true })
   }
 
   const openJourney = async () => {
     if (!api) return
+    seams.checkpoint('journey-open')
     if (pocket.state.view !== 'pocket') {
       await pocket.open()
       if (pocket.state.view !== 'pocket') return
@@ -358,7 +441,7 @@ export const initJourney = ({ pocket }) => {
     if (!open) showLayer()
   }
 
-  /** A question is asked on the Services page, where the guide can point at the answer. */
+  /** A question is asked on the page the album turned from, where the guide can point at the answer. */
   const ask = async (item, q) => {
     asking = true
     hideLayer({ tell: false })
@@ -399,7 +482,7 @@ export const initJourney = ({ pocket }) => {
     if (snap.selectedStepId !== page.id) api.select(page.id)
   }
 
-  rail.addEventListener('pointerdown', (event) => {
+  on(rail, 'pointerdown', 'scrub', (event) => {
     if (event.button !== 0 || !pages.length) return
     event.preventDefault()
     dragging = true
@@ -411,12 +494,13 @@ export const initJourney = ({ pocket }) => {
     }
     rail.focus({ preventScroll: true })
     const { page, fraction } = locate(event.clientX)
-    seek(page, fraction, event.pointerType === 'touch' ? 'touch' : 'pointer')
+    // Returned, so the host's guard sees a failure inside it.
+    return seek(page, fraction, event.pointerType === 'touch' ? 'touch' : 'pointer')
   })
-  rail.addEventListener('pointermove', (event) => {
+  on(rail, 'pointermove', 'scrub', (event) => {
     if (!dragging) return
     const { page, fraction } = locate(event.clientX)
-    seek(page, fraction, event.pointerType === 'touch' ? 'touch' : 'pointer')
+    return seek(page, fraction, event.pointerType === 'touch' ? 'touch' : 'pointer')
   })
   const release = () => {
     if (!dragging) return
@@ -425,11 +509,11 @@ export const initJourney = ({ pocket }) => {
     // Letting go plays on from there (the trail never autoplays under reduced motion).
     if (!pending) api?.hold()
   }
-  rail.addEventListener('pointerup', release)
-  rail.addEventListener('pointercancel', release)
-  rail.addEventListener('lostpointercapture', release)
+  on(rail, 'pointerup', 'scrub', release)
+  on(rail, 'pointercancel', 'scrub', release)
+  on(rail, 'lostpointercapture', 'scrub', release)
 
-  rail.addEventListener('keydown', (event) => {
+  on(rail, 'keydown', 'keys', (event) => {
     if (!pages.length || !snap) return
     const n = pages.length
     let i = selectedIndex(snap)
@@ -462,55 +546,98 @@ export const initJourney = ({ pocket }) => {
       case ' ':
         event.preventDefault()
         if (open) api.togglePlay()
-        else openJourney()
+        else return openJourney()
         return
       default:
         return
     }
     event.preventDefault()
-    seek(pages[i], fraction, 'keyboard')
+    return seek(pages[i], fraction, 'keyboard')
   })
 
   /* --------------------------------------------------------- the rest */
-  cta.addEventListener('click', () => (open ? hideLayer({ focus: cta }) : openJourney()))
-  closeButton.addEventListener('click', () => hideLayer({ focus: cta }))
-  playButton.addEventListener('click', () => api?.togglePlay())
-  savingButton.addEventListener('click', () => (snap?.consent === 'paused' || snap?.rec === 'paused' ? api.resume() : api.pause()))
-  clearJourney.addEventListener('click', () => {
+  on(cta, 'click', 'button', () => (open ? hideLayer({ focus: cta }) : openJourney()))
+  on(closeButton, 'click', 'close', () => hideLayer({ focus: cta }))
+  on(playButton, 'click', 'play', () => api?.togglePlay())
+  on(savingButton, 'click', 'saving', () => (snap?.consent === 'paused' || snap?.rec === 'paused' ? api.resume() : api.pause()))
+  on(clearJourney, 'click', 'clear', () => {
     api.clear()
     hideLayer({ tell: false, focus: cta })
   })
-  allowButton.addEventListener('click', () => api.allow())
-  notNowButton.addEventListener('click', () => {
+  on(allowButton, 'click', 'allow', () => api.allow())
+  on(notNowButton, 'click', 'not now', () => {
     api.notNow()
     hideLayer({ tell: false, focus: cta })
   })
   // Escape closes the journey first; the pocket's own Escape (turn the page back) comes next.
   for (const node of [layer, band, cta]) {
-    node.addEventListener('keydown', (event) => {
+    on(node, 'keydown', 'escape', (event) => {
       if (event.key !== 'Escape' || !open) return
       event.preventDefault()
       event.stopPropagation()
       hideLayer({ focus: cta })
     })
   }
-  root.addEventListener('pocket:view', (event) => {
+  on(root, 'pocket:view', 'view', (event) => {
     if (event.detail === 'closing') hideLayer({ tell: !asking })
   })
-  window.addEventListener('resize', () => open && placeBand())
+  listen(window, 'resize', () => (open ? placeBand() : holdBand()))
+  if (slot) {
+    listen(window, 'scroll', holdBand, { passive: true })
+    on(root, 'pocket:view', 'band', holdBand)
+  }
+
+  let unsubscribe = null
+  let releaseClaim = null
+  let destroyed = false
+
+  /** Takes the journey away: the trail gets it back, and its pill opens the guide's own sheet again (ADR-0050 §3). */
+  const destroy = () => {
+    if (destroyed) return
+    destroyed = true
+    unsubscribe?.()
+    unsubscribe = null
+    const release = releaseClaim
+    releaseClaim = null
+    release?.()
+    api?.setPreviewRoot(null)
+    api = null
+    window.clearTimeout(leaving)
+    open = false
+    pending = null
+    layer.hidden = true
+    delete root.dataset.journey
+    pocket.openWhenEmpty(() => false)
+    for (const off of offs.splice(0)) off()
+    for (const node of [cta, slot ?? band, layer]) node.remove()
+  }
 
   const attach = (host) => {
     // Version 1 (the clone's meta) or later: a host with no version, or a fake one, is ignored (ADR-0050).
-    if (api || !host || !(host.version >= 1)) return
-    api = host
-    api.setPreviewRoot(frame)
-    // With a journey to show, the page turns to the pocket even when no stickers are kept.
-    pocket.openWhenEmpty(() => true)
-    api.subscribe(render)
+    if (destroyed || api || !usableHost(host)) return
+    if (seams.claim) {
+      // One host at a time: null means another holds the journey, and this one draws nothing.
+      const release = typeof host.claim === 'function' ? host.claim() : null
+      if (typeof release !== 'function') return
+      releaseClaim = release
+    }
+    try {
+      seams.checkpoint('journey-claim')
+      api = host
+      api.setPreviewRoot(frame)
+      // With a journey to show, the page turns to the pocket even when no stickers are kept.
+      pocket.openWhenEmpty(() => true)
+      // Wrapped: the trail catches a subscriber's errors itself, so the host's guard would never see them.
+      unsubscribe = api.subscribe(seams.wrap('journey render', render))
+    } catch (error) {
+      // A claim is never left behind with nothing drawing it (no pill is ever dead).
+      destroy()
+      throw error
+    }
   }
-  attach(window.voiceGuide?.trailHost)
-  window.addEventListener('vg:trail-ready', (event) => attach(event.detail))
-  window.addEventListener('vg:trail-open', () => openJourney())
+  attach(offered ?? window.voiceGuide?.trailHost)
+  listen(window, 'vg:trail-ready', (event) => attach(event.detail))
+  listen(window, 'vg:trail-open', () => openJourney())
 
-  return { open: openJourney, close: () => hideLayer({ focus: cta }) }
+  return { open: openJourney, close: () => hideLayer({ focus: cta }), destroy }
 }

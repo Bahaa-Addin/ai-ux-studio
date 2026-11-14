@@ -55,9 +55,11 @@ The consent card says what is saved (how public pages looked, pointer and scroll
 
 The preview is labelled "A memory of <page>, not the live page", is inert, not focusable and hidden from assistive technology; the slider is the accessible control. Touch targets are at least 44×44 px.
 
-## 3a. Hosted journey: Vodafone's Pocket (ADR-0040)
+## 3a. Hosted journey: Vodafone's Pocket (ADR-0040, ADR-0050)
 
-A page with `<meta name="vg-trail-host" content="pocket">` draws the journey itself through `TrailHostApi` (`trail/host.ts`); the trail never opens its sheet there. On other pages of a site with `trail.hostUrl`, the consented pill goes to the host and the journey opens there.
+A page that hosts the journey draws it itself through `TrailHostApi` (`trail/host.ts`, version 2, ADR-0050); the trail never opens its sheet there. A page hosts it in one of two ways: a static `<meta name="vg-trail-host" content="pocket">` (the Services clone; it counts as a claim that is never released, until the clone goes in phase 9), or a claim made at run time with `claim()`, which returns a function that gives the journey back, or `null` while another host holds it. The experience layer claims it on every page its Pocket runs on and gives it back if the layer stops, so the pill never points at a host that is gone.
+
+The consented pill asks the host (`vg:trail-open`) and never navigates: the journey is drawn in place, in the layer's Pocket, opening on the page the person is on (the clone keeps the step before the Services page). Where nothing hosts the journey (the `/spa/` app, the e-shop, `?aixc=off`, the layer off or failed) the guide's own sheet opens (§3; ADR-0038; owner, 2026-11-13), so no pill is ever dead. From step S10 (2026-11-14) `trail.hostUrl` is gone: it used to send the consented pill of other pages to a host page (`/{lang}/services#journey`, ADR-0043). The table below is the journey as the clone draws it.
 
 On the Services clone (`../experiences`, mounted at `/en/services` in the demo):
 
