@@ -605,7 +605,13 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       class: 'curl-host curl-host--inside',
       'aria-hidden': 'true',
       inert: true,
-      style: { left: `${inSlot ? 0 : -parseFloat(style.borderLeftWidth) || 0}px`, top: `${inSlot ? 0 : -parseFloat(style.borderTopWidth) || 0}px`, width: `${width}px`, height: `${height}px` },
+      // In a slot the card's own corner is where the overlay says (--pocket-cut-x, -y: how much of the card is cut off).
+      style: {
+        left: inSlot ? 'calc(var(--pocket-cut-x, 0px) * -1)' : `${-parseFloat(style.borderLeftWidth) || 0}px`,
+        top: inSlot ? 'calc(var(--pocket-cut-y, 0px) * -1)' : `${-parseFloat(style.borderTopWidth) || 0}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+      },
     })
     host.append(rig.plane, rig.lift)
     entry.host.append(host)
@@ -776,16 +782,20 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     }
   }
 
-  /** True when the visitor pressed `button` from the keyboard or a screen reader (a slot's buttons are only reached that way). */
-  const pressedByKeys = (entry, button) => button.matches(':focus-visible') || (entry.host !== entry.card && document.activeElement === button)
+  /**
+   * True when `button` was pressed from the keyboard or a screen reader: keyboard focus shows a ring, and a
+   * click without a pointer (Enter, Space, a screen reader's press) has `detail` 0. A mouse click does not
+   * count, though Chrome focuses the button it presses.
+   */
+  const pressedByKeys = (button, event) => button.matches(':focus-visible') || event?.detail === 0
 
-  const pocketItem = async (id) => {
+  const pocketItem = async (id, event) => {
     const entry = cards.get(id)
     if (!entry || !catalog.has(id) || isPocketed(id) || state.view !== 'page' || state.busy) return
     const { card, host } = entry
     const { item, section } = catalog.get(id)
     const startX = hover?.card === card ? hover.rig.state?.x ?? 0 : 0
-    const fromKeyboard = pressedByKeys(entry, entry.cta)
+    const fromKeyboard = pressedByKeys(entry.cta, event)
     // The clone's ids-only store keys a sticker by its card's id; a live record keeps its own key (S6).
     const record = recordFrom({ item, section, page: seams.page, model, ...(seams.recordKey ? { key: seams.recordKey(id) } : {}) })
     records.set(record.key, record)
@@ -815,13 +825,13 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     }
   }
 
-  const putBack = async (id) => {
+  const putBack = async (id, event) => {
     const key = keyOf(id)
     const entry = cards.get(id)
     if (!entry || key === undefined || state.view !== 'page' || state.busy) return
     const { card, host } = entry
     const title = catalog.get(id)?.item.title ?? records.get(key).copy.title
-    const fromKeyboard = pressedByKeys(entry, entry.undo)
+    const fromKeyboard = pressedByKeys(entry.undo, event)
     records.delete(key)
     state.ids = state.ids.filter((other) => other !== key)
     save(() => store.remove(key))
@@ -860,9 +870,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     )
     on(cta, 'pointerenter', (event) => event.pointerType !== 'touch' && liftCorner(card, id))
     on(cta, 'pointerleave', () => hover?.card === card && dropCorner())
-    on(cta, 'click', () => pocketItem(id))
+    on(cta, 'click', (event) => pocketItem(id, event))
     const undo = make('button', { type: 'button', class: 'pocket-liner__undo', tabindex: inSlot ? '-1' : null, 'aria-label': t('Put back {title}', { title: item.title }) }, t('Put back'))
-    on(undo, 'click', () => putBack(id))
+    on(undo, 'click', (event) => putBack(id, event))
     const liner = make(
       'div',
       { class: 'pocket-liner' },
@@ -908,11 +918,6 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     for (const section of model?.sections ?? []) for (const item of section.items) catalog.set(item.id, { item, section })
     chips?.refresh(coverage)
   }
-
-  chips =
-    seams.chips === 'overlay' && createChips
-      ? createChips({ ...seams.overlay, catalog, decorate, undecorate, state, page: () => seams.page, on, later, observe, wrap, mark, checkpoint, t })
-      : null
 
   /* --------------------------------------------------------- the album */
   /** The day a sticker was kept, in the page's language ("12 Nov", "١٢ نوفمبر" in Latin digits). */
@@ -1235,7 +1240,13 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const fromStore = (list) => {
     sync(list)
     const page = seams.page
-    for (const [id, entry] of cards) entry.host.classList.toggle('is-pocketed', isPocketed(id, page))
+    for (const [id, entry] of cards) {
+      const pocketed = isPocketed(id, page)
+      entry.host.classList.toggle('is-pocketed', pocketed)
+      // The button that had focus goes away with the change: focus follows to the one that shows.
+      if (pocketed && document.activeElement === entry.cta) entry.undo.focus({ preventScroll: true })
+      else if (!pocketed && document.activeElement === entry.undo) entry.cta.focus({ preventScroll: true })
+    }
     updateCount()
     if (state.view === 'pocket' && !state.busy) renderPocket()
     if (state.view === 'page' && !state.busy && settled) {
@@ -1289,6 +1300,16 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     } catch {}
     if (ownStore) store.close?.()
   }
+
+  // The overlay of chips on Vodafone's pages. If its start fails, what it and the Pocket already added is taken
+  // away here: the guard stops the layer, but the Pocket was never handed back to register its destroy.
+  if (seams.chips === 'overlay' && createChips)
+    try {
+      chips = createChips({ ...seams.overlay, catalog, decorate, undecorate, state, page: () => seams.page, on, later, observe, wrap, mark, checkpoint, t })
+    } catch (error) {
+      destroy()
+      throw error
+    }
 
   return {
     state,

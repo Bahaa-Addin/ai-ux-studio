@@ -151,7 +151,16 @@ const audit = (page: Page) =>
 				}
 			}
 		}
-		return { expected, missing, strays: [...new Set(strays)], onWords: [...new Set(onWords)], unplaced: d.unplaced as string[], icon: d.icon as string[] }
+		// The owner's rule for a card with no free corner is read from the page: the icon alone, round, its label hidden.
+		const iconBad: string[] = []
+		for (const id of d.unplaced as string[]) {
+			const chip = chips.get(id)
+			const r = chip?.getBoundingClientRect()
+			if (!chip || !r || !r.width) continue
+			const label = chip.querySelector<HTMLElement>('.pocket-cta__label')
+			if (!chip.classList.contains('pocket-cta--icon') || (label && getComputedStyle(label).display !== 'none') || r.width > 34 || r.height > 34) iconBad.push(id)
+		}
+		return { expected, missing, strays: [...new Set(strays)], onWords: [...new Set(onWords)], unplaced: d.unplaced as string[], iconBad }
 	})
 
 /** Scrolls the page top to bottom in steps of 60% of the screen, auditing at each; returns the cards seen whole. */
@@ -167,10 +176,7 @@ async function walk(page: Page, where: string) {
 		assert.deepEqual(a.missing, [], `${at}: every card wholly in view shows its chip where a press reaches it`)
 		assert.deepEqual(a.strays, [], `${at}: no chip is pressable outside the part of its card that shows`)
 		assert.deepEqual(a.onWords, [], `${at}: no placed chip meets its card's headings' words`)
-		assert.ok(
-			a.unplaced.every((id) => a.icon.includes(id)),
-			`${at}: a card with no free corner gets the icon alone (${a.unplaced.join(', ')})`,
-		)
+		assert.deepEqual(a.iconBad, [], `${at}: a card with no free corner gets the icon alone, round, its label hidden (${a.unplaced.join(', ')})`)
 		seen += a.expected
 	}
 	await page.evaluate(() => scrollTo(0, 0))
@@ -281,7 +287,7 @@ test('a chip pockets its card and never navigates; Put back returns it; a sticke
 				// On the bundles, the cards that are links or sit inside one, and one more.
 				const inLinks = await l.page.evaluate((ids) => ids.filter((id) => document.querySelector(`#main-content [data-aixc-item="${CSS.escape(id)}"]`)?.closest('a[href]')), all)
 				const ids = path === '/en/mobile-internet-bundles' ? [...new Set([...inLinks.slice(0, 3), all.find((id) => !inLinks.includes(id)) ?? all[0]])] : all
-				if (path === '/en/vodafone-cash') assert.equal(ids.length, 8, `${where}: the 8 tickets`)
+				if (path.endsWith('/vodafone-cash')) assert.equal(ids.length, 8, `${where}: the 8 tickets`)
 				const start = { url: l.page.url(), history: await l.page.evaluate(() => history.length), navigations: navigations.length, refused: l.refused.length }
 				for (const id of ids) {
 					const at = await chipAt(l.page, id)
@@ -307,12 +313,19 @@ test('a chip pockets its card and never navigates; Put back returns it; a sticke
 				await l.page.waitForFunction((id) => !(window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), ids[0], { timeout: 5_000 })
 				assert.equal((await chipAt(l.page, ids[0])).hit, true, `${where}: the chip is back on ${ids[0]}`)
 				// With a modifier, or the middle button, a chip still opens nothing.
-				const c = await chipAt(l.page, ids[0])
+				// Each press pockets the card without opening anything; the card is put back before the next, since the
+				// liner of a pocketed card lets presses through to Vodafone's own link (AIXC-110).
 				for (const key of ['ControlOrMeta', 'Shift']) {
+					const c = await chipAt(l.page, ids[0])
 					await l.page.keyboard.down(key)
 					await l.page.mouse.click(c.x, c.y)
 					await l.page.keyboard.up(key)
+					await l.page.waitForFunction((id) => (window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), ids[0], { timeout: 5_000 })
+					const u = await chipAt(l.page, ids[0], 'undo')
+					await l.page.mouse.click(u.x, u.y)
+					await l.page.waitForFunction((id) => !(window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), ids[0], { timeout: 5_000 })
 				}
+				const c = await chipAt(l.page, ids[0])
 				await l.page.mouse.click(c.x, c.y, { button: 'middle' })
 				await l.page.waitForTimeout(300)
 				assert.equal(navigations.length, start.navigations, `${where}: a modified press navigates nowhere`)
@@ -629,7 +642,8 @@ test('chips only where the page was read well enough; they follow a new reading,
 		// A card Vodafone adds later: the page is read again and the new card gets a chip; the others keep theirs.
 		const reads = await l.page.evaluate(() => (window as any).__aixc.reads)
 		await l.page.evaluate(() => {
-			const card = [...document.querySelectorAll<HTMLElement>('#main-content [data-aixc-item]')].find((c) => !c.closest('.owl-item') && c.querySelectorAll('h1, h2, h3, h4, h5, h6').length === 1)!
+			// A card in the middle of the page (the first of the second list), not the first or the last.
+			const card = [...document.querySelectorAll<HTMLElement>('#main-content [data-aixc-item]')].filter((c) => !c.closest('.owl-item') && c.querySelectorAll('h1, h2, h3, h4, h5, h6').length === 1)[3]
 			const copy = card.cloneNode(true) as HTMLElement
 			for (const n of [copy, ...copy.querySelectorAll('*')]) for (const a of [...n.getAttributeNames()]) if (a.startsWith('data-aixc') || a === 'id') n.removeAttribute(a)
 			copy.querySelector('h1, h2, h3, h4, h5, h6')!.textContent = 'Stand-in Added Service'
@@ -642,6 +656,14 @@ test('chips only where the page was read well enough; they follow a new reading,
 			[...document.querySelectorAll<HTMLElement>('.pocket-chips > .pocket-host')].map((s) => ({ probe: s.dataset.probe ?? null, id: s.querySelector<HTMLElement>('.pocket-cta')!.dataset.pocketFor!, name: s.querySelector('.pocket-cta')!.getAttribute('aria-label') })),
 		)
 		assert.ok(now.some((x) => x.probe === null && x.name === 'Pocket it: Stand-in Added Service'), 'the added card has its chip')
+		// The group is in the page's card order, new chips included (WCAG 1.3.2).
+		const order = await l.page.evaluate(() => {
+			const cards: string[] = []
+			for (const c of document.querySelectorAll<HTMLElement>('#main-content [data-aixc-item]')) if (!c.closest('.owl-item.cloned') && !cards.includes(c.dataset.aixcItem!)) cards.push(c.dataset.aixcItem!)
+			const chips = [...document.querySelectorAll<HTMLElement>('.pocket-chips .pocket-cta[data-pocket-for]')].map((c) => c.dataset.pocketFor!)
+			return { chips, cards: cards.filter((id) => chips.includes(id)) }
+		})
+		assert.deepEqual(order.chips, order.cards, 'the chips are in the order of their cards, the added one in its place')
 		// The copy shares its original's link, so the reading may name the original anew; every other card keeps its chip.
 		const kept = before.filter((id) => now.some((x) => x.id === id))
 		assert.ok(kept.length >= before.length - 1, `the cards keep their ids (${before.length - kept.length} renamed)`)
@@ -810,5 +832,315 @@ test('a failure while drawing or using chips removes the layer and leaves the pa
 		} finally {
 			await l.close()
 		}
+	}
+})
+
+/** Chips of cards outside their stage that a press could still reach, by card id. */
+const offStageReachable = (page: Page, index: number) =>
+	page.evaluate(async (index) => {
+		const outer = document.querySelectorAll<HTMLElement>('#main-content .owl-stage-outer')[index]
+		outer.scrollIntoView({ block: 'center' })
+		await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 80))))
+		const hidden = [...outer.querySelectorAll<HTMLElement>('.owl-item:not(.active):not(.cloned) [data-aixc-item]')]
+		return hidden
+			.map((card) => {
+				const chip = document.querySelector<HTMLElement>(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(card.dataset.aixcItem!)}"]`)
+				const r = chip?.getBoundingClientRect()
+				const at = chip && r?.width ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null
+				return at && (at === chip || chip!.contains(at)) ? card.dataset.aixcItem! : null
+			})
+			.filter(Boolean) as string[]
+	}, index)
+
+test('chips are cut by what clips their card even when that arrives after them: a box wrapped around cards that already have chips (AIXC-107)', async () => {
+	const l = await launchLayer(gw, { reducedMotion: true })
+	try {
+		const seen = watch(l.page)
+		await open(l.page, '/en/mobile-internet-bundles', '?aixc-debug')
+		await chipsReady(l.page)
+		const before = await audit(l.page)
+		assert.deepEqual(before.strays, [], 'before: no stray chip')
+		// What Owl does when it starts after the chips are drawn, and a media query does when a row begins to
+		// scroll: a clipping box appears around the same cards. Same elements, same ids, so the slots are kept.
+		const wrapped = await l.page.evaluate(() => {
+			const row = [...document.querySelectorAll<HTMLElement>('#main-content .horizontal-scroll')].find((n) => n.querySelector('[data-aixc-item]'))!
+			const ids = [...row.querySelectorAll<HTMLElement>('[data-aixc-item]')].map((c) => c.dataset.aixcItem!)
+			const clip = document.createElement('div')
+			clip.id = 'stand-in-clip'
+			clip.style.cssText = 'overflow:hidden;height:150px'
+			row.parentNode!.insertBefore(clip, row)
+			clip.append(row)
+			row.scrollIntoView({ block: 'center' })
+			return ids
+		})
+		assert.ok(wrapped.length >= 3, `cards in the row (${wrapped.length})`)
+		await settle(l.page)
+		await l.page.waitForTimeout(400)
+		const kept = await l.page.evaluate((ids) => ids.filter((id) => document.querySelector(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(id)}"]`)).length, wrapped)
+		assert.equal(kept, wrapped.length, 'the row\'s cards still have their chips (the slots were kept, not drawn again)')
+		const a = await audit(l.page)
+		assert.deepEqual(a.strays, [], 'no chip is pressable outside the part of its card that shows')
+		const beyond = await l.page.evaluate((ids) => {
+			const clip = document.getElementById('stand-in-clip')!.getBoundingClientRect()
+			return ids.filter((id) => {
+				const card = [...document.querySelectorAll<HTMLElement>(`#main-content [data-aixc-item="${CSS.escape(id)}"]`)][0]
+				const chip = document.querySelector<HTMLElement>(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(id)}"]`)!
+				const c = card.getBoundingClientRect()
+				const r = chip.getBoundingClientRect()
+				const at = r.width ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null
+				return c.top >= clip.bottom && !!at && (at === chip || chip.contains(at))
+			})
+		}, wrapped)
+		assert.deepEqual(beyond, [], 'no chip of a card wholly outside the box can be pressed')
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+	} finally {
+		await l.close()
+	}
+})
+
+/** Counts the listeners and observers the layer leaves behind: what was added and not taken away. */
+const TRACK = `(() => {
+	const live = { mo: new Set(), ro: new Set(), tr: new Set() }
+	window.__track = live
+	for (const [Ctor, set] of [[MutationObserver, live.mo], [ResizeObserver, live.ro]]) {
+		const observe = Ctor.prototype.observe
+		const disconnect = Ctor.prototype.disconnect
+		Ctor.prototype.observe = function (target, o) { set.add(this); (this.__targets ||= []).push(target); return observe.call(this, target, o) }
+		Ctor.prototype.disconnect = function () { set.delete(this); return disconnect.call(this) }
+	}
+	const add = EventTarget.prototype.addEventListener
+	const remove = EventTarget.prototype.removeEventListener
+	EventTarget.prototype.addEventListener = function (type, fn, o) { if (type === 'transitionrun') live.tr.add(fn); return add.call(this, type, fn, o) }
+	EventTarget.prototype.removeEventListener = function (type, fn, o) { if (type === 'transitionrun') live.tr.delete(fn); return remove.call(this, type, fn, o) }
+})()`
+
+test('a failure while the chips start leaves no observer and no listener of theirs behind (AIXC-108)', async () => {
+	const l = await launchLayer(gw, { reducedMotion: true, initScripts: [`window.__AIXC_TEST__ = { failAt: 'pocket-chips' }`, TRACK] })
+	try {
+		const seen = watch(l.page)
+		await open(l.page, '/en/services', '?aixc-debug')
+		await l.page.waitForFunction(() => (window as any).__aixc?.state === 'failed', null, { timeout: 15_000 })
+		await settle(l.page)
+		const left = await l.page.evaluate(() => {
+			const t = (window as any).__track
+			const main = document.getElementById('main-content')
+			return { transitions: t.tr.size as number, onMain: [...t.mo].filter((o: any) => o.__targets?.includes(main)).length, onBody: [...t.ro].filter((o: any) => o.__targets?.includes(document.body)).length }
+		})
+		assert.deepEqual(left, { transitions: 0, onMain: 0, onBody: 0 }, 'nothing of the chips still listens or observes after the layer stopped')
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+	} finally {
+		await l.close()
+	}
+})
+
+test('a chip is named from the card as it is now, after the page is read again (AIXC-109)', async () => {
+	const l = await launchLayer(gw, { reducedMotion: true })
+	try {
+		await open(l.page, '/en/services', '?aixc-debug')
+		await chipsReady(l.page)
+		const was = await l.page.evaluate(() => {
+			// A card whose id comes from its link, so a new title does not change the id.
+			const card = [...document.querySelectorAll<HTMLElement>('#main-content [data-aixc-item]')].find((c) => !c.closest('.owl-item') && c.querySelectorAll('h1, h2, h3, h4, h5, h6').length === 1 && /^(\/|https?:)/.test(c.querySelector('a[href]')?.getAttribute('href') ?? ''))!
+			const id = card.dataset.aixcItem!
+			card.querySelector('h1, h2, h3, h4, h5, h6')!.textContent = 'Renamed Service Title'
+			return { id, name: document.querySelector(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(id)}"]`)!.getAttribute('aria-label') }
+		})
+		await l.page.waitForFunction((id) => document.querySelector(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(id)}"]`)?.getAttribute('aria-label') === 'Pocket it: Renamed Service Title', was.id, { timeout: 6_000 }).catch(() => {})
+		const now = await l.page.evaluate((id) => ({ id: (document.querySelector('.pocket-chips .pocket-cta[data-pocket-for="' + CSS.escape(id) + '"]') as HTMLElement | null)?.getAttribute('aria-label') ?? null, undo: (document.querySelector('.pocket-chips .pocket-cta[data-pocket-for="' + CSS.escape(id) + '"]')?.parentElement?.querySelector('.pocket-liner__undo') as HTMLElement | null)?.getAttribute('aria-label') ?? null }), was.id)
+		assert.equal(now.id, 'Pocket it: Renamed Service Title', `${was.id}: the chip follows the card's new title (was ${was.name})`)
+		assert.equal(now.undo, 'Put back Renamed Service Title', `${was.id}: and so does Put back`)
+	} finally {
+		await l.close()
+	}
+})
+
+test('a pocketed card\'s liner lets presses and swipes through to Vodafone\'s card; only Put back takes the pointer (AIXC-110)', async () => {
+	const l = await launchLayer(gw, { viewport: PHONE, owl: true, reducedMotion: true })
+	try {
+		await open(l.page, '/en/services', '?aixc-debug')
+		await chipsReady(l.page)
+		await clearStore(l.page)
+		const id = (await chippedIds(l.page))[0]
+		const at = await chipAt(l.page, id)
+		await l.page.mouse.click(at.x, at.y)
+		await l.page.waitForFunction((id) => (window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), id, { timeout: 5_000 })
+		await settle(l.page)
+		const hit = await l.page.evaluate((id) => {
+			const slot = document.querySelector(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(id)}"]`)!.parentElement!
+			const liner = slot.querySelector<HTMLElement>('.pocket-liner')!
+			const r = liner.getBoundingClientRect()
+			const under = document.elementFromPoint(r.left + 8, r.top + 8)
+			const undo = slot.querySelector<HTMLElement>('.pocket-liner__undo')!.getBoundingClientRect()
+			const onUndo = document.elementFromPoint(undo.left + undo.width / 2, undo.top + undo.height / 2)
+			return { size: [Math.round(r.width), Math.round(r.height)], underOurs: !!under?.closest('.pocket-chips'), underInMain: !!under?.closest('#main-content'), undoIsUndo: !!onUndo?.closest('.pocket-liner__undo') }
+		}, id)
+		assert.ok(hit.size[0] > 100 && hit.size[1] > 50, 'the liner covers the card')
+		assert.deepEqual([hit.underOurs, hit.underInMain], [false, true], 'a press or a swipe starting on the liner reaches Vodafone\'s card and its carousel')
+		assert.equal(hit.undoIsUndo, true, 'Put back still takes the press')
+	} finally {
+		await l.close()
+	}
+})
+
+test('slots never extend past what shows of their card, and a button that goes off stage keeps its place and focus (AIXC-111, AIXC-113)', async () => {
+	const l = await launchLayer(gw, { viewport: PHONE, owl: true, reducedMotion: true })
+	try {
+		const seen = watch(l.page)
+		// Vodafone's own page already scrolls its body sideways by some pixels: that is the baseline.
+		await open(l.page, '/en/services', '?aixc=off')
+		const baseline = await l.page.evaluate(() => document.body.scrollWidth - document.body.clientWidth)
+		await open(l.page, '/en/services', '?aixc-debug')
+		await chipsReady(l.page)
+		await clearStore(l.page)
+		// The first carousel that has several slides: the card of its first slide.
+		const pick = await l.page.evaluate(() => {
+			const outers = [...document.querySelectorAll<HTMLElement>('#main-content .owl-stage-outer')]
+			for (const [i, outer] of outers.entries()) {
+				const items = [...outer.querySelectorAll<HTMLElement>('.owl-item:not(.cloned)')]
+				const card = items[0]?.querySelector<HTMLElement>('[data-aixc-item]')
+				const name = card ? document.querySelector(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(card.dataset.aixcItem!)}"]`)?.getAttribute('aria-label') : null
+				// A name no other chip has, so the chip is found by its name alone.
+				const same = [...document.querySelectorAll('.pocket-chips .pocket-cta')].filter((c) => c.getAttribute('aria-label') === name).length
+				if (items.length > 1 && card && name && same === 1) return { index: i, id: card.dataset.aixcItem!, name }
+			}
+			return null
+		})
+		assert.ok(pick, 'a carousel with several slides')
+		const moveStage = (by: number) =>
+			l.page.evaluate(async ({ index, by }) => {
+				const outer = document.querySelectorAll<HTMLElement>('#main-content .owl-stage-outer')[index]
+				const stage = outer.querySelector<HTMLElement>('.owl-stage')!
+				const item = stage.querySelector<HTMLElement>('.owl-item')!
+				const step = item.getBoundingClientRect().width + parseFloat(getComputedStyle(item).marginRight || '0') + parseFloat(getComputedStyle(item).marginLeft || '0')
+				const rtl = document.documentElement.dir === 'rtl'
+				const m = new DOMMatrix(getComputedStyle(stage).transform)
+				stage.style.transition = 'none'
+				stage.style.transform = `translate3d(${m.m41 + (rtl ? 1 : -1) * step * by}px, 0, 0)`
+				await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 80))))
+			}, { index: pick.index, by })
+		await l.page.evaluate((i) => document.querySelectorAll('#main-content .owl-stage-outer')[i].scrollIntoView({ block: 'center' }), pick.index)
+		await settle(l.page)
+		// The screen-reader route: the chip by its name, pressed with Enter, focus on Put back.
+		const chip = l.page.getByRole('button', { name: pick.name, exact: true })
+		await chip.focus()
+		await chip.press('Enter')
+		await l.page.waitForFunction((id) => (window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), pick.id, { timeout: 5_000 })
+		const undoName = `Put back ${pick.name.slice('Pocket it: '.length)}`
+		assert.equal(await focusNow(l.page), `button  ${undoName} [chips]`, 'focus is on Put back')
+		const overflow = () =>
+			l.page.evaluate(() => ({
+				outside: [...document.querySelectorAll<HTMLElement>('.pocket-chips > .pocket-host')].filter((s) => !s.hidden && s.getBoundingClientRect().width > 0 && (s.getBoundingClientRect().right > innerWidth + 0.5 || s.getBoundingClientRect().left < -0.5)).length,
+				bodyScroll: document.body.scrollWidth - document.body.clientWidth,
+				docScroll: document.documentElement.scrollWidth - innerWidth,
+			}))
+		// Half a slide on: the next card half in view. Nothing of ours past the screen's edge.
+		await moveStage(0.5)
+		assert.deepEqual(await overflow(), { outside: 0, bodyScroll: baseline, docScroll: 0 }, 'a half-visible card leaves nothing of ours past the screen and the page cannot be scrolled further sideways than without the layer')
+		// A whole slide on: the pocketed card is off stage. Put back is still there, and still has focus.
+		await moveStage(0.5)
+		await l.page.waitForTimeout(150)
+		const kept = await l.page.evaluate(() => {
+			const a = document.activeElement as HTMLElement | null
+			return { label: a?.getAttribute('aria-label') ?? null, inTree: !!a && a.checkVisibility({ visibilityProperty: true }) && !a.closest('[hidden]') && getComputedStyle(a.closest('.pocket-host')!).display !== 'none', pressable: (() => { if (!a) return false; const r = a.getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!at && (at === a || a.contains(at)) })() }
+		})
+		assert.equal(kept.label, undoName, 'focus stays on Put back when its card leaves the stage')
+		assert.equal(kept.inTree, true, 'and the button is still in the page for a screen reader')
+		assert.equal(kept.pressable, false, 'but nothing of it can be pressed over Vodafone\'s page')
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+	} finally {
+		await l.close()
+	}
+})
+
+test('focus is moved to the card\'s own link before its chip goes away (AIXC-113)', async () => {
+	const l = await launchLayer(gw, { owl: true, reducedMotion: true })
+	try {
+		await open(l.page, '/en/services', '?aixc-debug')
+		await chipsReady(l.page)
+		const pick = await l.page.evaluate(() => {
+			for (const chip of document.querySelectorAll<HTMLElement>('.pocket-chips .pocket-cta[data-pocket-for]')) {
+				const card = [...document.querySelectorAll<HTMLElement>(`#main-content [data-aixc-item="${CSS.escape(chip.dataset.pocketFor!)}"]`)].find((n) => !n.closest('.owl-item.cloned'))!
+				if (card.closest('.owl-item:not(.active)')) continue
+				if (card.matches('a[href]') || card.querySelector('a[href]')) return { id: chip.dataset.pocketFor!, name: chip.getAttribute('aria-label')! }
+			}
+			return null
+		})
+		assert.ok(pick)
+		await l.page.getByRole('button', { name: pick.name, exact: true }).focus()
+		// The page is read again and no longer well enough: the chips go while a chip has focus.
+		await l.page.evaluate(() => {
+			const w = window as any
+			document.dispatchEvent(new CustomEvent('aixc:model', { detail: { model: w.__aixc.model, coverage: { ...w.__aixc.coverage, ratio: 0.4 } } }))
+		})
+		await settle(l.page)
+		const where = await l.page.evaluate((id) => {
+			const card = [...document.querySelectorAll<HTMLElement>(`#main-content [data-aixc-item="${CSS.escape(id)}"]`)].find((n) => !n.closest('.owl-item.cloned'))!
+			const a = document.activeElement
+			return { inCard: !!a && card.contains(a), inChips: !!a?.closest('.pocket-chips'), body: a === document.body }
+		}, pick.id)
+		assert.deepEqual(where, { inCard: true, inChips: false, body: false }, 'focus landed on the card\'s own link, not on the document')
+	} finally {
+		await l.close()
+	}
+})
+
+test('chips follow the coverage of a page that is read again, even when its cards did not change (AIXC-112)', async () => {
+	const l = await launchLayer(gw, { owl: true, reducedMotion: true })
+	try {
+		await open(l.page, '/en/services', '?aixc-debug')
+		await chipsReady(l.page)
+		assert.ok((await chippedIds(l.page)).length > 0, 'chips are drawn')
+		const reads = await l.page.evaluate(() => (window as any).__aixc.reads as number)
+		// Card-like blocks no recogniser reads: they lower the coverage but are not cards, so the model stays.
+		await l.page.evaluate(() => {
+			// In a portlet of real cards (in the band's, the added blocks would turn it into a section of unread cards and change the model).
+			const portlet = document.querySelector('#main-content .card-action[data-aixc-item]')!.closest('[id^="p_p_id"]')!
+			const box = document.createElement('div')
+			box.id = 'stand-in-unread'
+			for (let i = 0; i < 40; i++) box.insertAdjacentHTML('beforeend', `<div class="stand-in-block"><h3>Unread block ${i}</h3><p>Words of block ${i}.</p><a class="btn" href="/en/unread-${i}">Go</a></div>`)
+			portlet.append(box)
+		})
+		await l.page.waitForFunction((n) => (window as any).__aixc.reads > n && (window as any).__aixc.coverage.ratio < 0.6, reads, { timeout: 10_000 })
+		await l.page.waitForFunction(() => document.querySelectorAll('.pocket-chips .pocket-cta[data-pocket-for]').length === 0, null, { timeout: 4_000 }).catch(() => {})
+		assert.deepEqual([(await chippedIds(l.page)).length, await l.page.evaluate(() => (document.querySelector('.pocket-chips') as HTMLElement | null)?.hidden ?? true)], [0, true], 'below 0.6 the chips are gone')
+		await l.page.evaluate(() => document.getElementById('stand-in-unread')!.remove())
+		await l.page.waitForFunction(() => (window as any).__aixc.coverage.ratio >= 0.6, null, { timeout: 10_000 })
+		await l.page.waitForFunction(() => document.querySelectorAll('.pocket-chips .pocket-cta[data-pocket-for]').length > 0, null, { timeout: 4_000 }).catch(() => {})
+		assert.ok((await chippedIds(l.page)).length > 0, 'at 0.6 or more they are back')
+	} finally {
+		await l.close()
+	}
+})
+
+test('a mouse click on a chip does not move focus to Put back; a see-through liner clears when focus leaves (AIXC-114, AIXC-116)', async () => {
+	const l = await launchLayer(gw, { reducedMotion: true })
+	try {
+		const seen = watch(l.page)
+		await open(l.page, '/en/vodafone-cash', '?aixc-debug')
+		await chipsReady(l.page)
+		await clearStore(l.page)
+		const id = (await chippedIds(l.page))[0]
+		const at = await chipAt(l.page, id)
+		await l.page.mouse.click(at.x, at.y)
+		await l.page.waitForFunction((id) => (window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), id, { timeout: 5_000 })
+		await l.page.waitForTimeout(150)
+		assert.equal((await focusNow(l.page)).includes('[chips]'), false, 'after a mouse click, focus is not on one of our buttons')
+		await l.page.keyboard.press('Space')
+		await l.page.waitForTimeout(200)
+		assert.equal((await records(l.page)).length, 1, 'so Space (to scroll) does not put the card back')
+		// Focus into the pocketed card's own link, then out to nowhere: the card shows as it is again.
+		const has = await l.page.evaluate((id) => {
+			const card = [...document.querySelectorAll<HTMLElement>(`#main-content [data-aixc-item="${CSS.escape(id)}"]`)].find((n) => !n.closest('.owl-item.cloned'))!
+			const link = card.matches('a[href]') ? card : card.querySelector<HTMLElement>('a[href]')
+			const slot = document.querySelector(`.pocket-chips .pocket-cta[data-pocket-for="${CSS.escape(id)}"]`)!.parentElement!
+			link!.focus()
+			const on = 'focusIn' in slot.dataset
+			link!.blur()
+			return { on, off: !('focusIn' in slot.dataset) }
+		}, id)
+		assert.deepEqual(has, { on: true, off: true }, 'the liner is see-through while focus is in the card, and opaque again when it leaves')
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+	} finally {
+		await l.close()
 	}
 })

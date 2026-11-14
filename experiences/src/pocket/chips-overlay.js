@@ -12,6 +12,10 @@
  *   the card's headings and links, none of its smaller buttons and none of its smaller pictures
  *   (./chips-place.js), picked again only when the card's size or the fonts change. A card cut by Owl's stage (or any clipping ancestor) is cut the same way, hit-testing included.
  * - When: only on the website, where the page was read well enough (`gate`), while the page shows.
+ * - A slot is as big as the part of its card that shows: a card cut by Owl's stage or a scroller gets
+ *   a slot cut the same way, so nothing of ours extends past what shows (and body never scrolls
+ *   sideways from a chip). A card wholly cut keeps its buttons for screen readers in a 1 px clipped
+ *   slot, because its card is still in Vodafone's page; focus is never left on a button that goes away.
  * - Keyboard (owner, 2026-11-13): the buttons are out of the Tab order; screen readers reach them by
  *   name in the labelled group. From our own buttons, Escape and Shift+Tab go back to the card, Tab
  *   to what follows it. No key is handled anywhere on Vodafone's page.
@@ -55,8 +59,10 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
   root.style.cssText = 'position:relative;height:0;margin:0;padding:0;z-index:2'
   place(root)
 
-  /** Vodafone's card → { id, slot, cta, clips, size, pick, radius } */
+  /** Vodafone's card → { id, slot, cta, undo, clips, key, pick, radius } */
   const slots = new Map()
+  /** The clipping ancestors may have changed (a stage was added, a row became a scroller): read them again. */
+  let reclip = true
   let allowed = gate(coverage)
   let stopped = false
   let frame = 0
@@ -66,7 +72,14 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
   let chipSize = null
   const unplaced = new Set()
 
-  const resized = observe(new ResizeObserver(wrap('pocket chips resize', () => schedule())))
+  const resized = observe(
+    new ResizeObserver(
+      wrap('pocket chips resize', () => {
+        reclip = true
+        schedule()
+      }),
+    ),
+  )
 
   /** The ancestors that cut what shows of `card` (Owl's stage, horizontal scrollers). */
   const clipsOf = (card) => {
@@ -78,16 +91,36 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
     return out
   }
 
-  const add = (card, id) => {
+  /** The stops around `card` on Vodafone's page: its own link, the one before it, the one after it. */
+  const stopsAround = (card) => {
+    const all = [...document.querySelectorAll(TABBABLE)].filter(isTabbable)
+    const own = isTabbable(card) ? card : all.find((node) => card.contains(node))
+    const before = all.filter((node) => card.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING && !node.contains(card)).at(-1)
+    const after = all.find((node) => card.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING && !card.contains(node))
+    return { own, before, after }
+  }
+
+  /** Takes focus off a slot's buttons before the slot is hidden or removed, so a screen-reader user is not dropped on the page. */
+  const release = (card, s) => {
+    if (!card.isConnected || !s.slot.contains(document.activeElement)) return
+    const { own, before } = stopsAround(card)
+    ;(own ?? before)?.focus({ preventScroll: true })
+  }
+
+  /** Puts card `id`'s slot before `before` (the next card's), so the buttons stay in the page's card order. */
+  const add = (card, id, before = null) => {
     const slot = mark(document.createElement('div'))
-    root.append(slot)
+    root.insertBefore(slot, before)
     const entry = decorate(card, id, slot)
-    slots.set(card, { id, slot, cta: entry.cta, clips: clipsOf(card), size: '', pick: null, radius: '0px' })
+    const s = { id, slot, cta: entry.cta, undo: entry.undo, clips: clipsOf(card), key: '', pick: null, radius: '0px' }
+    slots.set(card, s)
     resized.observe(card)
+    return s
   }
 
   const drop = (card) => {
     const s = slots.get(card)
+    release(card, s)
     slots.delete(card)
     unplaced.delete(s.id)
     resized.unobserve(card)
@@ -108,12 +141,22 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
         want.set(card, id)
       }
     for (const [card, s] of [...slots]) if (want.get(card) !== s.id || !card.isConnected) drop(card)
-    for (const [card, id] of want) if (!slots.has(card)) add(card, id)
+    // The cards that stay: Vodafone may have changed what clips them or what they are called.
+    for (const [card, s] of slots) {
+      s.clips = clipsOf(card)
+      const { title } = catalog.get(s.id).item
+      s.cta.setAttribute('aria-label', t('Pocket it: {title}', { title }))
+      s.undo.setAttribute('aria-label', t('Put back {title}', { title }))
+    }
+    reclip = false
+    // From the last card to the first, each new slot goes before the next card's, so the buttons keep the page's order.
+    let next = null
+    for (const [card, id] of [...want].reverse()) next = (slots.get(card) ?? add(card, id, next)).slot
     schedule()
   }
 
-  /** The chip's corner on `card`, as offsets from the card's box (read phase only). */
-  const pickFor = (card, box, s) => {
+  /** The chip's corner on `card`, as offsets from the part of it that shows (read phase only). */
+  const pickFor = (card, box, seen, s) => {
     const area = box.width * box.height
     const avoid = []
     // Words, line by line: a heading's or a plain link's box often spans the card while its words do not.
@@ -131,8 +174,8 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       else wordsOf(node)
     }
     const icon = { width: chipSize.height, height: chipSize.height }
-    const p = placeChip({ card: box, avoid, size: chipSize, iconSize: icon, dir: getComputedStyle(card).direction, small: window.innerWidth < 640 })
-    return p && { dx: p.x - box.left, dy: p.y - box.top, icon: p.icon, unplaced: p.unplaced, corner: p.corner, id: s.id }
+    const p = placeChip({ card: box, clips: [seen], avoid, size: chipSize, iconSize: icon, dir: getComputedStyle(card).direction, small: window.innerWidth < 640 })
+    return p && { dx: p.x - seen.left, dy: p.y - seen.top, icon: p.icon, unplaced: p.unplaced, corner: p.corner, id: s.id }
   }
 
   const pass = () => {
@@ -155,35 +198,61 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
     }
     // Reads.
     const base = root.getBoundingClientRect()
+    if (reclip) {
+      for (const [card, s] of slots) s.clips = clipsOf(card)
+      reclip = false
+    }
     const plans = []
     for (const [card, s] of slots) {
       const box = card.isConnected ? card.getBoundingClientRect() : null
       const shows = !!box && box.width > 0 && box.height > 0 && (card.checkVisibility?.({ visibilityProperty: true }) ?? true)
-      const seen = shows ? clipBox(box, s.clips.map((node) => node.getBoundingClientRect())) : null
-      if (!seen) {
-        plans.push({ s, box: null })
+      if (!shows) {
+        plans.push({ card, s, shows })
         continue
       }
-      const size = `${Math.round(box.width)}x${Math.round(box.height)}:${fonts}`
-      if (size !== s.size) {
-        s.size = size
-        s.pick = pickFor(card, box, s)
-        s.radius = getComputedStyle(card).borderRadius
+      const seen = clipBox(box, s.clips.map((node) => node.getBoundingClientRect()))
+      if (seen) {
+        // Picked again when the card's size, the fonts or the part that shows change, not while it merely moves.
+        const key = `${Math.round(box.width)}x${Math.round(box.height)}:${fonts}:${Math.round(seen.left - box.left)},${Math.round(seen.top - box.top)},${Math.round(box.right - seen.right)},${Math.round(box.bottom - seen.bottom)}`
+        if (key !== s.key) {
+          s.key = key
+          s.pick = pickFor(card, box, seen, s)
+          s.radius = getComputedStyle(card).borderRadius
+        }
       }
-      plans.push({ s, box, seen })
+      plans.push({ card, s, shows, box, seen })
     }
     // Writes.
-    for (const { s, box, seen } of plans) {
-      const hide = !box || !s.pick
-      if (s.slot.hidden !== hide) s.slot.hidden = hide
-      if (hide) continue
+    for (const { card, s, shows, box, seen } of plans) {
+      if (s.slot.hidden === shows) {
+        if (!shows) release(card, s)
+        s.slot.hidden = !shows
+      }
+      if (!shows) continue
       const st = s.slot.style
-      st.transform = `translate(${box.left - base.left}px, ${box.top - base.top}px)`
-      st.width = `${box.width}px`
-      st.height = `${box.height}px`
-      st.borderRadius = s.radius
-      const cut = seen.left > box.left || seen.top > box.top || seen.right < box.right || seen.bottom < box.bottom
-      st.clipPath = cut ? `inset(${seen.top - box.top}px ${box.right - seen.right}px ${box.bottom - seen.bottom}px ${seen.left - box.left}px)` : ''
+      if (!seen) {
+        // Wholly cut by its carousel or scroller: nothing to see or press, but its card is still in Vodafone's
+        // page, so a screen reader keeps finding the buttons (in a 1 px clipped box that cannot move the page).
+        s.slot.dataset.cut = ''
+        st.transform = 'translate(0px, 0px)'
+        st.width = '1px'
+        st.height = '1px'
+        st.overflow = 'hidden'
+        st.clipPath = 'inset(50%)'
+        continue
+      }
+      delete s.slot.dataset.cut
+      const cut = seen.left > box.left + 0.5 || seen.top > box.top + 0.5 || seen.right < box.right - 0.5 || seen.bottom < box.bottom - 0.5
+      st.transform = `translate(${seen.left - base.left}px, ${seen.top - base.top}px)`
+      st.width = `${seen.right - seen.left}px`
+      st.height = `${seen.bottom - seen.top}px`
+      st.clipPath = ''
+      st.overflow = cut ? 'hidden' : ''
+      st.borderRadius = cut ? '0' : s.radius
+      // Where the card's own corner is, for the lift (pocket.js liftCorner).
+      st.setProperty('--pocket-cut-x', `${seen.left - box.left}px`)
+      st.setProperty('--pocket-cut-y', `${seen.top - box.top}px`)
+      if (!s.pick) continue
       s.cta.style.left = `${s.pick.dx}px`
       s.cta.style.top = `${s.pick.dy}px`
       s.cta.classList.toggle('pocket-cta--icon', s.pick.icon)
@@ -199,7 +268,10 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
 
   /* Triggers. The region is in the page's flow, so the page's own scroll needs nothing. */
   resized.observe(document.body)
-  on(window, 'resize', () => schedule())
+  on(window, 'resize', () => {
+    reclip = true
+    schedule()
+  })
   if (document.fonts)
     on(document.fonts, 'loadingdone', () => {
       fonts++
@@ -223,6 +295,8 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
           if (r.target.closest?.('[data-aixc]')) continue
           if (r.attributeName === 'data-aixc-item') marks = true
           else moved = true
+          // A stage wrapped around cards, a class that makes a row scroll: what clips a card may have changed.
+          if (r.type === 'childList' || r.attributeName === 'class' || r.attributeName === 'hidden') reclip = true
         }
         if (marks) rekey()
         else if (moved) schedule()
@@ -233,13 +307,21 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
 
   /* While focus is inside a pocketed card, its liner lets the card show through (WCAG 2.4.11). */
   let focused = null
-  on(document, 'focusin', (event) => {
-    let next = null
-    for (const [card, s] of slots) if (card.contains(event.target)) next = s.slot
-    if (focused === next) return
+  let focusedCard = null
+  const setFocused = (card, s) => {
+    if (focused === (s?.slot ?? null)) return
     if (focused) delete focused.dataset.focusIn
-    focused = next
+    focused = s?.slot ?? null
+    focusedCard = card
     if (focused) focused.dataset.focusIn = ''
+  }
+  on(document, 'focusin', (event) => {
+    for (const [card, s] of slots) if (card.contains(event.target)) return setFocused(card, s)
+    setFocused(null, null)
+  })
+  // Focus left without going anywhere (a click on empty space, a removed link): the card shows as it is again.
+  on(document, 'focusout', (event) => {
+    if (focused && !(event.relatedTarget && focusedCard?.contains(event.relatedTarget))) setFocused(null, null)
   })
 
   /* From our own buttons only: back to the card (Escape, Shift+Tab) or on to what follows it (Tab). */
@@ -251,10 +333,7 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || (event.key !== 'Escape' && event.key !== 'Tab')) return
     const card = cardOf(event.target)
     if (!card) return
-    const all = [...document.querySelectorAll(TABBABLE)].filter(isTabbable)
-    const own = isTabbable(card) ? card : all.find((node) => card.contains(node))
-    const before = all.filter((node) => card.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING && !node.contains(card)).at(-1)
-    const after = all.find((node) => card.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING && !card.contains(node))
+    const { own, before, after } = stopsAround(card)
     const target = event.key === 'Tab' && !event.shiftKey ? after : own ?? before
     if (!target) return
     event.preventDefault()
@@ -264,7 +343,13 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
   /* Before a chip or Put back does anything (a failure here takes the whole layer away, ADR-0048 §7). */
   on(root, 'click', () => checkpoint('pocket-chip'), true)
 
-  rekey()
+  try {
+    rekey()
+  } catch (error) {
+    // The Pocket's own clean-up (offs) takes the listeners and observers; the region goes here.
+    root.remove()
+    throw error
+  }
 
   return {
     /** The model or its coverage changed: which cards get chips, again. */
@@ -279,7 +364,7 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       schedule()
     },
     debug: () => ({
-      shown: [...slots.values()].filter((s) => !root.hidden && !s.slot.hidden).map((s) => s.id),
+      shown: [...slots.values()].filter((s) => !root.hidden && !s.slot.hidden && !('cut' in s.slot.dataset)).map((s) => s.id),
       unplaced: [...unplaced],
       icon: [...slots.values()].filter((s) => s.pick?.icon).map((s) => s.id),
     }),

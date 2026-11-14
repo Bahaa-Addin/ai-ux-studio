@@ -112,10 +112,12 @@ const start = () => {
     // Vodafone's page changes after it loads (carousels, lazy sections): read it again when it does.
     const stopWatching = adapter.watch(
       (next) => {
+        const was = layer.coverage?.ratio
         layer.model = next.model
         layer.coverage = next.coverage
         layer.reads++
-        if (next.changed) document.dispatchEvent(new CustomEvent('aixc:model', { detail: { model: next.model, coverage: next.coverage } }))
+        // The model changed, or how much of the page it covers did (unread cards come or go): a demo may switch.
+        if (next.changed || next.coverage?.ratio !== was) document.dispatchEvent(new CustomEvent('aixc:model', { detail: { model: next.model, coverage: next.coverage } }))
       },
       { run: (fn) => guard.run('re-read', fn) },
     )

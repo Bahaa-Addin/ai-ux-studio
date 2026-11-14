@@ -275,8 +275,15 @@
   background: #f4f4f4;
 }
 
-.pocket-chips[data-aixc] > .pocket-host.is-pocketed > .pocket-liner {
+/* The liner lets every press, drag and swipe through to Vodafone's card and carousel under it (a stage binds its
+   touch handlers on itself, so a swipe that began on the liner would never reach it); only Put back takes the pointer. */
+.pocket-chips[data-aixc] .pocket-liner__undo {
   pointer-events: auto;
+}
+
+/* A card wholly cut by its carousel: its buttons stay for screen readers, in a 1 px box nothing can press. */
+.pocket-chips[data-aixc] > .pocket-host[data-cut] * {
+  pointer-events: none !important;
 }
 
 /* Focus inside a pocketed card: the card shows through, so its focused link is never hidden. */
