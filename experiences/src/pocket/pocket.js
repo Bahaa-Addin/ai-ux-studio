@@ -1399,8 +1399,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       if (destroyed) return
       fromStore(store.all())
       settled = true
-      // Returning visitor: the corner turns up shortly after the page settles.
-      if (state.ids.length) later(() => openPeek({ animate: true }), 500)
+      // Returning visitor: the corner turns up shortly after the page settles (if the pocket is still not empty then).
+      if (state.ids.length) later(() => state.ids.length && openPeek({ animate: true }), 500)
     }),
   )
 

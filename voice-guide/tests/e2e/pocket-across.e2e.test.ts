@@ -411,3 +411,33 @@ test('a walk over the pages that clear storage loses nothing, in English and in 
 		await l.close()
 	}
 })
+
+test('the pocket emptied just as a page starts: the corner that is due never shows an empty pocket (found by the S16 matrix)', async () => {
+	const l = await launchLayer(gw, { owl: true, reducedMotion: false, themeClear: true })
+	try {
+		const seen = watch(l.page)
+		await ready(l.page, '/en/services')
+		await clearStore(l.page)
+		const [id] = await linked(l.page, 1)
+		await pocket(l.page, id)
+		// Another page: a returning visitor's corner turns up 500 ms after the Pocket has read its store.
+		await open(l.page, '/en/vodafone-cash', '?aixc-debug')
+		// Empty the store at once, inside that wait (another tab's "Empty pocket", or the store clearing).
+		await l.page.evaluate(async () => {
+			while (!(window as any).__aixc?.demos?.pocket?.chips) await new Promise((done) => setTimeout(done, 5))
+			const { store } = (window as any).__aixc.demos.pocket
+			await store.ready
+			await store.clear()
+		})
+		await l.page.waitForTimeout(1_500)
+		const corner = await l.page.evaluate(() => {
+			const peek = document.querySelector('.pocket-peek')
+			return { state: peek?.getAttribute('data-state') ?? null, label: peek?.getAttribute('aria-label') ?? null, held: (window as any).__aixc.demos.pocket.store.all().length }
+		})
+		assert.equal(corner.held, 0, 'the pocket is empty')
+		assert.notEqual(corner.state, 'shown', `no Pocket button for an empty pocket (it said "${corner.label}")`)
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+	} finally {
+		await l.close()
+	}
+})
