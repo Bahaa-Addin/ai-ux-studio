@@ -38,10 +38,12 @@ before(async () => {
 	browser = await chromium.launch()
 })
 
+// A close that never answers must not hold the file for ever (the whole suite once stopped here, after all eight tests had passed).
+const within = (work: Promise<unknown> | undefined, ms: number) => Promise.race([work, new Promise((resolve) => setTimeout(resolve, ms).unref())])
 after(async () => {
-	await browser?.close()
-	await sites?.close()
-	await p?.close()
+	await within(browser?.close(), 15_000)
+	await within(sites?.close(), 15_000)
+	await within(p?.close(), 15_000)
 })
 
 /** Counts reads of replay chunks by step, so a test can prove one step loads only its own. */
