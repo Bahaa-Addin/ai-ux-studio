@@ -6,6 +6,9 @@
  * run (runbook §0). The cookie banner is left alone (AGENTS.md §4.6).
  *
  *   VG_LIVE=1 [VG_LIVE_VIDEO=<dir>] node --test --test-timeout=150000 tests/live/vodafone-live.live.test.ts
+ *   VG_LIVE_BROWSER=chrome …   # the installed Google Chrome, window visible
+ *   VG_LIVE_PROFILE=<dir> …    # a persistent profile (the demo profile, where you answered the cookie banner
+ *                              # yourself): the spoken questions run only where the banner does not cover the page
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -51,8 +54,9 @@ before(async () => {
 		site,
 		gatewayUrl: `http://127.0.0.1:${PORT}`,
 		start: 'about:blank',
-		headless: true,
-		channel: 'chromium',
+		headless: process.env.VG_LIVE_BROWSER !== 'chrome',
+		channel: process.env.VG_LIVE_BROWSER === 'chrome' ? 'chrome' : 'chromium',
+		...(process.env.VG_LIVE_PROFILE ? { profileDir: process.env.VG_LIVE_PROFILE } : {}),
 		fakeMic: wav,
 		initScripts: [VOICE_STUB],
 		viewport: { width: 1366, height: 900 },
