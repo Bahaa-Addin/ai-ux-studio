@@ -36,6 +36,9 @@ services:
         value: cf-connecting-ip
       - key: VG_PUBLIC
         value: 'on'
+      # The GitHub Pages preview of the demos loads guide.js from this gateway.
+      - key: VG_EXTRA_ORIGINS
+        value: https://bahaa-addin.github.io
       - key: VG_TRAIL
         value: 'on'
       - key: VG_LLM_PROVIDER

@@ -48,6 +48,7 @@ const PLAIN: Record<string, string> = {
 	VG_STT_SECONDS_PER_DAY: '14400',
 	VG_RATE_TURNS_PER_MIN: '20',
 	VG_DB_POOL_MAX: '5',
+	VG_EXTRA_ORIGINS: 'https://bahaa-addin.github.io',
 }
 
 test('one free Docker web service, built from the gateway Dockerfile at the repository root, deployed by hand', () => {

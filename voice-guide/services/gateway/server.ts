@@ -84,12 +84,18 @@ export function createGateway(opts: GatewayOptions) {
 		})
 	}
 
+	/**
+	 * Extra page origins every site accepts (VG_EXTRA_ORIGINS, comma-separated): a static preview of the
+	 * demos (GitHub Pages) that loads guide.js from this gateway. The site's own origins always count.
+	 */
+	const extraOrigins = new Set((process.env.VG_EXTRA_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean).map((o) => new URL(o).origin))
+	const originAllowed = (site: SiteConfig, origin: string) => extraOrigins.has(origin) || site.origins.some((o) => new URL(o.url).origin === origin)
 	const siteFor = (req: http.IncomingMessage, url: URL): SiteConfig => {
 		const key = (req.headers['x-vg-site-key'] as string) || url.searchParams.get('k') || ''
 		const site = bySiteKey.get(key)
 		if (!site) throw new HttpError(401, 'unknown site key', 'bad_site_key')
 		const origin = req.headers.origin
-		if (origin && !site.origins.some((o) => new URL(o.url).origin === origin)) throw new HttpError(403, `origin ${origin} is not allowed for this site`, 'bad_origin')
+		if (origin && !originAllowed(site, origin)) throw new HttpError(403, `origin ${origin} is not allowed for this site`, 'bad_origin')
 		return site
 	}
 	const ctxFor = (req: http.IncomingMessage, site: SiteConfig, sessionId: string, turnId?: string): RpcContext => ({
@@ -410,7 +416,7 @@ export function createGateway(opts: GatewayOptions) {
 		const site = s.sites.get(claims.s)
 		if (!site) throw new HttpError(401, 'unknown site', 'bad_site_key')
 		const origin = req.headers.origin
-		if (origin && !site.origins.some((o) => new URL(o.url).origin === origin)) throw new HttpError(403, 'origin not allowed', 'bad_origin')
+		if (origin && !originAllowed(site, origin)) throw new HttpError(403, 'origin not allowed', 'bad_origin')
 		if (!agentLimiter.take(`${site.id}:${claims.ses}`)) throw new HttpError(429, 'too many agent steps', 'rate_limited')
 		const body = await readJson(req, 2 * 1024 * 1024)
 		const ctx = ctxFor(req, site, claims.ses, (req.headers['x-vg-turn'] as string) || undefined)
