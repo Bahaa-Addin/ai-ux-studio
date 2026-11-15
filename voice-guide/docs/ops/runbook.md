@@ -112,6 +112,23 @@ Not in this build: the shop (`eshop.vodafone.com.eg`) was not crawled, so moment
 4. If the bar says "Speech recognition is not available here right now. You can type instead.", Chrome's speech service is not reachable: check the internet connection, then Chrome's version. Typing in the panel still works.
 5. On a first visit, Vodafone's cookie banner covers the page, the microphone included; answer it yourself (the guide never does). Then ask "إيه أرخص باقة نت" on the live site. If the spotlight lands on the wrong element or nothing happens, Vodafone may have changed the page: run a sync (§5) and read its report.
 
+## 3d. The Pocket's live smoke (live plan phase 3, S17; the owner runs it)
+
+The one check of the Pocket on the real site. It is yours to run, after O29 is updated (the live site answered the demo browser) and never in a loop. The flow was rehearsed on the saved pages first (`tests/e2e/pocket-smoke-rehearsal.e2e.test.ts`, 6 tests), so what it finds is about the real site, not the flow.
+
+```
+VG_LIVE=1 VG_LIVE_BROWSER=chrome node --test --test-timeout=600000 tests/live/pocket.live.test.ts
+```
+
+It opens `/en/services`, and `/ar/services` if the first passes, in your installed Google Chrome with the demo profile (`data/demo-profile`, or `VG_LIVE_PROFILE`), signed out, with at most 6 page loads at least 1.2 s apart, and prints every step in plain words.
+
+- **First, answer the cookie banner yourself** in that Chrome window, once (the profile remembers it). The test **never** answers it: if the banner is showing it prints "The cookie banner is showing. Answer it yourself in this browser window (this test never does), then run the test again.", presses nothing and reports `skipped: banner` (a skip, not a failure). In English the banner floats bottom-left, where the Pocket button is.
+- **It stops** at a bot check or challenge page (403, 429, 503, "Access denied", "Just a moment", a captcha marker), at any other error page, and never retries or tries to get past one (AGENTS.md §4.5).
+- **What it does** (all with real mouse presses on the layer's own controls): hover a card and press its "Pocket it" chip; check the Pocket button shows 1, bottom-left, and a press reaches it; open the album, close it with Back and check the page is at the same scroll (within 2 px); reload (Vodafone's own storage clear runs) and check the sticker survived; open "Your journey" in place from the pill (it allows the trail's own consent if the card shows: ours, not Vodafone's); press the sticker's own link, which runs the portal.
+- **It measures the portal's requests** (the open question of ADR-0065): "the destination was requested N times from the network (fetch: a, navigation: b, from cache: c)", with the response's `Cache-Control`, `Vary` and the NAMES of any `Set-Cookie` cookies (never values). One request means the navigation was served from the cache; two means it was not, and the live default should become the picture preview (ADR-0065, "Revisit when"). This is a measurement, not a pass/fail.
+- **It passes** when no `[AIXC]` error was logged, no page error came from the layer, Vodafone's accessibility button and the cookie banner have the same boxes, styles and `style` attributes as before, every element of the layer carries `data-aixc`, and the layer is still `ready`. It then removes only what it added (its stickers; the trail's consent only if it gave it); it never touches Vodafone's cookies or storage.
+- Send the printed report back (the request count and the cache headers are the facts the plan is waiting for).
+
 ## 3a. The guide's voice: VoiceTut (ADR-0047; the owner's demos only)
 
 The guide speaks with VoiceTut, an Egyptian Arabic and English voice, when `VG_VOICETUT_URL` is set. Otherwise it uses the browser's own voice (§1), and it falls back to that voice for any sentence VoiceTut has not made within 2.5 s. VoiceTut's weights are CC-BY-NC: never for customers.
