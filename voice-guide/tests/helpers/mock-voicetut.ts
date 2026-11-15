@@ -3,7 +3,8 @@
  * Modal: POST /gradio_api/call/{info|synthesize} → { event_id }; GET .../{id} streams a heartbeat,
  * then `complete` (or `error`) after `delayMs`; the synthesis result points at a WAV on the same host.
  * It validates the settings as VoiceTut's own API does (experiments/voicetut/local_api.py) and
- * records every request body and how many syntheses ran at once.
+ * records every request body and how many syntheses ran at once. `redirect` makes it answer with a
+ * 307 to `redirectTo` (every call, or only the audio file), to prove the client never follows one.
  */
 import http from 'node:http'
 
@@ -26,6 +27,11 @@ export interface MockVoiceTut {
 	audioSeconds: number
 	/** Serve a 9 MB body with no length header (chunked), to test the size cap. */
 	oversizeAudio: boolean
+	/** Answer with a 307 to `redirectTo`: every request, or only the audio file. Off when unset. */
+	redirect?: 'all' | 'audio'
+	redirectTo?: string
+	/** As Modal does for a request past ~150 s: answer each request first with a 303 to itself on this host. */
+	selfRedirect: boolean
 	close(): Promise<void>
 }
 
@@ -52,6 +58,8 @@ export function wavBytes(seconds = 0.2): Buffer {
 
 export async function startMockVoiceTut(o: Partial<Pick<MockVoiceTut, 'delayMs' | 'infoDelayMs' | 'mock' | 'modelVersion'>> = {}): Promise<MockVoiceTut> {
 	const jobs = new Map<string, { endpoint: 'info' | 'synthesize'; data: unknown[] }>()
+	/** Requests answered with a 303 to themselves, by call id: their method and body. */
+	const held = new Map<string, { method: string; raw: string }>()
 	let seq = 0
 	let inFlight = 0
 	const m: MockVoiceTut = {
@@ -65,14 +73,31 @@ export async function startMockVoiceTut(o: Partial<Pick<MockVoiceTut, 'delayMs' 
 		inFlightMax: 0,
 		audioSeconds: 0.2,
 		oversizeAudio: false,
+		selfRedirect: false,
 		close: async () => {},
 	}
 	const server = http.createServer(async (req, res) => {
 		const url = new URL(req.url || '/', 'http://local')
-		const call = /^\/gradio_api\/call\/(info|synthesize)$/.exec(url.pathname)
-		if (req.method === 'POST' && call) {
+		if (m.redirectTo && (m.redirect === 'all' || (m.redirect === 'audio' && url.pathname.startsWith('/gradio_api/file=')))) {
+			// 307 keeps the method and the body: a client that followed it would send the text on.
+			res.writeHead(307, { Location: `${m.redirectTo}${url.pathname}${url.search}` })
+			return res.end()
+		}
+		if (m.selfRedirect && !url.searchParams.has('__modal_function_call_id')) {
+			// The POST's body is read and kept under the call id; the follow-up GET picks up the answer.
 			let raw = ''
 			for await (const chunk of req) raw += chunk
+			const id = `fc${++seq}`
+			held.set(id, { method: req.method || 'GET', raw })
+			res.writeHead(303, { Location: `${url.pathname}${url.search ? `${url.search}&` : '?'}__modal_function_call_id=${id}` })
+			return res.end()
+		}
+		const hold = url.searchParams.get('__modal_function_call_id')
+		const replay = hold ? held.get(hold) : undefined
+		const call = /^\/gradio_api\/call\/(info|synthesize)$/.exec(url.pathname)
+		if ((req.method === 'POST' || replay?.method === 'POST') && call) {
+			let raw = replay?.raw ?? ''
+			if (!replay) for await (const chunk of req) raw += chunk
 			const body = JSON.parse(raw || '{}') as { data?: unknown[] }
 			const endpoint = call[1] as 'info' | 'synthesize'
 			const data = Array.isArray(body.data) ? body.data : []
