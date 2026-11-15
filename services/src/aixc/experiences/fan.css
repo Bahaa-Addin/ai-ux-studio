@@ -1,0 +1,493 @@
+/* Card fan — scoped to .aixc-vx--fan. Tokens from vodafone.css. */
+
+.aixc-vx--fan {
+  --fn-ease: cubic-bezier(0, 0.02, 0, 1);
+  --fn-h: min(400px, calc(var(--vx-vh) * 0.56));
+  --fn-w: calc(var(--fn-h) * 0.75);
+  /* Where the current card sits (from the start edge); the fan runs from the top
+     start corner to the bottom end corner: top left to bottom right in English,
+     top right to bottom left in Arabic. */
+  --fn-x: 58%;
+  --fn-y: 45%;
+  /* +1 in English, -1 in Arabic: mirrors the fan's sideways travel and turn. */
+  --fn-inline: 1;
+  --fn-origin: 0% 100%;
+  /* The red glow sits where the fan ends, and the backdrop leans the same way. */
+  --fn-glow-x: 85%;
+  --fn-angle: 135deg;
+  background: var(--vx-ink);
+}
+
+[dir='rtl'] .aixc-vx--fan {
+  --fn-inline: -1;
+  --fn-origin: 100% 100%;
+  --fn-origin-x: 100%;
+  --fn-glow-x: 15%;
+  --fn-angle: 225deg;
+}
+
+.aixc-vx--fan .fn-track {
+  position: relative;
+  height: calc(var(--vx-vh) + (var(--count) - 1) * var(--step));
+}
+
+.aixc-vx--fan .fn-stage {
+  position: sticky;
+  top: var(--vx-top);
+  height: var(--vx-vh);
+  min-height: 520px;
+  /* clip, not hidden: focus must never scroll the stage itself */
+  overflow: hidden;
+  overflow: clip;
+  background:
+    radial-gradient(90% 80% at var(--fn-glow-x) 100%, rgba(230, 0, 0, 0.22) 0%, rgba(230, 0, 0, 0) 60%),
+    linear-gradient(var(--fn-angle), #000 0%, var(--vx-ink) 48%, #3d0000 100%);
+  color: var(--vx-white);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.aixc-vx--fan .fn-stage.is-dragging,
+.aixc-vx--fan .fn-stage.is-dragging .fn-card {
+  cursor: grabbing;
+}
+
+/* ------------------------------------------------------------------- decor */
+
+.aixc-vx--fan .fn-rule {
+  position: absolute;
+  top: 0;
+  inset-inline-start: 90px;
+  width: 10px;
+  height: 100%;
+  border: 1px solid var(--vx-white);
+  border-top: 0;
+  border-bottom: 0;
+  opacity: 0.15;
+}
+
+.aixc-vx--fan .fn-turned {
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: 30px;
+  width: max-content;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  opacity: 0.45;
+  transform: rotate(-90deg);
+  transform-origin: 0% 10%;
+}
+
+/* Mirrored: hugs the right edge, turned the other way about its right end. */
+[dir='rtl'] .aixc-vx--fan .fn-turned {
+  transform: rotate(90deg);
+  transform-origin: 100% 10%;
+}
+
+.aixc-vx--fan .fn-turned:lang(ar) {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* ------------------------------------------------------------------- cards */
+
+.aixc-vx--fan .fn-deck {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.aixc-vx--fan .fn-card {
+  --d: 0;
+  --z: 1;
+  --fade: 1;
+  position: absolute;
+  top: var(--fn-y);
+  inset-inline-start: var(--fn-x);
+  z-index: var(--z);
+  width: var(--fn-w);
+  height: var(--fn-h);
+  margin: calc(var(--fn-h) * -0.5) 0 0;
+  margin-inline-start: calc(var(--fn-w) * -0.5);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 10px;
+  background: #000;
+  box-shadow: 0 10px 50px 10px rgba(0, 0, 0, 0.5);
+  color: var(--vx-white);
+  text-align: start;
+  cursor: pointer;
+  pointer-events: auto;
+  transform-origin: var(--fn-origin);
+  transform:
+    translate(calc(var(--d) * var(--fn-inline) * 80%), calc(var(--d) * 20%))
+    rotate(calc(var(--d) * var(--fn-inline) * 12deg));
+  transition: transform 0.8s var(--fn-ease), box-shadow 0.4s ease;
+}
+
+.aixc-vx--fan .fn-card.is-away {
+  visibility: hidden;
+}
+
+.aixc-vx--fan .fn-card__box {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: var(--fade);
+  transition: opacity 0.8s var(--fn-ease);
+}
+
+.aixc-vx--fan .fn-card__box::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.72));
+}
+
+.aixc-vx--fan .fn-card__media {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+  background: var(--vx-grey-900);
+}
+
+.aixc-vx--fan .fn-card__media img {
+  pointer-events: none;
+}
+
+.aixc-vx--fan .fn-card__media.is-contain {
+  background: var(--vx-red);
+}
+
+.aixc-vx--fan .fn-card__media.is-contain img {
+  padding: 22% 16%;
+  filter: brightness(0) invert(1);
+}
+
+.aixc-vx--fan .fn-card__num {
+  position: absolute;
+  top: 10px;
+  inset-inline-start: 20px;
+  z-index: 1;
+  font-family: var(--vx-font-light);
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  line-height: 1;
+}
+
+.aixc-vx--fan .fn-card__text {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.aixc-vx--fan .fn-card__group {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.aixc-vx--fan .fn-card__title {
+  font-family: var(--vx-font-bold);
+  font-size: clamp(1.125rem, 2.2vw, 1.625rem);
+  line-height: 1.1;
+  text-shadow: 0 4px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* The current card carries the Vodafone red. */
+.aixc-vx--fan .fn-card::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  height: 4px;
+  background: var(--vx-red);
+  transform: scaleX(0);
+  /* Grows from the start edge. */
+  transform-origin: var(--fn-origin-x, 0%) 50%;
+  transition: transform 0.6s var(--fn-ease);
+}
+
+.aixc-vx--fan .fn-card.is-active::after {
+  transform: scaleX(1);
+}
+
+.aixc-vx--fan .fn-card.is-active {
+  box-shadow: 0 10px 50px 10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.aixc-vx--fan .fn-card:focus-visible {
+  outline: 3px solid var(--vx-white);
+  outline-offset: 3px;
+}
+
+/* ------------------------------------------------------------ head, detail */
+
+.aixc-vx--fan .fn-hint {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.8125rem;
+  text-align: end;
+}
+
+.aixc-vx--fan .fn-detail {
+  position: absolute;
+  bottom: clamp(20px, 5vh, 44px);
+  inset-inline-start: 130px;
+  z-index: 40;
+  display: grid;
+  gap: 0.6rem;
+  width: min(420px, 34vw);
+}
+
+.aixc-vx--fan .fn-detail__group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.9375rem;
+}
+
+.aixc-vx--fan .fn-detail__group::before {
+  content: '';
+  width: 28px;
+  height: 2px;
+  background: var(--vx-red);
+}
+
+.aixc-vx--fan .fn-detail__title {
+  font-family: var(--vx-font-bold);
+  font-size: clamp(1.75rem, 3vw, 2.75rem);
+  line-height: 1.05;
+}
+
+.aixc-vx--fan .fn-detail__desc {
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.55;
+}
+
+.aixc-vx--fan .fn-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-top: 0.35rem;
+}
+
+.aixc-vx--fan .fn-detail__actions .vx-aside {
+  display: none;
+}
+
+.aixc-vx--fan .fn-detail__actions .vx-inert.vx-on-dark {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-vx--fan .fn-detail.is-changing > * {
+    animation: fn-in 0.6s var(--fn-ease) both;
+  }
+
+  .aixc-vx--fan .fn-detail.is-changing > :nth-child(2) {
+    animation-delay: 0.04s;
+  }
+
+  .aixc-vx--fan .fn-detail.is-changing > :nth-child(n + 3) {
+    animation-delay: 0.08s;
+  }
+}
+
+@keyframes fn-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.aixc-vx--fan .fn-controls {
+  position: absolute;
+  top: clamp(16px, 3.4vh, 30px);
+  inset-inline-end: var(--vx-gutter);
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.aixc-vx--fan .fn-controls__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.aixc-vx--fan .fn-counter {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.aixc-vx--fan .fn-counter__now {
+  font-family: var(--vx-font-light);
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.aixc-vx--fan .fn-counter__total {
+  opacity: 0.7;
+}
+
+.aixc-vx--fan .fn-progress {
+  width: 96px;
+  height: 2px;
+  margin: 0 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.aixc-vx--fan .fn-progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--vx-red);
+  /* Fills from the start edge: from the right in Arabic. */
+  transform-origin: var(--fn-origin-x, 0%) 50%;
+  transition: transform 0.4s ease;
+}
+
+.aixc-vx--fan .fn-controls .vx-round {
+  color: var(--vx-white);
+}
+
+/* ------------------------------------------------------------------ cursor */
+
+.aixc-vx--fan .fn-cursor {
+  --size: 40px;
+  /* Physical on purpose: placed from the pointer's clientX/Y in either direction. */
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  width: var(--size);
+  height: var(--size);
+  margin: calc(var(--size) * -0.5) 0 0 calc(var(--size) * -0.5);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(var(--cx, -100px), var(--cy, -100px));
+  transition: transform 0.85s var(--fn-ease), opacity 0.3s ease;
+}
+
+.aixc-vx--fan .fn-cursor--dot {
+  --size: 6px;
+  border: 0;
+  background: var(--vx-red);
+  transition-duration: 0.7s, 0.3s;
+}
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .aixc-vx--fan .fn-stage.has-cursor .fn-cursor {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ arabic */
+
+/* The Arabic face needs more room than the Latin display line heights. */
+.aixc-vx--fan .fn-card__title:lang(ar) {
+  line-height: 1.35;
+}
+
+.aixc-vx--fan .fn-detail__title:lang(ar) {
+  line-height: 1.3;
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 1023px) {
+  .aixc-vx--fan {
+    --fn-h: min(360px, calc(var(--vx-vh) * 0.5));
+    --fn-x: 62%;
+    --fn-y: 40%;
+  }
+
+  .aixc-vx--fan .fn-detail {
+    width: min(380px, 44vw);
+  }
+}
+
+@media (max-width: 719px) {
+  .aixc-vx--fan {
+    --fn-h: min(300px, calc(var(--vx-vh) * 0.44));
+    --fn-x: 46%;
+    --fn-y: 36%;
+  }
+
+  .aixc-vx--fan .fn-decor,
+  .aixc-vx--fan .fn-hint {
+    display: none;
+  }
+
+  .aixc-vx--fan .fn-detail {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    padding: 56px 16px 20px;
+    background: linear-gradient(180deg, rgba(10, 10, 15, 0) 0%, rgba(10, 10, 15, 0.86) 34%, rgba(10, 10, 15, 0.96) 100%);
+  }
+
+  .aixc-vx--fan .fn-detail__title {
+    font-size: 1.625rem;
+  }
+
+  .aixc-vx--fan .fn-detail__desc {
+    font-size: 0.9375rem;
+  }
+
+  .aixc-vx--fan .fn-controls {
+    top: 14px;
+    inset-inline-end: 16px;
+  }
+
+  .aixc-vx--fan .fn-controls__row {
+    gap: 8px;
+  }
+
+  .aixc-vx--fan .fn-progress {
+    display: none;
+  }
+
+  .aixc-vx--fan .fn-counter__now {
+    font-size: 1.75rem;
+  }
+
+  .aixc-vx--fan .fn-controls .vx-round {
+    width: 44px;
+    height: 44px;
+  }
+
+  .aixc-vx--fan .fn-card__num {
+    font-size: 2.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-vx--fan .fn-card,
+  .aixc-vx--fan .fn-card__box,
+  .aixc-vx--fan .fn-card::after {
+    transition: none;
+  }
+}

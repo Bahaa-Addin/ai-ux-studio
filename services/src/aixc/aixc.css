@@ -1,0 +1,751 @@
+/*
+ * AIXC chrome: launcher, composer, and view bar.
+ * Every selector is prefixed .aixc- so nothing here touches the Vodafone shell
+ * or the original content. The magazine itself is styled in experiences/magazine.css.
+ */
+
+:root {
+  /* Vodafone tokens (docs/design-system.md): brand red, dark red state, neutrals, ink. */
+  --aixc-accent: #e60000;
+  --aixc-accent-dark: #990000;
+  --aixc-tint: #f4f4f4;
+  --aixc-ink: #14141e;
+  --aixc-text: #333;
+  --aixc-muted: #666;
+  --aixc-line: #ccc;
+  --aixc-paper: #fff;
+  --aixc-red: #e60000;
+  --aixc-error: #990000;
+  --aixc-focus: #333;
+  --aixc-radius: 8px;
+  --aixc-header-h: 104px;
+  --aixc-viewbar-h: 0px;
+}
+
+.aixc-sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Scoped so display rules on AIXC components never defeat the hidden attribute. */
+.aixc-launcher[hidden],
+.aixc-composer[hidden],
+.aixc-composer [hidden],
+.aixc-viewbar[hidden],
+.aixc-viewbar [hidden],
+.source-content[hidden],
+.experience-output[hidden] {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ launcher */
+
+/* Top-right, just under the sticky header: the bottom-right corner belongs to the pocket.
+   With the Voice Guide's trail on the page, its "Your journey" pill takes that spot and the
+   launcher sits right below it (main.js sets data-vg-trail). */
+:root[data-vg-trail] {
+  --aixc-guide-pill-h: 52px; /* the pill's 8px offset under the header + its 44px height */
+}
+
+.aixc-launcher {
+  position: fixed;
+  top: calc(var(--aixc-header-h) + var(--aixc-guide-pill-h, 0px) + 16px);
+  /* Under the guide's journey pill: top right in English, top left in Arabic. */
+  inset-inline-end: max(16px, env(safe-area-inset-right));
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding-block: 0;
+  padding-inline: 18px 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--aixc-accent);
+  color: #fff;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 1rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+
+.aixc-launcher:hover {
+  background: var(--aixc-accent-dark);
+}
+
+.aixc-launcher:focus-visible {
+  outline: 3px solid #fff;
+  box-shadow: 0 0 0 6px var(--aixc-accent-dark);
+}
+
+.aixc-launcher__icon {
+  width: 22px;
+  height: 22px;
+}
+
+/* ------------------------------------------------------------------ composer */
+
+/* Opens where the launcher sits, under the header (and under the view bar once it shows). */
+.aixc-composer {
+  position: fixed;
+  top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h) + var(--aixc-guide-pill-h, 0px) + 12px);
+  inset-inline-end: max(16px, env(safe-area-inset-right));
+  z-index: 41;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - var(--aixc-guide-pill-h, 0px) - 28px);
+  overflow-y: auto;
+  padding: 20px 20px 16px;
+  border-radius: var(--aixc-radius);
+  background: var(--aixc-paper);
+  color: var(--aixc-text);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+}
+
+.aixc-composer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aixc-composer__title {
+  margin: 2px 0 0;
+  color: var(--aixc-ink);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 1.375rem;
+  line-height: 1.2;
+}
+
+.aixc-composer__hint {
+  margin: 6px 0 14px;
+  color: var(--aixc-muted);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.aixc-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin: -6px -8px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--aixc-ink);
+  cursor: pointer;
+}
+
+.aixc-icon-btn:hover {
+  background: var(--aixc-tint);
+}
+
+.aixc-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.aixc-prompt {
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--aixc-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--aixc-ink);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.aixc-prompt:focus {
+  border-color: var(--aixc-accent);
+  outline: 3px solid rgba(230, 0, 0, 0.18);
+}
+
+.aixc-prompt[readonly] {
+  background: #faf8fa;
+}
+
+.aixc-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 14px;
+}
+
+.aixc-chip {
+  padding: 7px 12px;
+  border: 1px solid var(--aixc-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--aixc-ink);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.3;
+  text-align: start;
+  cursor: pointer;
+}
+
+.aixc-chip:hover:not(:disabled) {
+  border-color: var(--aixc-accent);
+  background: var(--aixc-tint);
+}
+
+.aixc-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.aixc-composer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.aixc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.aixc-btn--primary {
+  background: var(--aixc-accent);
+  color: #fff;
+}
+
+.aixc-btn--primary:hover:not(:disabled) {
+  background: var(--aixc-accent-dark);
+}
+
+.aixc-btn--primary:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.aixc-btn--ghost {
+  border-color: var(--aixc-line);
+  background: #fff;
+  color: var(--aixc-ink);
+}
+
+.aixc-btn--ghost:hover {
+  border-color: var(--aixc-accent);
+}
+
+.aixc-btn--small {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.875rem;
+}
+
+.aixc-btn--text {
+  min-height: 40px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--aixc-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.aixc-btn--text:hover {
+  color: var(--aixc-accent);
+}
+
+.aixc-btn:focus-visible,
+.aixc-chip:focus-visible,
+.aixc-icon-btn:focus-visible,
+.aixc-seg:focus-visible,
+.aixc-settings summary:focus-visible {
+  outline: 3px solid var(--aixc-focus);
+  outline-offset: 2px;
+}
+
+.aixc-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--aixc-muted);
+  font-size: 0.9375rem;
+}
+
+.aixc-progress__bar {
+  position: relative;
+  width: 56px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--aixc-tint);
+}
+
+.aixc-progress__bar::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--aixc-accent);
+  animation: aixc-indeterminate 1.1s ease-in-out infinite;
+}
+
+[dir='rtl'] .aixc-progress__bar::after {
+  animation-direction: reverse;
+}
+
+@keyframes aixc-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.aixc-message {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--aixc-tint);
+  color: var(--aixc-ink);
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.aixc-message[data-tone='error'] {
+  background: #fdeeee;
+  color: var(--aixc-error);
+}
+
+.aixc-settings {
+  margin-top: 16px;
+  border-top: 1px solid var(--aixc-line);
+  padding-top: 10px;
+}
+
+.aixc-settings summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  color: var(--aixc-ink);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.aixc-settings__status {
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+  font-size: 0.8125rem;
+  color: var(--aixc-muted);
+}
+
+.aixc-settings__status[data-state='ok'] {
+  color: #2f6b1a;
+}
+
+.aixc-settings__body {
+  display: grid;
+  gap: 12px;
+  padding: 6px 0 4px;
+}
+
+.aixc-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.875rem;
+  color: var(--aixc-ink);
+}
+
+.aixc-input {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1.5px solid var(--aixc-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--aixc-ink);
+}
+
+.aixc-input:focus {
+  border-color: var(--aixc-accent);
+  outline: 3px solid rgba(230, 0, 0, 0.18);
+}
+
+.aixc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+
+.aixc-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--aixc-accent);
+}
+
+.aixc-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--aixc-red);
+  background: #fff6f6;
+  color: var(--aixc-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.aixc-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* -------------------------------------------------------------- templates */
+
+.aixc-templates {
+  margin: 4px 0 18px;
+}
+
+.aixc-templates__title {
+  margin: 0;
+  color: var(--aixc-ink);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: normal;
+}
+
+.aixc-templates__hint {
+  margin: 2px 0 10px;
+  color: var(--aixc-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.aixc-templates__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.aixc-templates__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.aixc-templates__item > .aixc-template {
+  flex: 1;
+}
+
+.aixc-template__credit {
+  overflow: hidden;
+  /* A little height for a finger, and room for tall Arabic letters under overflow: hidden. */
+  padding: 4px;
+  color: var(--aixc-muted);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.aixc-template__credit:lang(ar) {
+  line-height: 1.6;
+}
+
+.aixc-template__credit:hover {
+  color: var(--aixc-accent);
+  text-decoration: underline;
+}
+
+.aixc-template__credit:focus-visible {
+  outline: 2px solid var(--aixc-focus);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.aixc-template {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--aixc-line);
+  border-radius: 8px;
+  background: var(--aixc-paper);
+  color: var(--aixc-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.aixc-template:hover:not(:disabled) {
+  border-color: var(--aixc-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+.aixc-template[aria-pressed='true'] {
+  border-color: var(--aixc-accent);
+  box-shadow: inset 0 0 0 1px var(--aixc-accent);
+}
+
+.aixc-template:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.aixc-template:focus-visible {
+  outline: 3px solid var(--aixc-focus);
+  outline-offset: 2px;
+}
+
+.aixc-template__icon {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--aixc-tint);
+  color: var(--aixc-accent);
+}
+
+.aixc-template[aria-pressed='true'] .aixc-template__icon {
+  background: var(--aixc-accent);
+  color: #fff;
+}
+
+.aixc-template__text {
+  display: grid;
+  gap: 2px;
+}
+
+.aixc-template__name {
+  color: var(--aixc-ink);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.25;
+}
+
+.aixc-template__prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--aixc-muted);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  /* Thirteen templates: two lines each keeps the grid scannable. */
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.aixc-form-label {
+  display: block;
+  margin: 0 0 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--aixc-line);
+  color: var(--aixc-ink);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 1rem;
+}
+
+.aixc-composer__form .aixc-composer__actions {
+  margin-top: 10px;
+}
+
+/* ------------------------------------------------------------------ view bar */
+
+.aixc-viewbar {
+  position: sticky;
+  top: var(--aixc-header-h);
+  z-index: 9;
+  background: rgba(255, 255, 255, 0.97);
+  border-bottom: 1px solid var(--aixc-line);
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+  color: var(--aixc-text);
+}
+
+.aixc-viewbar__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  width: min(calc(100% - 30px), 1240px);
+  min-height: 56px;
+  margin: 0 auto;
+  padding: 6px 0;
+}
+
+.aixc-segmented {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--aixc-tint);
+}
+
+.aixc-seg {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--aixc-ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+/* Active state uses weight and a filled pill, not color alone. */
+.aixc-seg[aria-pressed='true'] {
+  background: var(--aixc-accent);
+  color: #fff;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.aixc-viewbar__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--aixc-muted);
+}
+
+.aixc-viewbar__label {
+  color: var(--aixc-ink);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+}
+
+.aixc-viewbar__actions {
+  display: flex;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+
+/* With the Voice Guide's trail on the page, its "Your journey" pill floats over the end of this
+   bar (top right; top left in Arabic) and covered "Change experience" and "Reset" (B-24): the
+   bar keeps that end free. The pill is up to 270px wide with its dots, 62px on phones. */
+:root[data-vg-trail] .aixc-viewbar__inner {
+  padding-inline-end: 290px;
+}
+
+@media (max-width: 767px) {
+  :root[data-vg-trail] .aixc-viewbar__inner {
+    padding-inline-end: 76px;
+  }
+}
+
+/* Notes about the current layout (filtered, restored items, built-in). Not sticky. */
+.aixc-viewnote {
+  margin: 0;
+  padding: 10px max(15px, calc((100% - 1240px) / 2));
+  background: var(--aixc-tint);
+  color: var(--aixc-ink);
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.aixc-viewnote.is-muted {
+  display: none;
+}
+
+.aixc-viewnote[hidden] {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ responsive */
+
+@media (max-width: 520px) {
+  .aixc-wide-only {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .aixc-templates__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Arabic: the end edge is the left, so the left safe-area inset applies. */
+[dir='rtl'] .aixc-launcher {
+  inset-inline-end: max(16px, env(safe-area-inset-left));
+}
+
+/* Wide screens only: on phones the composer is a full-width sheet (left: 0; right: 0). */
+@media (min-width: 768px) {
+  [dir='rtl'] .aixc-composer {
+    inset-inline-end: max(16px, env(safe-area-inset-left));
+  }
+}
+
+@media (max-width: 767px) {
+  .aixc-launcher {
+    top: calc(var(--aixc-header-h) + var(--aixc-guide-pill-h, 0px) + 12px);
+    inset-inline-end: max(12px, env(safe-area-inset-right));
+    min-height: 48px;
+    padding-inline: 14px 18px;
+    font-size: 0.9375rem;
+  }
+
+  [dir='rtl'] .aixc-launcher {
+    inset-inline-end: max(12px, env(safe-area-inset-left));
+  }
+
+  /* Sheet that drops from under the header, leaving the header and navigation visible. */
+  .aixc-composer {
+    top: calc(var(--aixc-header-h) + var(--aixc-viewbar-h) + var(--aixc-guide-pill-h, 0px));
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-height: min(78vh, calc(100vh - var(--aixc-header-h) - var(--aixc-viewbar-h) - var(--aixc-guide-pill-h, 0px) - 8px));
+    border-radius: 0 0 var(--aixc-radius) var(--aixc-radius);
+  }
+
+  .aixc-viewbar__inner {
+    gap: 6px 10px;
+  }
+
+  .aixc-viewbar__meta {
+    order: 3;
+    width: 100%;
+    font-size: 0.8125rem;
+  }
+
+  .aixc-seg {
+    padding: 0 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-progress__bar::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}

@@ -1,0 +1,546 @@
+/* Hyper tunnel — scoped to .aixc-vx--tunnel. Tokens from vodafone.css. */
+
+.aixc-vx--tunnel {
+  --tn-bg: #030305;
+  --tn-card-bg: rgba(12, 12, 18, 0.74);
+  --tn-line: rgba(255, 255, 255, 0.12);
+  --tn-card-w: min(330px, 78vw);
+  --tn-card-h: min(480px, calc(var(--vx-vh) * 0.7));
+  background: var(--tn-bg);
+}
+
+.aixc-vx--tunnel .tn-track {
+  position: relative;
+  height: calc(var(--vx-vh) + (var(--count) - 1) * var(--step));
+}
+
+.aixc-vx--tunnel .tn-stage {
+  position: sticky;
+  top: var(--vx-top);
+  height: var(--vx-vh);
+  min-height: 520px;
+  /* clip, not hidden: focus must never scroll the stage itself */
+  overflow: hidden;
+  overflow: clip;
+  background: radial-gradient(ellipse 80% 70% at 50% 50%, #1a0507 0%, #08080c 55%, var(--tn-bg) 100%);
+  color: #e6e6e6;
+  cursor: crosshair;
+}
+
+/* ------------------------------------------------------------------- scene */
+
+.aixc-vx--tunnel .tn-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* The camera sits at the world's origin, the centre of the stage. Every item
+   and star applies its own perspective about that point (see tunnel.js). */
+.aixc-vx--tunnel .tn-world {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+.aixc-vx--tunnel .tn-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.aixc-vx--tunnel .tn-item.is-gone {
+  pointer-events: none;
+}
+
+.aixc-vx--tunnel .tn-star {
+  position: absolute;
+  transform-origin: 0 0;
+  width: 2px;
+  height: 2px;
+  margin: -1px 0 0 -1px;
+  background: var(--vx-white);
+}
+
+.aixc-vx--tunnel .tn-star.is-red {
+  background: var(--vx-red);
+}
+
+/* ------------------------------------------------------------------- words */
+
+.aixc-vx--tunnel .tn-word {
+  position: relative;
+  width: max-content;
+  max-width: 92vw;
+  font-family: var(--vx-font-bold);
+  font-size: min(15vw, calc(125vw / var(--len, 8)));
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-transform: uppercase;
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.32);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.aixc-vx--tunnel .tn-word__num {
+  display: block;
+  margin-bottom: 0.3em;
+  color: var(--vx-red);
+  font-size: 0.11em;
+  letter-spacing: 0.4em;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+.aixc-vx--tunnel .tn-item--word.is-current .tn-word {
+  -webkit-text-stroke-color: rgba(255, 255, 255, 0.55);
+}
+
+/* ------------------------------------------------------------------- cards */
+
+.aixc-vx--tunnel .tn-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: var(--tn-card-w);
+  height: var(--tn-card-h);
+  padding: 1.4rem 1.4rem 1.1rem;
+  overflow: hidden;
+  border: 1px solid var(--tn-line);
+  background: var(--tn-card-bg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 20px 50px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  transition: border-color 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.3s ease, background-color 0.3s ease;
+}
+
+/* The reference's corner brackets, which open out to a red frame: one at the
+   reading line's start corner, one at the end corner (mirrored in Arabic). */
+.aixc-vx--tunnel .tn-card::before,
+.aixc-vx--tunnel .tn-card::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid transparent;
+  pointer-events: none;
+  transition: width 0.3s ease, height 0.3s ease, border-color 0.3s ease;
+}
+
+.aixc-vx--tunnel .tn-card::before {
+  top: -1px;
+  inset-inline-start: -1px;
+  border-top-color: #e6e6e6;
+  border-inline-start-color: #e6e6e6;
+}
+
+.aixc-vx--tunnel .tn-card::after {
+  inset-inline-end: -1px;
+  bottom: -1px;
+  border-inline-end-color: #e6e6e6;
+  border-bottom-color: #e6e6e6;
+}
+
+.aixc-vx--tunnel .tn-card:focus-within,
+.aixc-vx--tunnel .tn-item--card.is-current .tn-card {
+  border-color: rgba(230, 0, 0, 0.7);
+  box-shadow: 0 0 30px rgba(230, 0, 0, 0.22), 0 20px 50px rgba(0, 0, 0, 0.5);
+  background: rgba(20, 20, 26, 0.86);
+}
+
+@media (hover: hover) {
+  .aixc-vx--tunnel .tn-card:hover {
+    border-color: var(--vx-red);
+    box-shadow: 0 0 30px rgba(230, 0, 0, 0.25);
+    background: rgba(20, 20, 26, 0.9);
+  }
+
+  .aixc-vx--tunnel .tn-card:hover::before,
+  .aixc-vx--tunnel .tn-card:hover::after {
+    width: 100%;
+    height: 100%;
+    border-color: var(--vx-red);
+  }
+}
+
+.aixc-vx--tunnel .tn-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--tn-line);
+}
+
+.aixc-vx--tunnel .tn-card__id {
+  color: var(--vx-red);
+  font-family: var(--vx-font-bold);
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+}
+
+.aixc-vx--tunnel .tn-card__group {
+  margin-inline-start: auto;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.aixc-vx--tunnel .tn-card__square {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: var(--vx-red);
+}
+
+.aixc-vx--tunnel .tn-card__media {
+  flex: none;
+  height: 28%;
+  border-radius: 0;
+  background: #111;
+}
+
+.aixc-vx--tunnel .tn-card__media img {
+  filter: grayscale(0.3) contrast(1.05);
+}
+
+.aixc-vx--tunnel .tn-card__media.is-contain {
+  background: var(--vx-red);
+}
+
+.aixc-vx--tunnel .tn-card__media.is-contain img {
+  padding: 6% 20%;
+  filter: brightness(0) invert(1);
+}
+
+.aixc-vx--tunnel .tn-card__title {
+  color: var(--vx-white);
+  font-family: var(--vx-font-bold);
+  font-size: clamp(1.375rem, 2vw, 1.875rem);
+  line-height: 0.98;
+  text-transform: uppercase;
+}
+
+.aixc-vx--tunnel .tn-card__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.aixc-vx--tunnel .tn-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: auto;
+}
+
+.aixc-vx--tunnel .tn-card__actions .vx-extras {
+  gap: 0.5rem;
+}
+
+.aixc-vx--tunnel .tn-card__actions .vx-btn--primary {
+  min-height: 38px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+.aixc-vx--tunnel .tn-card__actions .vx-aside {
+  display: none;
+}
+
+.aixc-vx--tunnel .tn-card__actions .vx-btn--text.vx-on-dark:hover {
+  color: var(--vx-red);
+}
+
+.aixc-vx--tunnel .tn-card__actions .vx-inert.vx-on-dark {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.aixc-vx--tunnel .tn-card__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--tn-line);
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.aixc-vx--tunnel .tn-card__big {
+  position: absolute;
+  inset-inline-end: 1.2rem;
+  bottom: 2.4rem;
+  color: var(--vx-white);
+  font-family: var(--vx-font-bold);
+  font-size: 4.5rem;
+  line-height: 1;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ overlays */
+
+.aixc-vx--tunnel .tn-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.aixc-vx--tunnel .tn-fx--scanlines {
+  z-index: 10;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.2) 50%, rgba(0, 0, 0, 0.2));
+  background-size: 100% 4px;
+}
+
+.aixc-vx--tunnel .tn-fx--vignette {
+  z-index: 11;
+  background: radial-gradient(circle, transparent 40%, #000 120%);
+}
+
+.aixc-vx--tunnel .tn-fx--noise {
+  z-index: 12;
+  opacity: 0.07;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* -------------------------------------------------------------------- HUD */
+
+.aixc-vx--tunnel .tn-hud {
+  position: absolute;
+  inset: clamp(14px, 3vh, 28px) var(--vx-gutter);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.aixc-vx--tunnel .tn-hud strong {
+  color: var(--vx-red);
+  font-family: var(--vx-font-bold);
+  font-weight: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.aixc-vx--tunnel .tn-hud__row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.aixc-vx--tunnel .tn-hud__line {
+  position: relative;
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.aixc-vx--tunnel .tn-hud__line::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  inset-inline-end: 0;
+  width: 5px;
+  height: 5px;
+  background: var(--vx-red);
+}
+
+.aixc-vx--tunnel .tn-hud__side {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  writing-mode: vertical-rl;
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.aixc-vx--tunnel .tn-hud__place strong {
+  color: var(--vx-white);
+}
+
+.aixc-vx--tunnel .tn-hud__place {
+  color: var(--vx-white);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+.aixc-vx--tunnel .tn-hud__nav {
+  display: flex;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.aixc-vx--tunnel .tn-hud__nav .vx-round {
+  color: var(--vx-white);
+  background: rgba(3, 3, 5, 0.5);
+}
+
+.aixc-vx--tunnel .tn-hint {
+  position: absolute;
+  top: calc(clamp(14px, 3vh, 28px) + 28px);
+  left: 50%;
+  z-index: 20;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.6875rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------- right to left (Arabic) */
+
+/* Joined Arabic letters overlap, so a stroke outlines every join: Arabic
+   category words are filled faintly instead (the red and white speed split
+   still works, it is a text shadow), with the line room the Arabic face needs. */
+.aixc-vx--tunnel .tn-word:lang(ar) {
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.13);
+  -webkit-text-stroke: 0;
+}
+
+.aixc-vx--tunnel .tn-item--word.is-current .tn-word:lang(ar) {
+  color: rgba(255, 255, 255, 0.24);
+}
+
+.aixc-vx--tunnel .tn-card__title:lang(ar) {
+  line-height: 1.3;
+}
+
+/* Tracking pulls joined script apart (the Latin "VF-01" keeps its own). */
+.aixc-vx--tunnel .tn-card__group:lang(ar),
+.aixc-vx--tunnel .tn-card__foot:lang(ar),
+.aixc-vx--tunnel .tn-hud:lang(ar),
+.aixc-vx--tunnel .tn-hud__place:lang(ar),
+.aixc-vx--tunnel .tn-hint:lang(ar) {
+  letter-spacing: 0;
+}
+
+/* The side readout moves to the start (right) edge; its letters still face
+   outwards. Physical sides: its own writing mode is vertical. */
+[dir='rtl'] .aixc-vx--tunnel .tn-hud__side {
+  right: 0;
+  left: auto;
+  transform: translateY(-50%);
+}
+
+/* ---------------------------------------------------------------- responsive */
+
+@media (max-width: 719px) {
+  .aixc-vx--tunnel {
+    --tn-card-w: min(300px, 80vw);
+    --tn-card-h: min(440px, calc(var(--vx-vh) * 0.66));
+  }
+
+  .aixc-vx--tunnel .tn-hud__side,
+  .aixc-vx--tunnel .tn-hud > .tn-hud__row:first-child .tn-hud__line {
+    display: none;
+  }
+
+  .aixc-vx--tunnel .tn-hud__row:last-child > :first-child,
+  .aixc-vx--tunnel .tn-hud__row:last-child > .tn-hud__line {
+    display: none;
+  }
+
+  .aixc-vx--tunnel .tn-hud__row:last-child {
+    justify-content: space-between;
+  }
+
+  .aixc-vx--tunnel .tn-hud__nav .vx-round {
+    width: 44px;
+    height: 44px;
+  }
+
+  .aixc-vx--tunnel .tn-card {
+    padding: 1.1rem 1.1rem 0.9rem;
+  }
+}
+
+/* ------------------------------------------------- reduced motion: laid flat */
+
+.aixc-vx--tunnel.is-static .tn-track {
+  height: auto;
+}
+
+.aixc-vx--tunnel.is-static .tn-stage {
+  position: relative;
+  top: auto;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  cursor: auto;
+}
+
+.aixc-vx--tunnel.is-static .tn-viewport {
+  position: relative;
+  overflow: visible;
+  perspective: none;
+}
+
+.aixc-vx--tunnel.is-static .tn-world {
+  position: relative;
+  top: auto;
+  left: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 24px;
+  padding: 48px var(--vx-gutter) 72px;
+  transform: none !important;
+}
+
+.aixc-vx--tunnel.is-static .tn-item {
+  position: relative;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.aixc-vx--tunnel.is-static .tn-item--word {
+  grid-column: 1 / -1;
+  padding-top: 24px;
+}
+
+.aixc-vx--tunnel.is-static .tn-word {
+  max-width: 100%;
+  font-size: clamp(2.5rem, 7vw, 5.5rem);
+  text-align: start;
+  transform: none;
+}
+
+.aixc-vx--tunnel.is-static .tn-card {
+  width: auto;
+  height: auto;
+  min-height: 440px;
+  transform: none;
+}
+
+.aixc-vx--tunnel.is-static .tn-star,
+.aixc-vx--tunnel.is-static .tn-fx,
+.aixc-vx--tunnel.is-static .tn-hud,
+.aixc-vx--tunnel.is-static .tn-hint {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-vx--tunnel .tn-card,
+  .aixc-vx--tunnel .tn-card::before,
+  .aixc-vx--tunnel .tn-card::after {
+    transition: none;
+  }
+}

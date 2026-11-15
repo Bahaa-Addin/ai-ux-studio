@@ -1,0 +1,44 @@
+/*
+ * The Arabic Services page (ar/index.html) only.
+ *
+ * 1. Vodafone's Arabic faces, as web.vodafone.com.eg splits them: the same family names as the
+ *    English faces, limited to Arabic code points, so every existing font stack draws Arabic
+ *    in Vodafone Arabic (GE SS Two) and Latin in Vodafone. Files: public/assets/fonts/*-ar.woff.
+ * 2. Right-to-left fixes for the few rules that use physical left/right.
+ */
+@font-face {
+  font-family: vodafone-regular-en;
+  src: url('/ai-ux-studio/services/assets/fonts/vodafone-regular-ar.woff') format('woff');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+@font-face {
+  font-family: vodafone-bold-en;
+  src: url('/ai-ux-studio/services/assets/fonts/vodafone-bold-ar.woff') format('woff');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+@font-face {
+  font-family: vodafone-light-en;
+  src: url('/ai-ux-studio/services/assets/fonts/vodafone-light-ar.woff') format('woff');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+@font-face {
+  font-family: vf-regular;
+  src: url('/ai-ux-studio/services/assets/fonts/vodafone-regular-ar.woff') format('woff');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+@font-face {
+  font-family: vf-bold;
+  src: url('/ai-ux-studio/services/assets/fonts/vodafone-bold-ar.woff') format('woff');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+@font-face {
+  font-family: vf-light;
+  src: url('/ai-ux-studio/services/assets/fonts/vodafone-light-ar.woff') format('woff');
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F;
+}
+
+/* Carousel arrows point the way they move. */
+[dir='rtl'] .carousel-frame__arrow { transform: scaleX(-1); }
+
+/* "Reimagine this page" and its composer sit under the guide's "Your journey" pill, which is top
+   left in Arabic: aixc.css places both with inset-inline-end, so no override is needed here. */

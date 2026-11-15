@@ -1,0 +1,1963 @@
+/* Tips: the collection, its scenes and the coach marks (voice-guide ADR-0045). Loaded on demand by
+   entry.js. Vodafone tokens only (docs/design-system.md): red #e60000, dark red #990000, ink
+   #14141e, text #333/#666, surfaces #fff/#f4f4f4/#ebebeb, line #ccc; Vodafone Regular and Bold;
+   green #428600 (the brand's wider palette) only for "done". Prefixes: .tips-, .ts- (scenes). */
+
+.tips {
+  position: fixed;
+  inset: 0;
+  pointer-events: none; /* only the sheet and the scrim take the pointer, so the scrim's holes work */
+  z-index: 2147483500; /* above the guide (2147483400), below OneTrust (2147483645) */
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+  color: #333;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tips[hidden],
+.tips-coach[hidden],
+.tips [hidden],
+.tips-coach [hidden] {
+  display: none !important;
+}
+
+.tips :focus-visible,
+.tips-pop :focus-visible {
+  outline: 3px solid #e60000;
+  outline-offset: 2px;
+}
+
+.tips-blur {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  -webkit-backdrop-filter: blur(6px) saturate(1.05);
+  backdrop-filter: blur(6px) saturate(1.05);
+  opacity: 0;
+  transition: opacity 0.32s ease;
+}
+
+.tips-scrim {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.32s ease;
+}
+
+.tips-scrim path {
+  fill: rgba(20, 20, 30, 0.44);
+  pointer-events: visiblePainted;
+}
+
+.tips.is-open .tips-blur,
+.tips.is-open .tips-scrim {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------ the sheet */
+
+.tips-sheet {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  pointer-events: auto;
+  width: min(760px, calc(100vw - 48px));
+  height: min(720px, calc(100dvh - 48px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow:
+    0 30px 80px rgba(20, 20, 30, 0.34),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  will-change: transform;
+}
+
+.tips-grabber {
+  display: none;
+}
+
+.tips-head {
+  -webkit-user-select: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px 4px 26px;
+}
+
+[dir='rtl'] .tips-head {
+  padding: 10px 26px 4px 14px;
+}
+
+.tips-eyebrow {
+  margin: 0;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  color: #666;
+}
+
+.tips-eyebrow[data-feature]:not([data-feature='']) {
+  color: #e60000;
+}
+
+.tips-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f4f4;
+  color: #333;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.tips-icon:hover {
+  background: #ebebeb;
+}
+
+.tips-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tips-track {
+  display: flex;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tips-track::-webkit-scrollbar {
+  display: none;
+}
+
+.tips-track.is-jumping .tips-card {
+  scroll-snap-stop: normal;
+}
+
+.tips-card {
+  --p: 0;
+  --q: 0;
+  flex: 0 0 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 18px;
+  padding: 4px 26px 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  overflow: hidden;
+}
+
+/* The picture: a rounded frame; the scene inside moves a little slower than the card (parallax). */
+.tips-media {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: #f4f4f4;
+  overflow: hidden;
+  container-type: size;
+}
+
+.tips-media > .ts-stage {
+  width: min(100cqw, 160cqh);
+  transform: translateX(calc(var(--p) * -34%));
+}
+
+.tips-media--grid {
+  background: #fff;
+  container-type: normal;
+}
+
+.tips-text {
+  max-width: 600px;
+  padding-bottom: 4px;
+  overflow-y: auto;
+  transform: translateX(calc(var(--p) * 10%));
+  opacity: calc(1 - var(--q) * 0.8);
+}
+
+.tips-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.tips-kicker__disc {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+  flex: none;
+}
+
+.tips-kicker__disc svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tips-kicker__disc--pocket,
+.tips-kicker__disc--journey {
+  background: #fff;
+  color: #e60000;
+  box-shadow: inset 0 0 0 1.5px #e60000;
+}
+
+.tips-title {
+  margin: 0;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-weight: normal;
+  font-size: clamp(1.375rem, 1.1rem + 0.9vw, 1.75rem);
+  line-height: 1.2;
+  color: #14141e;
+}
+
+.tips-title:focus {
+  outline: none;
+}
+
+.tips-card--cover .tips-title {
+  font-size: clamp(1.625rem, 1.2rem + 1.4vw, 2.125rem);
+}
+
+.tips-body {
+  margin: 8px 0 0;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  color: #333;
+}
+
+.tips-meta {
+  margin: 10px 0 0;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.tips-action:empty {
+  display: none;
+}
+
+.tips-try {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 1.0625rem;
+  cursor: pointer;
+}
+
+.tips-try svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tips-try:hover {
+  color: #990000;
+}
+
+.tips-try:hover svg {
+  transform: translateX(3px);
+}
+
+[dir='rtl'] .tips-try:hover svg {
+  transform: translateX(-3px);
+}
+
+.tips-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f4f4f4;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: #666;
+}
+
+.tips-note svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: #999;
+}
+
+/* ------------------------------------------------------------------ the closing card */
+
+.tips-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 4px 0;
+  align-content: center;
+}
+
+.tips-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
+  min-height: 132px;
+  padding: 16px 12px;
+  border: 1px solid #ebebeb;
+  border-radius: 16px;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.tips-card.is-settled .tips-tile {
+  animation: tips-tile-in 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--i) * 70ms);
+}
+
+@keyframes tips-tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+}
+
+.tips-tile__disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+}
+
+.tips-tile__disc svg {
+  width: 26px;
+  height: 26px;
+}
+
+.tips-tile__check {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #428600;
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.tips-tile__check svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tips-tile__name {
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.9375rem;
+  color: #14141e;
+}
+
+.tips-tile__try {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid #e60000;
+  border-radius: 999px;
+  background: #fff;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.tips-tile__try:hover {
+  background: #e60000;
+  color: #fff;
+}
+
+.tips-tile__off {
+  font-size: 0.8125rem;
+  color: #999;
+}
+
+.tips-tile.is-off .tips-tile__disc {
+  opacity: 0.45;
+}
+
+/* ------------------------------------------------------------------ footer: back, dots, next */
+
+.tips-foot {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px 20px;
+}
+
+.tips-prev {
+  justify-self: start;
+}
+
+.tips-next {
+  justify-self: end;
+}
+
+.tips-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.tips-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tips-btn:active {
+  transform: scale(0.97);
+}
+
+.tips-btn--primary {
+  background: #e60000;
+  color: #fff;
+}
+
+.tips-btn--primary:hover {
+  background: #990000;
+}
+
+.tips-btn--ghost {
+  background: transparent;
+  color: #333;
+}
+
+.tips-btn--ghost:hover {
+  background: #f4f4f4;
+}
+
+.tips-prev {
+  padding-inline-start: 12px;
+}
+
+.tips-next {
+  padding-inline-end: 14px;
+}
+
+.tips-btn.is-hidden {
+  visibility: hidden;
+}
+
+.tips-dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tips-dot {
+  position: relative;
+  width: 18px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.tips-dot::before {
+  content: '';
+  position: absolute;
+  inset: 9px 6px;
+  border-radius: 999px;
+  background: #ccc;
+  transition:
+    inset 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 0.3s ease;
+}
+
+.tips-dot.is-on {
+  width: 30px;
+}
+
+.tips-dot.is-on::before {
+  inset: 9px 4px;
+  background: #e60000;
+}
+
+/* ------------------------------------------------------------------ phones: a bottom sheet */
+
+@media (max-width: 767px) {
+  .tips-sheet {
+    inset: auto 0 0;
+    margin: 0;
+    width: 100%;
+    height: min(92dvh, 780px);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    touch-action: pan-x;
+  }
+
+  .tips-sheet.is-dragging {
+    transition: none;
+  }
+
+  .tips-grabber {
+    display: block;
+    width: 38px;
+    height: 5px;
+    margin: 8px auto 0;
+    border-radius: 999px;
+    background: #ccc;
+  }
+
+  .tips-head {
+    min-height: 48px;
+    padding: 4px 10px 0 18px;
+    touch-action: none;
+  }
+
+  [dir='rtl'] .tips-head {
+    padding: 4px 18px 0 10px;
+  }
+
+  /* The picture keeps its own shape at the top, as on an iPhone; the words take the rest. */
+  .tips-card {
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: start;
+    gap: 16px;
+    padding: 2px 18px 0;
+  }
+
+  .tips-media {
+    container-type: normal;
+  }
+
+  .tips-media > .ts-stage {
+    width: 100%;
+  }
+
+  .tips-media--grid {
+    padding-top: 4px;
+  }
+
+  .tips-body {
+    font-size: 1rem;
+  }
+
+  .tips-foot {
+    padding: 10px 14px 14px;
+    gap: 6px;
+  }
+
+  .tips-btn {
+    padding: 0 14px;
+    white-space: nowrap;
+  }
+
+  /* Back is an arrow on phones, so the dots and "Get started" keep one line. */
+  .tips-prev {
+    width: 44px;
+    padding: 0;
+  }
+
+  .tips-prev span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .tips-dot {
+    width: 12px;
+  }
+
+  .tips-dot::before {
+    inset: 9px 3px;
+  }
+
+  .tips-dot.is-on {
+    width: 22px;
+  }
+
+
+  .tips-tile {
+    min-height: 116px;
+    padding: 12px 8px;
+  }
+}
+
+@media (max-height: 560px) and (min-width: 768px) {
+  .tips-card {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: center;
+  }
+}
+
+/* ------------------------------------------------------------------ the coach marks (TipKit) */
+
+.tips-coach {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+  color: #333;
+}
+
+.tips-coach__scrim {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.tips-coach__scrim path {
+  fill: rgba(20, 20, 30, 0.5);
+  pointer-events: visiblePainted;
+}
+
+.tips-coach.is-on .tips-coach__scrim {
+  opacity: 1;
+}
+
+.tips-coach.is-passive .tips-coach__scrim {
+  display: none;
+}
+
+.tips-coach__ring {
+  position: fixed;
+  border: 2px solid #e60000;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.92);
+  pointer-events: none;
+  transition:
+    left 0.2s ease,
+    top 0.2s ease,
+    width 0.2s ease,
+    height 0.2s ease;
+}
+
+.tips-coach__pulse {
+  position: absolute;
+  inset: -2px;
+  border: 2px solid #e60000;
+  border-radius: inherit;
+  animation: tips-pulse 1.6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+
+@keyframes tips-pulse {
+  from {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+.tips-pop {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 14px 16px 12px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow:
+    0 14px 36px rgba(20, 20, 30, 0.28),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  pointer-events: auto;
+  font-size: 0.9375rem;
+}
+
+.tips-coach.is-on .tips-pop {
+  animation: tips-pop-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.tips-coach.is-on .tips-pop.is-success {
+  animation: tips-pop-in 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes tips-pop-in {
+  from {
+    opacity: 0;
+    scale: 0.92;
+  }
+}
+
+.tips-pop__head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.tips-pop__disc {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+}
+
+.tips-pop__disc svg {
+  width: 19px;
+  height: 19px;
+}
+
+.tips-pop__disc.is-ok {
+  background: #428600;
+}
+
+.tips-pop__title {
+  margin: 0;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-weight: normal;
+  font-size: 1.0625rem;
+  line-height: 1.25;
+  color: #14141e;
+}
+
+.tips-pop__title:focus {
+  outline: none;
+}
+
+.tips-pop__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f4f4;
+  color: #333;
+  cursor: pointer;
+}
+
+.tips-pop__close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tips-pop__body {
+  margin: 8px 0 10px;
+  line-height: 1.45;
+}
+
+.tips-pop__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tips-pop__count {
+  font-size: 0.8125rem;
+  color: #666;
+}
+
+.tips-pop__actions {
+  display: flex;
+  gap: 6px;
+  margin-inline-start: auto;
+}
+
+.tips-pop .tips-btn {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 0.875rem;
+}
+
+.tips-pop__arrow {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  transform: rotate(45deg);
+}
+
+.tips-pop[data-side='top'] .tips-pop__arrow {
+  bottom: -7px;
+  left: calc(var(--arrow) - 7px);
+}
+
+.tips-pop[data-side='bottom'] .tips-pop__arrow {
+  top: -7px;
+  left: calc(var(--arrow) - 7px);
+}
+
+.tips-pop[data-side='left'] .tips-pop__arrow {
+  right: -7px;
+  top: calc(var(--arrow) - 7px);
+}
+
+.tips-pop[data-side='right'] .tips-pop__arrow {
+  left: -7px;
+  top: calc(var(--arrow) - 7px);
+}
+
+/* ------------------------------------------------------------------ scenes: a small copy of the page */
+
+.ts-stage {
+  position: relative;
+  aspect-ratio: 400 / 250;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f4f4f4;
+  contain: layout paint;
+}
+
+.ts-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 250px;
+  overflow: hidden;
+  transform: scale(var(--k, 1));
+  transform-origin: 0 0;
+  font-family: vodafone-regular-en, vf-regular, system-ui, sans-serif;
+  font-size: 9px;
+  line-height: 1.2;
+  color: #333;
+  background: #f4f4f4;
+}
+
+.ts-canvas svg {
+  display: block;
+}
+
+.ts-page {
+  background: #f4f4f4;
+}
+
+.ts-page--album {
+  background: #fff;
+}
+
+.ts-header {
+  background: #fff;
+  box-shadow: 0 1px 0 #ebebeb;
+  z-index: 20;
+}
+
+.ts-header__logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ts-header__nav {
+  border-radius: 2px;
+  background: #d8d8d8;
+}
+
+.ts-header__me {
+  border-radius: 50%;
+  background: #ebebeb;
+}
+
+.ts-h {
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 18px;
+  color: #14141e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ts-hero {
+  overflow: hidden;
+}
+
+.ts-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ts-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+  backface-visibility: hidden;
+}
+
+.ts-card__media {
+  flex: none;
+  overflow: hidden;
+  background: #ebebeb;
+}
+
+.ts-card__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ts-card__media img.is-contain {
+  object-fit: contain;
+  background: #fff;
+}
+
+.ts-card__title {
+  flex: none;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  padding: 3px 6px 0;
+  overflow: hidden;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8.5px;
+  line-height: 1.2;
+  color: #333;
+}
+
+.ts-card--sticker {
+  border: 3px solid #fff;
+  box-shadow: 0 5px 12px rgba(20, 20, 30, 0.22);
+}
+
+.ts-card--skeleton {
+  display: block;
+}
+
+.ts-sk {
+  border-radius: 3px;
+  background: #e6e6e6;
+}
+
+.ts-sk--block {
+  background: #ebebeb;
+}
+
+.ts-tab {
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.ts-tab.is-on {
+  border-color: #e60000;
+}
+
+.ts-subscribe {
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e60000;
+  color: #fff;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8px;
+}
+
+.ts-mic {
+  display: grid;
+  place-items: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(230, 0, 0, 0.35);
+  z-index: 12;
+}
+
+.ts-mic svg {
+  width: 15px;
+  height: 15px;
+}
+
+.ts-a11y {
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #e60000;
+  box-shadow: 0 3px 10px rgba(230, 0, 0, 0.3);
+  z-index: 12;
+}
+
+.ts-a11y i {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.ts-a11y b {
+  position: absolute;
+  left: 50%;
+  top: 9px;
+  width: 10px;
+  height: 7px;
+  margin-left: -5px;
+  border-top: 2px solid #fff;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 0 #fff;
+}
+
+.ts-a11y b::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 2px;
+  height: 6px;
+  background: #fff;
+}
+
+.ts-halo {
+  border: 2px solid rgba(230, 0, 0, 0.6);
+  border-radius: 50%;
+  z-index: 11;
+}
+
+.ts-kbd {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff;
+  color: #333;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  z-index: 12;
+}
+
+.ts-kbd svg {
+  width: 13px;
+  height: 13px;
+}
+
+.ts-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  font-size: 11px;
+  transform-origin: 100% 100%;
+  z-index: 13;
+}
+
+.ts-bar__wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+  flex: none;
+}
+
+.ts-bar__wave i {
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: #fff;
+  transform: scaleY(0.3);
+}
+
+.ts-bar__words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.3em;
+  min-width: 0;
+}
+
+.ts-word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.ts-tap {
+  border: 2px solid rgba(20, 20, 30, 0.22);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  z-index: 60;
+  pointer-events: none;
+}
+
+.ts-ring {
+  border: 2px solid #e60000;
+  border-radius: 10px;
+  box-shadow: 0 0 0 600px rgba(20, 20, 30, 0.36);
+  pointer-events: none;
+  z-index: 14;
+}
+
+.ts-ring--commit {
+  border-style: dashed;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 3px rgba(230, 0, 0, 0.18),
+    0 0 0 600px rgba(20, 20, 30, 0.3);
+}
+
+.ts-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8px;
+  white-space: nowrap;
+  z-index: 15;
+}
+
+.ts-chip svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.ts-chip--dark {
+  background: rgba(20, 20, 30, 0.86);
+  color: #fff;
+}
+
+.ts-chip--ok {
+  border: 1px solid #428600;
+  background: #fff;
+  color: #428600;
+}
+
+.ts-speak {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 999px;
+  background: #14141e;
+  color: #fff;
+  z-index: 16;
+}
+
+.ts-speak svg {
+  width: 10px;
+  height: 10px;
+}
+
+.ts-speak__level {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ts-speak__level i {
+  width: 2px;
+  height: 9px;
+  border-radius: 1px;
+  background: #fff;
+}
+
+.ts-pocket-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 999px;
+  background: #fff;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 7.5px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  z-index: 5;
+}
+
+.ts-pocket-chip svg {
+  width: 10px;
+  height: 10px;
+}
+
+.ts-fold {
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+  background: linear-gradient(45deg, #c9c9c9 0%, #efefef 60%, #fafafa 100%);
+}
+
+.ts-liner {
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed #ccc;
+  border-radius: 6px;
+  background: rgba(235, 235, 235, 0.6);
+}
+
+.ts-putback,
+.ts-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fff;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.ts-putback svg,
+.ts-back svg {
+  width: 10px;
+  height: 10px;
+}
+
+[dir='rtl'] .ts-putback svg,
+[dir='rtl'] .ts-back svg {
+  transform: scaleX(-1);
+}
+
+.ts-corner {
+  z-index: 18;
+}
+
+.ts-corner__under {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  background: linear-gradient(135deg, #d9d9d9, #f4f4f4 70%);
+}
+
+.ts-corner__flap {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(0 100%, 100% 0, 34% 34%);
+  background: linear-gradient(135deg, #ffffff 30%, #e2e2e2 100%);
+  filter: drop-shadow(-2px -2px 3px rgba(0, 0, 0, 0.15));
+}
+
+.ts-corner__button {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(20, 20, 30, 0.3);
+}
+
+.ts-corner__button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ts-count {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff;
+  color: #e60000;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 19;
+}
+
+.ts-album {
+  background: #fff;
+}
+
+.ts-album__mark {
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #e60000;
+  color: #fff;
+}
+
+.ts-album__mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ts-heart {
+  overflow: visible;
+  z-index: 6;
+}
+
+.ts-heart__line {
+  fill: none;
+  stroke: #e60000;
+  stroke-width: 1.6;
+  stroke-dasharray: 3 3;
+  stroke-linecap: round;
+}
+
+.ts-heart__reveal {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 8;
+  stroke-dasharray: 100;
+}
+
+.ts-drone-track {
+  z-index: 7;
+}
+
+.ts-drone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 7px;
+  offset-rotate: auto;
+}
+
+.ts-drone b {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 10px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e60000;
+}
+
+.ts-drone i {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: #14141e;
+}
+
+.ts-drone i:first-child {
+  left: -2px;
+}
+
+.ts-drone i:nth-child(2) {
+  right: -2px;
+}
+
+.ts-turn {
+  background: #f4f4f4;
+  overflow: hidden;
+  backface-visibility: hidden;
+  z-index: 10;
+}
+
+.ts-turn__shade {
+  background: linear-gradient(to left, rgba(20, 20, 30, 0.45), rgba(20, 20, 30, 0) 70%);
+  pointer-events: none;
+}
+
+[dir='rtl'] .ts-turn__shade {
+  background: linear-gradient(to right, rgba(20, 20, 30, 0.45), rgba(20, 20, 30, 0) 70%);
+}
+
+.ts-deck {
+  perspective: 700px;
+}
+
+.ts-deck > .ts-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.ts-launcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #e60000;
+  color: #fff;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 7.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+  z-index: 22;
+}
+
+.ts-launcher svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+.ts-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(20, 20, 30, 0.22);
+  z-index: 23;
+}
+
+.ts-panel__title {
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-weight: normal;
+  font-size: 9px;
+  color: #14141e;
+}
+
+.ts-panel__hint {
+  font-size: 7px;
+  color: #666;
+}
+
+.ts-panel__tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 30px;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ts-tile {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  border: 1px solid #ebebeb;
+  border-radius: 6px;
+  background: #fff;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 7px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.ts-tile svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  color: #e60000;
+}
+
+.ts-viewbar {
+  background: #fff;
+  box-shadow: 0 1px 0 #ebebeb;
+  z-index: 21;
+}
+
+.ts-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  border-radius: 999px;
+  background: #f4f4f4;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 7px;
+  text-align: center;
+}
+
+.ts-seg > span:not(.ts-seg__thumb) {
+  position: relative;
+  z-index: 1;
+}
+
+.ts-seg__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  inset-inline-start: 2px;
+  width: calc(50% - 2px);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.ts-viewbar__label {
+  display: flex;
+  align-items: center;
+  font-size: 7.5px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ts-label {
+  display: grid;
+  place-items: center;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 11px;
+  color: #14141e;
+  z-index: 24;
+}
+
+.ts-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(20, 20, 30, 0.22);
+  z-index: 30;
+}
+
+.ts-consent b {
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-weight: normal;
+  font-size: 9.5px;
+  line-height: 1.25;
+  color: #14141e;
+}
+
+.ts-consent__lock {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f4f4f4;
+  color: #e60000;
+}
+
+.ts-consent__lock svg {
+  width: 11px;
+  height: 11px;
+}
+
+.ts-consent__line {
+  font-size: 7px;
+  line-height: 1.35;
+  color: #666;
+}
+
+.ts-consent__row {
+  display: flex;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.ts-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  padding: 0 8px;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  background: #fff;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 7px;
+  white-space: nowrap;
+  color: #333;
+}
+
+.ts-btn--primary {
+  border-color: #e60000;
+  background: #e60000;
+  color: #fff;
+}
+
+.ts-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8px;
+  color: #14141e;
+  z-index: 26;
+}
+
+.ts-pill svg {
+  width: 11px;
+  height: 11px;
+  color: #e60000;
+  flex: none;
+}
+
+.ts-pill__labels {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.ts-pill__label {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ts-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #bebebe;
+  flex: none;
+}
+
+.ts-strip {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  z-index: 25;
+}
+
+.ts-strip__btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 7px;
+  white-space: nowrap;
+}
+
+.ts-strip__btn svg {
+  width: 8px;
+  height: 8px;
+}
+
+.ts-band {
+  border-radius: 12px 12px 0 0;
+  background: #fff;
+  box-shadow: 0 -4px 14px rgba(20, 20, 30, 0.12);
+  z-index: 2;
+}
+
+.ts-thread {
+  border-radius: 2px;
+  background: #e60000;
+  z-index: 3;
+}
+
+.ts-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  z-index: 4;
+}
+
+.ts-step__page {
+  position: relative;
+  width: 80px;
+  height: 44px;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  border-top: 6px solid #fff;
+  overflow: hidden;
+}
+
+.ts-step__page i {
+  display: block;
+  height: 4px;
+  margin: 4px 6px 0;
+  border-radius: 2px;
+  background: #e6e6e6;
+}
+
+.ts-step__page i:first-child {
+  width: 60%;
+  background: #ccc;
+}
+
+.ts-step__name {
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 7px;
+  color: #333;
+  white-space: nowrap;
+}
+
+.ts-step__dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: #e60000;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.ts-veil {
+  background: rgba(255, 255, 255, 0.55);
+  z-index: 1;
+}
+
+.ts-veil--soft {
+  background: rgba(244, 244, 244, 0.35);
+}
+
+.ts-frost {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  z-index: 2;
+}
+
+.ts-memory {
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(20, 20, 30, 0.2);
+  overflow: hidden;
+  z-index: 3;
+}
+
+.ts-memory__bar {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 14px;
+  background: #fff;
+  border-bottom: 1px solid #ebebeb;
+}
+
+.ts-memory__page {
+  position: absolute;
+  inset: 14px 0 0;
+  background: #f4f4f4;
+}
+
+.ts-memory__page .ts-card {
+  position: absolute;
+}
+
+.ts-memory__badge {
+  position: absolute;
+  top: 18px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(20, 20, 30, 0.86);
+  color: #fff;
+}
+
+[dir='rtl'] .ts-memory__badge {
+  right: auto;
+  left: 6px;
+}
+
+.ts-memory__badge svg {
+  width: 9px;
+  height: 9px;
+}
+
+.ts-explored__h {
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-weight: normal;
+  font-size: 10px;
+  color: #14141e;
+  z-index: 3;
+}
+
+.ts-explored {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  z-index: 3;
+}
+
+.ts-explored__thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: #ebebeb;
+  overflow: hidden;
+  flex: none;
+}
+
+.ts-explored__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ts-question {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid #ebebeb;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8px;
+  color: #14141e;
+  z-index: 4;
+}
+
+.ts-question svg {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  color: #e60000;
+}
+
+[dir='rtl'] .ts-question svg {
+  transform: scaleX(-1);
+}
+
+.ts-question span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ts-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 8;
+}
+
+.ts-badge__disc {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #e60000;
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(230, 0, 0, 0.3);
+}
+
+.ts-badge__disc svg {
+  width: 22px;
+  height: 22px;
+}
+
+.ts-badge--pocket .ts-badge__disc,
+.ts-badge--journey .ts-badge__disc {
+  background: #fff;
+  color: #e60000;
+  box-shadow:
+    inset 0 0 0 2px #e60000,
+    0 6px 14px rgba(20, 20, 30, 0.18);
+}
+
+.ts-badge__name {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+  font-family: vodafone-bold-en, vf-bold, system-ui, sans-serif;
+  font-size: 8.5px;
+  color: #14141e;
+  white-space: nowrap;
+}
+
+.ts-cover__path {
+  z-index: 7;
+  pointer-events: none;
+}
+
+.ts-cover__path path {
+  fill: none;
+  stroke: #e60000;
+  stroke-width: 1.5;
+  stroke-dasharray: 100;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .tips *,
+  .tips-coach * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .tips-media > .ts-stage,
+  .tips-text {
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .tips-track {
+    scroll-behavior: auto;
+  }
+}

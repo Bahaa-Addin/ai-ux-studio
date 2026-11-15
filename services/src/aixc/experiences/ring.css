@@ -1,0 +1,434 @@
+/* Service ring — scoped to .aixc-vx--ring. Tokens from vodafone.css. */
+
+.aixc-vx--ring {
+  background: #000;
+}
+
+.aixc-vx--ring .rg-track {
+  position: relative;
+  height: calc(var(--vx-vh) + (var(--count) - 1) * var(--step));
+}
+
+.aixc-vx--ring .rg-stage {
+  --u: 7px;
+  position: sticky;
+  top: var(--vx-top);
+  height: var(--vx-vh);
+  min-height: 520px;
+  /* clip, not hidden: focus must never scroll the stage itself */
+  overflow: hidden;
+  overflow: clip;
+  background: #000;
+  color: var(--vx-white);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ------------------------------------------------------------------ panels */
+
+.aixc-vx--ring .rg-panels {
+  position: absolute;
+  inset: 0;
+}
+
+.aixc-vx--ring .rg-panel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.aixc-vx--ring .rg-panel.is-off {
+  visibility: hidden;
+}
+
+/* The reference's treatment: grey photo, high contrast, a gradient blended
+   "darken" over it, inside a black frame. The gradient is Vodafone red here. */
+.aixc-vx--ring .rg-panel img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0) brightness(0.8) contrast(1.45) blur(var(--blur, 1.5px));
+  transform: scale(1.04);
+}
+
+.aixc-vx--ring .rg-panel.is-mark img {
+  object-fit: contain;
+  padding: 18% 30%;
+  filter: brightness(0) invert(1) brightness(0.8);
+  transform: none;
+}
+
+.aixc-vx--ring .rg-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 100%, var(--vx-red) 0%, var(--vx-red-dark) 32%, #2b0000 62%, #000 100%);
+  mix-blend-mode: darken;
+}
+
+.aixc-vx--ring .rg-panel.is-flip::after {
+  transform: scaleY(-1);
+}
+
+.aixc-vx--ring .rg-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-shadow: inset 0 0 0 calc(var(--u) * 10) #000;
+}
+
+/* -------------------------------------------------------------------- ring */
+
+.aixc-vx--ring .rg-ring {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  perspective: calc(var(--u) * 35);
+  transform-origin: 50% 50%;
+}
+
+.aixc-vx--ring .rg-wheel {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.aixc-vx--ring .rg-item {
+  position: absolute;
+  top: calc(var(--u) * -25);
+  left: calc(var(--u) * -25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--u) * 50);
+  height: calc(var(--u) * 50);
+  padding: calc(var(--u) * 2);
+  border: 0;
+  background: transparent;
+  color: transparent;
+  cursor: pointer;
+  backface-visibility: hidden;
+}
+
+.aixc-vx--ring .rg-item.is-off {
+  visibility: hidden;
+}
+
+.aixc-vx--ring .rg-item__title {
+  font-family: var(--vx-font-bold);
+  font-size: calc(var(--u) * var(--fs, 6.5));
+  line-height: 0.92;
+  text-align: center;
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+  color: transparent;
+  -webkit-text-stroke: max(1px, calc(var(--u) * 0.2)) var(--vx-white);
+  transition: color 0.45s ease;
+}
+
+.aixc-vx--ring .rg-item.is-front .rg-item__title {
+  color: var(--vx-white);
+}
+
+/* The reference's day number: a ringed badge on a stem, above or below. */
+.aixc-vx--ring .rg-item__badge {
+  position: absolute;
+  top: calc(var(--u) * 3);
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: calc(var(--u) * 6);
+  height: calc(var(--u) * 6);
+  margin-left: calc(var(--u) * -3);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 max(1px, calc(var(--u) * 0.12)) var(--vx-white);
+  color: var(--vx-white);
+  font-family: var(--vx-font-light);
+  font-size: calc(var(--u) * 2);
+  transition: background-color 0.45s ease, box-shadow 0.45s ease;
+}
+
+.aixc-vx--ring .rg-item__badge::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: max(1px, calc(var(--u) * 0.12));
+  height: calc(var(--u) * 6);
+  background: var(--vx-white);
+  transform: translateX(-50%);
+}
+
+.aixc-vx--ring .rg-item.is-low .rg-item__badge {
+  top: auto;
+  bottom: calc(var(--u) * 3);
+}
+
+.aixc-vx--ring .rg-item.is-low .rg-item__badge::after {
+  top: auto;
+  bottom: 100%;
+}
+
+.aixc-vx--ring .rg-item.is-front .rg-item__badge {
+  background: var(--vx-red);
+  box-shadow: inset 0 0 0 max(1px, calc(var(--u) * 0.12)) var(--vx-red);
+}
+
+.aixc-vx--ring .rg-item:focus-visible {
+  outline: none;
+}
+
+.aixc-vx--ring .rg-item:focus-visible .rg-item__title {
+  text-decoration: underline;
+  text-decoration-color: var(--vx-red);
+}
+
+/* The reference's blurred, darkened edges. */
+.aixc-vx--ring .rg-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: clamp(15vw, calc(var(--u) * 70), 50vw);
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+.aixc-vx--ring .rg-edge--left {
+  left: 0;
+  -webkit-mask: linear-gradient(to right, #000 7.5%, transparent);
+  mask: linear-gradient(to right, #000 7.5%, transparent);
+  box-shadow: inset calc(var(--u) * 10) 0 calc(var(--u) * 10) rgba(0, 0, 0, 0.75);
+}
+
+.aixc-vx--ring .rg-edge--right {
+  right: 0;
+  -webkit-mask: linear-gradient(to left, #000 7.5%, transparent);
+  mask: linear-gradient(to left, #000 7.5%, transparent);
+  box-shadow: inset calc(var(--u) * -10) 0 calc(var(--u) * 10) rgba(0, 0, 0, 0.75);
+}
+
+/* ------------------------------------------------------------- head, foot */
+
+.aixc-vx--ring .rg-head {
+  position: absolute;
+  top: clamp(16px, 3.6vh, 32px);
+  inset-inline: 0;
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.aixc-vx--ring .rg-head__brand {
+  font-family: var(--vx-font-bold);
+  font-size: 0.8125rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.aixc-vx--ring .rg-head__group {
+  font-family: var(--vx-font-light);
+  font-size: clamp(1.375rem, 2.6vw, 2.125rem);
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.aixc-vx--ring .rg-foot {
+  position: absolute;
+  inset-inline: var(--vx-gutter);
+  bottom: clamp(16px, 3.6vh, 32px);
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 34rem) 1fr;
+  align-items: end;
+  gap: 16px;
+}
+
+.aixc-vx--ring .rg-counter {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.aixc-vx--ring .rg-counter__now {
+  font-family: var(--vx-font-light);
+  font-size: clamp(2.25rem, 4vw, 3.25rem);
+  line-height: 1;
+}
+
+.aixc-vx--ring .rg-counter__total {
+  opacity: 0.7;
+}
+
+.aixc-vx--ring .rg-detail {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.aixc-vx--ring .rg-detail__desc {
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.5;
+}
+
+.aixc-vx--ring .rg-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.aixc-vx--ring .rg-detail__actions .vx-aside {
+  display: none;
+}
+
+.aixc-vx--ring .rg-detail__actions .vx-inert.vx-on-dark {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.aixc-vx--ring .rg-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.aixc-vx--ring .rg-nav .vx-round {
+  color: var(--vx-white);
+}
+
+.aixc-vx--ring .rg-hint {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  z-index: 3;
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  writing-mode: vertical-rl;
+  transform: translateY(-50%);
+}
+
+/* ------------------------------------------------- right to left (Arabic) */
+
+/* Joined Arabic letters overlap, so a stroke outlines every join: Arabic titles
+   are filled faintly instead of outlined, the current one fills in white, and
+   their lines get the room the Arabic face needs. The size is worked out from
+   character counts tuned for Latin capitals, which wrap to two narrow lines;
+   Arabic would set on one line as wide as the item and touch its neighbours,
+   so it is set a little smaller and narrower, and wraps the same way. */
+.aixc-vx--ring .rg-item__title:lang(ar) {
+  max-inline-size: calc(var(--u) * 36);
+  font-size: calc(var(--u) * var(--fs, 6.5) * 0.82);
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.22);
+  -webkit-text-stroke: 0;
+}
+
+.aixc-vx--ring .rg-item.is-front .rg-item__title:lang(ar) {
+  color: var(--vx-white);
+}
+
+/* Tracking pulls joined script apart. */
+.aixc-vx--ring .rg-head__brand:lang(ar),
+.aixc-vx--ring .rg-head__group:lang(ar),
+.aixc-vx--ring .rg-hint:lang(ar) {
+  letter-spacing: 0;
+}
+
+.aixc-vx--ring .rg-head__group:lang(ar) {
+  line-height: 1.35;
+}
+
+/* The hint moves to the end (left) edge; its letters still face outwards.
+   Physical sides: the hint's own writing mode is vertical. */
+[dir='rtl'] .aixc-vx--ring .rg-hint {
+  right: auto;
+  left: 14px;
+  transform: translateY(-50%) rotate(180deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-vx--ring .rg-detail.is-changing > * {
+    animation: rg-in 0.5s ease both;
+  }
+}
+
+@keyframes rg-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 719px) {
+  .aixc-vx--ring .rg-ring {
+    top: 42%;
+  }
+
+  .aixc-vx--ring .rg-foot {
+    inset-inline: 16px;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      'detail detail'
+      'counter nav';
+    gap: 14px;
+  }
+
+  .aixc-vx--ring .rg-detail {
+    grid-area: detail;
+  }
+
+  .aixc-vx--ring .rg-counter {
+    grid-area: counter;
+    align-self: center;
+  }
+
+  .aixc-vx--ring .rg-nav {
+    grid-area: nav;
+  }
+
+  .aixc-vx--ring .rg-nav .vx-round {
+    width: 44px;
+    height: 44px;
+  }
+
+  .aixc-vx--ring .rg-detail__desc {
+    font-size: 0.9375rem;
+  }
+
+  .aixc-vx--ring .rg-hint {
+    display: none;
+  }
+
+  .aixc-vx--ring .rg-edge {
+    width: 18vw;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-vx--ring .rg-item__title,
+  .aixc-vx--ring .rg-item__badge {
+    transition: none;
+  }
+}

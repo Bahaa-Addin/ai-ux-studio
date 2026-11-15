@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Experience Composer — Demos</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="services/favicon.svg">
+<style>
+  :root { --red:#e60000; --ink:#1a1a1a; --muted:#5f5f5f; --line:#e6e6e6; --bg:#f6f6f6; --card:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --ink:#f1f1f1; --muted:#b3b3b3; --line:#333; --bg:#141414; --card:#1e1e1e; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 16px; }
+  header { background:var(--red); color:#fff; padding:40px 0 36px; }
+  header h1 { margin:0 0 8px; font-size:clamp(26px,4vw,38px); line-height:1.15; }
+  header p { margin:0; max-width:720px; opacity:.95; }
+  .cta { display:flex; flex-wrap:wrap; gap:12px; margin-top:22px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:12px 20px; border-radius:999px; font-weight:600; text-decoration:none; }
+  .btn.primary { background:#fff; color:var(--red); }
+  .btn.ghost { border:2px solid rgba(255,255,255,.8); color:#fff; }
+  .btn.red { background:var(--red); color:#fff; }
+  .btn.outline { border:2px solid var(--red); color:var(--red); }
+  main { padding:32px 0 48px; }
+  h2 { font-size:22px; margin:8px 0 16px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; display:flex; flex-direction:column; gap:10px; }
+  .card h3 { margin:0; font-size:19px; display:flex; gap:10px; align-items:baseline; }
+  .num { color:var(--red); font-weight:800; }
+  .card p { margin:0; color:var(--muted); }
+  .card ol { margin:0; padding-left:20px; color:var(--muted); }
+  .tag { display:inline-block; font-size:12px; font-weight:700; padding:2px 10px; border-radius:999px; background:rgba(230,0,0,.1); color:var(--red); }
+  .tag.rec { background:rgba(120,120,120,.15); color:var(--muted); }
+  .links { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:6px; }
+  .links .btn { padding:8px 16px; font-size:14px; }
+  video { width:100%; border-radius:12px; border:1px solid var(--line); background:#000; }
+  .note { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--red); border-radius:12px; padding:14px 18px; margin:28px 0 0; color:var(--muted); font-size:14px; }
+  footer { color:var(--muted); font-size:13px; padding:0 0 32px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>AI Experience Composer</h1>
+    <p>Five AI-driven experiences layered onto Vodafone Egypt's Services page: they change how the page's own content is found, kept and presented, without changing the content or the site's header and footer.</p>
+    <div class="cta">
+      <a class="btn primary" href="services/">Open the live demo (English)</a>
+      <a class="btn ghost" href="services/ar/">العربية</a>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <h2>The five demos</h2>
+  <div class="grid">
+    <section class="card">
+      <h3><span class="num">1</span> Voice guide</h3>
+      <span class="tag rec">Recorded walkthrough</span>
+      <p>Ask by voice or text, in English or Egyptian Arabic. The guide takes you to the answer on the page: it navigates, opens tabs, spotlights the right card and reads live values.</p>
+      <!--VIDEO:guide-->
+    </section>
+    <section class="card">
+      <h3><span class="num">2</span> Pocket</h3>
+      <span class="tag">Live</span>
+      <p>Peel any service off like a sticker and keep it in a pocket that peeks from the corner, with its mascot and drone. Turn the page to see everything you kept as a sticker album.</p>
+      <ol><li>Press <b>Pocket it</b> on any card.</li><li>Open the corner curl at the bottom right.</li></ol>
+      <div class="links"><a class="btn red" href="services/">Try it</a><a class="btn outline" href="services/ar/">بالعربي</a></div>
+    </section>
+    <section class="card">
+      <h3><span class="num">3</span> Reimagine this page</h3>
+      <span class="tag">Live</span>
+      <p>Describe how you want the page presented and it is recomposed: magazine, spotlight, flipbook, tunnel and more, from the same content.</p>
+      <ol><li>Press <b>Reimagine this page</b> (top right).</li><li>Pick a ready-made experience or type a request.</li></ol>
+      <div class="links"><a class="btn red" href="services/">Try it</a><a class="btn outline" href="services/ar/">بالعربي</a></div>
+    </section>
+    <section class="card">
+      <h3><span class="num">4</span> Exploration Trail ("Your journey")</h3>
+      <span class="tag rec">Recorded walkthrough</span>
+      <p>With the visitor's consent, the guide records their journey on the device only. A timeline in the Pocket lets them scrub back through it, see what they explored most, and ask a follow-up.</p>
+      <!--VIDEO:trail-->
+    </section>
+    <section class="card">
+      <h3><span class="num">5</span> Your RED world</h3>
+      <span class="tag">Live (English)</span>
+      <p>At the end of the Pocket a dock of categories rises. Pull one up and the page slides aside to reveal a personal benefits layer with a live status widget and topics ranked per customer.</p>
+      <ol><li>Open the Pocket album and go to its last page.</li><li>Press or pull up an icon in the dock.</li></ol>
+      <div class="links"><a class="btn red" href="services/">Try it</a></div>
+    </section>
+    <section class="card">
+      <h3><span class="num">+</span> Tips</h3>
+      <span class="tag">Live</span>
+      <p>A Tips-style walkthrough of the demos, from the <b>Tips</b> button at the bottom left of the page.</p>
+      <div class="links"><a class="btn red" href="services/">Open the page</a></div>
+    </section>
+  </div>
+  <!--VIDEO:extra-->
+  <p class="note">This is a static preview. Pocket, Reimagine, Your RED world and Tips run live in your browser. The voice guide and the journey need the guide's voice server, which this static host can't run, so they're shown as recordings of the same build. Reimagine uses its ready-made experiences here, because no AI key is published with this page.</p>
+</main>
+<footer class="wrap">Prototype for internal review. Not affiliated with or published by Vodafone Egypt. Build: feature/live-way2 @ 16f7543</footer>
+</body>
+</html>

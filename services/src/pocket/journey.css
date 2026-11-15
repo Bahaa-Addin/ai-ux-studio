@@ -1,0 +1,762 @@
+/*
+ * Your journey, in the pocket (./journey.js). Drawn with the album's own materials: white
+ * die-cut rims, hand-placed tilts, the dot grid seen through a light frost, and Vodafone red
+ * for the thread you followed. Every class is .pocket-journey- prefixed. Its faces are the
+ * album's (--pocket-bold, --pocket-regular, --pocket-light in pocket.css, set on :root): on
+ * Vodafone's Arabic pages they name the theme's -ar families first (voice-guide ADR-0052).
+ */
+
+/* ------------------------------------------------ the button beside Back */
+
+.pocket-journey-cta {
+  gap: 8px;
+  padding: 0 16px 0 14px;
+}
+
+.pocket-journey-cta__icon {
+  width: 22px;
+  height: 22px;
+  color: #e60000;
+}
+
+.pocket-journey-cta__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ccc;
+}
+
+.pocket-journey-cta[data-rec='recording'] .pocket-journey-cta__dot {
+  background: #e60000;
+  box-shadow: 0 0 0 3px rgba(230, 0, 0, 0.16);
+}
+
+.pocket-journey-cta[aria-expanded='true'] {
+  border-color: #e60000;
+  box-shadow: inset 0 0 0 1px #e60000;
+}
+
+/* --------------------------------------------- the slim slider under the bar */
+
+.pocket-journey {
+  position: sticky;
+  top: var(--pocket-journey-top, 0px);
+  z-index: 4;
+  margin: -14px 0 26px;
+  padding: 10px 0 8px;
+  transition:
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+/* On Vodafone's pages (./journey.js, holdBand): the slot keeps the band's place, and the band is
+   held fixed below Vodafone's pinned chrome while the album scrolls, as sticky does on the clone. */
+.pocket-journey-slot {
+  margin: -14px 0 26px;
+}
+
+.pocket-journey-slot > .pocket-journey {
+  position: relative;
+  top: auto;
+  margin: 0;
+}
+
+.pocket-journey-slot > .pocket-journey.is-held {
+  position: fixed;
+}
+
+.pocket-output[data-journey='open'] .pocket-journey {
+  background: rgba(244, 244, 244, 0.7);
+  box-shadow: 0 1px 0 rgba(20, 20, 30, 0.06);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  backdrop-filter: blur(12px) saturate(1.1);
+}
+
+.pocket-journey__inner {
+  display: grid;
+}
+
+/* The pages you visited, as stepped tabs: the selected one is lifted like a sticker. */
+.pocket-journey-rail {
+  overflow-x: auto;
+  margin: 0 -8px;
+  padding: 6px 8px 10px;
+  cursor: pointer;
+  touch-action: pan-y;
+  outline: none;
+  scrollbar-width: none;
+}
+
+.pocket-journey-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.pocket-journey-rail:focus,
+.pocket-journey-rail:focus-visible {
+  outline: none;
+}
+
+.pocket-journey-steps {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: min-content;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pocket-journey-step {
+  display: grid;
+  flex: 1 1 0;
+  align-content: space-between;
+  gap: 12px;
+  min-width: 150px;
+  padding: 12px 16px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.pocket-journey-step:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.pocket-journey-step.is-selected {
+  border-color: rgba(20, 20, 30, 0.06);
+  background: #fff;
+  box-shadow:
+    0 1px 0 rgba(20, 20, 30, 0.06),
+    0 10px 22px -12px rgba(20, 20, 30, 0.32);
+}
+
+.pocket-journey-rail:focus-visible .pocket-journey-step.is-selected {
+  outline: 3px solid #333;
+  outline-offset: 2px;
+}
+
+.pocket-journey-step__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pocket-journey-step__title {
+  overflow: hidden;
+  color: #333;
+  font-family: var(--pocket-bold);
+  font-size: 1rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pocket-journey-step:not(.is-selected) .pocket-journey-step__title {
+  font-family: var(--pocket-regular);
+}
+
+.pocket-journey-step__here {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #14141e;
+  color: #fff;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+/* Each page's own thread: red as far as you have watched, grey ahead. */
+.pocket-journey-step__track {
+  position: relative;
+  height: 4px;
+  margin: 0 2px;
+  border-radius: 2px;
+  background: #d6d6d6;
+}
+
+.pocket-journey-step__fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: calc(var(--f, 0) * 100%);
+  border-radius: 2px;
+  background: #e60000;
+}
+
+.pocket-journey-step.is-passed .pocket-journey-step__fill {
+  background: rgba(230, 0, 0, 0.4);
+}
+
+.pocket-journey-step__knob {
+  display: none;
+  position: absolute;
+  top: 50%;
+  inset-inline-start: calc(var(--f, 0) * 100%);
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  margin-inline-start: -10px;
+  border: 4px solid #e60000;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(20, 20, 30, 0.28);
+  transition: transform 0.15s ease;
+}
+
+.pocket-journey-step.is-selected .pocket-journey-step__knob {
+  display: block;
+}
+
+.pocket-journey-rail.is-dragging .pocket-journey-step__knob {
+  transform: scale(1.15);
+}
+
+.pocket-journey-steps__next {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #999;
+}
+
+.pocket-journey-steps__next-icon {
+  width: 16px;
+  height: 16px;
+}
+
+[dir='rtl'] .pocket-journey-steps__next-icon {
+  transform: scaleX(-1);
+}
+
+/* ------------------------------------------------------ the frosted layer */
+
+/* It shares the album's grid cell, so the stickers stay right under the frost. */
+.pocket-journey-layer {
+  position: relative;
+  z-index: 2;
+  align-self: stretch;
+  min-height: 60vh;
+  margin-top: -12px;
+  padding: 18px 0 48px;
+  background: rgba(238, 238, 238, 0.58);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  backdrop-filter: blur(14px) saturate(1.15);
+  animation: pocket-journey-frost 0.32s ease-out both;
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .pocket-journey-layer {
+    background: rgba(235, 235, 235, 0.92);
+  }
+}
+
+.pocket-journey-layer.is-leaving {
+  animation: pocket-journey-thaw 0.22s ease-in both;
+}
+
+.pocket-journey-layer[data-mode='consent'] .pocket-journey-layer__grid,
+.pocket-journey-layer[data-mode='journey'] .pocket-journey-consent {
+  display: none;
+}
+
+.pocket-journey-layer__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+.pocket-journey-layer__title {
+  margin: 0;
+  color: #333;
+  font-family: var(--pocket-bold);
+  font-size: 1.95rem;
+  font-weight: normal;
+  line-height: 1.1;
+}
+
+.pocket-journey-layer__sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  margin: 4px 0 0;
+  color: #666;
+  font-family: var(--pocket-light);
+  font-size: 1.05rem;
+}
+
+.pocket-journey-layer__sub > span {
+  margin-inline-end: 6px;
+}
+
+.pocket-journey-saving {
+  min-height: 32px;
+  padding: 0 8px;
+  font-size: 0.9rem;
+}
+
+/* The journey's title takes the album title's place while the journey floats over it. */
+.pocket-view__head {
+  transition: opacity 0.25s ease;
+}
+
+.pocket-output[data-journey='open'] .pocket-view__head {
+  opacity: 0;
+}
+
+.pocket-journey-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.pocket-journey-close:hover {
+  text-decoration: underline;
+}
+
+.pocket-journey-close__icon {
+  width: 18px;
+  height: 18px;
+}
+
+.pocket-journey-layer__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: start;
+  gap: 32px 44px;
+}
+
+/* ------------------------------------------------- the memory, a big sticker */
+
+.pocket-journey-memory {
+  margin: 0;
+  padding: 8px;
+  border-radius: 16px;
+  background: #fff;
+  transform: rotate(var(--tilt, -0.6deg));
+  box-shadow:
+    0 1px 0 rgba(20, 20, 30, 0.06),
+    0 18px 36px -12px rgba(20, 20, 30, 0.34);
+}
+
+.pocket-journey-memory__window {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border-radius: 10px;
+  background: #f4f4f4;
+}
+
+.pocket-journey-memory__frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* What the trail's replay puts in the frame (its own sheet does the same in the guide). */
+.pocket-journey-memory__frame .tr-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.pocket-journey-memory__frame .replayer-wrapper {
+  position: relative;
+}
+
+.pocket-journey-memory__frame iframe {
+  display: block;
+  border: 0;
+  background: #fff;
+}
+
+.pocket-journey-memory__frame .replayer-mouse {
+  position: absolute;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: rgba(230, 0, 0, 0.18);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px #e60000;
+  transition:
+    left 0.05s linear,
+    top 0.05s linear;
+}
+
+.pocket-journey-memory__frame .replayer-mouse.active {
+  background: rgba(230, 0, 0, 0.45);
+}
+
+.pocket-journey-memory__frame .replayer-mouse-tail {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.pocket-journey-memory__veil {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #f4f4f4, #ebebeb);
+  color: #666;
+  text-align: center;
+}
+
+.pocket-journey-memory__led {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  inset-inline-end: 12px;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #e60000;
+  color: #fff;
+  font-family: var(--pocket-bold);
+  font-size: 0.88rem;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.pocket-journey-memory__caption {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 6px 4px;
+}
+
+.pocket-journey-memory__from {
+  flex: 0 0 auto;
+  color: #e60000;
+  font-family: var(--pocket-bold);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pocket-journey-memory__title {
+  overflow: hidden;
+  color: #333;
+  font-family: var(--pocket-bold);
+  font-size: 1.1rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pocket-journey-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 22px;
+}
+
+.pocket-journey-play {
+  gap: 8px;
+  padding: 0 20px 0 16px;
+}
+
+.pocket-journey-play:disabled {
+  border-color: #ccc;
+  background: #ccc;
+  cursor: default;
+}
+
+.pocket-journey-play__icon,
+.pocket-journey-play__svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+/* --------------------------------------- what you explored, as small notes */
+
+.pocket-journey-heading {
+  margin: 4px 0 16px;
+  color: #e60000;
+  font-family: var(--pocket-bold);
+  font-size: 0.78rem;
+  font-weight: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pocket-journey-notes {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pocket-journey-note {
+  padding: 16px 18px 14px;
+  border-radius: 12px;
+  background: #fff;
+  transform: rotate(var(--tilt, 0deg));
+  box-shadow:
+    0 1px 0 rgba(20, 20, 30, 0.06),
+    0 10px 22px -10px rgba(20, 20, 30, 0.3);
+}
+
+.pocket-journey-note__why {
+  margin: 0;
+  color: #666;
+  font-size: 0.82rem;
+}
+
+.pocket-journey-note__title {
+  margin: 2px 0 0;
+  color: #333;
+  font-family: var(--pocket-bold);
+  font-size: 1.2rem;
+  line-height: 1.25;
+}
+
+.pocket-journey-note__context {
+  margin: 2px 0 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.pocket-journey-note__popular {
+  display: inline-block;
+  margin: 8px 0 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #f4f4f4;
+  color: #666;
+  font-size: 0.78rem;
+}
+
+.pocket-journey-note__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #d6d6d6;
+}
+
+.pocket-journey-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 18px;
+  background: #fff;
+  color: #333;
+  font-family: var(--pocket-regular);
+  font-size: 0.92rem;
+  line-height: 1.3;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease-in-out,
+    color 0.15s ease-in-out;
+}
+
+.pocket-journey-chip:hover:not(:disabled) {
+  border-color: #e60000;
+  color: #e60000;
+}
+
+.pocket-journey-chip:focus-visible {
+  outline: 3px solid #333;
+  outline-offset: 2px;
+}
+
+.pocket-journey-chip:disabled {
+  color: #999;
+  cursor: default;
+}
+
+.pocket-journey-chip[aria-busy='true'] {
+  border-color: #e60000;
+  color: #e60000;
+}
+
+.pocket-journey-chip__icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: #e60000;
+}
+
+.pocket-journey-none {
+  margin: 0;
+  padding: 18px 20px;
+  border: 2px dashed #c6c6c6;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #666;
+}
+
+/* --------------------------------------------- asking first, as a sticker */
+
+.pocket-journey-consent {
+  max-width: 600px;
+  padding: 24px 26px 20px;
+  border-radius: 16px;
+  background: #fff;
+  transform: rotate(-0.4deg);
+  box-shadow:
+    0 1px 0 rgba(20, 20, 30, 0.06),
+    0 18px 36px -12px rgba(20, 20, 30, 0.34);
+}
+
+.pocket-journey-consent__title {
+  margin: 0;
+  color: #333;
+  font-family: var(--pocket-bold);
+  font-size: 1.45rem;
+  font-weight: normal;
+}
+
+.pocket-journey-consent__body {
+  margin: 8px 0 0;
+  color: #333;
+  line-height: 1.5;
+}
+
+.pocket-journey-consent__list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px dashed #d6d6d6;
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  list-style: none;
+}
+
+.pocket-journey-consent__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* -------------------------------------------- staggered, floating entrance */
+
+.pocket-journey-float {
+  animation: pocket-journey-in 0.56s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+.pocket-journey-layer.is-leaving .pocket-journey-float {
+  animation: pocket-journey-out 0.2s ease-in both;
+}
+
+@keyframes pocket-journey-in {
+  from {
+    opacity: 0;
+    translate: 0 18px;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@keyframes pocket-journey-out {
+  to {
+    opacity: 0;
+    translate: 0 -8px;
+  }
+}
+
+@keyframes pocket-journey-frost {
+  from {
+    background-color: rgba(235, 235, 235, 0);
+    -webkit-backdrop-filter: blur(0) saturate(1);
+    backdrop-filter: blur(0) saturate(1);
+  }
+}
+
+@keyframes pocket-journey-thaw {
+  to {
+    background-color: rgba(235, 235, 235, 0);
+    -webkit-backdrop-filter: blur(0) saturate(1);
+    backdrop-filter: blur(0) saturate(1);
+  }
+}
+
+/* ---------------------------------------------------------------- sizes */
+
+@media (max-width: 899px) {
+  .pocket-journey-layer__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .pocket-journey-cta {
+    padding: 0 12px;
+  }
+
+  .pocket-journey-layer__title {
+    font-size: 1.6rem;
+  }
+
+  .pocket-journey-layer__top {
+    margin-bottom: 18px;
+  }
+
+  .pocket-journey-memory {
+    --tilt: 0deg;
+  }
+
+  /* A memory made on a phone is a tall page. */
+  .pocket-journey-memory__window {
+    aspect-ratio: 3 / 4;
+  }
+
+  .pocket-journey-note {
+    padding: 14px 14px 12px;
+  }
+
+  .pocket-journey-step {
+    min-width: 140px;
+    padding: 10px 12px 12px;
+  }
+
+  .pocket-journey-step.is-here {
+    min-width: 210px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pocket-view__head,
+  .pocket-journey,
+  .pocket-journey-layer,
+  .pocket-journey-layer.is-leaving,
+  .pocket-journey-float,
+  .pocket-journey-layer.is-leaving .pocket-journey-float,
+  .pocket-journey-step,
+  .pocket-journey-step__knob,
+  .pocket-journey-chip {
+    animation: none;
+    transition: none;
+  }
+}

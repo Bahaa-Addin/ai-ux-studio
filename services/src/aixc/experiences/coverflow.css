@@ -1,0 +1,366 @@
+/* Cover flow — scoped to .aixc-vx--coverflow. Tokens from vodafone.css.
+   The 3D flow is a centred physical scene (coverflow.js mirrors its pan and turn
+   in Arabic); the head, panel and controls follow the reading line through flex. */
+
+.aixc-vx--coverflow {
+  --cf-size: clamp(150px, min(24vw, calc(var(--vx-vh) * 0.3)), 280px);
+  --cf-top: 36%;
+  background: var(--vx-ink);
+}
+
+.aixc-vx--coverflow .cf-track {
+  position: relative;
+  height: calc(var(--vx-vh) + (var(--count) - 1) * var(--step));
+}
+
+.aixc-vx--coverflow .cf-stage {
+  position: sticky;
+  top: var(--vx-top);
+  height: var(--vx-vh);
+  min-height: 560px;
+  /* clip, not hidden: focus must never scroll the stage itself */
+  overflow: hidden;
+  overflow: clip;
+  background:
+    radial-gradient(80% 60% at 50% 28%, #2c2c36 0%, #191920 45%, #0b0b10 100%);
+  color: var(--vx-white);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.aixc-vx--coverflow .cf-stage.is-dragging,
+.aixc-vx--coverflow .cf-stage.is-dragging .cf-cover {
+  cursor: grabbing;
+}
+
+/* ------------------------------------------------------------------ covers */
+
+.aixc-vx--coverflow .cf-flow {
+  position: absolute;
+  inset: 0;
+  perspective: 800px;
+  transform-style: preserve-3d;
+}
+
+.aixc-vx--coverflow .cf-cover {
+  position: absolute;
+  top: var(--cf-top);
+  left: 50%;
+  width: var(--cf-size);
+  height: var(--cf-size);
+  margin: calc(var(--cf-size) / -2) 0 0 calc(var(--cf-size) / -2);
+  padding: 0;
+  border: 0;
+  background: var(--vx-grey-900);
+  cursor: pointer;
+  transform-style: preserve-3d;
+  -webkit-box-reflect: below 0.5vmin linear-gradient(transparent 0 50%, rgba(255, 255, 255, 0.55) 100%);
+}
+
+.aixc-vx--coverflow .cf-cover.is-off {
+  visibility: hidden;
+}
+
+.aixc-vx--coverflow .cf-cover__media {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: var(--vx-grey-900);
+}
+
+.aixc-vx--coverflow .cf-cover__media img {
+  pointer-events: none;
+}
+
+.aixc-vx--coverflow .cf-cover__media.is-contain {
+  background: var(--vx-red);
+}
+
+.aixc-vx--coverflow .cf-cover__media.is-contain img {
+  padding: 18%;
+  filter: brightness(0) invert(1);
+}
+
+/* The front cover carries the Vodafone red. */
+.aixc-vx--coverflow .cf-cover::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: var(--vx-red);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.aixc-vx--coverflow .cf-cover.is-front::after {
+  opacity: 1;
+}
+
+.aixc-vx--coverflow .cf-cover:focus-visible {
+  outline: 3px solid var(--vx-white);
+  outline-offset: 3px;
+}
+
+/* Darkens the reflections into the floor without touching the front cover. */
+.aixc-vx--coverflow .cf-floor {
+  position: absolute;
+  top: calc(var(--cf-top) + var(--cf-size) * 0.64);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 200;
+  background: linear-gradient(180deg, rgba(11, 11, 16, 0) 0%, rgba(11, 11, 16, 0.6) 30%, #0b0b10 70%);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------ head, panel */
+
+.aixc-vx--coverflow .cf-head {
+  position: absolute;
+  top: clamp(16px, 3.4vh, 30px);
+  right: var(--vx-gutter);
+  left: var(--vx-gutter);
+  z-index: 210;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.aixc-vx--coverflow .cf-brand {
+  font-family: var(--vx-font-bold);
+  font-size: 0.875rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.aixc-vx--coverflow .cf-scroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e6e6e6;
+  font-size: 0.8125rem;
+}
+
+.aixc-vx--coverflow .cf-scroll__icon {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-vx--coverflow .cf-scroll__icon {
+    animation: cf-bob 4s infinite;
+  }
+}
+
+@keyframes cf-bob {
+  0%,
+  25%,
+  50%,
+  100% {
+    transform: translate(0, 0);
+  }
+  12.5%,
+  37.5% {
+    transform: translate(0, 25%);
+  }
+}
+
+.aixc-vx--coverflow .cf-panel {
+  position: absolute;
+  right: 0;
+  bottom: clamp(16px, 3.6vh, 34px);
+  left: 0;
+  z-index: 210;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 0 var(--vx-gutter);
+  text-align: center;
+}
+
+.aixc-vx--coverflow .cf-controls {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+/* The reference's glossy round buttons, warming to Vodafone red on hover. */
+.aixc-vx--coverflow .cf-button {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: #e6e6e6;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.aixc-vx--coverflow .cf-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 80%;
+  height: 80%;
+  border: 2px solid #e6e6e6;
+  border-radius: 50%;
+  background: linear-gradient(rgba(204, 204, 204, 0.65), #000) #000;
+  transform: translate(-50%, -50%);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.aixc-vx--coverflow .cf-button:hover {
+  transform: translateY(-5%);
+}
+
+.aixc-vx--coverflow .cf-button:hover::before {
+  border-color: var(--vx-white);
+  background: linear-gradient(#ff3333, var(--vx-red-dark)) var(--vx-red);
+}
+
+.aixc-vx--coverflow .cf-button:active::before {
+  background: linear-gradient(#000, rgba(204, 204, 204, 0.65)) #000;
+}
+
+.aixc-vx--coverflow .cf-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.aixc-vx--coverflow .cf-button svg {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.aixc-vx--coverflow .cf-counter {
+  min-width: 6.5ch;
+  font-family: var(--vx-font-light);
+  font-size: 1.375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.aixc-vx--coverflow .cf-counter__total {
+  font-size: 0.9375rem;
+  opacity: 0.7;
+}
+
+.aixc-vx--coverflow .cf-detail {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  max-width: 40rem;
+}
+
+.aixc-vx--coverflow .cf-detail__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+}
+
+.aixc-vx--coverflow .cf-detail__group::before {
+  content: '';
+  width: 24px;
+  height: 2px;
+  background: var(--vx-red);
+}
+
+.aixc-vx--coverflow .cf-detail__title {
+  font-family: var(--vx-font-bold);
+  font-size: clamp(1.5rem, 2.6vw, 2.25rem);
+  line-height: 1.1;
+}
+
+/* Arabic is joined script: no tracking or case on the page title, and room for
+   the taller Arabic face on the big service title. */
+[dir='rtl'] .aixc-vx--coverflow .cf-brand {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+[dir='rtl'] .aixc-vx--coverflow .cf-detail__title {
+  line-height: 1.4;
+}
+
+.aixc-vx--coverflow .cf-detail__desc {
+  max-width: 38rem;
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.5;
+}
+
+.aixc-vx--coverflow .cf-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-top: 0.25rem;
+}
+
+.aixc-vx--coverflow .cf-detail__actions .vx-aside {
+  display: none;
+}
+
+.aixc-vx--coverflow .cf-detail__actions .vx-inert.vx-on-dark {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-vx--coverflow .cf-detail.is-changing > * {
+    animation: cf-in 0.45s ease both;
+  }
+}
+
+@keyframes cf-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* -------------------------------------------------------------- responsive */
+
+@media (max-width: 719px) {
+  .aixc-vx--coverflow {
+    --cf-top: 30%;
+  }
+
+  .aixc-vx--coverflow .cf-scroll {
+    display: none;
+  }
+
+  .aixc-vx--coverflow .cf-panel {
+    padding: 0 16px;
+  }
+
+  .aixc-vx--coverflow .cf-detail__title {
+    font-size: 1.5rem;
+  }
+
+  .aixc-vx--coverflow .cf-detail__desc {
+    font-size: 0.9375rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aixc-vx--coverflow .cf-button,
+  .aixc-vx--coverflow .cf-cover::after {
+    transition: none;
+  }
+}

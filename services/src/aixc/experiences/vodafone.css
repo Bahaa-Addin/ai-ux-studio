@@ -1,0 +1,490 @@
+/*
+ * Shared Vodafone design language for the template experiences.
+ *
+ * Tokens come from docs/design-system.md (captured from the live site): brand red
+ * #e60000 and its dark state #990000, neutrals #333 / #666 / #999 / #ccc / #ebebeb /
+ * #f4f4f4, footer ink #14141e, Vodafone Regular / Bold / Light, 6px button radius,
+ * 8px card radius and the site's card shadow. Everything is scoped to .aixc-vx so
+ * nothing leaks into the protected header, footer or original view.
+ */
+
+.aixc-vx {
+  --vx-red: #e60000;
+  --vx-red-dark: #990000;
+  --vx-ink: #14141e;
+  --vx-grey-900: #333;
+  --vx-grey-700: #666;
+  --vx-grey-600: #999;
+  --vx-grey-300: #ccc;
+  --vx-grey-200: #ebebeb;
+  --vx-grey-100: #f4f4f4;
+  --vx-white: #fff;
+  --vx-radius: 8px;
+  --vx-radius-btn: 6px;
+  --vx-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+  --vx-shadow-lift: 0 12px 32px rgba(0, 0, 0, 0.22);
+  --vx-font: vodafone-regular-en, vf-regular, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --vx-font-bold: vodafone-bold-en, vf-bold, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --vx-font-light: vodafone-light-en, vf-light, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --vx-ease: cubic-bezier(0.6, 0.045, 0.165, 1);
+  --vx-max: 1240px;
+  --vx-gutter: clamp(16px, 4vw, 48px);
+  /* Space under the sticky site header and AIXC view bar (set by the controller). */
+  --vx-top: calc(var(--aixc-header-h, 104px) + var(--aixc-viewbar-h, 57px));
+  --vx-vh: calc(100vh - var(--vx-top));
+
+  position: relative;
+  overflow-x: clip;
+  background: var(--vx-grey-100);
+  color: var(--vx-grey-900);
+  font-family: var(--vx-font);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+@supports (height: 100svh) {
+  .aixc-vx {
+    --vx-vh: calc(100svh - var(--vx-top));
+  }
+}
+
+.aixc-vx *,
+.aixc-vx *::before,
+.aixc-vx *::after {
+  box-sizing: border-box;
+}
+
+.aixc-vx h1,
+.aixc-vx h2,
+.aixc-vx h3,
+.aixc-vx p,
+.aixc-vx figure,
+.aixc-vx ul,
+.aixc-vx ol {
+  margin: 0;
+}
+
+.aixc-vx h1,
+.aixc-vx h2,
+.aixc-vx h3 {
+  font-weight: normal;
+  overflow-wrap: break-word;
+}
+
+.aixc-vx ul,
+.aixc-vx ol {
+  padding: 0;
+  list-style: none;
+}
+
+.aixc-vx img {
+  display: block;
+  max-width: 100%;
+}
+
+.aixc-vx a {
+  color: inherit;
+}
+
+.aixc-vx button {
+  font: inherit;
+  color: inherit;
+}
+
+.aixc-vx a:focus-visible,
+.aixc-vx button:focus-visible,
+.aixc-vx [tabindex='0']:focus-visible {
+  outline: 3px solid var(--vx-grey-900);
+  outline-offset: 3px;
+}
+
+.aixc-vx .vx-on-dark:focus-visible,
+.aixc-vx .vx-dark a:focus-visible,
+.aixc-vx .vx-dark button:focus-visible {
+  outline-color: var(--vx-white);
+}
+
+.aixc-vx [tabindex='-1']:focus {
+  outline: none;
+}
+
+/* Latin wordmarks keep their letter order inside right-to-left text (shared.js ltrMark). */
+.aixc-vx .vx-ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.aixc-vx .vx-sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.aixc-vx [hidden] {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+.aixc-vx .vx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: fit-content;
+  min-height: 46px;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: var(--vx-radius-btn);
+  font-family: var(--vx-font);
+  font-size: 1rem;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.aixc-vx .vx-btn--primary {
+  background: var(--vx-red);
+  border-color: var(--vx-red);
+  color: var(--vx-white);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.aixc-vx .vx-btn--primary:hover {
+  background: var(--vx-red-dark);
+  border-color: var(--vx-red-dark);
+  box-shadow: none;
+}
+
+.aixc-vx .vx-btn--secondary {
+  background: var(--vx-white);
+  border-color: var(--vx-grey-900);
+  color: var(--vx-grey-900);
+}
+
+.aixc-vx .vx-btn--secondary.vx-on-dark {
+  background: transparent;
+  border-color: var(--vx-white);
+  color: var(--vx-white);
+}
+
+.aixc-vx .vx-btn--text {
+  min-height: 32px;
+  padding: 0.25rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--vx-grey-900);
+  font-family: var(--vx-font-bold);
+  font-size: 0.9375rem;
+  text-decoration: underline;
+  text-decoration-color: var(--vx-red);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.aixc-vx .vx-btn--text:hover {
+  color: var(--vx-red);
+}
+
+.aixc-vx .vx-btn--text.vx-on-dark {
+  color: var(--vx-white);
+}
+
+.aixc-vx .vx-inert {
+  display: inline-block;
+  color: var(--vx-grey-700);
+  font-size: 0.875rem;
+}
+
+.aixc-vx .vx-inert.vx-on-dark {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.aixc-vx .vx-ext {
+  flex: none;
+  width: 0.95em;
+  height: 0.95em;
+  fill: currentColor;
+}
+
+/* Round icon button used for prev / next / pause controls. */
+.aixc-vx .vx-round {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+
+.aixc-vx .vx-round svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.aixc-vx .vx-round:hover:not(:disabled) {
+  background: var(--vx-red);
+  border-color: var(--vx-red);
+  color: var(--vx-white);
+}
+
+.aixc-vx .vx-round:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Stretched links: the title is the link when the source card was the link. */
+.aixc-vx .vx-has-story-link {
+  position: relative;
+}
+
+.aixc-vx .vx-story-link {
+  text-decoration: none;
+}
+
+.aixc-vx .vx-story-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.aixc-vx .vx-has-story-link:hover .vx-story-link {
+  text-decoration: underline;
+  text-decoration-color: var(--vx-red);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.15em;
+}
+
+.aixc-vx .vx-story-link:focus-visible {
+  outline: none;
+}
+
+.aixc-vx .vx-has-story-link:has(.vx-story-link:focus-visible) {
+  outline: 3px solid var(--vx-grey-900);
+  outline-offset: 3px;
+}
+
+/* -------------------------------------------------------------------- media */
+
+.aixc-vx .vx-media {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--vx-radius);
+  background: var(--vx-grey-200);
+}
+
+.aixc-vx .vx-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.aixc-vx .vx-media.is-contain {
+  background: var(--vx-white);
+}
+
+.aixc-vx .vx-media.is-contain img {
+  object-fit: contain;
+  padding: 8%;
+}
+
+.aixc-vx .vx-media.is-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--vx-red);
+}
+
+.aixc-vx .vx-media__fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.aixc-vx .vx-media__mark {
+  width: 36px;
+  height: 36px;
+}
+
+/* -------------------------------------------------------------------- cards */
+
+.aixc-vx .vx-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--vx-grey-300);
+  border-radius: var(--vx-radius);
+  background: var(--vx-white);
+}
+
+.aixc-vx .vx-card__media {
+  aspect-ratio: 7 / 3;
+  border-radius: 0;
+}
+
+.aixc-vx .vx-card__body {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  padding: 1rem;
+}
+
+.aixc-vx .vx-card__title {
+  color: var(--vx-grey-900);
+  font-family: var(--vx-font-bold);
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.aixc-vx .vx-card__desc {
+  color: var(--vx-grey-900);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.aixc-vx .vx-extras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+}
+
+.aixc-vx .vx-aside {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.aixc-vx .vx-aside img {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+
+.aixc-vx .vx-aside figcaption {
+  display: grid;
+  gap: 0.1rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.aixc-vx .vx-aside strong {
+  font-family: var(--vx-font-bold);
+  font-weight: normal;
+  font-size: 1rem;
+}
+
+.aixc-vx .vx-aside.vx-on-dark {
+  color: var(--vx-white);
+}
+
+/* ---------------------------------------------------------- closing band */
+
+.aixc-vx .vx-closing {
+  position: relative;
+  z-index: 2;
+  padding: clamp(2.5rem, 6vw, 4rem) 0;
+  background: var(--vx-red);
+  color: var(--vx-white);
+}
+
+.aixc-vx .vx-closing__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(2rem, 6vw, 60px);
+  align-items: center;
+  width: min(calc(100% - 2 * var(--vx-gutter)), 1140px);
+  margin: 0 auto;
+}
+
+.aixc-vx .vx-closing__title {
+  margin-bottom: 10px;
+  font-family: var(--vx-font-bold);
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.08;
+}
+
+.aixc-vx .vx-closing__lead {
+  margin-bottom: 18px;
+  font-family: var(--vx-font-bold);
+  font-size: 1.33rem;
+}
+
+.aixc-vx .vx-closing__desc {
+  margin-bottom: 24px;
+  font-size: 1.16rem;
+}
+
+.aixc-vx .vx-closing__stores-label {
+  margin-bottom: 12px;
+  font-family: var(--vx-font-bold);
+  font-size: 1.16rem;
+}
+
+.aixc-vx .vx-closing__stores ul {
+  display: flex;
+  gap: 10px;
+}
+
+.aixc-vx .vx-closing__stores a {
+  display: inline-flex;
+  border-radius: 12px;
+}
+
+.aixc-vx .vx-closing a:focus-visible {
+  outline-color: var(--vx-white);
+}
+
+.aixc-vx .vx-closing__store-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.aixc-vx .vx-closing__qr {
+  text-align: center;
+}
+
+.aixc-vx .vx-closing__qr figcaption {
+  margin-bottom: 18px;
+  font-family: var(--vx-font-bold);
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+/* The markup's 330×330 size attributes would otherwise keep a 330px height
+   against the CSS width and stretch the code. */
+.aixc-vx .vx-closing__qr img {
+  width: 200px;
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 1rem;
+}
+
+@media (max-width: 767px) {
+  .aixc-vx .vx-closing__inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .aixc-vx .vx-closing__qr {
+    text-align: start;
+  }
+
+  .aixc-vx .vx-closing__qr img {
+    width: 160px;
+    margin: 0;
+  }
+}

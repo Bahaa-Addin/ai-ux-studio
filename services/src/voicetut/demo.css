@@ -1,0 +1,32 @@
+/* VoiceTut experiment (?demo=voicetut, experiments/voicetut): the speech panel and the section
+   "Read this section" controls, in the clone's Vodafone tokens and faces. The panel is a tab in the
+   bottom-left corner; the right-hand column belongs to the guide's microphone, the accessibility
+   button and the Pocket, so even open the panel stops short of it. */
+.voicetut-demo { position:fixed; z-index:10000; left:18px; bottom:18px; width:min(430px,calc(100vw - 120px)); max-height:calc(100dvh - var(--vf-header-height, 76px) - 36px); overflow:auto; border:1px solid var(--vf-gray-300, #ccc); border-radius:var(--vf-radius, .5rem); background:var(--vf-white, #fff); color:var(--vf-gray-900, #333); box-shadow:var(--vf-shadow-card, 0 2px 8px rgba(0,0,0,.16)); font:14px/1.5 vodafone-regular-en, vf-regular, Arial, sans-serif; }
+.voicetut-demo:not([open]) { width:auto; }
+.voicetut-demo summary { padding:12px 16px; cursor:pointer; font:16px/1.4 vodafone-bold-en, vf-bold, Arial, sans-serif; color:var(--vf-black, #14141e); }
+.voicetut-demo form { padding:0 16px 16px; }
+.voicetut-demo p { margin:0 0 12px; color:var(--vf-gray-700, #666); }
+.voicetut-demo label { display:block; font-family:vodafone-bold-en, vf-bold, Arial, sans-serif; }
+.voicetut-demo textarea,.voicetut-demo select,.voicetut-demo input[type="url"] { box-sizing:border-box; width:100%; padding:8px; border:1px solid var(--vf-gray-600, #999); border-radius:var(--vf-button-radius, 6px); font:inherit; color:var(--vf-gray-900, #333); background:var(--vf-white, #fff); }
+.voicetut-demo textarea { resize:vertical; min-height:100px; }
+.voicetut-demo .vt-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0; }
+.voicetut-demo .vt-presets,.voicetut-demo .vt-actions { display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; }
+.voicetut-demo button { border:1px solid var(--vf-gray-300, #ccc); border-radius:var(--vf-button-radius, 6px); padding:7px 10px; font:inherit; background:var(--vf-gray-100, #f4f4f4); color:var(--vf-gray-900, #333); cursor:pointer; }
+.voicetut-demo #vt-generate { background:var(--vf-red, #e60000); border-color:var(--vf-red, #e60000); color:var(--vf-white, #fff); box-shadow:var(--vf-shadow-button, 0 3px 6px rgba(0,0,0,.1)); }
+.voicetut-demo button:disabled { opacity:.5; cursor:default; }
+.voicetut-demo .vt-check { display:flex; gap:8px; align-items:center; font-family:inherit; }
+.voicetut-demo small { display:block; color:var(--vf-gray-700, #666); font-size:12px; margin:8px 0; }
+.voicetut-demo output { display:block; padding:10px 0; overflow-wrap:anywhere; }
+.voicetut-demo audio { width:100%; }
+.voicetut-demo a { color:var(--vf-red-dark, #900); text-decoration:underline; }
+.voicetut-demo [hidden] { display:none; }
+.voicetut-demo :focus-visible { outline:3px solid #00b0ca; outline-offset:2px; }
+.vt-section-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin-top:16px; }
+.section-heading--center .vt-section-controls { justify-content:center; }
+.vt-section-read { min-height:44px; padding:9px 14px; border:1px solid var(--vf-red, #e60000); border-radius:var(--vf-button-radius, 6px); background:var(--vf-white, #fff); color:var(--vf-red, #e60000); font:14px/1.4 vodafone-bold-en, vf-bold, Arial, sans-serif; cursor:pointer; }
+.vt-section-read:hover:not(:disabled) { background:var(--vf-gray-100, #f4f4f4); }
+.vt-section-read:focus-visible { outline:3px solid #00b0ca; outline-offset:3px; }
+.vt-section-read:disabled { opacity:.55; cursor:wait; }
+.vt-section-status { max-width:55ch; color:var(--vf-gray-700, #666); font:14px/1.5 vodafone-regular-en, vf-regular, Arial, sans-serif; overflow-wrap:anywhere; }
+.vt-section-status:empty { display:none; }

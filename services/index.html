@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/ai-ux-studio/services/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A local recreation of the Vodafone Egypt services page with AI Experience Composer: pick a ready-made experience or describe one, and the same content is recomposed."
+    />
+    <title>Services | Vodafone Egypt Clone</title>
+    <!-- Voice Guide: this page shows the journey itself, in the pocket (voice-guide ADR-0040) -->
+    <meta name="vg-trail-host" content="pocket" />
+    <!-- Roboto 900 for the streaming wordmark (as in the original pen); falls back to a system sans offline -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@900&display=swap" />
+    <!-- Original page styles (protected shell + original view) -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/style.css" />
+    <!-- AIXC: composer UI, and the magazine experience (scoped under .aixc-magazine) -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/aixc.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/magazine.css" />
+    <!-- Ready-made template experiences (each scoped under .aixc-vx--<name>) -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/vodafone.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/spotlight.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/journey.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/gallery.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/flipbook.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/cube.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/streaming.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/split.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/fan.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/ring.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/tunnel.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/canvas.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/aixc/experiences/coverflow.css" />
+    <!-- Pocket: sticker peel, peeking corner and page turn (all .pocket- / .curl- prefixed) -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/pocket/pocket.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/pocket/journey.css" />
+    <!-- Pocket actors: the mascot behind the pocket button and in the album, and the drone (.pocket-actor-/-mascot-/-drone-) -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/pocket/pocket-actors.css" />
+    <!-- Pocket cursor: the light that follows the pointer on the Pocket page (.pocket-cursor/-light/-ripple) -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/pocket/pocket-cursor.css" />
+    <!-- Tips: the walkthrough's button and invitation; the collection's own styles load when it opens (.tips-) -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/tips/entry.css" />
+    <!-- RED world under the Pocket: the lip, the stage and the status widget (.pz-); its content's styles load on demand -->
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/personalization/extension.css" />
+    <link rel="stylesheet" href="/ai-ux-studio/services/src/personalization/status-widget.css" />
+  </head>
+  <body data-page="vodafone-services">
+    <div id="app"></div>
+    <script type="module" src="/ai-ux-studio/services/src/main.js"></script>
+    <!-- Official Page Agent quick-start demo, only with ?demo=page-agent or ?agentLang=ar.
+         Prompts and page content are processed by the upstream testing LLM. -->
+    <script type="module" src="/ai-ux-studio/services/src/page-agent-loader.js"></script>
+    <!-- VoiceTut experiment (read a section aloud), only with ?demo=voicetut. -->
+    <script type="module" src="/ai-ux-studio/services/src/voicetut-loader.js"></script>
+  </body>
+</html>

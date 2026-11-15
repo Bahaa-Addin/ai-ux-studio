@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140" data-asset="pocket-drone" data-rig-version="2">
+  <!--
+    Pocket drone decal sheet (rig v2). The hull, camera bucket, arms, motor pods, guard rings
+    and rotors are a 3D model (src/pocket/actors/drone-model.js) drawn as SVG every frame; this
+    sheet holds the flat details mapped onto it. Each [data-decal] is centred on its anchor.
+    After the IMG_2442 UPLIFT quadcopter: flat Vodafone red, white hull details.
+  -->
+
+  <!-- White hull details on the nose: sensor ring, lens, and the seam above the camera bucket. -->
+  <g data-decal="details" fill="none" stroke="#fff" stroke-linecap="round">
+    <circle data-part="sensor" cx="2" cy="-6" r="2.6" stroke-width="1.3"/>
+    <ellipse data-part="lens" cx="11" cy="1" rx="4.6" ry="3.4" fill="#fff" stroke="none"/>
+    <path data-part="seam" d="M-19 10C-7 5.5 7 4.5 19.5 6.5" stroke-width="1.4"/>
+  </g>
+
+  <!-- Hover lift lines, drawn under the drone while it holds its place. -->
+  <g data-decal="lift-lines" fill="none" stroke="#e60000" stroke-linecap="round">
+    <g data-part="lift-lines">
+      <path d="M-14 -6C-10 0 -2 4 6 4" stroke-width="2.2"/>
+      <path d="M-20 0C-15 8 -4 12 6 12" stroke-width="1.8"/>
+      <path d="M-24 7C-18 16 -6 20 5 20" stroke-width="1.4"/>
+    </g>
+  </g>
+</svg>
