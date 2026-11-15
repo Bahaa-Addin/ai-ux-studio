@@ -78,6 +78,13 @@ export class Router {
 
 export function clientIp(req: http.IncomingMessage, trustedHeader: string | undefined = process.env.VG_CLIENT_IP_HEADER?.toLowerCase()): string {
 	// Behind a public proxy only its own header counts: anyone can send X-Forwarded-For (ADR-0053 §2).
+	if (trustedHeader === 'x-forwarded-for') {
+		// Cloud Run's front end appends the caller's address as the last entry; a visitor can only write
+		// entries in front of it, so the last non-empty one is the key (ADR-0066 §2).
+		const v = req.headers['x-forwarded-for']
+		const last = typeof v === 'string' ? v.split(',').map((x) => x.trim()).filter(Boolean).at(-1) : undefined
+		return last || req.socket.remoteAddress || 'unknown'
+	}
 	if (trustedHeader) {
 		const v = req.headers[trustedHeader]
 		return (typeof v === 'string' && v.trim()) || req.socket.remoteAddress || 'unknown'

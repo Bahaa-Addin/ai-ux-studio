@@ -9,18 +9,19 @@ import { addAsked, allAsked, askedFrom, type AskOrigin, watchTurns } from './ask
 import { AttentionTracker } from './attention.ts'
 import { decideStep, type PendingTransition, type RouteSignal } from './boundaries.ts'
 import { TRAIL_CONFIG } from './config.ts'
-import { consentKey, notNow, parseConsent, recoverConsent, writeConsent } from './consent.ts'
+import { consentKey, forgetConsent, forgetNotNow, notNow, parseConsent, readConsent, recoverConsent, writeConsent } from './consent.ts'
 import { tt } from './i18n.ts'
 import { type CatalogEntry, selectTop } from './interest.ts'
 import { contributionBatch } from './aggregate.ts'
 import { canonicalPath, eligibility, optedOutPage, privateFieldsOnPage, recorderOptions, type SitePolicy } from './policy.ts'
 import type { Preview, PreviewOptions } from './replay.ts'
 import type { RecorderHandle } from './recorder.ts'
+import { checkSeed } from './seed.ts'
 import { Resolver } from './resolver.ts'
 import { type Effect, INITIAL, reduce, type TrailEvent, type TrailState } from './state.ts'
 import { CorruptChunk, decodeChunk, encodeEvents, planEviction, QuotaError, TrailStore } from './storage.ts'
 import { type ExploredItem, type I18n, type PageMap, type RawEvent, TRAIL_SCHEMA, type TrailSession, type TrailStepSummary } from './types.ts'
-import type { TrailHostApi, TrailHostSnapshot } from './host.ts'
+import type { SeedResult, TrailHostApi, TrailHostSnapshot } from './host.ts'
 import { TRAIL_CSS, TrailView, type ViewIntents } from './view.ts'
 
 /** What the trail needs from the guide (`packages/sdk/src/guide.ts`), and nothing more. */
@@ -45,6 +46,8 @@ export interface TrailSettings {
 	/** Same-origin folders a replay may copy files from despite a query or no extension (checked by type after fetching). */
 	replayAssetPaths?: string[]
 	aggregation: boolean
+	/** The site's demo kit (`experiences.demos.demoKit`): only then may a page seed or reset the journey (ADR-0050 §6). */
+	demoKit?: boolean
 }
 
 interface InflightChunk {
@@ -143,6 +146,7 @@ export class TrailController {
 	/** Gives the guide's `request` and `api.post` back (ADR-0050 §5). */
 	#unwatch: (() => void) | null = null
 	#subscribers = new Set<(s: TrailHostSnapshot) => void>()
+	#seeding = false
 
 	constructor(g: GuideLike, settings: TrailSettings) {
 		this.g = g
@@ -264,6 +268,14 @@ export class TrailController {
 				else if (c === 'paused' || c === 'declined') this.dispatch({ type: 'PAUSE' })
 				else if (c === 'granted' && this.state.rec === 'paused') void this.#openStore().then(() => this.dispatch({ type: 'RESUME', eligible: this.#eligible() }))
 			} else if (e.key === SS(this.siteKey, 'cleared')) void this.#forgetSession()
+			// A sample journey seeded in another tab: show it here too (ADR-0050 §6).
+			else if (e.key === SS(this.siteKey, 'seeded') && e.newValue && (this.state.consent === 'granted' || this.state.consent === 'paused'))
+				void this.#openStore().then(async (store) => {
+					const s = await store?.session(e.newValue!.split(' ')[0])
+					if (s && s.siteId === this.g.session.site.id && s.id !== this.session?.id) await this.#adopt(s)
+				})
+			// "Reset demo" in another tab, only once the consent really is gone (a forged key alone does nothing).
+			else if (e.key === SS(this.siteKey, 'reset') && readConsent(this.siteKey) === 'unset') this.#forget()
 		}, o)
 		// Leaving or hiding the page: write what is buffered without delaying the navigation.
 		addEventListener('pagehide', (e) => {
@@ -591,6 +603,8 @@ export class TrailController {
 			clear: () => i.clear(),
 			clearAll: () => i.clearAll(),
 			turnOff: () => i.turnOff(),
+			seed: (j) => this.#seed(j),
+			reset: () => this.#reset(),
 			t: (key, vars) => tt(key, this.g.lang, vars),
 		}
 	}
@@ -663,7 +677,7 @@ export class TrailController {
 		return s
 	}
 
-	async #nextStep(signal: RouteSignal, now: number, pending: (PendingTransition & { crossOrigin?: boolean; targetTitle?: I18n }) | null, navType?: string): Promise<void> {
+	async #nextStep(signal: RouteSignal, now: number, pending: (PendingTransition & { crossOrigin?: boolean; targetTitle?: I18n }) | null, navType?: string, fresh = false): Promise<void> {
 		const s = this.session
 		if (!s) return
 		const why = this.#eligibility()
@@ -689,7 +703,8 @@ export class TrailController {
 			this.#writeIndex(true)
 			return
 		}
-		const d = decideStep({ current: last?.type === 'page' ? last : undefined, path, signal, navType: navType as never, pending, now })
+		// After a sample journey, the page the person is on is always a step of its own (ADR-0050 §6).
+		const d = fresh ? ({ action: 'new', cause: { kind: 'direct' } } as const) : decideStep({ current: last?.type === 'page' ? last : undefined, path, signal, navType: navType as never, pending, now })
 		if (d.action === 'continue' && last?.type === 'page') {
 			this.step = last
 		} else if (d.action === 'replace' && last?.type === 'page') {
@@ -1039,6 +1054,99 @@ export class TrailController {
 		ssSet(SS(this.siteKey, 'session'), null)
 		if (this.state.rec === 'recording') await this.#enterPage('load')
 		this.#render()
+	}
+
+	// ---- the demo kit (ADR-0050 §6): a sample journey, and "Reset demo" ----
+
+	/**
+	 * Replaces the current journey with a checked sample (seed.ts), only with all four: the session's demo kit,
+	 * consent granted, a press on the page right now, a page the trail records. Never throws to the page.
+	 */
+	async #seed(j: unknown): Promise<SeedResult> {
+		const store = this.store
+		const why = this.settings.demoKit !== true ? 'not-a-demo' : this.state.consent !== 'granted' ? 'no-consent' : (navigator as any).userActivation?.isActive !== true ? 'no-press' : !this.#eligible() ? 'not-here' : !store ? 'failed' : this.#seeding ? 'busy' : ''
+		if (why) return { ok: false, reason: why }
+		this.#seeding = true
+		try {
+			const r = await checkSeed(j, { now: Date.now(), origin: location.origin, siteId: this.g.session.site.id, kbVersionId: this.map?.kbVersionId || undefined, retentionHours: this.settings.retentionHours, recordingState: this.state.rec === 'recording' ? 'recording' : 'stopped', id: rid })
+			if (!r.ok) return r
+			const s = r.session
+			try {
+				for (const c of r.chunks) {
+					const st = s.steps.find((x) => x.id === c.stepId)!
+					const enc = await encodeEvents(c.events)
+					if (enc.enc === 'json') enc.bytes = (enc.data as string).length * 2
+					await store!.putChunk({ id: `${st.id}:0`, sessionId: s.id, stepId: st.id, seq: 0, t0: c.events[0].timestamp, t1: c.events.at(-1)!.timestamp, ...enc })
+					st.replay = 'ok'
+					st.bytes = enc.bytes
+					s.bytes += enc.bytes
+				}
+				await store!.putSession(s)
+				// Consent may have changed while the sample was being written.
+				if (this.state.consent !== 'granted') throw new Error('consent changed')
+			} catch {
+				await store!.deleteSession(s.id).catch(() => {})
+				return { ok: false, reason: this.state.consent !== 'granted' ? 'no-consent' : 'failed' }
+			}
+			const old = this.session
+			await this.#adopt(s)
+			if (old && old.id !== s.id) await store!.deleteSession(old.id).catch(() => {})
+			try {
+				localStorage.setItem(SS(this.siteKey, 'seeded'), `${s.id} ${Date.now()}`)
+			} catch {}
+			return { ok: true }
+		} catch (e) {
+			console.warn('[voice-guide] trail seed', e)
+			return { ok: false, reason: 'failed' }
+		} finally {
+			this.#seeding = false
+		}
+	}
+
+	/** Shows a journey from the store as the current one; the page the person is on becomes a new step after it. */
+	async #adopt(s: TrailSession): Promise<void> {
+		this.#buffer = []
+		this.#bufferBytes = 0
+		this.#inflight.clear()
+		for (const k of ['spill', 'pending', 'last']) ssSet(SS(this.siteKey, k), null)
+		ssSet(SS(this.siteKey, 'session'), s.id)
+		this.session = s
+		this.step = null
+		this.#destroyPreview()
+		if (this.state.view !== 'expanded') this.state = { ...this.state, selectedStepId: null }
+		await this.#writing
+		await this.#nextStep('load', Date.now(), null, undefined, true)
+		if (this.state.view === 'expanded') await this.#openSheet()
+		this.#render()
+	}
+
+	/** "Reset demo": every journey and both consent copies removed, the recorder stopped, the offer shown; other tabs follow. */
+	async #reset(): Promise<SeedResult> {
+		if (this.settings.demoKit !== true) return { ok: false, reason: 'not-a-demo' }
+		try {
+			this.#forget()
+			await forgetConsent(this.siteKey)
+			try {
+				localStorage.setItem(SS(this.siteKey, 'reset'), String(Date.now()))
+			} catch {}
+			await this.#clear(true)
+			return { ok: true }
+		} catch (e) {
+			console.warn('[voice-guide] trail reset', e)
+			return { ok: false, reason: 'failed' }
+		}
+	}
+
+	/** This tab's side of a reset: nothing buffered is written, no journey, no choice. Touches no storage but this tab's own. */
+	#forget(): void {
+		this.#buffer = []
+		this.#bufferBytes = 0
+		this.#inflight.clear()
+		this.session = null
+		this.step = null
+		for (const k of ['session', 'spill', 'pending', 'last']) ssSet(SS(this.siteKey, k), null)
+		forgetNotNow(this.siteKey)
+		this.dispatch({ type: 'RESET' })
 	}
 
 	// ---- the timeline ----

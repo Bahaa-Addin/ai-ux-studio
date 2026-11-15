@@ -26,8 +26,12 @@ test('guide.js stays within 21 KB gzipped; on-demand parts are separate files', 
 	assert.doesNotMatch(src, /\.turns \.turn|class XrayModel|pushManager\.subscribe/, 'X-ray and push code are not in the main script')
 })
 
-/** Exploration Trail budgets (ADR-0035), measured 2026-11-03 and set a little above. */
-const TRAIL_BUDGETS: Record<string, number> = { 'trail.js': 30 * 1024, 'trail-record.js': 26 * 1024, 'trail-replay.js': 72 * 1024 }
+/**
+ * Exploration Trail budgets (ADR-0035), measured 2026-11-03 and set a little above. trail.js raised on purpose
+ * on 2026-11-15 (S15, ADR-0050 §6): the demo kit's seed() and reset(), with the strict check of a sample
+ * journey, took it from 29,743 to 32,061 B; the budget is that rounded up to a quarter KB.
+ */
+const TRAIL_BUDGETS: Record<string, number> = { 'trail.js': 31.5 * 1024, 'trail-record.js': 26 * 1024, 'trail-replay.js': 72 * 1024 }
 
 test('the trail adds only a gate to guide.js; rrweb lives in its own on-demand chunks', async () => {
 	await buildSdk({ minify: true })

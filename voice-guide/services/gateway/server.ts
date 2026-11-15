@@ -26,7 +26,7 @@ const AGENT_TOKEN_TTL_SEC = 30 * 60
 /** What the SDK needs to run the trail (SPEC-06): never anything about a person. */
 function trailSettings(site: SiteConfig, aggregationApproved: boolean) {
 	const t = site.trail
-	return { enabled: t.enabled, retentionHours: t.retentionHours, excludePaths: t.excludePaths, privateSelectors: t.privateSelectors, topOffset: t.topOffset, replayAssetPaths: t.replayAssetPaths, aggregation: t.enabled && t.aggregation.enabled && aggregationApproved }
+	return { enabled: t.enabled, retentionHours: t.retentionHours, excludePaths: t.excludePaths, privateSelectors: t.privateSelectors, topOffset: t.topOffset, replayAssetPaths: t.replayAssetPaths, aggregation: t.enabled && t.aggregation.enabled && aggregationApproved, demoKit: site.experiences.demos.demoKit }
 }
 
 /** A trail chip's metadata (ADR-0038), or nothing: strict shape, short ids, one known source. */

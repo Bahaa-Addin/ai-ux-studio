@@ -54,3 +54,15 @@ test("behind a trusted proxy only its header names the client; X-Forwarded-For c
 	const none = { headers: { 'x-forwarded-for': '1.1.1.1' }, socket: { remoteAddress: '10.0.0.1' } } as unknown as http.IncomingMessage
 	assert.equal(clientIp(none, 'fly-client-ip'), '10.0.0.1')
 })
+
+test('on Cloud Run X-Forwarded-For counts from its last entry, the one the platform added; a forged prefix changes nothing', () => {
+	const at = (xff: string | undefined) => ({ headers: xff === undefined ? {} : { 'x-forwarded-for': xff }, socket: { remoteAddress: '10.0.0.1' } }) as unknown as http.IncomingMessage
+	assert.equal(clientIp(at('6.6.6.6, 7.7.7.7, 203.0.113.9'), 'x-forwarded-for'), '203.0.113.9')
+	assert.equal(clientIp(at('1.2.3.4, 203.0.113.9'), 'x-forwarded-for'), clientIp(at('198.51.100.7,5.5.5.5, 203.0.113.9'), 'x-forwarded-for'), 'two forged prefixes, one key')
+	assert.equal(clientIp(at('203.0.113.9'), 'x-forwarded-for'), '203.0.113.9')
+	assert.equal(clientIp(at('  6.6.6.6 ,  203.0.113.9  '), 'x-forwarded-for'), '203.0.113.9', 'spaces trimmed')
+	assert.equal(clientIp(at('6.6.6.6, 203.0.113.9, '), 'x-forwarded-for'), '203.0.113.9', 'the last non-empty entry')
+	assert.equal(clientIp(at(undefined), 'x-forwarded-for'), '10.0.0.1', 'missing header: the socket')
+	assert.equal(clientIp(at('   '), 'x-forwarded-for'), '10.0.0.1', 'blank header: the socket')
+	assert.equal(clientIp(at(' , '), 'x-forwarded-for'), '10.0.0.1', 'only empty entries: the socket')
+})

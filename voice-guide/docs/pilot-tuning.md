@@ -197,7 +197,7 @@ from trace_events where name = 'agent.llm' group by 1 order by 3 desc limit 20;
 |---|---|---|
 | `VG_PUBLIC` | off | `on`: a gateway for the internet; refuses unsafe settings at start, page watch off, X-ray hidden |
 | `VG_PUBLIC_XRAY` | `off` | X-ray in public sessions: `button` or `open` for a supervised session |
-| `VG_CLIENT_IP_HEADER` | unset | The proxy's client-address header for rate limits (Fly: `fly-client-ip`); required in public |
+| `VG_CLIENT_IP_HEADER` | unset | The proxy's client-address header for rate limits (Cloud Run: `x-forwarded-for`, read from its last entry, ADR-0066; Fly: `fly-client-ip`); required in public |
 | `VG_TRAIL` | off | `on`: the Exploration Trail for this gateway's sites (consent still asked) |
 | `VG_KB_SEED` | unset | `committed`: activate `config/kb/<site>.manifest.json` at start when none is active (automatic for a public memory-store gateway) |
 | `VG_LLM_PROVIDER` | `openai` | `anthropic`: Claude through Anthropic's SDK for the agent |

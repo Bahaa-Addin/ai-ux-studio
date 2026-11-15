@@ -1,6 +1,7 @@
 # ADR-0053: A public gateway and one shared loader, so the demo runs outside the demo browser
 
 - Status: Proposed (built 2026-11-13; accepted when the extension runs against a deployed gateway)
+- Amended: 2026-11-15 by [ADR-0066](0066-public-gateway-on-cloud-run.md) (§2, §3: the gateway runs on Google Cloud Run, not Fly.io; the visitor's address is X-Forwarded-For's last entry)
 - Date: 2026-11-13
 - Area: deployment, loader, privacy, cost; follows ADR-0026 (carriers), ADR-0031 (routed gateway), ADR-0042, ADR-0047, ADR-0048
 - Owner decision: 2026-11-13, "Extension + shared groundwork" as the first public route (`/mnt/project-files/plans/public-demo-deployment-options.md` §4 and option B)

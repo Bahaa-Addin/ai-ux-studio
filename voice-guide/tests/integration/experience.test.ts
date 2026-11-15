@@ -41,7 +41,7 @@ async function call(base: string, path: string, body?: unknown, headers: Record<
 
 test('the session tells the SDK the trail is on and aggregation is off; nothing about the person', async () => {
 	const s = (await call(p.url, '/v1/session', { lang: 'en', page: { url: `${ORIGIN}/en/offers.html` } })).body
-	assert.deepEqual(s.site.trail, { enabled: true, retentionHours: 24, excludePaths: [], privateSelectors: [], replayAssetPaths: [], aggregation: false })
+	assert.deepEqual(s.site.trail, { enabled: true, retentionHours: 24, excludePaths: [], privateSelectors: [], replayAssetPaths: [], aggregation: false, demoKit: true })
 })
 
 test('the page map: this page\'s destinations with targets and verified questions, the site\'s pages and paths', async () => {

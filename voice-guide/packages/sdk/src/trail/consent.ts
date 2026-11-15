@@ -64,16 +64,17 @@ function openCopy(create: boolean): Promise<IDBDatabase | null> {
 	})
 }
 
-/** Writes in the order they were made: the last choice is the one kept. */
+/** Writes (and removals) in the order they were made: the last choice is the one kept. A removal never creates the database. */
 let kept: Promise<void> = Promise.resolve()
-const keepCopy = (siteKey: string, record: ConsentRecord): Promise<void> =>
+const keepCopy = (siteKey: string, record: ConsentRecord | null): Promise<void> =>
 	(kept = kept.then(async () => {
-		const db = await openCopy(true)
+		const db = await openCopy(!!record)
 		if (!db) return
 		await new Promise<void>((done) => {
 			try {
 				const t = db.transaction('c', 'readwrite')
-				t.objectStore('c').put({ k: siteKey, ...record })
+				if (record) t.objectStore('c').put({ k: siteKey, ...record })
+				else t.objectStore('c').delete(siteKey)
 				t.oncomplete = t.onerror = t.onabort = () => done()
 			} catch {
 				done()
@@ -81,6 +82,24 @@ const keepCopy = (siteKey: string, record: ConsentRecord): Promise<void> =>
 		})
 		db.close()
 	}))
+
+/**
+ * "Reset demo" (ADR-0050 §6, §8): no choice at all, in both copies, and "Not now" forgotten in this tab, so
+ * the offer shows again. Only the trail's own keys.
+ */
+export function forgetConsent(siteKey: string): Promise<void> {
+	try {
+		localStorage.removeItem(consentKey(siteKey))
+	} catch {}
+	forgetNotNow(siteKey)
+	return keepCopy(siteKey, null)
+}
+
+export function forgetNotNow(siteKey: string): void {
+	try {
+		sessionStorage.removeItem(dismissKey(siteKey))
+	} catch {}
+}
 
 /**
  * The choice, with the copy as the second place to look: when `localStorage` has none (the theme cleared

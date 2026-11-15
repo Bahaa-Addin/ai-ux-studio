@@ -1,7 +1,7 @@
 # The public gateway (ADR-0053). Build from the repository root, because the SDK build bundles the
 # experience layer from ../experiences:
 #   docker build -f voice-guide/deploy/gateway/gateway.Dockerfile -t vg-gateway .
-# Fly.io: fly deploy --config voice-guide/deploy/gateway/fly.toml (from the repository root).
+# Google Cloud Run (ADR-0066): npm run deploy:cloudrun -- --project <id> (from voice-guide/; runbook §3c).
 
 FROM node:22.18.0-bookworm-slim AS build
 WORKDIR /app

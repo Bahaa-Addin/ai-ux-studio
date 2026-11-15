@@ -52,6 +52,7 @@ export type TrailEvent =
 	| { type: 'GUIDE_IDLE' }
 	| { type: 'CLEARED'; all: boolean }
 	| { type: 'TEARDOWN' }
+	| { type: 'RESET' }
 
 export type Effect = 'startRecorder' | 'stopRecorder' | 'destroyReplayer' | 'loadPreview' | 'clearCurrent' | 'clearAll' | 'focusPill' | 'submitQuestion'
 
@@ -71,6 +72,10 @@ export function reduce(s: TrailState, e: TrailEvent): { state: TrailState; effec
 		case 'TURN_OFF':
 			fx.push('stopRecorder', 'destroyReplayer', 'clearAll')
 			return out({ ...stopPreview(s), rec: 'disabled', consent: 'off', view: 'collapsed', consentCard: false, selectedStepId: null })
+		// "Reset demo" (ADR-0050 §6): no choice, no journey, the offer again. The controller removes the data.
+		case 'RESET':
+			fx.push('stopRecorder', 'destroyReplayer')
+			return out({ ...INITIAL, rec: 'awaiting-consent' })
 		case 'ROUTE': {
 			if (s.rec === 'recording' && !e.eligible) {
 				fx.push('stopRecorder')

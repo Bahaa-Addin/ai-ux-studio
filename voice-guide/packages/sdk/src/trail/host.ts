@@ -19,11 +19,37 @@
  *   the visit's steps, each with its `stepId`; present only while there is a journey, consent granted
  *   or paused), `askAbout(destinationId, questionId?)` and `questionsFor(destinationId)`. Never the
  *   words said or typed, never the answer. `snapshot().steps` keep the version 1 shape (no `asked`).
+ * - 2, part 3 (ADR-0050 §6, S15): `seed(journey)` and `reset()`, for the demo kit only (the session's
+ *   `site.trail.demoKit`). `seed` replaces the current journey with a sample one (`SeedJourney`) only with
+ *   consent granted, right after a press on the page and on a page the trail records; `reset` removes every
+ *   journey and both copies of the consent ("Reset demo"). Both resolve to `{ ok }` or `{ ok: false, reason }`.
  * - 1 (ADR-0040): the first contract, for a page that declares itself with the meta.
  */
 import type { TrailKey } from './i18n.ts'
 import type { ActionState, Consent, PreviewState, RecState } from './state.ts'
-import type { AskedQuestion, ExploredItem, TrailStepSummary } from './types.ts'
+import type { AskedQuestion, ExploredItem, TrailSession, TrailStepSummary } from './types.ts'
+
+/**
+ * A sample journey for the demo kit (version 2, S15): the trail's own stored data, as an export of it gives.
+ * `session` is a journey's index as stored (`vg-trail/v1`); `chunks` holds, for a page step's id, its
+ * replay: the JSON text of the step's recorded events (the `data` of a stored `json` chunk, or a `gzip`
+ * one decompressed; a step's chunks joined in order), at most 256 KB. A step without one has no preview.
+ * Ids are never kept (the seeded journey gets new ones) and its times are moved to end now.
+ */
+export interface SeedJourney {
+	v: 1
+	session: TrailSession
+	chunks?: Record<string, string>
+}
+
+/**
+ * Why a seed or reset was refused: not a demo (`site.trail.demoKit` off), no consent granted, no press just
+ * before the call (or no `navigator.userActivation`), not a page the trail records, another seed under way,
+ * a malformed or unknown shape, a version other than 1, over a limit (steps, asked questions, string or
+ * replay sizes), longer than the 30-minute journey limit, or storage failed.
+ */
+export type SeedReason = 'not-a-demo' | 'no-consent' | 'no-press' | 'not-here' | 'busy' | 'invalid' | 'version' | 'too-big' | 'too-long' | 'failed'
+export type SeedResult = { ok: true } | { ok: false; reason: SeedReason }
 
 export interface TrailHostSnapshot {
 	consent: Consent
@@ -90,6 +116,15 @@ export interface TrailHostApi {
 	clear(): void
 	clearAll(): void
 	turnOff(): void
+	/**
+	 * Version 2, demo kit only: replaces the current journey (it is deleted) with a sample one. Only with
+	 * consent granted, during a press on the page (`navigator.userActivation.isActive`), with the session's
+	 * `demoKit` and on a page the trail records. Consent and recording are unchanged: the page the person is
+	 * on becomes a new step after the sample. Local only; other tabs show it too. Never throws.
+	 */
+	seed(journey: SeedJourney): Promise<SeedResult>
+	/** Version 2, demo kit only ("Reset demo"): every journey removed, consent back to unset in both copies, the offer shown again; other tabs follow. */
+	reset(): Promise<SeedResult>
 	/** The trail's localized words, so the host never hardcodes copy. */
 	t(key: TrailKey, vars?: Record<string, string | number>): string
 }
