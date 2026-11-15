@@ -35,6 +35,7 @@
   .links .btn { padding:8px 16px; font-size:14px; }
   video { width:100%; border-radius:12px; border:1px solid var(--line); background:#000; }
   .note { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--red); border-radius:12px; padding:14px 18px; margin:28px 0 0; color:var(--muted); font-size:14px; }
+  .shots { margin:0; } .shots img { width:100%; border-radius:10px; border:1px solid var(--line); display:block; } .shots figcaption { font-size:13px; color:var(--muted); margin-top:4px; }
   footer { color:var(--muted); font-size:13px; padding:0 0 32px; }
 </style>
 </head>
@@ -56,7 +57,9 @@
       <h3><span class="num">1</span> Voice guide</h3>
       <span class="tag rec">Recorded walkthrough</span>
       <p>Ask by voice or text, in English or Egyptian Arabic. The guide takes you to the answer on the page: it navigates, opens tabs, spotlights the right card and reads live values.</p>
-      <!--VIDEO:guide-->
+      <figure class="shots"><img src="media/04-voice-bundles.jpg" alt="Asked for the cheapest internet bundle, the guide opens the bundles page and spotlights the 1400 Mega card" loading="lazy"><figcaption>"What's the cheapest internet bundle?" The guide opens the bundles page and spotlights the answer.</figcaption></figure>
+      <figure class="shots"><img src="media/05-voice-cash.jpg" alt="The guide panel after taking the visitor to Vodafone Cash" loading="lazy"><figcaption>"Tell me about Vodafone Cash." It takes you there and keeps the conversation.</figcaption></figure>
+      <div class="links"><a class="btn red" href="#walkthrough">Watch the walkthrough</a><a class="btn outline" href="#walkthrough-ar">بالعربي</a></div>
     </section>
     <section class="card">
       <h3><span class="num">2</span> Pocket</h3>
@@ -76,7 +79,9 @@
       <h3><span class="num">4</span> Exploration Trail ("Your journey")</h3>
       <span class="tag rec">Recorded walkthrough</span>
       <p>With the visitor's consent, the guide records their journey on the device only. A timeline in the Pocket lets them scrub back through it, see what they explored most, and ask a follow-up.</p>
-      <!--VIDEO:trail-->
+      <figure class="shots"><img src="media/02-consent.jpg" alt="Consent card: Remember my journey on this device" loading="lazy"><figcaption>Consent first: what is saved, what never is, and that it stays on the device.</figcaption></figure>
+      <figure class="shots"><img src="media/09-journey.jpg" alt="Your journey timeline in the Pocket with page memories" loading="lazy"><figcaption>The journey in the Pocket: a timeline you can scrub, with what you explored and a question chip.</figcaption></figure>
+      <div class="links"><a class="btn red" href="#walkthrough">Watch the walkthrough</a></div>
     </section>
     <section class="card">
       <h3><span class="num">5</span> Your RED world</h3>
@@ -92,9 +97,15 @@
       <div class="links"><a class="btn red" href="services/">Open the page</a></div>
     </section>
   </div>
-  <!--VIDEO:extra-->
+  <section id="walkthrough" style="margin-top:32px">
+    <h2>Full walkthrough (recorded from this build)</h2>
+    <p style="color:var(--muted);margin:-6px 0 14px">Journey consent, two spoken questions, the Services page where the demos meet, the Pocket and its journey, a question chip, then Reimagine (magazine, then tunnel). Recorded headless, so it has no sound; the guide's replies appear as text.</p>
+    <video controls preload="metadata" playsinline poster="media/04-voice-bundles.jpg" src="media/walkthrough-en.mp4"></video>
+    <h2 id="walkthrough-ar" style="margin-top:28px">The same walkthrough in Egyptian Arabic</h2>
+    <video controls preload="metadata" playsinline poster="media/ar-04-voice-bundles.jpg" src="media/walkthrough-ar.mp4"></video>
+  </section>
   <p class="note">This is a static preview. Pocket, Reimagine, Your RED world and Tips run live in your browser. The voice guide and the journey need the guide's voice server, which this static host can't run, so they're shown as recordings of the same build. Reimagine uses its ready-made experiences here, because no AI key is published with this page.</p>
 </main>
-<footer class="wrap">Prototype for internal review. Not affiliated with or published by Vodafone Egypt. Build: feature/live-way2 @ 16f7543</footer>
+<footer class="wrap">Prototype for internal review. Not affiliated with or published by Vodafone Egypt. Build: feature/live-way2 @ 16f7543, 15 Nov 2026</footer>
 </body>
 </html>
