@@ -247,6 +247,20 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 }
 
 /** Serves the allowed origins from a crawl folder; a page the folder does not have opens from the internet, unsaved by the trail. */
+/**
+ * Saved pages are script-free, so Vodafone's lazy loader never runs and most pictures (112 of 151
+ * <img> in the committed replay) keep only `data-src`. Give such an image its `src` (and `srcset`),
+ * so the picture is fetched like any other the replay did not save.
+ */
+export function showLazyImages(html: string): string {
+	return html.replace(/<img\b[^>]*>/gi, (tag) => {
+		let out = tag
+		if (!/\ssrc\s*=/i.test(out)) out = out.replace(/\sdata-src(\s*=)/i, ' src$1')
+		if (!/\ssrcset\s*=/i.test(out)) out = out.replace(/\sdata-srcset(\s*=)/i, ' srcset$1')
+		return out
+	})
+}
+
 async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string; pages?: Record<string, string> }, liveUnsaved = false, offline?: { onNetwork: (url: string, type: string) => void }): Promise<void> {
 	const crawl = loadCrawl(dir)
 	const html = new Map<string, string>()
@@ -338,7 +352,7 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 			const file = html.get(norm(url.toString()))
 			if (file) {
 				live.delete(bare(url.toString()))
-				return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: read(file) })
+				return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: showLazyImages(read(file).toString('utf8')) })
 			}
 			return openLive(route, url)
 		}
