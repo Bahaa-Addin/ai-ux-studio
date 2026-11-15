@@ -4,7 +4,7 @@
  * code the demo browser injects) at document_start in the page's own world on the site's origins,
  * pointed at a public gateway (ADR-0053).
  *
- *   npm run extension:build -- --gateway https://vg-public-demo-<project-number>.europe-west1.run.app [--site vodafone-eg] [--out extension/dist]
+ *   npm run extension:build -- --gateway https://vg-public-demo.onrender.com [--site vodafone-eg] [--out extension/dist]
  *
  * Then zip each folder's contents for the store: cd extension/dist/chrome && zip -r ../chrome.zip .
  * No keys or secrets go into the extension: the site key is public (it only names the site).

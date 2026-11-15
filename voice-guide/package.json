@@ -40,7 +40,7 @@
     "experience": "node jobs/experience.ts",
     "speech:warm": "node tools/speech-warm.ts",
     "extension:build": "node tools/extension/build.ts",
-    "deploy:cloudrun": "node tools/deploy-cloudrun.ts"
+    "gateway:check": "node tools/check-public-gateway.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.2.0",

@@ -1,0 +1,87 @@
+# Render Blueprint for the public gateway (ADR-0067; runbook §3c): one free web service built from
+# voice-guide/deploy/gateway/gateway.Dockerfile and one free Render Postgres database. Render reads
+# this file from the repository root when a Blueprint is created from the repository.
+# Secrets are entered in Render's dashboard, never here: VG_SECRET and VG_ADMIN_TOKEN are generated
+# by Render once; the others are asked for when the Blueprint is created (sync: false).
+# Checked by voice-guide/tests/unit/render-blueprint.test.ts; after a deploy run
+# `npm run gateway:check -- https://vg-public-demo.onrender.com` from voice-guide/.
+
+services:
+  - type: web
+    name: vg-public-demo
+    runtime: docker
+    plan: free
+    # Render's region nearest Egypt; fixed once the service is created.
+    region: frankfurt
+    branch: feature/live-way2
+    dockerfilePath: ./voice-guide/deploy/gateway/gateway.Dockerfile
+    # The repository root: the image bundles ../experiences with the SDK.
+    dockerContext: .
+    healthCheckPath: /health
+    # Deploy by hand: the branch gets many commits, builds are 500 minutes a month, and an untested
+    # commit should not go live by itself. Quoted: in YAML 1.1 a bare off is the boolean false.
+    autoDeployTrigger: 'off'
+    envVars:
+      # The port the image's gateway listens on (VG_PORT in the Dockerfile).
+      - key: PORT
+        value: '8080'
+      - key: VG_STORE
+        value: postgres
+      # Activates the committed knowledge base in an empty database.
+      - key: VG_KB_SEED
+        value: committed
+      # Cloudflare in front of Render sets CF-Connecting-IP to the visitor's address; Render's proxy
+      # keeps whatever the caller sent in X-Forwarded-For (ADR-0067).
+      - key: VG_CLIENT_IP_HEADER
+        value: cf-connecting-ip
+      - key: VG_PUBLIC
+        value: 'on'
+      - key: VG_TRAIL
+        value: 'on'
+      - key: VG_LLM_PROVIDER
+        value: anthropic
+      - key: VG_LLM_EFFORT
+        value: low
+      - key: VG_AGENT_TOKENS_PER_SITE_DAY
+        value: '3000000'
+      # VoiceTut for public visitors, capped per day (owner, 2026-11-13; ADR-0053 §5).
+      - key: VG_VOICETUT_SENTENCES_PER_DAY
+        value: '300'
+      - key: VG_STT_SECONDS_PER_DAY
+        value: '14400'
+      - key: VG_RATE_TURNS_PER_MIN
+        value: '20'
+      # A 0.1-CPU database: a small pool.
+      - key: VG_DB_POOL_MAX
+        value: '5'
+      - key: DATABASE_URL
+        fromDatabase:
+          name: vg-public-db
+          property: connectionString
+      - key: VG_SECRET
+        generateValue: true
+      - key: VG_ADMIN_TOKEN
+        generateValue: true
+      # Asked for once, when the Blueprint is created. Left empty, the gateway treats them as unset.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # The speech-to-text fallback on Modal (ADR-0055): both or neither.
+      - key: VG_WHISPER_URL
+        sync: false
+      - key: VG_WHISPER_TOKEN
+        sync: false
+      # VoiceTut on Modal (ADR-0047).
+      - key: VG_VOICETUT_URL
+        sync: false
+      # No VG_PUBLIC_URL: the gateway takes RENDER_EXTERNAL_URL, which Render sets (ADR-0067).
+
+databases:
+  # Free Render Postgres expires 30 days after creation and is deleted 14 days later (runbook §3c).
+  - name: vg-public-db
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: '16'
+    databaseName: voiceguide
+    user: voiceguide
+    # Only Render's private network (the gateway); nobody on the internet.
+    ipAllowList: []

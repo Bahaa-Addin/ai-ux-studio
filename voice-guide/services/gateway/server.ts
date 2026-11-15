@@ -12,7 +12,7 @@ import { InterestContributionBatch } from '#kb'
 import type { Services } from '../index.ts'
 import type { SiteConfig } from '../shared/config.ts'
 import { agentModelConfigured, ROOT } from '../shared/config.ts'
-import { clientIp as clientIpOf, HttpError, readBody, readJson, Router, sendJson } from '../shared/http.ts'
+import { clientIp as clientIpOf, clientKeyFingerprint, HttpError, PROCESS_BOOT_ID, readBody, readJson, Router, sendJson, trustedHeaderPresent } from '../shared/http.ts'
 import { newId, signToken, verifyToken } from '../shared/ids.ts'
 import { log } from '../shared/log.ts'
 import type { RpcContext } from '../shared/rpc.ts'
@@ -122,8 +122,14 @@ export function createGateway(opts: GatewayOptions) {
 		res.end(fs.readFileSync(file))
 	})
 
-	router.on('GET', '/health', async (_req, res) => {
-		sendJson(res, 200, { ok: true, store: s.store.kind, services: platform.services, sites: [...s.sites.keys()], agent: s.local.agent.status() })
+	router.on('GET', '/health', async (req, res) => {
+		// Whether the trusted client-address header reached us, and a salted fingerprint of the caller's rate-limit
+		// key, never the address: without the header clientIp falls back to the proxy's socket and every visitor
+		// shares one rate limit; two fingerprints from two networks, under one boot id, show keys are the visitors' own
+		// (ADR-0067; gateway:check).
+		const clientHeader = trustedHeaderPresent(req, platform.clientIpHeader)
+		const clientKey = clientKeyFingerprint(clientIp(req))
+		sendJson(res, 200, { ok: true, store: s.store.kind, services: platform.services, sites: [...s.sites.keys()], agent: s.local.agent.status(), clientHeader, clientKey, boot: PROCESS_BOOT_ID })
 	})
 	router.on('GET', '/metrics', async (_req, res) => sendJson(res, 200, metrics.snapshot()))
 

@@ -1,6 +1,6 @@
 # ADR-0066: The public gateway runs on Google Cloud Run, not Fly.io, and the visitor's address is the last entry of X-Forwarded-For
 
-- Status: Proposed (2026-11-15; accepted when the first deploy passes the runbook's checks, the forged-address check included)
+- Status: Superseded by [ADR-0067](0067-public-gateway-on-render.md) (2026-11-15: the owner chose Render's free plan; nothing was deployed on Cloud Run)
 - Date: 2026-11-15
 - Area: deployment, privacy, cost; amends ADR-0053 §2 (the client address) and §3 (packaging); follows ADR-0055 (Whisper on Modal) and ADR-0047 (VoiceTut)
 - Owner decision: 2026-11-15, after comparing costs, "Ok Let's use Modal and Cloud Run instead"

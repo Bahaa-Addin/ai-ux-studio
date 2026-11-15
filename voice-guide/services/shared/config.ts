@@ -27,7 +27,7 @@ export interface PlatformConfig {
 	public: boolean
 	/** X-ray in a public gateway's sessions: off unless VG_PUBLIC_XRAY=button|open. */
 	publicXray: 'off' | 'button' | 'open'
-	/** The header a trusted proxy puts the visitor's address in (Cloud Run: x-forwarded-for, read from its last entry; Fly: fly-client-ip). Unset: X-Forwarded-For's first entry, then the socket. */
+	/** The header a trusted proxy puts the visitor's address in (Render: cf-connecting-ip, Cloudflare's, set to the visitor's address; Cloud Run: x-forwarded-for, read from its last entry; Fly: fly-client-ip). Unset: X-Forwarded-For's first entry, then the socket. */
 	clientIpHeader?: string
 	store: 'postgres' | 'memory'
 	databaseUrl: string
@@ -69,7 +69,8 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv = process.env): Platfo
 	const port = num(env.VG_PORT, 4400)
 	return {
 		port,
-		publicUrl: env.VG_PUBLIC_URL || `http://localhost:${port}`,
+		// Render sets RENDER_EXTERNAL_URL to the service's https://<name>.onrender.com address (ADR-0067).
+		publicUrl: env.VG_PUBLIC_URL || env.RENDER_EXTERNAL_URL || `http://localhost:${port}`,
 		public: env.VG_PUBLIC === 'on',
 		publicXray: env.VG_PUBLIC_XRAY === 'open' || env.VG_PUBLIC_XRAY === 'button' ? env.VG_PUBLIC_XRAY : 'off',
 		clientIpHeader: env.VG_CLIENT_IP_HEADER?.toLowerCase() || undefined,
@@ -336,7 +337,7 @@ export function checkPublicConfig(p: PlatformConfig, env: NodeJS.ProcessEnv = pr
 	if (!env.VG_ADMIN_TOKEN || env.VG_ADMIN_TOKEN.length < 24) out.push('VG_ADMIN_TOKEN must be set (24+ characters): admin routes are not limited to localhost behind a proxy')
 	if (p.llm.preset && NOT_FOR_PUBLIC.has(p.llm.preset)) out.push(`VG_LLM_PRESET=${p.llm.preset} is for technical evaluation only (ADR-0042); configure our own model (VG_LLM_PROVIDER=anthropic, ADR-0054) or leave the agent off`)
 	if (p.llm.provider === 'anthropic' && !p.llm.apiKey) out.push('VG_LLM_PROVIDER=anthropic needs VG_LLM_API_KEY or ANTHROPIC_API_KEY')
-	if (!p.clientIpHeader) out.push("VG_CLIENT_IP_HEADER must name the proxy's client-address header (Cloud Run: x-forwarded-for, read from its last entry; Fly: fly-client-ip); X-Forwarded-For's first entries can be forged, which would defeat the rate limits")
+	if (!p.clientIpHeader) out.push("VG_CLIENT_IP_HEADER must name the proxy's client-address header (Render: cf-connecting-ip, Cloudflare's, set to the visitor's address; Cloud Run: x-forwarded-for, read from its last entry; Fly: fly-client-ip); X-Forwarded-For's first entries can be forged, which would defeat the rate limits")
 	if (p.trailAggregation) out.push('VG_TRAIL_AGGREGATION must stay off in public (ADR-0037 §6)')
 	return out
 }
