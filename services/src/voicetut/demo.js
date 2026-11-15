@@ -62,7 +62,7 @@ const status = find('#vt-status')
 const endpoint = find('#vt-endpoint')
 // Blank means the author's public Hugging Face Space (owner's choice, 2026-11-05: the Modal
 // deployment is not live). Paste the Modal URL here once it is.
-endpoint.value = ''
+endpoint.value = 'https://elbalashonyb-vodafone--vodafone-voicetut.modal.run'
 const player = find('audio')
 const link = find('#vt-open-audio')
 let active = null
