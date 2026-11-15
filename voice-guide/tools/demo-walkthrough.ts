@@ -10,6 +10,12 @@
  * Headless Chromium, speech through the test stand-in (no microphone, no speech service), memory
  * store, no agent model. Real speech, Google Chrome and the live site are checked by hand on the
  * demo Mac (runbook §3). Writes screenshots, checks.json, controls.json and xray-turn.json.
+ *
+ * Then a pass on the saved LIVE page /<lang>/services through the experience layer, as the live-page kit
+ * launches it (no clone, offline replay, Vodafone's widget in its real shape; live plan §3.7, S16): on
+ * load, the trail's consent card, a card pocketed, the guide listening, the album, "Your journey"; every
+ * floating control measured with tests/e2e/floating-controls.ts and held to its rules; controls-live.json.
+ * The clone pass stays until the clone is removed (phase 9).
  * For reviews and evidence, not a test: it records failures and carries on.
  */
 import fs from 'node:fs'
@@ -23,6 +29,8 @@ import { createGateway } from '../services/gateway/server.ts'
 import { createServices } from '../services/index.ts'
 import { loadPlatformConfig, loadSiteConfig, ROOT } from '../services/shared/config.ts'
 import { VOICE_STUB, writeVoiceWav } from '../tests/e2e/browser.ts'
+import { cellHits, cellViolations, type Measure, measureControls, WIDGET_DEFINED } from '../tests/e2e/floating-controls.ts'
+import { WIDGET_STAND_IN } from '../tests/e2e/vodafone-layer.ts'
 import { launchDemoBrowser } from './demo-browser.ts'
 
 const arg = (name: string) => process.argv.includes(name)
@@ -84,7 +92,7 @@ const check = (step: string, ok: boolean, detail?: unknown) => {
 	console.log(`${ok ? 'PASS' : 'FAIL'}  ${step}${!ok && detail !== undefined ? `  -- ${JSON.stringify(detail).slice(0, 300)}` : ''}`)
 }
 let shot = 0
-const snap = async (name: string) => page.screenshot({ path: path.join(dir, `${String(++shot).padStart(2, '0')}-${name}.png`) }).catch(() => {})
+const snap = async (name: string, on = page) => on.screenshot({ path: path.join(dir, `${String(++shot).padStart(2, '0')}-${name}.png`) }).catch(() => {})
 const step = async (name: string, fn: () => Promise<void>) => {
 	try {
 		await fn()
@@ -341,9 +349,89 @@ await step('reimagine', async () => {
 	await snap('reimagined-question')
 })
 
+// 6. The saved live page through the layer (no clone): the floating controls in each state (S16).
+const controlsLive: Record<string, Measure> = {}
+await step('live page through the layer', async () => {
+	const lb = await launchDemoBrowser({
+		site,
+		gatewayUrl: `http://127.0.0.1:${PORT}`,
+		start: 'about:blank',
+		headless: true,
+		channel: 'chromium',
+		xray: 'off',
+		replayDir: path.join(ROOT, 'fixtures/replay/vodafone-eg'),
+		offline: true,
+		accessibilityStandIn: false,
+		fakeMic: wav,
+		initScripts: [VOICE_STUB, WIDGET_DEFINED, WIDGET_STAND_IN],
+		viewport,
+		log: () => {},
+	})
+	const p = lb.page
+	if (reduced) await p.emulateMedia({ reducedMotion: 'reduce' })
+	p.on('pageerror', (e) => errors.push(`live ${p.url()}: ${e.message}`))
+	const settle = (ms: number) => p.evaluate((ms) => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, ms)))), ms)
+	const guide = (sel: string) => p.locator('vg-guide').locator(sel)
+	try {
+		const where = `/${lang}/services live`
+		await p.goto(`${V}/${lang}/services?aixc=off`, { waitUntil: 'load' })
+		await settle(400)
+		const off = (await measureControls(p, 'off')).button
+		const take = async (when: string) => {
+			const m = await measureControls(p, when)
+			controlsLive[when] = m
+			const hits = await cellHits(p, m)
+			const v = cellViolations(m, { where, off, ...hits })
+			check(`live controls keep the rules (${when})`, v.length === 0, v)
+		}
+		await p.goto(`${V}/${lang}/services?aixc-debug`, { waitUntil: 'load' })
+		await p.waitForFunction(() => (window as any).__aixc?.demos?.pocket?.chips, null, { timeout: 20_000 })
+		await settle(800)
+		await take('on load')
+		await guide('.tr-pill').click()
+		await guide('.tr-allow').waitFor({ timeout: 10_000 })
+		await settle(400)
+		await take('consent card')
+		await guide('.tr-allow').click()
+		await p.waitForFunction(() => (window as any).__vgTrailActive?.state?.consent === 'granted', null, { timeout: 10_000 })
+		const chip = p.locator('.pocket-chips .pocket-cta[data-pocket-for]').first()
+		const id = await chip.getAttribute('data-pocket-for')
+		await p.evaluate((id) => [...document.querySelectorAll(`#main-content [data-aixc-item="${CSS.escape(id!)}"]`)].find((c) => !c.closest('.owl-item.cloned'))?.scrollIntoView({ block: 'center' }), id)
+		await settle(200)
+		await chip.click()
+		await p.waitForSelector('.pocket-peek[data-state="shown"]', { timeout: 8_000 })
+		await p.waitForFunction(() => document.querySelectorAll('.curl-host--flying').length === 0, null, { timeout: 8_000 })
+		await settle(1500)
+		await take('Pocket peeking')
+		await snap('live-peek', p)
+		await guide('.vg-mic').click()
+		await p.waitForFunction(() => !document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-bar')!.classList.contains('hidden'), null, { timeout: 10_000 })
+		await settle(400)
+		await take('listening')
+		await guide('.vg-mic').click().catch(() => {})
+		await p.evaluate(() => (window as any).__activeRec?.stop?.())
+		await settle(800)
+		await p.mouse.wheel(0, -6000)
+		await settle(400)
+		await p.locator('.pocket-peek[data-state="shown"]').click()
+		await p.waitForFunction(() => (window as any).__aixc.demos.pocket.state.view === 'pocket' && !(window as any).__aixc.demos.pocket.state.busy, null, { timeout: 10_000 })
+		await settle(2500)
+		await take('Pocket open')
+		await snap('live-pocket-open', p)
+		await guide('.tr-pill').click()
+		await p.waitForSelector('.pocket-journey-layer:not([hidden])', { timeout: 15_000 })
+		await settle(2500)
+		await take('journey open')
+		await snap('live-journey', p)
+	} finally {
+		await lb.close()
+	}
+})
+
 check('no page errors', errors.length === 0, errors.slice(0, 5))
 fs.writeFileSync(path.join(dir, 'checks.json'), JSON.stringify({ run: tag, at: new Date().toISOString(), viewport, checks }, null, 2))
 fs.writeFileSync(path.join(dir, 'controls.json'), JSON.stringify(controls, null, 2))
+fs.writeFileSync(path.join(dir, 'controls-live.json'), JSON.stringify(controlsLive, null, 2))
 const failed = checks.filter((c) => !c.ok).length
 console.log(`\n${tag}: ${checks.length - failed}/${checks.length} checks passed`)
 await browser.close()
