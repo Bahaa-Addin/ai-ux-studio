@@ -29,13 +29,34 @@
  *   album, the drone waits hidden and then hovers at its home, ready to play); the guide's keyboard button and
  *   transcript bar shown mid-album: within 2 s the mascot keeps 16 px from them, and is back on his margin
  *   within 2 s of them hiding.
+ * - At rest (the album open, the pointer still) the actors are cheap: over 3 s, Chrome's LayoutCount grows
+ *   by at most 6 and ScriptDuration by at most 0.1 s, while both still move: the drone shows, and each of
+ *   its rotors shows exactly one flipbook page at a time, a page that changes (F11, 2026-11-17).
+ * - What ends a rest changes nothing behind it (F11, 2026-11-17): keyboard focus leaving the cards while they
+ *   rest, his eye is back on the cards' centre within 1 s and stays; a pointer move after a long rest turns
+ *   him from where he was, never by more than a frame's turn at once; less motion asked for while they
+ *   rest, none of the actors' own animations runs within 1 s.
+ * - The trail's consent card opened while they rest (its button's own click, no pointer move), at 1366×900 and
+ *   1600×900: the rest ends as for a relayout; within 2 s the drone is off its home (hidden, or elsewhere and
+ *   clear), within 2 s of the card closing it is back at its home, and then the rest starts again, the drone
+ *   with him, at most 6 layouts in 3 s (F11 with F6b, 2026-11-17).
+ * - His board is painted at rest, in WebKit as in Chromium (1366×900, F11, 2026-11-17): in screenshots clipped
+ *   to the board deck's box, the share of board-red pixels at rest is at least half the share out of rest (the
+ *   pointer moved). Decided by pixels, not boxes: WebKit kept the deck's box in place at rest and painted no
+ *   board there. WebKit runs through the same kit, from an installed Playwright WebKit build (findWebKit).
  */
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { createRequire } from 'node:module'
+import os from 'node:os'
+import path from 'node:path'
 import { after, before, describe, test } from 'node:test'
+import { pathToFileURL } from 'node:url'
+import zlib from 'node:zlib'
 
-import type { Page } from 'playwright'
+import { chromium, type Page } from 'playwright'
 
-import { DESKTOP, type LayerGateway, launchLayer, open, PHONE, startLayerGateway, watch } from './vodafone-layer.ts'
+import { DESKTOP, type LayerGateway, type LayerOptions, launchLayer, open, PHONE, startLayerGateway, watch } from './vodafone-layer.ts'
 
 const PORT = 4479
 const PAD = 16 // px the mascot keeps from Vodafone's and the guide's controls (ADR-0064)
@@ -76,6 +97,131 @@ const settle = (page: Page, ms = 60) => page.evaluate((ms) => new Promise((done)
 const gap = (a: Box, b: Box) => Math.max(b.left - a.right, a.left - b.right, b.top - a.bottom, a.top - b.bottom)
 const overlaps = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 const fmt = (b: Box | null) => (b ? `[${[b.left, b.top, b.right, b.bottom].map((v) => Math.round(v)).join(',')}]` : 'none')
+
+/* ------------------------------------------------------------------ WebKit through the kit, and pixels (F11) */
+
+/**
+ * A Playwright WebKit whose build is installed. voice-guide's own playwright-core (1.56.0) wants webkit-2215; this
+ * machine's cache holds webkit-2248, which playwright-core 1.58.0 drives, and the Python Playwright ships that very
+ * package (playwright/driver/package). Looked for: PLAYWRIGHT_WEBKIT_CORE (a playwright-core folder), voice-guide's
+ * own, then the Python ones under ~/Library/Python; the first whose WebKit build is in the cache.
+ */
+async function findWebKit(): Promise<{ webkit: any; from: string } | { why: string }> {
+	const cache = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), 'Library/Caches/ms-playwright')
+	const python = path.join(os.homedir(), 'Library/Python')
+	const folders = [
+		process.env.PLAYWRIGHT_WEBKIT_CORE,
+		path.dirname(createRequire(import.meta.url).resolve('playwright-core/package.json')),
+		...(fs.existsSync(python) ? fs.readdirSync(python).map((v) => path.join(python, v, 'lib/python/site-packages/playwright/driver/package')) : []),
+	].filter((d): d is string => !!d && fs.existsSync(path.join(d, 'browsers.json')) && fs.existsSync(path.join(d, 'index.mjs')))
+	const tried: string[] = []
+	for (const dir of folders) {
+		const { version } = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as { version: string }
+		const wants = (JSON.parse(fs.readFileSync(path.join(dir, 'browsers.json'), 'utf8')) as { browsers: { name: string; revision: string }[] }).browsers.find((b) => b.name === 'webkit')
+		if (wants && fs.existsSync(path.join(cache, `webkit-${wants.revision}`))) return { webkit: (await import(pathToFileURL(path.join(dir, 'index.mjs')).href)).webkit, from: `playwright-core ${version}, webkit-${wants.revision}` }
+		tried.push(`playwright-core ${version} wants webkit-${wants?.revision}`)
+	}
+	return { why: `no WebKit build in ${cache} for ${tried.join('; ') || 'any playwright-core found'}` }
+}
+
+/**
+ * launchLayer in WebKit: the kit's own launch, routes and stand-ins, with WebKit's launch in place of Chromium's for
+ * this one call (without Chromium's flags). Offline as in Chromium: the routes answer every request from the replay or
+ * refuse it; a proxy that leads nowhere catches anything they do not answer (Chromium's host-resolver rules are a flag
+ * WebKit has not); no service workers (WebKit's do not go through the routes).
+ */
+async function launchLayerWebKit(webkit: any, gw: LayerGateway, o: LayerOptions) {
+	const swap = chromium as any
+	const own = Object.getOwnPropertyDescriptor(swap, 'launchPersistentContext')
+	swap.launchPersistentContext = async (profile: string, options: Record<string, unknown>) => {
+		const { args: _args, channel: _channel, ignoreDefaultArgs: _defaults, ...rest } = options
+		const context = await webkit.launchPersistentContext(profile, { ...rest, serviceWorkers: 'block', proxy: { server: 'http://127.0.0.1:9' } })
+		// WebKit has no microphone permission to grant: the guide's microphone is not what this looks at.
+		const grant = context.grantPermissions.bind(context)
+		context.grantPermissions = (permissions: string[], g: unknown) => grant(permissions.filter((p) => p !== 'microphone'), g).catch(() => {})
+		return context
+	}
+	try {
+		return await launchLayer(gw, o)
+	} finally {
+		if (own) Object.defineProperty(swap, 'launchPersistentContext', own)
+		else delete swap.launchPersistentContext
+	}
+}
+
+/** An 8-bit, non-interlaced PNG (Playwright's screenshots) as its size, channels and unfiltered bytes. */
+function decodePng(png: Buffer) {
+	let [width, height, depth, type, interlace] = [0, 0, 0, 0, 0]
+	const idat: Buffer[] = []
+	for (let p = 8; p < png.length; ) {
+		const length = png.readUInt32BE(p)
+		const kind = png.toString('latin1', p + 4, p + 8)
+		const data = png.subarray(p + 8, p + 8 + length)
+		if (kind === 'IHDR') [width, height, depth, type, interlace] = [data.readUInt32BE(0), data.readUInt32BE(4), data[8], data[9], data[12]]
+		else if (kind === 'IDAT') idat.push(data)
+		else if (kind === 'IEND') break
+		p += 12 + length
+	}
+	const channels = ({ 0: 1, 2: 3, 4: 2, 6: 4 } as Record<number, number>)[type]
+	assert.ok(depth === 8 && channels && !interlace, `a PNG this reads (depth ${depth}, colour type ${type}, interlace ${interlace})`)
+	const raw = zlib.inflateSync(Buffer.concat(idat))
+	const stride = width * channels
+	const data = Buffer.alloc(height * stride)
+	const paeth = (a: number, b: number, c: number) => {
+		const p = a + b - c
+		const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)]
+		return pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+	}
+	for (let y = 0; y < height; y += 1) {
+		const filter = raw[y * (stride + 1)]
+		const line = y * (stride + 1) + 1
+		const at = y * stride
+		for (let x = 0; x < stride; x += 1) {
+			const a = x >= channels ? data[at + x - channels] : 0
+			const b = y ? data[at - stride + x] : 0
+			const c = x >= channels && y ? data[at - stride + x - channels] : 0
+			const v = raw[line + x]
+			data[at + x] = (filter === 0 ? v : filter === 1 ? v + a : filter === 2 ? v + b : filter === 3 ? v + ((a + b) >> 1) : v + paeth(a, b, c)) & 255
+		}
+	}
+	return { width, height, channels, data }
+}
+
+/**
+ * The board as painted now: a screenshot clipped to the board deck's box (and 4 px round it), and the share of its
+ * pixels in the board's red (its deck #b80000 and top #e60000; antialiased edges, the outline and the page's dots
+ * left out: red at least 140, green and blue at most 60). His feet stand in the deck's box and are red too: their
+ * boxes are left out.
+ */
+async function boardPaint(page: Page) {
+	const at = await page.evaluate(() => {
+		const m = document.querySelector('.pocket-mascot')
+		const box = (n: Element | null | undefined) => {
+			if (!n || !n.getClientRects().length) return null
+			const r = n.getBoundingClientRect()
+			return r.width && r.height ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null
+		}
+		return { deck: box(m?.querySelector('[data-part="board-deck"]')), feet: ['foot-l', 'foot-r'].map((f) => box(m?.querySelector(`[data-limb="${f}"]`))).filter((b) => !!b) }
+	})
+	if (!at.deck) return { share: 0, deck: null }
+	const x = Math.max(0, Math.floor(at.deck.left) - 4)
+	const y = Math.max(0, Math.floor(at.deck.top) - 4)
+	const clip = { x, y, width: Math.ceil(at.deck.right) + 4 - x, height: Math.ceil(at.deck.bottom) + 4 - y }
+	const img = decodePng(await page.screenshot({ clip }))
+	const k = img.width / clip.width // device px per CSS px
+	const feet = at.feet.map((f) => ({ left: (f.left - x) * k, right: (f.right - x) * k, top: (f.top - y) * k, bottom: (f.bottom - y) * k }))
+	let pixels = 0
+	let red = 0
+	for (let py = 0; py < img.height; py += 1) {
+		for (let px = 0; px < img.width; px += 1) {
+			if (feet.some((f) => px + 0.5 >= f.left && px + 0.5 <= f.right && py + 0.5 >= f.top && py + 0.5 <= f.bottom)) continue
+			const i = (py * img.width + px) * img.channels
+			pixels += 1
+			if (img.channels >= 3 && img.data[i] >= 140 && img.data[i + 1] <= 60 && img.data[i + 2] <= 60) red += 1
+		}
+	}
+	return { share: pixels ? red / pixels : 0, deck: fmt(at.deck) }
+}
 
 /** Every node of the actors on the page, and what the hygiene rules ask of them. */
 const hygiene = (page: Page) =>
@@ -129,7 +275,7 @@ const scene = (page: Page) =>
 		}
 		const mascot = document.querySelector<HTMLElement>('.pocket-mascot')
 		const svg = mascot?.querySelector('.pocket-mascot__mover > svg')
-		const drawn = union([box(svg?.querySelector('[data-part="outline"]')), box(svg?.querySelector('[data-part="board-deck"]'))])
+		const drawn = union([box(svg?.querySelector('[data-part="outline"]')), box(mascot?.querySelector('[data-part="board-deck"]'))])
 		const out = document.getElementById('pocket-output')
 		const vg = document.querySelector('vg-guide')?.shadowRoot
 		const shown = (n: Element | null | undefined) => {
@@ -712,7 +858,7 @@ for (const lang of ['en', 'ar'] as const) {
 	})
 }
 
-/* ---------------------------------------------- 8. with the trail on: the drone (F6) */
+/* ---------------------------------------------- 8. with the trail on: the drone (F6), rest (F11) */
 
 /**
  * The album as the live runs of 2026-11-17 met it: the trail on, so the bar carries "Your journey" and the
@@ -771,13 +917,17 @@ describe('with the trail on', () => {
 			}
 		})
 
-	/** The album opened with one sticker pocketed by a press, the actors at rest, the pointer still in the album. */
-	async function albumAtRest(page: Page, path: string, where: string) {
+	/** The album opened with `stickers` stickers (one by default) pocketed by presses, the actors at rest, the pointer still in the album (where it is, returned). */
+	async function albumAtRest(page: Page, path: string, where: string, { stickers = 1 } = {}) {
 		await open(page, path, '?aixc-debug')
 		await pocketReady(page)
-		await pocketByPress(page, (await chippedIds(page))[0], where)
-		await actorsReady(page)
-		await cornerShown(page)
+		const ids = (await chippedIds(page)).slice(0, stickers)
+		assert.equal(ids.length, stickers, `${where}: ${stickers} card(s) to pocket on the page`)
+		for (const [i, id] of ids.entries()) {
+			await pocketByPress(page, id, where)
+			if (i === 0) await actorsReady(page)
+			await cornerShown(page)
+		}
 		await pressPeek(page)
 		await waitView(page, 'pocket')
 		// Then the pointer goes to the open album, away from the stickers and the bar, and stays there.
@@ -792,6 +942,7 @@ describe('with the trail on', () => {
 			return !d || d.hidden || d.dataset.droneState === 'home-hover'
 		}, null, { timeout: 10_000 })
 		await settle(page, 600)
+		return at
 	}
 
 	for (const lang of ['en', 'ar'] as const) {
@@ -1064,4 +1215,457 @@ describe('with the trail on', () => {
 			}
 		})
 	}
+
+	/* ------------------------------------------------------- at rest: cheap, still moving (F11) */
+
+	/**
+	 * Measured 2026-11-17 before the fix: 182 layouts and 0.333 s of script in 3 s (the drone hidden, F6), 182 and
+	 * 0.469 s with the drone showing; after: 4 layouts (a drawing every 750 ms) and 0.029-0.051 s of script over six
+	 * runs. The lead's bound was 0.15 s; 0.1 s keeps about twice the worst measured.
+	 */
+	test('/en/services 1366x900 trail on: at rest (the album open, the pointer still) the actors cost at most 6 layouts and 0.1 s of script in 3 s, and both still move (F11)', { timeout: 150_000 }, async () => {
+		const where = '/en/services 1366 trail on, at rest'
+		const l = await launchLayer(gw, { viewport: DESKTOP, owl: true, initScripts: [ACTORS_TEST] })
+		try {
+			const seen = watch(l.page)
+			await albumAtRest(l.page, '/en/services', where)
+			// At rest: the ride, the take-off and the remote's raise are over, and the pointer has been still.
+			await l.page.waitForTimeout(3_000)
+			const cdp = await l.page.context().newCDPSession(l.page)
+			await cdp.send('Performance.enable')
+			const metrics = async () => Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]))
+			const looks = () =>
+				l.page.evaluate(() => {
+					const r = (n: Element | null | undefined) => {
+						if (!n || !n.getClientRects().length) return null
+						const b = n.getBoundingClientRect()
+						return [b.left, b.top, b.right, b.bottom]
+					}
+					const d = document.querySelector<HTMLElement>('.pocket-drone')
+					const shown = (n: Element) => getComputedStyle(n).display !== 'none'
+					// The rotors as drawn, apart from where the drone is: per rotor, which page of its flipbook shows (computed
+					// opacity 1; -1 none), how many do, and whether its own blades show (they are hidden while the flipbook turns).
+					const rotors =
+						d && !d.hidden
+							? [...d.querySelectorAll('[data-part="rotor"]')].map((rotor) => {
+									const flip = rotor.querySelector('[data-part="rotor-flip"]')
+									const pages = flip && shown(flip) ? [...flip.children].map((g) => getComputedStyle(g).opacity) : []
+									return { page: pages.indexOf('1'), showing: pages.filter((o) => o === '1').length, blades: [...rotor.querySelectorAll('[data-part="blades"]')].some(shown) }
+								})
+							: null
+					return {
+						mascot: r(document.querySelector('.pocket-mascot__mover > svg [data-part="outline"]')),
+						board: r(document.querySelector('.pocket-mascot [data-part="board-deck"]')),
+						drone: d && !d.hidden ? r(d) : null,
+						rotors,
+						states: [document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState, d?.dataset.droneState],
+					}
+				})
+			const before = await looks()
+			// Three seconds with nothing read from the page.
+			const a = await metrics()
+			await l.page.waitForTimeout(3_000)
+			const z = await metrics()
+			await cdp.detach()
+			const d = (k: string) => z[k] - a[k]
+			const cost = { LayoutCount: d('LayoutCount'), RecalcStyleCount: d('RecalcStyleCount'), ScriptDuration: +d('ScriptDuration').toFixed(4), TaskDuration: +d('TaskDuration').toFixed(4), LayoutDuration: +d('LayoutDuration').toFixed(4), seconds: +d('Timestamp').toFixed(2) }
+			const after = await looks()
+			assert.deepEqual(after.states, before.states, `${where}: still at rest after the window (${JSON.stringify(before.states)} to ${JSON.stringify(after.states)})`)
+			assert.ok(cost.LayoutCount <= 6, `${where}: at most 6 layouts in 3 s (${JSON.stringify(cost)})`)
+			assert.ok(cost.ScriptDuration <= 0.1, `${where}: at most 0.1 s of script in 3 s (${JSON.stringify(cost)})`)
+			// Cheap, not still: the mascot breathes and bobs on his board, the drone drifts and its rotors spin.
+			assert.ok(before.drone && before.rotors?.length, `${where}: the drone and its rotors show at rest (${JSON.stringify(before.states)})`)
+			const moved = { mascot: 0, drone: 0, pages: before.rotors!.map(() => new Set<number>()) }
+			const span = (x: number[] | null, y: number[] | null) => (x && y ? Math.max(...x.map((v, i) => Math.abs(v - y[i]))) : 0)
+			for (let i = 0; i < 12; i += 1) {
+				await l.page.waitForTimeout(i < 8 ? 23 : 400)
+				const now = await looks()
+				moved.mascot = Math.max(moved.mascot, span(after.mascot, now.mascot), span(after.board, now.board))
+				moved.drone = Math.max(moved.drone, span(after.drone, now.drone))
+				assert.equal(now.rotors?.length, before.rotors!.length, `${where}: the drone's rotors at reading ${i} (${JSON.stringify(now.rotors)})`)
+				now.rotors!.forEach((rotor, k) => {
+					assert.equal(rotor.showing, 1, `${where}: rotor ${k} shows exactly one flipbook page at reading ${i} (${JSON.stringify(rotor)})`)
+					assert.equal(rotor.blades, false, `${where}: rotor ${k}'s own blades are hidden at rest (reading ${i})`)
+					moved.pages[k].add(rotor.page)
+				})
+			}
+			assert.ok(moved.mascot >= 0.5, `${where}: the mascot moves at rest (${moved.mascot.toFixed(2)} px)`)
+			assert.ok(moved.drone >= 0.5, `${where}: the drone drifts at rest (${moved.drone.toFixed(2)} px)`)
+			moved.pages.forEach((pages, k) => assert.ok(pages.size >= 2, `${where}: rotor ${k} spins at rest: its page changes (pages ${[...pages].join(', ')} over 12 readings)`))
+			console.log(`${where}: ${JSON.stringify({ cost, mascot: moved.mascot, drone: moved.drone, pages: moved.pages.map((p) => [...p]) })}`)
+			assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+		} finally {
+			await l.close()
+		}
+	})
+
+	/* ------------------------- the trail's consent card while they rest: the rest ends and starts again (F11 with F6b) */
+
+	/**
+	 * Whether the actors rest (F11): the lid over his eye is there only then, and his box carries the way to the
+	 * next drawing; the drone rests with him when its button carries its own (Web Animations the actors started,
+	 * not the page's CSS ones). Nothing here reads a layout.
+	 */
+	const restState = (page: Page) =>
+		page.evaluate(() => {
+			const scripted = (n: Element | null | undefined) => !!n && n.getAnimations().some((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition))
+			const lid = document.querySelector<HTMLElement>('.pocket-mascot__lid')
+			const drone = document.querySelector<HTMLElement>('.pocket-drone')
+			return { on: !!lid && !lid.hidden && scripted(document.querySelector('.pocket-mascot__mover')), drone: !!drone && !drone.hidden && scripted(drone) }
+		})
+
+	/** Polls restState every 100 ms until the actors rest (and the drone with them, when `drone`), for up to `ms`; returns the last reading. */
+	async function restsWithin(page: Page, ms: number, { drone = false } = {}) {
+		const since = Date.now()
+		let s = await restState(page)
+		while (!(s.on && (!drone || s.drone)) && Date.now() - since < ms) {
+			await page.waitForTimeout(100)
+			s = await restState(page)
+		}
+		return { ...s, ms: Date.now() - since }
+	}
+
+	/** Chrome's LayoutCount and ScriptDuration over `ms`, with nothing read from the page meanwhile. */
+	async function costOver(page: Page, ms: number) {
+		const cdp = await page.context().newCDPSession(page)
+		await cdp.send('Performance.enable')
+		const metrics = async () => Object.fromEntries(((await cdp.send('Performance.getMetrics')) as { metrics: { name: string; value: number }[] }).metrics.map((m) => [m.name, m.value]))
+		const a = await metrics()
+		await page.waitForTimeout(ms)
+		const z = await metrics()
+		await cdp.detach()
+		return { LayoutCount: z.LayoutCount - a.LayoutCount, ScriptDuration: +(z.ScriptDuration - a.ScriptDuration).toFixed(4) }
+	}
+
+	/** The trail's pill pressed by its own click() (no pointer move: a move alone would end the rest), then the card waited for to open (`open`) or close. */
+	async function togglePillStill(page: Page, open: boolean) {
+		await page.evaluate(() => document.querySelector('vg-guide')!.shadowRoot!.querySelector<HTMLElement>('.tr-pill')!.click())
+		await page.waitForFunction(
+			(open) => {
+				const c = document.querySelector('vg-guide')?.shadowRoot?.querySelector<HTMLElement>('.tr-card')
+				const shows = !!c && !c.hidden && c.getClientRects().length > 0
+				return shows === open
+			},
+			open,
+			{ timeout: 5_000 },
+		)
+	}
+
+	// 1366x900 as the finding met it (no free place while the card shows: the drone hides); 1600x900, where the far gutter is free and it flies there.
+	for (const vp of [DESKTOP, { width: 1600, height: 900 }]) {
+		const where = `/en/services ${vp.width}x${vp.height} trail on, at rest`
+		test(`${where}: the trail's consent card opening while the actors rest, within 2 s the drone is off its home (hidden, or elsewhere and clear); within 2 s of the card closing it is back at its home, and the rest starts again with it (F11 with F6b)`, { timeout: 150_000 }, async (t) => {
+			const l = await launchLayer(gw, { viewport: vp, owl: true, initScripts: [ACTORS_TEST] })
+			try {
+				const seen = watch(l.page)
+				await albumAtRest(l.page, '/en/services', where)
+				if (!(await trailParts(l.page)).pill) {
+					// Tucked away after the scroll to the sticker: up again, as the walk does (a wheel, no pointer move).
+					await l.page.mouse.wheel(0, -8000)
+					await settle(l.page, 600)
+				}
+				assert.ok((await trailParts(l.page)).pill, `${where}: the trail's pill shows in the album`)
+				assert.equal((await trailParts(l.page)).card, null, `${where}: the trail's consent card is closed at first`)
+				// The pointer has been still since albumAtRest: they rest, the drone with him.
+				const resting = await restsWithin(l.page, 8_000, { drone: true })
+				assert.ok(resting.on && resting.drone, `${where}: the actors rest before the card, the drone with him (${JSON.stringify(resting)})`)
+				const before = await droneScene(l.page)
+				assert.ok(before.drone, `${where}: the drone shows before the card (${before.anchor} ${before.droneState})`)
+
+				// The card opens over the drone's home while they rest.
+				await togglePillStill(l.page, true)
+				const opened = Date.now()
+				const card = (await trailParts(l.page)).card!
+				assert.ok(overlaps(before.drone!, card), `${where}: the card lies over the drone's home, as live (${fmt(before.drone)} vs ${fmt(card)})`)
+				let s = await droneScene(l.page)
+				while (s.drone && overlaps(s.drone, card) && Date.now() - opened < 2_000) {
+					await l.page.waitForTimeout(50)
+					s = await droneScene(l.page)
+				}
+				assert.ok(!s.drone || !overlaps(s.drone, card), `${where}: within 2 s of the card opening the drone is off it (the drone ${fmt(s.drone)} vs card ${fmt(card)}; ${s.anchor} ${s.droneState})`)
+				const off = Date.now() - opened
+				const away = await droneToRest(l.page, `${where} card open`, opened, 4_000, { card })
+				await droneClear(l.page, `${where} card open`, 6)
+				const during = await droneScene(l.page)
+				t.diagnostic(`${where}: the drone at ${fmt(before.drone)} (${before.anchor}) at rest, the card ${fmt(card)}; off it ${off} ms after it showed; then ${during.drone ? `at rest at ${fmt(during.drone)} (${during.anchor}) after ${away.ms} ms${away.crossed}` : `hidden (${during.anchor})`}; resting then: ${JSON.stringify(await restState(l.page))}`)
+
+				// The card closes the same way: the drone comes back to its home.
+				await togglePillStill(l.page, false)
+				const closed = Date.now()
+				s = await droneScene(l.page)
+				while (!(s.drone && s.anchor === before.anchor) && Date.now() - closed < 2_000) {
+					await l.page.waitForTimeout(50)
+					s = await droneScene(l.page)
+				}
+				assert.ok(s.drone, `${where}: within 2 s of the card closing the drone shows (${s.anchor} ${s.droneState}; it was ${during.drone ? `at ${fmt(during.drone)} (${during.anchor})` : 'hidden'} while the card showed)`)
+				assert.equal(s.anchor, before.anchor, `${where}: within 2 s of the card closing the drone is back at its home`)
+				const shows = Date.now() - closed
+				const back = await droneToRest(l.page, `${where} card closed`, closed, 4_000, { home: before.drone })
+				const home = (await droneScene(l.page)).drone
+				assert.ok(home && Math.abs(home.left - before.drone!.left) <= 16 && Math.abs(home.top - before.drone!.top) <= 16, `${where}: at rest where it hovered before the card (${fmt(home)} vs ${fmt(before.drone)})`)
+
+				// And the rest starts again, the drone with him: cheap again.
+				const again = await restsWithin(l.page, 8_000, { drone: true })
+				assert.ok(again.on && again.drone, `${where}: the rest starts again after the card, the drone with him (${JSON.stringify(again)})`)
+				const cost = await costOver(l.page, 3_000)
+				const still = await restState(l.page)
+				assert.ok(still.on && still.drone, `${where}: still at rest after the window (${JSON.stringify(still)})`)
+				assert.ok(cost.LayoutCount <= 6, `${where}: at rest again, at most 6 layouts in 3 s (${JSON.stringify(cost)})`)
+				t.diagnostic(`${where}: back at its home (${s.anchor}) ${shows} ms after the card closed, at rest at ${fmt(home)} after ${back.ms} ms${back.crossed}; resting again ${again.ms} ms after that; then ${JSON.stringify(cost)} in 3 s`)
+				assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+				assert.ok(!seen.layer.some((x) => x.includes('the Pocket actors stopped')), `${where}: the actors carried on (${seen.layer.join(' | ')})`)
+			} finally {
+				await l.close()
+			}
+		})
+	}
+
+	/* ------------------------------------------------ what ends a rest changes nothing behind it (F11) */
+
+	/**
+	 * Where his eye looks, in degrees of yaw: his body's turn and his eye's own (data-body-yaw, a whole degree; the
+	 * iris's data-gaze, a tenth). Settled, it is the yaw toward what he looks at, however far his body may turn.
+	 */
+	const eyeYaw = (page: Page) =>
+		page.evaluate(() => {
+			const m = document.querySelector<HTMLElement>('.pocket-mascot')!
+			const gaze = m.querySelector<SVGElement>('[data-gaze]')?.dataset.gaze ?? '0,0'
+			return Number(m.dataset.bodyYaw) + Number(gaze.split(',')[0])
+		})
+
+	test("/en/services 1366x900 trail on, at rest: keyboard focus leaving the cards while the actors rest, within 1 s his eye is back on the cards' centre and stays there (F11)", { timeout: 150_000 }, async () => {
+		const where = '/en/services 1366 trail on, at rest, focus'
+		const l = await launchLayer(gw, { viewport: DESKTOP, owl: true, initScripts: [ACTORS_TEST] })
+		try {
+			const seen = watch(l.page)
+			// Three cards: the last (the nearest him) is far enough from their centre to tell the two apart.
+			await albumAtRest(l.page, '/en/services', where, { stickers: 3 })
+			// The pointer still for over 12 s: his eye leaves it for the cards' centre (one tick to take it up, then settled).
+			await l.page.waitForTimeout(14_000)
+			const resting = await restsWithin(l.page, 8_000)
+			assert.ok(resting.on, `${where}: the actors rest before the focus (${JSON.stringify(resting)})`)
+			const centre = await eyeYaw(l.page)
+			// Where the cards are: nothing below may move them (a scroll would move their centre too).
+			const cardsAt = () => l.page.evaluate(() => [...document.querySelectorAll('#pocket-output .pocket-grid__item')].map((n) => n.getBoundingClientRect()).map((b) => `${Math.round(b.left)},${Math.round(b.top)}`).join(' '))
+			const cards = await cardsAt()
+
+			// Keyboard focus onto the last card: from a stand-in just before it (in the grid, not in a card, so it turns
+			// nothing), Tab; and off it again, Shift+Tab back to the stand-in: focus leaves the cards, nothing scrolls.
+			const into = await l.page.evaluate(() => {
+				const stickers = [...document.querySelectorAll<HTMLElement>('#pocket-output .pocket-grid .pocket-sticker')]
+				const last = stickers.at(-1)!
+				const before = document.createElement('span')
+				before.tabIndex = 0
+				before.dataset.testBefore = ''
+				before.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)'
+				last.before(before)
+				before.focus({ preventScroll: true })
+				return stickers.length
+			})
+			assert.equal(into, 3, `${where}: three cards in the album`)
+			await l.page.keyboard.press('Tab')
+			const focused = await l.page.evaluate(() => {
+				const a = document.activeElement
+				const last = [...document.querySelectorAll('#pocket-output .pocket-grid .pocket-sticker')].at(-1)
+				return { inLast: !!a && !!last?.contains(a), visible: !!a?.matches(':focus-visible'), on: a ? `${a.localName}.${a.className}` : null }
+			})
+			assert.ok(focused.inLast && focused.visible, `${where}: Tab put keyboard focus on the last card (${JSON.stringify(focused)})`)
+			// He turns to it, settles, and rests looking at it.
+			await l.page.waitForTimeout(1_000)
+			const onCard = await restsWithin(l.page, 8_000)
+			assert.ok(onCard.on, `${where}: the actors rest with the card in focus (${JSON.stringify(onCard)})`)
+			const card = await eyeYaw(l.page)
+			assert.ok(Math.abs(card - centre) >= 4.5, `${where}: his eye on the card is far enough from the cards' centre to tell (${card.toFixed(1)} vs ${centre.toFixed(1)})`)
+
+			// Focus leaves the card: Shift+Tab, back to the stand-in.
+			await l.page.keyboard.press('Shift+Tab')
+			const left = Date.now()
+			assert.equal(await l.page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.testBefore === '' && !document.activeElement?.closest('.pocket-sticker')), true, `${where}: keyboard focus left the cards`)
+			const TOLERANCE = 2.2 // the eye refixes once its target is 1.5° away; the body's yaw is read to the whole degree
+			let now = await eyeYaw(l.page)
+			while (Math.abs(now - centre) > TOLERANCE && Date.now() - left < 1_000) {
+				await l.page.waitForTimeout(50)
+				now = await eyeYaw(l.page)
+			}
+			const back = Date.now() - left
+			assert.ok(Math.abs(now - centre) <= TOLERANCE, `${where}: within 1 s of focus leaving the cards his eye is back on their centre (${now.toFixed(1)}, the centre ${centre.toFixed(1)}, the card ${card.toFixed(1)}; ${back} ms)`)
+			// And stays there, through the rest that starts again and its ticks (each would put the card back, were it saved).
+			const readings: number[] = []
+			for (let i = 0; i < 40; i += 1) {
+				await l.page.waitForTimeout(100)
+				readings.push(await eyeYaw(l.page))
+			}
+			const worst = Math.max(...readings.map((v) => Math.abs(v - centre)))
+			assert.ok(worst <= TOLERANCE, `${where}: his eye stays on the cards' centre for 4 s after (worst ${worst.toFixed(1)} from ${centre.toFixed(1)}; the card ${card.toFixed(1)}; ${readings.map((v) => v.toFixed(1)).join(' ')})`)
+			assert.equal(await cardsAt(), cards, `${where}: the cards did not move meanwhile (else their centre moved too)`)
+			const again = await restState(l.page)
+			console.log(`${where}: ${JSON.stringify({ centre, card, back, worst: +worst.toFixed(2), restingAgain: again.on })}`)
+			assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+		} finally {
+			await l.close()
+		}
+	})
+
+	test('/en/services 1366x900 trail on, at rest: a pointer move after a long rest turns him from where he was, never by more than a frame\'s turn at once (F11)', { timeout: 150_000 }, async () => {
+		const where = '/en/services 1366 trail on, at rest, a move'
+		const l = await launchLayer(gw, { viewport: DESKTOP, owl: true, initScripts: [ACTORS_TEST] })
+		try {
+			const seen = watch(l.page)
+			await albumAtRest(l.page, '/en/services', where)
+			// A long rest: the pointer still for over 12 s, so his body has turned back to the cards and settled.
+			await l.page.waitForTimeout(14_000)
+			const resting = await restsWithin(l.page, 8_000)
+			assert.ok(resting.on, `${where}: the actors rest (${JSON.stringify(resting)})`)
+			// Every change of his drawn yaw (data-body-yaw, written when he is drawn), from here on.
+			await l.page.evaluate(() => {
+				const w = window as any
+				const m = document.querySelector<HTMLElement>('.pocket-mascot')!
+				w.__yawFrom = Number(m.dataset.bodyYaw)
+				w.__yaws = []
+				w.__yawWatch = new MutationObserver((records) => {
+					for (const r of records) w.__yaws.push(Number(r.oldValue))
+				})
+				w.__yawWatch.observe(m, { attributes: true, attributeFilter: ['data-body-yaw'], attributeOldValue: true })
+			})
+			// The move comes 550 ms into a rest tick (the mover's animation starts at the tick): what a catch-up from
+			// the tick with the new pointer would turn him through in one drawing, the rest's run-ahead would not.
+			const wait = await l.page.evaluate(() => {
+				const a = document.querySelector('.pocket-mascot__mover')!.getAnimations().find((x) => !(x instanceof CSSAnimation) && !(x instanceof CSSTransition))
+				const into = a && a.startTime !== null ? performance.now() - Number(a.startTime) : 0
+				return Math.round((((550 - into) % 750) + 750) % 750)
+			})
+			const to = await l.page.evaluate(() => {
+				// Beside him toward the viewport's edge, level with his eye: away from the cards, so the cursor pulls him round.
+				const r = document.querySelector('.pocket-mascot__mover')!.getBoundingClientRect()
+				return { x: Math.min(innerWidth - 3, r.right + 60), y: r.top + r.height * 0.4 }
+			})
+			await l.page.waitForTimeout(wait)
+			await l.page.mouse.move(to.x, to.y)
+			await l.page.waitForTimeout(2_500)
+			const yaws = await l.page.evaluate(() => {
+				const w = window as any
+				w.__yawWatch.disconnect()
+				return { from: w.__yawFrom as number, olds: w.__yaws as number[], now: Number(document.querySelector<HTMLElement>('.pocket-mascot')!.dataset.bodyYaw) }
+			})
+			const values = [...yaws.olds, yaws.now]
+			const steps = values.slice(1).map((v, i) => Math.abs(v - values[i]))
+			const turned = Math.abs(yaws.now - yaws.from)
+			assert.ok(turned >= 8, `${where}: the move turned him (by ${turned}°, ${values.join(' ')}); else there is nothing to see`)
+			// His yaw's spring (1.1 Hz, damping 0.78) turns him at most 0.19 of a step in its target in one drawing of 64 ms
+			// (the longest frame it steps); the whole degree it is read to adds one.
+			const bound = Math.ceil(0.19 * turned) + 1
+			const worst = Math.max(...steps)
+			assert.ok(worst <= bound, `${where}: never more than ${bound}° at once (worst ${worst}°, over ${steps.length} drawings: ${values.join(' ')}; the move ${wait} ms before a tick's 550th ms)`)
+			console.log(`${where}: ${JSON.stringify({ turned, bound, worst, values })}`)
+			assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+		} finally {
+			await l.close()
+		}
+	})
+
+	test('/en/services 1366x900 trail on, at rest: less motion asked for while the actors rest, none of their own animations runs within 1 s (F11)', { timeout: 150_000 }, async () => {
+		const where = '/en/services 1366 trail on, at rest, reduced motion'
+		const l = await launchLayer(gw, { viewport: DESKTOP, owl: true, initScripts: [ACTORS_TEST] })
+		try {
+			const seen = watch(l.page)
+			await albumAtRest(l.page, '/en/services', where)
+			const resting = await restsWithin(l.page, 8_000, { drone: true })
+			assert.ok(resting.on && resting.drone, `${where}: the actors rest, the drone with him (${JSON.stringify(resting)})`)
+			// The actors' own animations (Web Animations they started, not the page's CSS ones) still running.
+			const ours = () =>
+				l.page.evaluate((ROOTS) => {
+					const at = (a: Animation) => (a.effect as KeyframeEffect | null)?.target ?? null
+					return document
+						.getAnimations()
+						.filter((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition) && a.playState === 'running' && !!at(a)?.closest(`${ROOTS}, .pocket-mascot`))
+						.map((a) => `${at(a)!.localName}.${at(a)!.getAttribute('class') ?? at(a)!.getAttribute('data-part') ?? ''}`)
+				}, ROOTS)
+			const during = await ours()
+			assert.ok(during.length > 0, `${where}: at rest the actors' animations run (${during.length})`)
+			await l.page.emulateMedia({ reducedMotion: 'reduce' })
+			const asked = Date.now()
+			let left = await ours()
+			while (left.length && Date.now() - asked < 1_000) {
+				await l.page.waitForTimeout(50)
+				left = await ours()
+			}
+			const stopped = Date.now() - asked
+			assert.deepEqual(left, [], `${where}: within 1 s of less motion asked for, none of the actors' own animations runs (${stopped} ms; ${[...new Set(left)].join(', ')})`)
+			// And none starts again.
+			await l.page.waitForTimeout(1_500)
+			assert.deepEqual(await ours(), [], `${where}: and none starts again`)
+			assert.equal((await restState(l.page)).on, false, `${where}: the rest is over`)
+			console.log(`${where}: ${JSON.stringify({ during: during.length, stopped })}`)
+			assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+		} finally {
+			await l.close()
+		}
+	})
+
+	/* --------------------------------------------- his board painted at rest, in WebKit as in Chromium (F11) */
+
+	/**
+	 * At rest his board's sheet moves on the compositor apart from him. WebKit (Safari, every iOS browser) kept the deck's
+	 * box in its place then and painted no board there (2026-11-17: the board an HTML box running a transform inside a
+	 * foreignObject of his rig), while every box read the same as Chromium's. So this decides by pixels (boardPaint):
+	 * three shots of the deck's box at rest, 300 ms apart, and three out of rest (a pointer move ends it); at rest the
+	 * mean board-red share must be at least half the share out of rest, which must show a board (at least 0.15).
+	 * Measured 2026-11-17 before the fix, 1366x900, mean of three: Chromium 0.317 at rest, 0.323 out of rest; WebKit
+	 * 0.042 at rest, 0.336 out of rest.
+	 */
+	test("/en/services 1366x900 trail on, at rest: his board is painted, in WebKit as in Chromium: the deck's box holds at least half the board-red pixels it holds out of rest (F11)", { timeout: 280_000 }, async (t) => {
+		const found = await findWebKit()
+		const shares: Record<string, { rest: number[]; awake: number[]; decks: (string | null)[] }> = {}
+		for (const engine of ['chromium', 'webkit'] as const) {
+			const where = `/en/services 1366x900 trail on, at rest, in ${engine === 'chromium' ? 'Chromium' : 'WebKit'}`
+			if (engine === 'webkit' && 'why' in found) {
+				t.diagnostic(`${where}: not run: ${found.why}`)
+				continue
+			}
+			const o = { viewport: DESKTOP, owl: true, initScripts: [ACTORS_TEST] }
+			const l = engine === 'webkit' && 'webkit' in found ? await launchLayerWebKit(found.webkit, gw, o) : await launchLayer(gw, o)
+			try {
+				const seen = watch(l.page)
+				const still = await albumAtRest(l.page, '/en/services', where)
+				const resting = await restsWithin(l.page, 8_000)
+				assert.ok(resting.on, `${where}: the actors rest (${JSON.stringify(resting)})`)
+				const read = { rest: [] as number[], awake: [] as number[], decks: [] as (string | null)[] }
+				for (let i = 0; i < 3; i += 1) {
+					const p = await boardPaint(l.page)
+					read.rest.push(p.share)
+					read.decks.push(p.deck)
+					await l.page.waitForTimeout(300)
+				}
+				assert.ok((await restState(l.page)).on, `${where}: still at rest after the shots`)
+				// Out of the rest: the pointer moves a little, and the rigs are drawn every frame again.
+				await l.page.mouse.move(still.x + 2, still.y + 1)
+				await l.page.waitForTimeout(400)
+				assert.equal((await restState(l.page)).on, false, `${where}: the move ended the rest`)
+				for (let i = 0; i < 3; i += 1) {
+					const p = await boardPaint(l.page)
+					read.awake.push(p.share)
+					read.decks.push(p.deck)
+					await l.page.waitForTimeout(100)
+				}
+				shares[engine] = read
+				console.log(`${where}${engine === 'webkit' && 'from' in found ? ` (${found.from})` : ''}: ${JSON.stringify({ rest: read.rest.map((v) => +v.toFixed(4)), awake: read.awake.map((v) => +v.toFixed(4)), decks: read.decks })}`)
+				assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+				assert.deepEqual(l.reached, [], `${where}: nothing reached past the replay`)
+			} finally {
+				await l.close()
+			}
+		}
+		// Both halves measured first, then judged: a regression in either shows, with the other's numbers beside it.
+		const mean = (list: number[]) => list.reduce((s, v) => s + v, 0) / list.length
+		const verdicts = Object.entries(shares).map(([engine, read]) => {
+			const [rest, awake] = [mean(read.rest), mean(read.awake)]
+			return { engine, rest: +rest.toFixed(4), awake: +awake.toFixed(4), shows: awake >= 0.15, painted: rest >= 0.5 * awake }
+		})
+		t.diagnostic(`board-red share of the deck's box (mean of three): ${verdicts.map((v) => `${v.engine} ${v.rest} at rest, ${v.awake} out of rest`).join('; ')}`)
+		assert.ok(shares.chromium, 'the Chromium half ran')
+		for (const v of verdicts) {
+			assert.ok(v.shows, `${v.engine}: out of rest the deck's box shows his board (board-red share ${v.awake}, at least 0.15)`)
+			assert.ok(v.painted, `${v.engine}: at rest his board is painted (board-red share of the deck's box ${v.rest} at rest, at least half of ${v.awake} out of rest)`)
+		}
+	})
 })

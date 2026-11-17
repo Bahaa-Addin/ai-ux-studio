@@ -31,6 +31,46 @@
   overflow: visible;
 }
 
+/* At rest the compositor moves the rigs from their top-left corner, as the JS lays the keyframes out
+   (F11). What lies on the floor (the shadows, the board's red haze) is a sheet of its own under the
+   rig, in the same box, so it stays put meanwhile; his board is one too, over the floor's and under
+   him (the later of the two, so above it); the mover keeps both under the rig. */
+.pocket-mascot__mover > svg,
+.pocket-mascot__ground > svg,
+.pocket-mascot__board > svg,
+.pocket-drone__bob > svg {
+  transform-origin: 0 0;
+}
+
+.pocket-mascot__mover {
+  isolation: isolate;
+}
+
+.pocket-mascot__ground,
+.pocket-mascot__board {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+/* At rest a blink is a lid that slides down over the eye on the compositor, clipped to the eye's lens
+   (in the rig's units: 120 x 150, scaled to its box by the JS). */
+.pocket-mascot__lid {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+.pocket-mascot__lid-clip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 120px;
+  height: 150px;
+  transform-origin: 0 0;
+  clip-path: url(#pocket-mascot-lens-clip);
+}
+
 /* Hidden: behind the button and under the paper (the JS moves it; nothing here moves it). */
 .pocket-mascot[data-mascot-state='hidden'] {
   visibility: hidden;

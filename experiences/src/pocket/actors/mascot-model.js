@@ -347,6 +347,8 @@ const boardFrame = (p, camera) => {
     floor,
     floorGlow: p.glow * Math.max(0, 1 - p.hover / 45),
     glow: p.glow,
+    // Its ends' edges (screen points that keep their order): what a map of the whole board is fitted to.
+    corners: [sections[0], sections[sections.length >> 1], sections.at(-1)].flatMap((c) => [c.topFront, c.topBack, c.bottomFront, c.bottomBack]),
     opacity: Math.min(1, p.board * 2),
     stroke: 1 * k,
   }
@@ -604,10 +606,12 @@ export const mascotFrame = (pose, camera, options = {}) => {
 
   const { list, tip } = sections(p.bend, p.nod)
 
-  // Silhouette: where the swept surface turns edge-on to the camera (view direction +z).
+  // Silhouette: where the swept surface turns edge-on to the camera (view direction +z). Each point's
+  // `id` (its section and which of its two edges) is the same point from one frame to the next: how many
+  // sections have an edge changes with the pose (F11 fits one drawing to a later one by it).
   const left = []
   const right = []
-  for (const s of list) {
+  for (const [index, s] of list.entries()) {
     const c = toView(s.c)
     const a = linear(s.n1)
     const b = linear(s.n2)
@@ -621,13 +625,15 @@ export const mascotFrame = (pose, camera, options = {}) => {
     const spread = Math.acos(Math.max(-1, Math.min(1, C / h)))
     const centre = camera.project(c)
     const t2 = { x: T.x, y: -T.y }
-    for (const theta of [base + spread, base - spread]) {
+    for (const [edge, theta] of [base + spread, base - spread].entries()) {
       const q = camera.project(add(c, scale(add(scale(a, Math.cos(theta)), scale(b, Math.sin(theta))), s.r)))
+      q.id = 2 * index + edge
       const side = t2.x * (q.y - centre.y) - t2.y * (q.x - centre.x)
       ;(side >= 0 ? left : right).push(q)
     }
   }
   const tipPoint = camera.project(toView(tip))
+  tipPoint.id = -1
   const outline = [...left, tipPoint, tipPoint, ...right.reverse()]
   const bodyPath = closedSmoothPath(outline)
 

@@ -84,16 +84,24 @@ export const TIMING = {
   lightLag: 0.16, // seconds: the soft light trails the pointer a little
 }
 
-/** Mulberry32: small, fast, seedable. Returns a function giving floats in [0, 1). */
+/**
+ * Mulberry32: small, fast, seedable. Returns a function giving floats in [0, 1). Its `state()` reads
+ * where it is and `state(value)` puts it back there (the actors run on ahead at rest and come back, F11).
+ */
 export const seededRandom = (seed = 1) => {
   let a = seed >>> 0
-  return () => {
+  const next = () => {
     a = (a + 0x6d2b79f5) >>> 0
     let t = a
     t = Math.imul(t ^ (t >>> 15), t | 1)
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
+  next.state = (value) => {
+    if (value !== undefined) a = value >>> 0
+    return a
+  }
+  return next
 }
 
 /** A value inside [min, max] (or the number itself), drawn from `random`. */

@@ -140,7 +140,10 @@ const AIXC_DEMO_BUDGETS: Record<string, number> = {
 	'src/host/demos/pocket.js': 29.5 * 1024,
 	'src/host/demos/chips.js': 4.75 * 1024,
 	'src/host/demos/journey.js': 8.75 * 1024,
-	'src/host/demos/actors.js': 44 * 1024, // 2026-11-17 F6b (the actors make room when a fixed control comes or goes mid-album: obstacles.js's watch, the refit, the eased move): 45,004 bytes, 44,277 before; rounded up to a quarter KB
+	// 2026-11-17 F6b (the actors make room when a fixed control comes or goes mid-album: obstacles.js's watch, the refit, the eased move): 45,004 bytes, 44,277 before; rounded up to a quarter KB, 44 KB.
+	// 2026-11-17: the rest mode (F11), approved by the owner after the side-by-side: 48,866 bytes (45,004 with F6b alone); rounded up to a quarter KB, 47.75 KB.
+	// 2026-11-17, its review's fixes (input ends the rest before it changes what the rest ran on, a tick checks the rest may go on, the rider fitted by named points): 49,209 bytes; the next quarter KB.
+	'src/host/demos/actors.js': 48.25 * 1024,
 	'src/host/demos/portal.js': 6.5 * 1024,
 	'src/pocket/portal/controller.js': 17.5 * 1024,
 }

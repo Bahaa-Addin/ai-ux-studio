@@ -32,11 +32,12 @@ const make = (tag, className, attributes = {}) => {
  * @param {() => boolean} options.reducedMotion
  * @param {(ripple: {x:number,y:number,at:number}) => void} [options.onRipple]
  * @param {(pointer: object) => void} [options.onMove]
+ * @param {(on: boolean) => void} [options.onSwitch]  just before it turns on or off (`active` still as it was)
  * @param {(fn: Function) => Function} [options.wrap]  wraps every callback it registers (pocket-actors.js's)
  * @param {(node: Element) => Element} [options.mark]  called on every node it adds
  * @returns {{ pointer: object, light: object, active: boolean, destroy(): void }}
  */
-export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () => {}, onMove = () => {}, wrap = (fn) => fn, mark = (node) => node }) => {
+export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () => {}, onMove = () => {}, onSwitch = () => {}, wrap = (fn) => fn, mark = (node) => node }) => {
   const pointer = { x: -1, y: -1, vx: 0, vy: 0, speed: 0, at: 0, over: 'none', inside: false, slowSince: 0 }
   const light = { x: -1, y: -1 }
   const off = []
@@ -64,6 +65,7 @@ export const createPocketCursor = ({ root, timing, reducedMotion, onRipple = () 
 
   const setActive = (value) => {
     if (active === value) return
+    onSwitch(value)
     active = value
     layout = null
     root.toggleAttribute('data-cursor', value)

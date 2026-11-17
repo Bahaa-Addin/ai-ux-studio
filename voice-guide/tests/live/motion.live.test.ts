@@ -795,7 +795,7 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 					pointerEvents: m ? getComputedStyle(m).pointerEvents : null,
 					covered: m?.hasAttribute('data-covered') ?? false,
 					mover: moverBox,
-					drawn: union([box(svg?.querySelector('[data-part="outline"]')), box(svg?.querySelector('[data-part="board-deck"]'))]),
+					drawn: union([box(svg?.querySelector('[data-part="outline"]')), box(m?.querySelector('[data-part="board-deck"]'))]),
 					hit,
 					drone: drone && !drone.hidden ? box(drone) : null,
 					peek: box(peek),

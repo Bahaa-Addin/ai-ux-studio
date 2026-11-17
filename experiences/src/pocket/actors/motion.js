@@ -253,3 +253,50 @@ export const planHeart = ({ home, band, obstacles, bounds, drone, gap = 18, min 
   }
   return null
 }
+
+/**
+ * The affine map, as an SVG matrix [a, b, c, d, e, f] (x' = a x + c y + e, y' = b x + d y + f), that
+ * best takes the points `from` to `to` (least squares; at least three, not all on one line), or null.
+ * At rest the compositor carries the actors from one exact drawing to the next on such maps (F11).
+ */
+export const fitAffine = (from, to) => {
+  const n = Math.min(from?.length ?? 0, to?.length ?? 0)
+  if (n < 3) return null
+  let mx = 0
+  let my = 0
+  let nx = 0
+  let ny = 0
+  for (let i = 0; i < n; i += 1) {
+    mx += from[i].x / n
+    my += from[i].y / n
+    nx += to[i].x / n
+    ny += to[i].y / n
+  }
+  let sxx = 0
+  let sxy = 0
+  let syy = 0
+  let px = 0
+  let py = 0
+  let qx = 0
+  let qy = 0
+  for (let i = 0; i < n; i += 1) {
+    const x = from[i].x - mx
+    const y = from[i].y - my
+    const u = to[i].x - nx
+    const v = to[i].y - ny
+    sxx += x * x
+    sxy += x * y
+    syy += y * y
+    px += u * x
+    py += u * y
+    qx += v * x
+    qy += v * y
+  }
+  const det = sxx * syy - sxy * sxy
+  if (!(Math.abs(det) > 1e-9 * Math.max(1, sxx * syy))) return null
+  const a = (px * syy - py * sxy) / det
+  const c = (py * sxx - px * sxy) / det
+  const b = (qx * syy - qy * sxy) / det
+  const d = (qy * sxx - qx * sxy) / det
+  return [a, b, c, d, nx - a * mx - c * my, ny - b * mx - d * my]
+}

@@ -19,11 +19,23 @@ const svgEl = (tag, attributes = {}, parent = null) => {
 
 const f2 = (n) => (Number.isFinite(n) ? +n.toFixed(2) : 0)
 
+/**
+ * Writes an attribute only when it changes: in Chrome any write to an SVG attribute, even of the same
+ * value, costs a layout (measured 2026-11-17, F11).
+ */
+const put = (node, key, value) => {
+  const text = typeof value === 'number' ? String(f2(value)) : value
+  if (node.getAttribute(key) !== text) node.setAttribute(key, text)
+}
+
 const setAll = (node, attributes) => {
-  for (const [key, value] of Object.entries(attributes)) {
-    const text = typeof value === 'number' ? String(f2(value)) : value
-    if (node.getAttribute(key) !== text) node.setAttribute(key, text)
-  }
+  for (const [key, value] of Object.entries(attributes)) put(node, key, value)
+}
+
+/** The same for an inline opacity (no layout, but a style recalculation). */
+const fadeTo = (node, opacity) => {
+  const text = String(f2(opacity))
+  if (node.style.opacity !== text) node.style.opacity = text
 }
 
 const ellipseAttrs = (e) => ({ cx: e.cx, cy: e.cy, rx: Math.max(0.01, e.rx), ry: Math.max(0.01, e.ry), transform: `rotate(${f2(e.angle)} ${f2(e.cx)} ${f2(e.cy)})` })
@@ -33,7 +45,8 @@ const fade = (facing, from = 0.06, span = 0.22) => Math.max(0, Math.min(1, (faci
 const showIf = (node, visible, opacity = 1) => {
   const display = visible ? '' : 'none'
   if (node.style.display !== display) node.style.display = display
-  if (visible) node.style.opacity = opacity >= 0.999 ? '' : String(f2(opacity))
+  const text = opacity >= 0.999 ? '' : String(f2(opacity))
+  if (visible && node.style.opacity !== text) node.style.opacity = text
 }
 
 /* ------------------------------------------------------------------- mascot */
@@ -66,8 +79,12 @@ export const createMascotView = (svg) => {
   const softShadow = svgEl('filter', { id: 'pocket-mascot-soft', x: '-50%', y: '-200%', width: '200%', height: '500%' }, defs)
   svgEl('feGaussianBlur', { stdDeviation: 2.4 }, softShadow)
 
-  const shadow = svgEl('ellipse', { 'data-part': 'shadow', fill: '#14141e', 'fill-opacity': '0.2', filter: 'url(#pocket-mascot-soft)' }, svg)
-  const contact = svgEl('ellipse', { 'data-part': 'contact-shadow', fill: '#14141e', 'fill-opacity': '0.2' }, svg)
+  // What lies on the floor (its shadows, the board's red haze) is a sheet of its own under the rig,
+  // in the same units: at rest (F11) the rig moves on the compositor while the floor stays put.
+  const ground = svgEl('svg', { viewBox: svg.getAttribute('viewBox') || '0 0 120 150', 'aria-hidden': 'true', focusable: 'false' })
+  if (svg.hasAttribute('preserveAspectRatio')) ground.setAttribute('preserveAspectRatio', svg.getAttribute('preserveAspectRatio'))
+  const shadow = svgEl('ellipse', { 'data-part': 'shadow', fill: '#14141e', 'fill-opacity': '0.2', filter: 'url(#pocket-mascot-soft)' }, ground)
+  const contact = svgEl('ellipse', { 'data-part': 'contact-shadow', fill: '#14141e', 'fill-opacity': '0.2' }, ground)
 
   // The hoverboard (album only, ADR-0004): red haze on the floor, the pads' glow, the pads, then
   // the deck in Vodafone red: its silhouette in the front edge's darker red, outlined in the
@@ -75,8 +92,15 @@ export const createMascotView = (svg) => {
   // line. Under the feet, so before the back layer.
   const glowBlur = svgEl('filter', { id: 'pocket-mascot-glow', x: '-60%', y: '-200%', width: '220%', height: '500%' }, defs)
   svgEl('feGaussianBlur', { stdDeviation: 3.2 }, glowBlur)
-  const board = svgEl('g', { 'data-part': 'board' }, svg)
-  const boardFloor = svgEl('ellipse', { 'data-part': 'board-floor-glow', fill: '#e60000', filter: 'url(#pocket-mascot-glow)' }, board)
+  // The board is a sheet of its own beside the rig, in the same units (pocket-actors.js lays it between the
+  // floor's sheet and the rig, so it paints under him as before), so at rest (F11) the compositor can move it
+  // apart from its rider. Not an HTML box in a foreignObject: WebKit (Safari, every iOS browser) painted no board
+  // at all while such a box ran its transform (2026-11-17; composited HTML inside SVG, WebKit bug 23113).
+  const boardSheet = svgEl('svg', { viewBox: svg.getAttribute('viewBox') || '0 0 120 150', 'aria-hidden': 'true', focusable: 'false' })
+  if (svg.hasAttribute('preserveAspectRatio')) boardSheet.setAttribute('preserveAspectRatio', svg.getAttribute('preserveAspectRatio'))
+  const board = svgEl('g', { 'data-part': 'board' }, boardSheet)
+  const boardGround = svgEl('g', { 'data-part': 'board-ground' }, ground)
+  const boardFloor = svgEl('ellipse', { 'data-part': 'board-floor-glow', fill: '#e60000', filter: 'url(#pocket-mascot-glow)' }, boardGround)
   const boardHalo = [-1, 1].map(() => svgEl('ellipse', { 'data-part': 'board-halo', fill: '#ff2a1f', filter: 'url(#pocket-mascot-glow)' }, board))
   const boardPads = [-1, 1].map(() => svgEl('ellipse', { 'data-part': 'board-pad', fill: '#ffd3cc', stroke: '#5c0000' }, board))
   const boardDeck = svgEl('path', { 'data-part': 'board-deck', fill: '#b80000', stroke: '#5c0000', 'stroke-linejoin': 'round', 'paint-order': 'stroke' }, board)
@@ -168,16 +192,16 @@ export const createMascotView = (svg) => {
     if (!r) return
     setAll(remoteCase, { d: r.case, 'stroke-width': r.stroke * 1.4 })
     showIf(remoteFace, Boolean(r.face), 0.4 + 0.6 * r.faceShade)
-    if (r.face) remoteFace.setAttribute('d', r.face)
+    if (r.face) put(remoteFace, 'd', r.face)
     setAll(remoteLed, { ...ellipseAttrs(r.led) })
-    remoteLed.style.opacity = String(f2(r.led.opacity))
+    fadeTo(remoteLed, r.led.opacity)
     r.sticks.forEach((stick, index) => {
       const node = sticks[index]
       setAll(node.gimbal, { ...ellipseAttrs(stick.gimbal), 'stroke-width': r.stroke * 0.7 })
-      node.shaft.setAttribute('d', stick.shaft)
+      put(node.shaft, 'd', stick.shaft)
       setAll(node.tip, { cx: stick.tip.cx, cy: stick.tip.cy, r: stick.tip.r, 'stroke-width': r.stroke * 0.6 })
     })
-    antenna.setAttribute('d', r.antenna)
+    put(antenna, 'd', r.antenna)
     setAll(antennaTip, { ...r.antennaTip, 'stroke-width': r.stroke * 0.6 })
     if (r.thumbsShown) {
       // A thumb shows only with its arm in front of the body (otherwise its hand is out of sight).
@@ -191,16 +215,17 @@ export const createMascotView = (svg) => {
 
   const drawBoard = (b) => {
     showIf(board, Boolean(b), b?.opacity ?? 0)
+    showIf(boardGround, Boolean(b), b?.opacity ?? 0)
     if (!b) return
     setAll(boardFloor, ellipseAttrs(b.floor))
-    boardFloor.style.opacity = String(f2(0.4 * b.floorGlow))
+    fadeTo(boardFloor, 0.4 * b.floorGlow)
     b.halo.forEach((e, i) => {
       setAll(boardHalo[i], ellipseAttrs(e))
-      boardHalo[i].style.opacity = String(f2(0.7 * b.glow))
+      fadeTo(boardHalo[i], 0.7 * b.glow)
     })
     b.pads.forEach((e, i) => {
       setAll(boardPads[i], { ...ellipseAttrs(e), 'stroke-width': b.stroke * 0.8 })
-      boardPads[i].style.opacity = String(f2(0.45 + 0.55 * b.glow))
+      fadeTo(boardPads[i], 0.45 + 0.55 * b.glow)
     })
     setAll(boardDeck, { d: b.deck, 'stroke-width': b.stroke * 3 })
     showIf(boardTop, Boolean(b.top))
@@ -219,8 +244,8 @@ export const createMascotView = (svg) => {
       return
     }
     if (eye.brow) setAll(brow, { d: eye.brow, 'stroke-width': eye.browWidth })
-    sclera.setAttribute('d', eye.sclera)
-    lensClipPath.setAttribute('d', eye.sclera)
+    put(sclera, 'd', eye.sclera)
+    put(lensClipPath, 'd', eye.sclera)
     setAll(eyeOutline, { d: eye.sclera, 'stroke-width': eye.outlineWidth })
     setAll(irisDisc, { ...ellipseAttrs(eye.iris), 'stroke-width': eye.irisStroke })
     setAll(irisRing, ellipseAttrs(eye.ring))
@@ -228,7 +253,7 @@ export const createMascotView = (svg) => {
     eye.glints.forEach((g, index) => setAll(glints[index], ellipseAttrs(g)))
     showIf(lid, Boolean(eye.lid))
     showIf(lidLine, Boolean(eye.lidLine))
-    if (eye.lid) lid.setAttribute('d', eye.lid)
+    if (eye.lid) put(lid, 'd', eye.lid)
     if (eye.lidLine) setAll(lidLine, { d: eye.lidLine, 'stroke-width': eye.outlineWidth })
   }
 
@@ -241,14 +266,14 @@ export const createMascotView = (svg) => {
     const k = frame.body.centre.k
 
     setAll(shadow, { ...ellipseAttrs(frame.shadow) })
-    shadow.style.opacity = String(f2(Math.max(0.25, Math.min(1, 1 - (pose.y ?? 0) / 60))))
+    fadeTo(shadow, Math.max(0.25, Math.min(1, 1 - (pose.y ?? 0) / 60)))
     setAll(contact, ellipseAttrs(frame.contact))
-    contact.style.opacity = String(f2(Math.max(0, 1 - frame.lift / 8)))
+    fadeTo(contact, Math.max(0, 1 - frame.lift / 8))
     drawBoard(frame.board)
 
-    skinPath.setAttribute('d', frame.body.d)
-    clipPath.setAttribute('d', frame.body.d)
-    outline.setAttribute('d', frame.body.d)
+    put(skinPath, 'd', frame.body.d)
+    put(clipPath, 'd', frame.body.d)
+    put(outline, 'd', frame.body.d)
     setAll(outline, { 'stroke-width': frame.body.stroke })
     setAll(skin, { cx: frame.body.centre.x + (frame.body.highlight.x - frame.body.centre.x) * 0.4, cy: frame.body.centre.y + (frame.body.highlight.y - frame.body.centre.y) * 0.4, fx: frame.body.highlight.x, fy: frame.body.highlight.y, r: frame.body.radius * 1.55 })
 
@@ -260,9 +285,9 @@ export const createMascotView = (svg) => {
         return { x: p.x + (dx / d) * by * k, y: p.y + (dy / d) * by * k }
       })
     const line = (points) => (points.length > 1 ? points.map((p, i) => `${i ? 'L' : 'M'}${f2(p.x)} ${f2(p.y)}`).join('') : '')
-    gloss.setAttribute('d', line(inset(frame.body.gloss, 5)))
+    put(gloss, 'd', line(inset(frame.body.gloss, 5)))
     setAll(gloss, { 'stroke-width': 2.6 * k })
-    rimLight.setAttribute('d', line(inset(frame.body.rim, 3.6)))
+    put(rimLight, 'd', line(inset(frame.body.rim, 3.6)))
     setAll(rimLight, { 'stroke-width': 2.2 * k })
     setAll(glint, { cx: frame.body.highlight.x, cy: frame.body.highlight.y, rx: 3.2 * k, ry: 5.4 * k, transform: `rotate(28 ${f2(frame.body.highlight.x)} ${f2(frame.body.highlight.y)})` })
 
@@ -274,16 +299,16 @@ export const createMascotView = (svg) => {
     ]) {
       const visible = d.facing > -0.02
       showIf(node, visible, fade(d.facing, -0.02, 0.16))
-      if (visible) node.setAttribute('transform', matrixAttribute(d.matrix))
+      if (visible) put(node, 'transform', matrixAttribute(d.matrix))
     }
 
     for (const [name, part] of Object.entries(parts)) {
       const data = frame.limbs[name]
-      part.path.setAttribute('d', data.d)
+      put(part.path, 'd', data.d)
       setAll(part.path, { 'stroke-width': 2.3 * data.root.k })
       if (part.hand) {
         const h = frame.hands[name === 'armL' ? 'handL' : 'handR']
-        part.hand.setAttribute('transform', `translate(${f2(h.x)} ${f2(h.y)}) rotate(${f2(h.angle)}) scale(${f2(h.k * h.flip)} ${f2(h.k)})`)
+        put(part.hand, 'transform', `translate(${f2(h.x)} ${f2(h.y)}) rotate(${f2(h.angle)}) scale(${f2(h.k * h.flip)} ${f2(h.k)})`)
       }
     }
     for (const [name, node] of Object.entries(feet)) setAll(node, { ...ellipseAttrs(frame.feet[name]), 'stroke-width': 2.2 * k })
@@ -291,8 +316,8 @@ export const createMascotView = (svg) => {
     drawRemote(frame.remote, frame.order)
 
     const hr = frame.hands.handR
-    appleAt.setAttribute('transform', `translate(${f2(hr.x)} ${f2(hr.y - 3 * hr.k)}) scale(${f2(hr.k)})`)
-    fxAt.setAttribute('transform', `translate(${f2(frame.head.x)} ${f2(frame.head.y)}) scale(${f2(frame.head.k)})`)
+    put(appleAt, 'transform', `translate(${f2(hr.x)} ${f2(hr.y - 3 * hr.k)}) scale(${f2(hr.k)})`)
+    put(fxAt, 'transform', `translate(${f2(frame.head.x)} ${f2(frame.head.y)}) scale(${f2(frame.head.k)})`)
 
     // Paint order: limbs behind the body or in front of it, as they turn.
     const order = `${frame.order.back.join()}|${frame.order.front.join()}|${frame.order.feetFront}`
@@ -311,11 +336,33 @@ export const createMascotView = (svg) => {
   showIf(thumbs, false)
 
   showIf(board, false)
+  showIf(boardGround, false)
 
-  return { svg, camera, draw, parts: { eye: eyeAt, iris, lid, remote, thumbs, board } }
+  return { svg, ground, boardSheet, camera, draw, parts: { eye: eyeAt, iris, lid, remote, thumbs, board } }
 }
 
 /* -------------------------------------------------------------------- drone */
+
+/**
+ * Blade `blade` (0, 1) of rotor `index` at rotor angle `spin` (degrees): its turn in the rotor's plane,
+ * as an SVG rotate() inside the rotor's matrix. The same as droneFrame()'s blade matrices: the rotor's
+ * matrix times this rotation. Alternate rotors turn opposite ways, so the angle runs at -1 or +1 times spin.
+ */
+export const bladeAngle = (index, blade, spin) => -(spin * (index % 2 ? -1 : 1) + index * 37 + blade * 90)
+
+/**
+ * At rest (F11) a rotor's blades are a flipbook of six pages, the pair at every 15° (it looks the same every
+ * 90°). The opacity keyframes of page `page` of rotor `index` over one quarter turn, the blades at `spin` as it
+ * starts: step-end, so it shows exactly while the blades are within 7.5° of it, and the pages take turns.
+ */
+export const flipbookKeys = (index, page, spin) => {
+  const dir = index % 2 ? 1 : -1
+  const from = bladeAngle(index, 0, spin)
+  const turn = (x) => (((x % 90) + 90) % 90) / 90
+  const u0 = dir > 0 ? turn(15 * page - 7.5 - from) : turn(from - 15 * page - 7.5)
+  const u1 = u0 + 1 / 6
+  return (u1 <= 1 ? [[0, 0], [u0, 1], [u1, 0], [1, 0]] : [[0, 1], [u1 - 1, 0], [u0, 1], [1, 1]]).map(([offset, opacity]) => ({ offset: Math.min(1, Math.max(0, offset)), opacity, easing: 'step-end' }))
+}
 
 /**
  * @param {SVGSVGElement} svg  the loaded decal sheet (viewBox 0 0 200 140); it becomes the stage
@@ -350,10 +397,21 @@ export const createDroneView = (svg) => {
     const arm = svgEl('path', { fill: red }, group)
     const pod = svgEl('circle', { fill: red }, group)
     const disc = svgEl('circle', { r: 24, fill: red, 'fill-opacity': '0.08', 'data-part': 'rotor-disc' }, group)
-    const blades = [0, 1].map(() => svgEl('ellipse', { rx: 21.5, ry: 1.8, fill: '#990000', 'fill-opacity': '0.55', 'data-part': 'blades' }, group))
+    // The blades turn in the rotor's plane (its matrix). At rest (F11) the spin is a flipbook on the
+    // compositor: the pair at every 15° (it looks the same every 90°), one shown at a time.
+    const rotor = svgEl('g', { 'data-part': 'rotor' }, group)
+    const blade = { rx: 21.5, ry: 1.8, fill: '#990000', 'fill-opacity': '0.55' }
+    const blades = [0, 1].map(() => svgEl('ellipse', { ...blade, 'data-part': 'blades' }, rotor))
+    const flip = svgEl('g', { 'data-part': 'rotor-flip' }, rotor)
+    const pages = Array.from({ length: 6 }, (_, k) => {
+      const page = svgEl('g', { transform: `rotate(${k * 15})` }, flip)
+      for (const turn of [0, 90]) svgEl('ellipse', { ...blade, transform: `rotate(${turn})` }, page)
+      return page
+    })
+    showIf(flip, false)
     const thinFront = svgEl('path', guardStyle, group)
     const heavyFront = svgEl('path', guardStyle, group)
-    return { group, thinBack, heavyBack, arm, pod, disc, blades, thinFront, heavyFront }
+    return { group, thinBack, heavyBack, arm, pod, disc, rotor, blades, flip, pages, thinFront, heavyFront }
   })
   const hullGroup = svgEl('g', { 'data-part': 'body' }, scene)
   const bucket = svgEl('ellipse', { fill: '#d60000' }, hullGroup)
@@ -374,15 +432,16 @@ export const createDroneView = (svg) => {
     setAll(hullGradient, { cx: frame.hull.light.x, cy: frame.hull.light.y, r: Math.max(frame.hull.rx, frame.hull.ry) * 1.35 })
     setAll(bucket, ellipseAttrs(frame.bucket))
     showIf(detailsAt, frame.details.facing > 0.05, fade(frame.details.facing, 0.05, 0.25))
-    if (frame.details.facing > 0.05) detailsAt.setAttribute('transform', matrixAttribute(frame.details.matrix))
-    liftAt.setAttribute('transform', `translate(${f2(frame.centre.x - 6)} ${f2(frame.centre.y + 34)})`)
+    if (frame.details.facing > 0.05) put(detailsAt, 'transform', matrixAttribute(frame.details.matrix))
+    put(liftAt, 'transform', `translate(${f2(frame.centre.x - 6)} ${f2(frame.centre.y + 34)})`)
 
     frame.units.forEach((data, index) => {
       const unit = units[index]
-      unit.arm.setAttribute('d', data.arm)
+      put(unit.arm, 'd', data.arm)
       setAll(unit.pod, { cx: data.pod.cx, cy: data.pod.cy, r: data.pod.r })
-      unit.disc.setAttribute('transform', matrixAttribute(data.disc))
-      data.blades.forEach((m, i) => unit.blades[i].setAttribute('transform', matrixAttribute(m)))
+      put(unit.disc, 'transform', matrixAttribute(data.disc))
+      put(unit.rotor, 'transform', matrixAttribute(data.disc))
+      unit.blades.forEach((blade, i) => put(blade, 'transform', `rotate(${f2(bladeAngle(index, i, spin))})`))
       const thin = 2.3 * data.guard.width
       const heavy = 4.6 * data.guard.width
       setAll(unit.thinBack, { d: data.guard.thinBack || 'M0 0', 'stroke-width': thin })
@@ -401,5 +460,25 @@ export const createDroneView = (svg) => {
     return frame
   }
 
-  return { svg, camera, draw }
+  /**
+   * At rest: each rotor's flipbook shows the page nearest its blades' angle, turning at `rate` degrees per
+   * ms from `spin` at `start` (document time), on the compositor (opacity steps: no layout). Returns the
+   * animations; spinning(false) gives the rotors back to draw().
+   */
+  const spinning = (on, spin = 0, rate = 0, start = 0) => {
+    const animations = []
+    units.forEach((unit, index) => {
+      showIf(unit.flip, on)
+      for (const node of unit.blades) showIf(node, !on)
+      if (!on) return
+      unit.pages.forEach((page, k) => {
+        const animation = page.animate(flipbookKeys(index, k, spin), { duration: 90 / rate, iterations: Infinity })
+        animation.startTime = start
+        animations.push(animation)
+      })
+    })
+    return animations
+  }
+
+  return { svg, camera, draw, spinning }
 }

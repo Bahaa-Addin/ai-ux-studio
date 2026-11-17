@@ -58,9 +58,10 @@ const GREETING = new Set(['emerging', 'holding', 'catching', 'slipping'])
  * @param {object} [options.timing]      see ./timing.js
  * @param {() => boolean} [options.reduced] prefers-reduced-motion
  * @param {(state, previous, info) => void} [options.onChange]
+ * @param {(next, state) => void} [options.beforeChange]  just before a change of state, the old one still in force
  * @param {() => number} [options.parkFor]  how long landing the drone takes before it dozes (0: none)
  */
-export const createMascotBrain = ({ clock, timing = TIMING, reduced = () => false, onChange = () => {}, parkFor = () => 0 }) => {
+export const createMascotBrain = ({ clock, timing = TIMING, reduced = () => false, onChange = () => {}, beforeChange = () => {}, parkFor = () => 0 }) => {
   let state = 'hidden'
   let context = 'page'
   let tuckWanted = false
@@ -96,6 +97,7 @@ export const createMascotBrain = ({ clock, timing = TIMING, reduced = () => fals
   /* ------------------------------------------------------------ states */
   /** Enters `next`; with a duration, `then` runs when it is over (unless interrupted). */
   const enter = (next, { duration = null, then = null, info = {} } = {}) => {
+    beforeChange(next, state)
     clearStateTimer()
     const previous = state
     state = next

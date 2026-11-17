@@ -64,11 +64,11 @@ import { createMascotBrain } from './actors/mascot-brain.js'
 import { createDroneBrain, DRONE_GROUNDED } from './actors/drone-brain.js'
 import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, createPoseAnimator } from './actors/clips.js'
 import { createMascotView, createDroneView } from './actors/renderer.js'
-import { reachToward, holdRemote, restPose, MASCOT_MODEL, REMOTE, BOARD } from './actors/mascot-model.js'
-import { restDronePose, DRONE_LIGHT } from './actors/drone-model.js'
+import { reachToward, holdRemote, restPose, mascotFrame, MASCOT_MODEL, REMOTE, BOARD } from './actors/mascot-model.js'
+import { restDronePose, droneFrame, DRONE_LIGHT } from './actors/drone-model.js'
 import { createScope } from './actors/scope.js'
 import { t } from '../i18n.js'
-import { clamp, lerp, sampleFlight, rect, rectsOverlap, chooseAnchor, planHeart, easeInOutSine } from './actors/motion.js'
+import { clamp, lerp, sampleFlight, rect, rectsOverlap, chooseAnchor, planHeart, easeInOutSine, fitAffine } from './actors/motion.js'
 import { createSpring, stepSpring, stepAngleSpring, resetSpring, createWander, angleDelta } from './actors/physics.js'
 import { shuffle, planRide, ridePoint } from './actors/gait.js'
 import { createFlight, stepFlight, followPoint, kick, command, sticksFor, spool, FLIGHT, BOARD_FLIGHT } from './actors/drone-flight.js'
@@ -154,6 +154,32 @@ export const crossPace = ([base, perPx, least, most]) => [base, perPx, least, Ma
 /** The way back to the left corner: a dash, there (and sunk behind the button) as the page lands (1100 ms). */
 export const DASH_PACE = [0, 0.55, 420, 760]
 
+/** An ellipse (projectEllipsoid's) as its centre and the ends of its axes. */
+const ellipsePoints = (e) => {
+  const a = (e.angle * Math.PI) / 180
+  const [c, s] = [Math.cos(a), Math.sin(a)]
+  return [{ x: e.cx, y: e.cy }, { x: e.cx + e.rx * c, y: e.cy + e.rx * s }, { x: e.cx - e.rx * c, y: e.cy - e.rx * s }, { x: e.cx - e.ry * s, y: e.cy + e.ry * c }, { x: e.cx + e.ry * s, y: e.cy - e.ry * c }]
+}
+
+/**
+ * The points the rider's sheet is fitted to at rest (F11), by name: his silhouette's (by their `id`, as
+ * mascotFrame() gives it: how many there are changes with his pitch), his eye's centre and his feet.
+ */
+export const riderPoints = (frame) =>
+  new Map([...frame.body.outline.map((p) => [p.id, p]), ['eye', frame.eye.centre], ...ellipsePoints(frame.feet.footL).map((p, i) => [`l${i}`, p]), ...ellipsePoints(frame.feet.footR).map((p, i) => [`r${i}`, p])])
+
+/** The map that best takes the named points `from` to the same points in `to` (those both have), or null. */
+export const fitPoints = (from, to) => {
+  const a = []
+  const b = []
+  for (const [name, p] of from) {
+    if (!to.has(name)) continue
+    a.push(p)
+    b.push(to.get(name))
+  }
+  return fitAffine(a, b)
+}
+
 /** Test seam: a frozen config read once at start-up (seeded randomness, faster idle clock). */
 const testConfig = () => {
   const value = typeof window !== 'undefined' ? window.__POCKET_ACTORS_TEST__ : null
@@ -238,6 +264,16 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   const mascot = make('div', 'pocket-mascot', { 'aria-hidden': 'true', 'data-mascot-state': 'hidden' })
   const mover = make('div', 'pocket-mascot__mover')
   mascot.append(mover)
+  // At rest (F11): a lid that closes over the eye on the compositor, clipped to the eye's lens.
+  const lidAt = make('div', 'pocket-mascot__lid', { hidden: true })
+  const lidClip = make('div', 'pocket-mascot__lid-clip')
+  const lidSheet = makeSvg('svg')
+  const lidPath = makeSvg('path')
+  for (const [key, value] of Object.entries({ 'aria-hidden': 'true', focusable: 'false' })) lidSheet.setAttribute(key, value)
+  for (const [key, value] of Object.entries({ fill: 'url(#pocket-mascot-skin)', stroke: '#5c0000', 'stroke-linejoin': 'round' })) lidPath.setAttribute(key, value)
+  lidSheet.append(lidPath)
+  lidClip.append(lidSheet)
+  lidAt.append(lidClip)
 
   // Inside the curl's `under` box (sheet coordinates): clipped by the paper, covered by the roll.
   const peekStage = make('div', 'pocket-actor-peek', { 'aria-hidden': 'true' })
@@ -293,7 +329,16 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     mark(droneSvg)
     mover.append(mascotSvg)
     const view = createMascotView(mascotSvg)
-    rig = { svg: mascotSvg, view, iris: view.parts.iris }
+    rig = { svg: mascotSvg, view, iris: view.parts.iris, lastFrame: null }
+    // What lies on the floor is a sheet of its own under the rig (it stays put while the rig moves at rest),
+    // and so is his board, between the two (it moves apart from him at rest).
+    const ground = make('div', 'pocket-mascot__ground')
+    const boardAt = make('div', 'pocket-mascot__board')
+    for (const node of [view.ground, ...view.ground.querySelectorAll('*'), view.boardSheet, ...view.boardSheet.querySelectorAll('*')]) mark(node)
+    ground.append(view.ground)
+    boardAt.append(view.boardSheet)
+    lidSheet.setAttribute('viewBox', mascotSvg.getAttribute('viewBox') || '0 0 120 150')
+    mover.append(ground, boardAt, lidAt)
     // The mitten for the hands on the button: the sheet's hand artwork.
     const hand = mascotSvg.querySelector('[data-limb="arm-r"] [data-place="hand-r"] > *')
     // Every node of the copy is the actors' own (marked, as everything they add).
@@ -339,7 +384,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       const onIt = { board: 1, hover: BOARD.hover, y: BOARD.hover + BOARD.thickness - BOARD.feet }
       rig.view.draw({ ...restPose(), yaw, pitch, ...onIt, boardYaw: restNose }, { light: MASCOT_MODEL.light })
       const outline = rig.svg.querySelector('[data-part="outline"]')
-      const deck = rig.svg.querySelector('[data-part="board-deck"]')
+      // His board is a sheet of its own beside the rig (F11), in the rig's units: its deck is measured there.
+      const deck = rig.view.parts.board.querySelector('[data-part="board-deck"]')
       const stroke = parseFloat(outline?.getAttribute('stroke-width')) || 0
       const deckStroke = parseFloat(deck?.getAttribute('stroke-width')) || 0
       const right = Math.max(rightmost([outline]) + stroke / 2, deck ? rightmost([deck]) + deckStroke / 2 : -Infinity)
@@ -419,6 +465,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
   /** Plays a clip from ./actors/clips.js on top of the physical motion. */
   const play = (name, params = {}) => {
+    leaveRest()
     stopClip()
     if (!rig) return
     const clip = MASCOT_CLIPS[name](params)
@@ -432,10 +479,18 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       }
     }
     animator.play(clip, performance.now(), duration)
-    for (const [at, patch] of clip.beats ?? []) beats.add(life.timeout(() => applyExpression(patch), at))
+    // A beat changes what the physics read: the rest (if any) ends first (F11).
+    const beat = (at, change) =>
+      beats.add(
+        life.timeout(() => {
+          leaveRest()
+          change()
+        }, at),
+      )
+    for (const [at, patch] of clip.beats ?? []) beat(at, () => applyExpression(patch))
     for (const [at, target] of clip.gaze ?? []) {
       if (at <= 0) look.mode = target
-      else beats.add(life.timeout(() => (look.mode = target), at))
+      else beat(at, () => (look.mode = target))
     }
     wakeMascot()
   }
@@ -606,7 +661,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   const measureMascot = () => {
     if (!mascotBox) {
       const box = mascot.getBoundingClientRect()
-      mascotBox = { left: box.left, top: box.top, width: box.width }
+      mascotBox = { left: box.left, top: box.top, width: box.width, height: box.height }
     }
     return { left: mascotBox.left + place.x, top: mascotBox.top + place.y, scale: mascotBox.width / SVG_W }
   }
@@ -693,15 +748,29 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     blink.next = now + pick(timing.blinkEvery, random)
   }
 
-  /** One frame of the mascot: physics, look, life, the clip on top, then draw. */
-  const drawMascot = (now, dt) => {
+  /** How far the lid is down `since` ms into a blink (a double blink closes twice). */
+  const blinkLidAt = (since, double) => {
+    if (since < 0 || since >= timing.blink * (double ? 2.2 : 1)) return 0
+    const u = since / timing.blink
+    return double ? Math.max(0, Math.sin(Math.PI * Math.min(1, u)), Math.sin(Math.PI * Math.max(0, u - 1.2))) : Math.sin(Math.PI * u)
+  }
+
+  let clipBusy = false // a clip's pose tracks are still playing (a loop alone does not count)
+
+  /**
+   * One frame of the mascot's physics, look, life and clip: the pose to draw, nothing drawn. `resting`
+   * (at rest, F11): the pose leaves out what the compositor cannot carry between rest ticks, a blink
+   * (the lid over the eye does it) and a weight shift's step; their timing runs on all the same. `shown`
+   * false: a step nobody sees (at rest, between the poses it lays out), so the hands are not put on the remote.
+   */
+  const poseMascot = (now, dt, resting = false, shown = true) => {
     const geo = measureMascot()
     const state = mascot.dataset.mascotState
     const reduced = reducedMotion()
     const asleep = state === 'sleeping' || state === 'yawning'
 
     // Clip, travel, the board.
-    animator.tick(now)
+    clipBusy = animator.tick(now).active
     const clipPose = animator.pose
     const px = place.x
     const py = place.y
@@ -766,13 +835,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       blink.double = random() < 0.18
       scheduleBlink(now)
     }
-    const blinkSpan = timing.blink * (blink.double ? 2.2 : 1)
-    const sinceBlink = now - blink.at
-    let blinkLid = 0
-    if (blink.at >= 0 && sinceBlink < blinkSpan) {
-      const u = sinceBlink / timing.blink
-      blinkLid = blink.double ? Math.max(0, Math.sin(Math.PI * Math.min(1, u)), Math.sin(Math.PI * Math.max(0, u - 1.2))) : Math.sin(Math.PI * u)
-    }
+    const blinkLid = blink.at >= 0 && !resting ? blinkLidAt(now - blink.at, blink.double) : 0
 
     // Life: breathing, weight shifts, a tip that sways; quieter while a clip or the ride plays.
     const aliveness = reduced || state === 'hidden' ? 0 : asleep ? 0.25 : riding() || travel ? 0.5 : state === 'idle' || state === 'holding' ? 1 : 0.6
@@ -799,7 +862,10 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
         if (u >= 1) {
           fidget.start = -1
           fidget.next = now + 5000 + random() * 7000
-        } else fidgetPose = shuffle(now - fidget.start, Math.sin(Math.PI * u))
+        } else {
+          fidgetPose = shuffle(now - fidget.start, Math.sin(Math.PI * u))
+          if (resting) fidgetPose = { roll: fidgetPose.roll, y: fidgetPose.y }
+        }
       }
     }
     const turning = Math.min(1, Math.abs(yawVelocity) / 90)
@@ -904,7 +970,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       base[`arm${key}`] = reduced ? resetSpring(arms[key], value).x : stepSpring(arms[key], dt, value)
     }
     // Hands on the remote: solved every frame (no lag), so they stay on its grips however it moves.
-    if (hold > 0.01) {
+    if (hold > 0.01 && shown) {
       const onIt = clamp(hold * 2.2, 0, 1)
       const k = onIt * onIt * (3 - 2 * onIt)
       const ik = holdRemote(base)
@@ -913,14 +979,21 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
     // The light: the album cursor's soft light, when there is one.
     const light = cursor?.active ? lightToward(MASCOT_MODEL.light, eye, cursor.light) : MASCOT_MODEL.light
+    return { base, ride, hold, w, light, geo, state, moving: Boolean(riding() || travel) || clipBusy || aliveness > 0 }
+  }
+
+  /** Draws a pose from poseMascot(), moves the box and writes the QA hooks. Returns the drawn frame. */
+  const paintMascot = ({ base, ride, hold, w, light, geo, state }) => {
     const frame = rig.view.draw(base, { light })
+    rig.lastFrame = frame
     rig.lastPose = base
     rig.lastLight = light
     rig.lastEye = frame.eye.centre
     rig.lastRemote = frame.remote ? frame.remote.centre : null
     applyPlace()
-    mascot.dataset.bodyYaw = String(Math.round(body.yaw.x))
-    mascot.dataset.look = look.active ?? look.mode
+    const yaw = String(Math.round(body.yaw.x))
+    if (mascot.dataset.bodyYaw !== yaw) mascot.dataset.bodyYaw = yaw
+    if (mascot.dataset.look !== (look.active ?? look.mode)) mascot.dataset.look = look.active ?? look.mode
     const remoteState = hold > 0.95 ? 'held' : hold > 0.05 ? 'moving' : 'none'
     if (mascot.dataset.remote !== remoteState) mascot.dataset.remote = remoteState
     if (hold > 0.01) mascot.dataset.sticks = [pilot.sticks.across.x, pilot.sticks.depth.x, pilot.sticks.turn.x, pilot.sticks.climb.x].map((v) => v.toFixed(2)).join(',')
@@ -929,7 +1002,14 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     if (ride) mascot.dataset.boardPose = [base.hover, base.boardRoll, base.boardPitch, base.boardYaw, base.boardZ, base.glow].map((v) => v.toFixed(2)).join(',')
     if (rig.iris) rig.iris.dataset.gaze = `${body.gazeX.x.toFixed(1)},${body.gazeY.x.toFixed(1)}`
     placeGrip(frame, geo, w)
-    return { moving: Boolean(riding() || travel) || animator.clip !== null || aliveness > 0 }
+    return frame
+  }
+
+  /** One frame of the mascot: physics, look, life, the clip on top, then draw. */
+  const drawMascot = (now, dt) => {
+    const pose = poseMascot(now, dt)
+    paintMascot(pose)
+    return pose
   }
 
   /** The two points on the button's rim the hands hold: upper left and top. */
@@ -970,14 +1050,19 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     mascotLast = now
     // Breathing alone, with the pointer at rest, only needs every other frame.
     mascotTick += 1
-    const calm = !riding() && !travel && animator.clip === null && clock.now() - pointer.at > 1500 && body.grip.x < 0.01
+    const calm = !riding() && !travel && !clipBusy && clock.now() - pointer.at > 1500 && body.grip.x < 0.01
     let moving = true
-    if (!calm || mascotTick % 2 === 0) moving = drawMascot(now, calm ? dt * 2 : dt).moving
+    if (!calm || mascotTick % 2 === 0) {
+      moving = drawMascot(now, calm ? dt * 2 : dt).moving
+      // Nothing happening and nobody moving: the compositor takes over until something does (F11).
+      if (moving && calm && restReady(now)) return
+    }
     if (moving && mascotAlive() && !reducedMotion()) mascotFrameId = life.frame(tickMascot)
     else mascotLast = 0
   }
 
   const wakeMascot = () => {
+    leaveRest()
     if (mascotFrameId === null && rig) mascotFrameId = life.frame(tickMascot)
   }
 
@@ -1159,6 +1244,273 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     mascot.style.bottom = `${-layout.sink}px`
   }
 
+  /* ========================================================== rest (F11) */
+  /*
+   * At rest (the album open, the mascot idle and the drone hovering at home, the pointer still) drawing
+   * the rigs every frame cost a layout every frame (any write to an SVG attribute is one) and a tenth
+   * of the main thread (measured 2026-11-17). So at rest they are drawn exactly once every REST_TICK ms,
+   * and in between the compositor carries them: each tick runs their physics on ahead (on their state,
+   * put back after) and lays the way to the next tick out as keyframes on boxes alone (the mascot's box,
+   * his sheet, his board's and the floor's; the drone's button, sheet and shadow), whose animations need
+   * no layout. The rotors spin and a blink closes on the compositor too (an SVG part's own transform would
+   * cost a layout in every frame the page draws). Anything at all (the pointer, a press, a key, a wheel, a
+   * touch, focus, a scroll, the cursor's light coming or going, a change of state, a relayout, less motion
+   * asked for) ends the rest at once, before it changes anything the physics read: they catch up to now as
+   * they were, and the rigs are drawn every frame again, from there. Note: a rect read from a sheet that
+   * turns a little at rest is the box of its turned box.
+   */
+  const REST_TICK = 750
+  const REST_STEP = 1000 / 60
+  const REST_AHEAD = 120 // ms the keyframes run on past the next tick, so a late timer never leaves them standing
+  const REST_SAMPLE = 6 // steps between keyframes (100 ms: the motion at rest is slow)
+  const lull = { on: false, at: 0, next: null, key: '', timer: null, drone: false, anims: [], spins: [], blinks: [], blinkAt: -1, frame: null, droneFrame: null, lid: 0, stirred: -Infinity }
+
+  /** Puts `source` (a copy) back into `target`, keeping every object the code holds on to. */
+  const refill = (target, source) => {
+    for (const [key, value] of Object.entries(source)) {
+      const into = target[key]
+      if (value && typeof value === 'object' && !Array.isArray(value) && into && typeof into === 'object' && !Array.isArray(into)) refill(into, value)
+      else target[key] = value
+    }
+  }
+  const saveSim = () => structuredClone({ place, board, body, arms, pilot, blink, fidget, look, flight, cast, lastVelocity, clipBusy, fly: { spin: fly.spin, queue: fly.queue, sticks: fly.sticks, look: fly.look }, random: random.state() })
+  const restoreSim = (saved) => {
+    for (const [target, source] of [[place, saved.place], [board, saved.board], [body, saved.body], [arms, saved.arms], [pilot, saved.pilot], [blink, saved.blink], [fidget, saved.fidget], [look, saved.look], [flight, saved.flight], [cast, saved.cast]]) refill(target, source)
+    lastVelocity = saved.lastVelocity
+    clipBusy = saved.clipBusy
+    Object.assign(fly, saved.fly)
+    random.state(saved.random)
+  }
+  /** The simulation as text: planRest keeps it, so the next tick can tell whether anything changed it since. */
+  const simKey = () => JSON.stringify(saveSim())
+
+  /** The points the other sheets' maps are fitted to (by index): his board, what lies on the floor, the drone. */
+  const byIndex = (points) => new Map(points.entries())
+  const boardPoints = (frame) => byIndex(frame.board?.corners ?? [])
+  const groundPoints = (frame) => byIndex([frame.shadow, ...(frame.board ? [frame.board.floor] : [])].flatMap(ellipsePoints))
+  const dronePoints = (frame) => byIndex([frame.centre, ...frame.units.map((unit) => ({ x: unit.pod.cx, y: unit.pod.cy }))])
+
+  /** How a sheet's viewBox lies in its `width` × `height` box (the default preserveAspectRatio: whole, centred). */
+  const sheetBox = (svg, width, height) => {
+    const vb = svg.viewBox.baseVal
+    const s = Math.min(width / vb.width, height / vb.height)
+    return { s, ox: (width - vb.width * s) / 2, oy: (height - vb.height * s) / 2, vx: vb.x, vy: vb.y }
+  }
+  /** An affine map in a sheet's units (fitAffine) as a CSS matrix() on its box, from its top-left corner. */
+  const cssMatrix = (m, box) => {
+    if (!m) return 'none'
+    const [a, b, c, d, e, f] = m
+    const { s, ox, oy, vx, vy } = box
+    const x = s * (a * vx + c * vy + e - vx) + ox - (a * ox + c * oy)
+    const y = s * (b * vx + d * vy + f - vy) + oy - (b * ox + d * oy)
+    return `matrix(${[a, b, c, d, x, y].map((n) => +n.toFixed(4)).join(', ')})`
+  }
+
+  /** Steps both from where the rest left them (lull.at) to `to`, on the same 60 Hz grid the plan used. */
+  const restStep = (to, resting) => {
+    // Already run on ahead to the tick (planRest kept it): from there, unless something changed what it ran
+    // on since (everything that does ends the rest first; this is the guard): then from the tick, as it is now.
+    if (lull.next && to >= lull.next.at && simKey() === lull.key) {
+      restoreSim(lull.next.state)
+      lull.at = lull.next.at
+    }
+    lull.next = null
+    let at = lull.at
+    let pose = null
+    while (to - at > 0.01) {
+      const dt = Math.min(REST_STEP, to - at)
+      at += dt
+      const last = to - at <= 0.01
+      const step = poseMascot(at, dt, resting, last)
+      if (lull.drone) stepDrone(at, dt, 'home-hover')
+      if (last) pose = step
+    }
+    lull.at = to
+    return pose ?? poseMascot(to, 0, resting)
+  }
+
+  /** The lid over the eye at rest: the eye's lens, as it was drawn at the tick, hidden above it until a blink. */
+  const placeLid = () => {
+    const eye = lull.frame?.eye
+    if (!eye?.sclera) return
+    const ys = (eye.sclera.match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number).filter((n, i) => i % 2 === 1)
+    lull.lid = ys.length ? Math.max(...ys) - Math.min(...ys) + eye.outlineWidth : 0
+    lidPath.setAttribute('d', eye.sclera)
+    lidPath.setAttribute('stroke-width', String(eye.outlineWidth))
+    lidClip.style.transform = `scale(${measureMascot().scale})`
+    lidSheet.style.transform = `translateY(${-(lull.lid + 2).toFixed(2)}px)`
+  }
+
+  /** A blink at rest (`at`, as poseMascot timed it) closes that lid on the compositor, on the very curve the rig draws. */
+  const blinkAtRest = ({ at, double }) => {
+    const eye = lull.frame?.eye
+    if (!lull.lid || !eye?.visible || eye.closed) return
+    const span = timing.blink * (double ? 2.2 : 1)
+    const keys = []
+    for (let since = 0; since < span - 0.01; since += REST_STEP) keys.push({ offset: since / span, transform: `translateY(${(-(1 - blinkLidAt(since, double)) * lull.lid).toFixed(2)}px)` })
+    keys.push({ offset: 1, transform: `translateY(${-lull.lid.toFixed(2)}px)` })
+    const animation = lidSheet.animate(keys, { duration: span, easing: 'linear' })
+    animation.startTime = at
+    lull.blinks.push(life.animation(animation))
+  }
+
+  /**
+   * Runs both on ahead from `now` (drawn) to past the next tick and hands the way there to the compositor:
+   * the mascot's box (its ride's place), his sheet and the lid (the best affine map from his drawing now to
+   * each later one), the drone's button and shadow (their places) and its sheet; a blink on the way, too.
+   */
+  const planRest = (now) => {
+    for (const animation of lull.anims.splice(0)) animation.cancel()
+    const span = REST_TICK + REST_AHEAD
+    const saved = saveSim()
+    const from = { rider: riderPoints(lull.frame), board: boardPoints(lull.frame), ground: groundPoints(lull.frame) }
+    const droneFrom = lull.drone ? dronePoints(lull.droneFrame) : null
+    measureMascot()
+    const sheet = sheetBox(rig.svg, mascotBox.width, mascotBox.height) // the rig's, the board's and the floor's (one box)
+    const droneSheet = lull.drone ? sheetBox(droneView.svg, anchor.rect.width, anchor.rect.height) : null
+    const keys = { mover: [], sheet: [], board: [], ground: [], drone: [], droneSheet: [], shadow: [] }
+    const blinks = []
+    // Each sheet's map at the last sample: where a fit fails (too few points in common) the sheet holds it.
+    const maps = {}
+    const map = (name, from, to) => (maps[name] = fitPoints(from, to) ?? maps[name] ?? null)
+    const sample = (offset, pose) => {
+      keys.mover.push({ offset, transform: `translate3d(${place.x.toFixed(2)}px, ${place.y.toFixed(2)}px, 0)` })
+      const frame = pose && mascotFrame(pose.base, rig.view.camera, { light: pose.light })
+      const rider = frame && map('rider', from.rider, riderPoints(frame))
+      keys.sheet.push({ offset, transform: cssMatrix(rider, sheet) })
+      keys.board.push({ offset, transform: cssMatrix(frame && map('board', from.board, boardPoints(frame)), sheet) })
+      keys.ground.push({ offset, transform: cssMatrix(frame && map('ground', from.ground, groundPoints(frame)), sheet) })
+      if (!lull.drone) return
+      keys.drone.push({ offset, transform: fly.look.drone })
+      keys.shadow.push({ offset, transform: fly.look.shadow, opacity: fly.look.shadowOpacity })
+      keys.droneSheet.push({ offset, transform: cssMatrix(pose && map('drone', droneFrom, dronePoints(droneFrame({ yaw: flight.yaw.x, pitch: flight.pitch.x, roll: flight.roll.x }, droneView.camera, fly.spin))), droneSheet) })
+    }
+    sample(0, null)
+    let at = now
+    for (let i = 1; now + span - at > 0.01; i += 1) {
+      const dt = Math.min(REST_STEP, now + span - at)
+      at += dt
+      const shown = i % REST_SAMPLE === 0 || now + span - at <= 0.01
+      const pose = poseMascot(at, dt, true, shown)
+      if (lull.drone) stepDrone(at, dt, 'home-hover')
+      if (blink.at > lull.blinkAt) {
+        lull.blinkAt = blink.at
+        blinks.push({ at: blink.at, double: blink.double })
+      }
+      if (shown) sample(Math.min(1, (at - now) / span), pose) // (sums of steps can pass 1 by a hair)
+      // Where the next tick starts from: kept, so it is not run twice.
+      if (!lull.next && at - now >= REST_TICK - 0.01) lull.next = { at, state: saveSim() }
+    }
+    restoreSim(saved)
+    lull.key = simKey()
+    const animate = (node, frames) => {
+      const animation = node.animate(frames, { duration: span, fill: 'forwards', easing: 'linear' })
+      animation.startTime = now
+      lull.anims.push(life.animation(animation))
+    }
+    animate(mover, keys.mover)
+    animate(rig.svg, keys.sheet)
+    animate(rig.view.boardSheet, keys.board)
+    animate(rig.view.ground, keys.ground)
+    animate(lidAt, keys.sheet)
+    if (lull.drone) {
+      animate(drone, keys.drone)
+      animate(droneView.svg, keys.droneSheet)
+      animate(droneShadow, keys.shadow)
+    }
+    for (const b of blinks) blinkAtRest(b)
+  }
+
+  /** Whether the actors may rest at all: the album open and showing, more than a little motion wanted. */
+  const restAllowed = () => rig && visit && !reducedMotion() && !document.hidden && mascotBrain.context === 'pocket'
+
+  const restTick = () => {
+    lull.timer = null
+    if (!lull.on) return
+    // A rest ends as soon as what it started on no longer holds (less motion asked for meanwhile, say).
+    if (!restAllowed()) return leaveRest()
+    const now = performance.now()
+    const pose = restStep(now, true)
+    // Everything read from the page is read before anything is written.
+    measureMascot()
+    cardsPoint()
+    if (lull.drone) layerBox()
+    lull.frame = paintMascot(pose)
+    if (lull.drone) lull.droneFrame = paintDrone()
+    placeLid()
+    planRest(now)
+    lull.timer = life.timeout(restTick, REST_TICK)
+  }
+
+  /**
+   * Called from the mascot's frame, both just drawn at `now`: when nothing is going on (he idles, dozes or
+   * is tucked away, no clip, no blink or weight shift under way, his body and eye settled; the drone hovers
+   * at home, not on its way to a new one (refit()'s eased move), or has nothing to fly; no key, wheel, touch,
+   * focus or scroll for 1.5 s, as for the pointer), the rest starts and the frames stop. Returns whether it started.
+   */
+  const restReady = (now) => {
+    if (lull.on || !restAllowed() || clock.now() - lull.stirred < 1500) return false
+    if (!['idle', 'sleeping', 'tucked'].includes(mascotBrain.state)) return false
+    if (running.size || body.grip.x > 0.01 || fidget.start >= 0 || now - blink.at < timing.blink * 2.2) return false
+    const settled = (spring, by) => Math.abs(spring.x - spring.target) < by && Math.abs(spring.v) < by * 4
+    if (![body.yaw, body.pitch, body.gazeX, body.gazeY].every((spring) => settled(spring, 0.5)) || ![body.lid, body.wide, pilot.hold].every((spring) => settled(spring, 0.02))) return false
+    const flying = Boolean(droneView && anchor && fly.look && !drone.hidden && droneLive() && !(droneBrain.state === 'landed' && flight.rpm.x < 0.02))
+    if (flying && (droneBrain.state !== 'home-hover' || press || fly.follow || fly.move)) return false
+    lull.on = true
+    lull.drone = flying
+    lull.at = now
+    lull.next = null
+    lull.blinkAt = blink.at
+    lull.frame = rig.lastFrame
+    mascotLast = 0
+    if (flying) {
+      life.cancelFrame(fly.frame)
+      fly.frame = null
+      // Its flight to this very moment (its own frame may not have run in this one yet).
+      for (let at = fly.last || now; now - at > 0.01; ) {
+        const dt = Math.min(REST_STEP, now - at)
+        at += dt
+        stepDrone(at, dt, 'home-hover')
+      }
+      fly.last = 0
+      lull.droneFrame = paintDrone()
+      // The rotors spin on at the rate they had (degrees per ms), as a flipbook on the compositor.
+      if (flight.rpm.x > 0.05) lull.spins.push(...droneView.spinning(true, fly.spin, flight.rpm.x, now).map(life.animation))
+    }
+    lidAt.hidden = false
+    placeLid()
+    planRest(now)
+    lull.timer = life.timeout(restTick, REST_TICK)
+    return true
+  }
+
+  /** Ends the rest (if on): both catch up to now, are drawn there, and run every frame again. */
+  const leaveRest = () => {
+    if (!lull.on) return
+    lull.on = false
+    life.clearTimeout(lull.timer)
+    lull.timer = null
+    const now = performance.now()
+    const pose = restStep(now, false)
+    for (const animation of [...lull.anims.splice(0), ...lull.spins.splice(0), ...lull.blinks.splice(0)]) animation.cancel()
+    lidAt.hidden = true
+    paintMascot(pose)
+    mascotLast = now
+    if (lull.drone) {
+      droneView.spinning(false)
+      paintDrone()
+      fly.last = now
+      startDrone()
+    }
+    wakeMascot()
+  }
+
+  /** Input other than the pointer's move (a key, a wheel, a touch, focus, a scroll) ends the rest, and it waits. */
+  const stir = () => {
+    lull.stirred = clock.now()
+    leaveRest()
+  }
+
   /* ------------------------------------------------------ mascot: brain */
   /** Flies the drone up again once the pilot has the sticks (it woke, or it has ridden in). */
   let takeOffTimer = null
@@ -1185,6 +1537,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       fly.spot = spot.flight
       return timing.droneLand + 250
     },
+    // Before anything changes, the rest ends: both catch up in the state they rested in (F11).
+    beforeChange: leaveRest,
     onChange: (state, previous, info) => {
       mascot.dataset.mascotState = state
       if (!rig) return
@@ -1313,14 +1667,13 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   /* ======================================================== the drone */
   const rest = restDronePose()
   const flight = createFlight(rest.yaw)
-  const fly = { frame: null, last: 0, spin: 0, path: null, home: null, onScreen: true, mode: null, toward: null, follow: null, hop: null, slack: null, regions: [], obstacles: [], heartStart: 0, trailLength: 0, queue: [], sticks: null, spot: null, grounded: false, takeOffAt: 0, openParked: false, layerBox: null, move: null }
+  const fly = { frame: null, last: 0, spin: 0, path: null, home: null, onScreen: true, mode: null, toward: null, follow: null, hop: null, slack: null, regions: [], obstacles: [], heartStart: 0, trailLength: 0, queue: [], sticks: null, spot: null, grounded: false, takeOffAt: 0, openParked: false, layerBox: null, move: null, look: null }
   const droneWander = Array.from({ length: 4 }, (_, i) => createWander(random, { hz: [0.11, 0.08, 0.06, 0.05][i] }))
 
   const droneLive = () => droneView && !drone.hidden && !document.hidden && fly.onScreen && !reducedMotion()
 
   /** Where the drone is heading this frame (px from home) and which way it faces. */
-  const droneTarget = (now) => {
-    const state = droneBrain.state
+  const droneTarget = (now, state = droneBrain.state) => {
     const [ax, ay, az] = timing.droneWander
     const slack = fly.slack ?? { left: ax, right: ax, up: ay, down: ay }
     // Across, it drifts a few px either side of the margin line (a little more inward than out);
@@ -1373,12 +1726,11 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     }
   }
 
-  const flightFrame = (now) => {
-    fly.frame = null
-    if (!droneView) return
-    const dt = fly.last ? Math.min(64, now - fly.last) : 16
-    fly.last = now
-    const state = droneBrain.state
+  /**
+   * One step of the drone's flight, its rotors and its shadows (nothing drawn; fly.look holds the boxes' places).
+   * `state`: the brain's, or (the rest catching up as a change of state comes in) the one it rested in.
+   */
+  const stepDrone = (now, dt, state = droneBrain.state) => {
     // What the pilot commands this frame (the sticks show it); the drone answers `pilotLead` later.
     let told = null
     if (state === 'drawing-heart' && fly.path) {
@@ -1400,7 +1752,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       spool(flight, dt, FLIGHT.rpm.idle * 1.3)
       told = { ax: 0, ay: -timing.stickRange[0] * 0.7, az: 0, headingError: 0 }
     } else {
-      const wanted = droneTarget(now)
+      const wanted = droneTarget(now, state)
       fly.queue.push({ t: now, ...wanted })
       // A drag is the person's hand, not the pilot's: no delay then.
       const lead = state === 'dragging' ? 0 : timing.pilotLead
@@ -1413,11 +1765,26 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     }
     fly.sticks = { ...sticksFor(told, told.headingError, timing.stickRange), at: now }
     fly.spin = (fly.spin + dt * flight.rpm.x) % 360
+    fly.look = flightLook(dt)
+  }
+
+  /** Draws the drone where stepDrone() left it. Returns the drawn frame. */
+  const paintDrone = () => {
     const light = cursor?.active && fly.home ? lightToward(DRONE_LIGHT, droneCentre(), cursor.light, 0.6) : DRONE_LIGHT
-    droneView.draw({ yaw: flight.yaw.x, pitch: flight.pitch.x, roll: flight.roll.x }, fly.spin, { light })
-    applyFlight(dt)
+    const frame = droneView.draw({ yaw: flight.yaw.x, pitch: flight.pitch.x, roll: flight.roll.x }, fly.spin, { light })
+    if (fly.look) writeFlight(fly.look)
+    return frame
+  }
+
+  const flightFrame = (now) => {
+    fly.frame = null
+    if (!droneView) return
+    const dt = fly.last ? Math.min(64, now - fly.last) : 16
+    fly.last = now
+    stepDrone(now, dt)
+    paintDrone()
     // Parked with its rotors stopped there is nothing left to draw until it is flown again.
-    const resting = state === 'landed' && flight.rpm.x < 0.02
+    const resting = droneBrain.state === 'landed' && flight.rpm.x < 0.02
     if (droneLive() && !resting) fly.frame = life.frame(flightFrame)
     else fly.last = 0
   }
@@ -1495,10 +1862,9 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   // Where the light throws its shadow, eased so it glides (the light switching on, a drag).
   const cast = { x: createSpring(8, { frequency: 3, damping: 1 }), y: createSpring(6, { frequency: 3, damping: 1 }) }
 
-  /** Moves the drone and its shadows to `flight`; `dt` (ms) eases the shadow's direction. */
-  const applyFlight = (dt = 0) => {
+  /** Where the drone and its shadows go for `flight` (their transforms and opacities); `dt` (ms) eases the shadow's direction. */
+  const flightLook = (dt = 0) => {
     const depth = 1 + flight.z / 260
-    drone.style.transform = `translate3d(${flight.x.toFixed(1)}px, ${flight.y.toFixed(1)}px, 0) scale(${depth.toFixed(3)})`
     // Its shadow on the page: below it, cast away from the light, softer when it is higher.
     let sx = 8
     let sy = 6
@@ -1542,13 +1908,31 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       const near = clamp(1 - height / timing.groundReach, 0, 1)
       ground = near * near * (3 - 2 * near)
     }
-    droneShadow.style.transform = `translate3d(${page.x.toFixed(1)}px, ${page.y.toFixed(1)}px, 0) scale(${page.scale.toFixed(3)})`
-    droneShadow.style.opacity = String((page.opacity * (1 - ground)).toFixed(2))
-    groundShadow.style.transform = `translate3d(${flight.x.toFixed(1)}px, ${floorY.toFixed(1)}px, 0) scale(${(0.7 + 0.35 * ground).toFixed(3)})`
-    groundShadow.style.opacity = String(ground.toFixed(2))
+    return {
+      drone: `translate3d(${flight.x.toFixed(1)}px, ${flight.y.toFixed(1)}px, 0) scale(${depth.toFixed(3)})`,
+      shadow: `translate3d(${page.x.toFixed(1)}px, ${page.y.toFixed(1)}px, 0) scale(${page.scale.toFixed(3)})`,
+      shadowOpacity: String((page.opacity * (1 - ground)).toFixed(2)),
+      ground: `translate3d(${flight.x.toFixed(1)}px, ${floorY.toFixed(1)}px, 0) scale(${(0.7 + 0.35 * ground).toFixed(3)})`,
+      groundOpacity: String(ground.toFixed(2)),
+    }
   }
 
+  const writeFlight = (look) => {
+    for (const [node, transform, opacity] of [
+      [drone, look.drone, null],
+      [droneShadow, look.shadow, look.shadowOpacity],
+      [groundShadow, look.ground, look.groundOpacity],
+    ]) {
+      if (node.style.transform !== transform) node.style.transform = transform
+      if (opacity !== null && node.style.opacity !== opacity) node.style.opacity = opacity
+    }
+  }
+
+  /** Moves the drone and its shadows to `flight` now; `dt` (ms) eases the shadow's direction. */
+  const applyFlight = (dt = 0) => writeFlight((fly.look = flightLook(dt)))
+
   const startDrone = () => {
+    leaveRest()
     if (fly.frame === null && droneLive()) fly.frame = life.frame(flightFrame)
   }
 
@@ -1585,6 +1969,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     clock,
     timing,
     reduced: reducedMotion,
+    beforeChange: leaveRest, // as the mascot's
     onChange: (state, previous, info) => {
       drone.dataset.droneState = state
       if (state === 'landed') {
@@ -1905,6 +2290,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     if (!visit || relayoutFrame !== null) return
     relayoutFrame = visit.frame(() => {
       relayoutFrame = null
+      leaveRest()
       droneBrain.relayout()
       if (droneBrain.state !== 'drawing-heart') placeDrone()
       if (!['riding', 'leaving'].includes(mascotBrain.state)) measureFloor()
@@ -1937,6 +2323,9 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     if (!visit || refitFrame !== null) return
     refitFrame = visit.frame(() => {
       refitFrame = null
+      // As a relayout, it ends the rest first (F11): both catch up to now, so the drone flies or hides
+      // from where it is, and the mascot measures where he is drawn.
+      leaveRest()
       if (droneBrain.state === 'closing') return
       const was = drone.hidden ? null : anchor?.rect
       drone.hidden = false // measurable
@@ -1984,6 +2373,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   let dwell = null // { sticker, timer } while a pointer rests on a card
 
   const lookAtCard = (sticker) => {
+    leaveRest() // before the change (F11): else the rest's catch-up would run it from the last tick
     const result = mascotBrain.cardDwell()
     if (result !== 'look') return
     look.card = centreOf(sticker)
@@ -2011,6 +2401,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const toMascot = reach(mascotPoint)
     if (toMascot) {
       visit.timeout(() => {
+        leaveRest()
         look.ripple = { x: ripple.x, y: ripple.y }
         if (!mascotBrain.ripple()) return
         wakeMascot()
@@ -2042,6 +2433,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
   /** The cursor moved: the drone decides whether to come over and keep it company. */
   const onCursorMove = (p) => {
+    leaveRest()
     pointer.x = p.x
     pointer.y = p.y
     pointer.at = clock.now()
@@ -2074,7 +2466,10 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     dwell = null
     look.card = null
     const v = visit
-    const activity = () => noteActivity()
+    const activity = () => {
+      stir()
+      noteActivity()
+    }
     v.on(window, 'pointerdown', activity, { passive: true })
     v.on(window, 'keydown', activity)
     v.on(window, 'wheel', activity, { passive: true })
@@ -2084,6 +2479,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       window,
       'scroll',
       () => {
+        stir()
         remeasureMascot()
         fly.layerBox = null
         boundFloor()
@@ -2108,7 +2504,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
     // The cursor (mouse or trackpad): its light, the cards leaning toward it, its ripples.
     try {
-      cursor = createPocketCursor({ root: pocketRoot, timing, reducedMotion, onRipple, onMove: onCursorMove, wrap, mark })
+      // Its light turning on or off is a change the rest must not carry on past (F11).
+      cursor = createPocketCursor({ root: pocketRoot, timing, reducedMotion, onRipple, onMove: onCursorMove, onSwitch: leaveRest, wrap, mark })
       v.defer(() => {
         cursor?.destroy()
         cursor = null
@@ -2120,9 +2517,11 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
     // Cards: a pointer that rests on one turns the body toward it; keyboard focus and taps at once.
     const grid = pocketRoot.querySelector('.pocket-grid')
+    // Each ends the rest before it changes what the mascot looks at, and has the change drawn (F11).
     v.on(grid, 'pointerover', (event) => {
       const sticker = event.target.closest?.('.pocket-sticker')
       if (!sticker || (event.relatedTarget && sticker.contains(event.relatedTarget))) return
+      leaveRest()
       noteActivity()
       endDwell()
       if (event.pointerType === 'touch') {
@@ -2134,18 +2533,23 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     v.on(grid, 'pointerout', (event) => {
       const sticker = event.target.closest?.('.pocket-sticker')
       if (!sticker || (event.relatedTarget && sticker.contains(event.relatedTarget))) return
+      leaveRest()
       if (dwell?.sticker === sticker) endDwell()
       look.card = null
+      wakeMascot()
     })
     v.on(grid, 'focusin', (event) => {
       const sticker = event.target.closest?.('.pocket-sticker')
       if (!sticker || (event.relatedTarget && sticker.contains(event.relatedTarget))) return
+      leaveRest()
       if (event.target.matches(':focus-visible')) lookAtCard(sticker)
     })
     v.on(grid, 'focusout', (event) => {
       const sticker = event.target.closest?.('.pocket-sticker')
       if (!sticker || (event.relatedTarget && sticker.contains(event.relatedTarget))) return
+      leaveRest()
       look.card = null
+      wakeMascot()
     })
 
     // Drone: the pointer makes it curious; click/tap/Enter/Space plays (the first time, a heart);
@@ -2243,6 +2647,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     'pointermove',
     (event) => {
       if (event.pointerType === 'touch') return
+      // The rest ends first, so it catches up with the pointer it rested with (F11), then turns to the new one.
+      leaveRest()
       pointer.x = event.clientX
       pointer.y = event.clientY
       pointer.at = clock.now()
@@ -2254,6 +2660,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   life.on(window, 'resize', remeasureMascot)
   life.on(document, 'visibilitychange', () => {
     if (document.hidden) {
+      leaveRest()
       mascotBrain.suspend()
       droneBrain.suspend()
     } else {
@@ -2327,6 +2734,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     /** The page starts turning away; the album is mounted underneath. `phi` is the curl direction. */
     openStart: ({ phi = 0 } = {}) => {
       if (!ready || !Number.isFinite(phi)) return
+      leaveRest()
       // With reduced motion the drone has nothing to perform, so it is plain decoration.
       drone.inert = reducedMotion()
       beginVisit()
@@ -2391,6 +2799,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
     closeStart: () => {
       if (!visit) return
+      leaveRest()
       press = null
       endDwell()
       cursor?.destroy()
@@ -2402,6 +2811,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
     closeComplete: () => {
       if (!visit && mascotBrain.context !== 'pocket') return
+      leaveRest()
       visit?.dispose()
       visit = null
       spotWatch = null
@@ -2415,6 +2825,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
     destroy: () => {
       if (instance === self) instance = null
+      lull.on = false // everything it started goes with life
       visit?.dispose()
       visit = null
       mascotBrain.destroy()

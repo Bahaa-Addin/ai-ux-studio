@@ -16,11 +16,12 @@ import { MASCOT_CLIPS, EXPRESSION_DEFAULTS, TRACK_LAG, createPoseAnimator } from
 import { createCamera, orientation, apply, rotateY, projectEllipsoid, capsulePath, convexHull, v3, dot, length } from '../src/pocket/actors/space.js'
 import { mascotFrame, restPose, POSE_KEYS, reachToward, holdRemote, remoteGrip, REMOTE, BOARD } from '../src/pocket/actors/mascot-model.js'
 import { droneFrame } from '../src/pocket/actors/drone-model.js'
-import { gazeOffset, smoothToward, curlSide, oppositeSide, heartFlight, samplePath, sampleFlight, rect, rectsOverlap, contains, chooseAnchor, planHeart } from '../src/pocket/actors/motion.js'
+import { gazeOffset, smoothToward, curlSide, oppositeSide, heartFlight, samplePath, sampleFlight, rect, rectsOverlap, contains, chooseAnchor, planHeart, fitAffine } from '../src/pocket/actors/motion.js'
+import { bladeAngle, flipbookKeys } from '../src/pocket/actors/renderer.js'
 import { createSpring, stepSpring, stepAngleSpring, resetSpring, springSettled, angleDelta, createWander } from '../src/pocket/actors/physics.js'
 import { planRide, ridePoint, shuffle } from '../src/pocket/actors/gait.js'
 import { createFlight, stepFlight, followPoint, kick, flightSettled, command, sticksFor, spool, FLIGHT, BOARD_FLIGHT } from '../src/pocket/actors/drone-flight.js'
-import { crossPace, DASH_PACE } from '../src/pocket/pocket-actors.js'
+import { crossPace, DASH_PACE, riderPoints, fitPoints } from '../src/pocket/pocket-actors.js'
 import { watchFixedObstacles } from '../src/pocket/obstacles.js'
 
 /* ------------------------------------------------------------------ helpers */
@@ -351,6 +352,50 @@ test('tucked: content where it stands sends it under the floor; it comes back wh
   h.brain.setTucked(false)
   assert.equal(h.brain.state, 'idle')
   assert.equal(h.log.at(-1).info.from, 'tucked')
+})
+
+test('random: its state can be read and put back, so the actors can run on ahead at rest and come back (F11)', () => {
+  const random = seededRandom(7)
+  random()
+  const at = random.state()
+  const ahead = [random(), random(), random()]
+  random.state(at)
+  assert.deepEqual([random(), random(), random()], ahead)
+})
+
+test('brains (F11): beforeChange runs before every change of state, the old state still in force, then onChange', () => {
+  const clock = fakeClock()
+  const order = []
+  const mascot = createMascotBrain({
+    clock,
+    beforeChange: (next, state) => order.push(['before', next, state, mascot.state]),
+    onChange: (state, previous) => order.push(['after', state, previous, mascot.state]),
+  })
+  mascot.revealStart({ rideFor: 0, covered: false })
+  mascot.ripple()
+  assert.deepEqual(order, [
+    ['before', 'idle', 'hidden', 'hidden'],
+    ['after', 'idle', 'hidden', 'idle'],
+    ['before', 'flinching', 'idle', 'idle'],
+    ['after', 'flinching', 'idle', 'flinching'],
+  ])
+  order.length = 0
+  const drone = createDroneBrain({
+    clock,
+    beforeChange: (next, state) => order.push(['before', next, state, drone.state]),
+    onChange: (state, previous) => order.push(['after', state, previous, drone.state]),
+  })
+  drone.open()
+  drone.revealed()
+  assert.equal(drone.poke(), 'hop')
+  assert.deepEqual(order, [
+    ['before', 'entering', 'hidden', 'hidden'],
+    ['after', 'entering', 'hidden', 'entering'],
+    ['before', 'home-hover', 'entering', 'entering'],
+    ['after', 'home-hover', 'entering', 'home-hover'],
+    ['before', 'evading', 'home-hover', 'home-hover'],
+    ['after', 'evading', 'home-hover', 'evading'],
+  ])
 })
 
 test('pick draws inside its range and is repeatable for a seed', () => {
@@ -1225,6 +1270,109 @@ test('mascot model: limbs swap in front of and behind the body as it turns', () 
   assert.ok(jump.lift > 20, 'the contact shadow can fade as it leaves the ground')
 })
 
+test('affine fit (F11): recovers a map from three points or more, best fits a noisy one, null for points on one line', () => {
+  const map = [1.03, -0.05, 0.04, 0.98, 6, -3]
+  const apply2 = (m, p) => ({ x: m[0] * p.x + m[2] * p.y + m[4], y: m[1] * p.x + m[3] * p.y + m[5] })
+  const from = [{ x: 0, y: 0 }, { x: 40, y: 5 }, { x: 10, y: 60 }, { x: 70, y: 90 }]
+  const fitted = fitAffine(from, from.map((p) => apply2(map, p)))
+  fitted.forEach((v, i) => assert.ok(Math.abs(v - map[i]) < 1e-9, `${i}: ${v} vs ${map[i]}`))
+  const noisy = fitAffine(from, from.map((p, i) => ({ x: apply2(map, p).x + (i % 2 ? 0.2 : -0.2), y: apply2(map, p).y })))
+  for (const p of from) assert.ok(Math.hypot(apply2(noisy, p).x - apply2(map, p).x, apply2(noisy, p).y - apply2(map, p).y) < 0.3)
+  assert.equal(fitAffine([{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }], [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }]), null)
+  assert.equal(fitAffine(from.slice(0, 2), from.slice(0, 2)), null)
+})
+
+test('drone rotors (F11): a blade drawn as rotate(bladeAngle) in its rotor\'s matrix is the model\'s blade, at any spin', () => {
+  const camera = createCamera({ distance: 900, tilt: 26, origin: { x: 100, y: 74 } })
+  const compose = (p, q) => [p[0] * q[0] + p[2] * q[1], p[1] * q[0] + p[3] * q[1], p[0] * q[2] + p[2] * q[3], p[1] * q[2] + p[3] * q[3], p[0] * q[4] + p[2] * q[5] + p[4], p[1] * q[4] + p[3] * q[5] + p[5]]
+  const rotate = (degrees) => {
+    const a = (degrees * Math.PI) / 180
+    return [Math.cos(a), Math.sin(a), -Math.sin(a), Math.cos(a), 0, 0]
+  }
+  for (const spin of [0, 37.5, 200]) {
+    const frame = droneFrame({ yaw: 15, pitch: 4, roll: -6 }, camera, spin)
+    frame.units.forEach((unit, index) =>
+      unit.blades.forEach((blade, i) => compose(unit.disc, rotate(bladeAngle(index, i, spin))).forEach((v, k) => assert.ok(Math.abs(v - blade[k]) < 1e-9, `rotor ${index} blade ${i} at ${spin}: ${k}`))),
+    )
+  }
+})
+
+test('rider fit at rest (F11): a drawing fits a later one by its points\' names, across the pitches where the silhouette gains or loses points', () => {
+  // The renderer's camera. Where the silhouette's point count changes (measured 2026-11-17): yaw 0 at
+  // pitch -6.00/-5.99 and 2.40/2.41; ±15 at -6.21/-6.20 and 2.48/2.49; ±25 at -6.61/-6.60 and 2.65/2.66;
+  // ±30 at -6.91/-6.90 and 2.77/2.78; ±40 at -7.79/-7.78 and 3.14/3.15. At rest the pitch crosses them:
+  // aim() holds the body's pitch at -6 and life and the board's tip swing it by about ±3.
+  const camera = createCamera({ distance: 900, tilt: 12, origin: { x: 60, y: 147 } })
+  const frame = (yaw, pitch) => mascotFrame({ ...restPose(), yaw, pitch }, camera)
+  const apply2 = (m, p) => ({ x: m[0] * p.x + m[2] * p.y + m[4], y: m[1] * p.x + m[3] * p.y + m[5] })
+  const pairs = [
+    [0, -5.9, -6.1],
+    [0, 2.4, 2.5],
+    [15, -6.1, -6.3],
+    [-15, 2.45, 2.52],
+    [-25, -6.5, -6.7],
+    [25, 2.6, 2.7],
+    [30, -6.85, -6.95],
+    [-30, 2.75, 2.8],
+    [40, -7.7, -7.9],
+    [-40, 3.1, 3.2],
+  ]
+  for (const [yaw, p, q] of pairs) {
+    const a = frame(yaw, p)
+    const b = frame(yaw, q)
+    assert.notEqual(a.body.outline.length, b.body.outline.length, `yaw ${yaw}, pitch ${p} to ${q}: the silhouette gains or loses points (else this case shows nothing)`)
+    for (const [from, to] of [[a, b], [b, a]]) {
+      const m = fitPoints(riderPoints(from), riderPoints(to))
+      assert.ok(m, `yaw ${yaw}, pitch ${p} to ${q}: a map (by index there is none, the counts differ)`)
+      // A tenth or two of a degree of pitch: the map is nearly the identity, and takes his eye and his feet where they go.
+      for (const [i, v] of [1, 0, 0, 1].entries()) assert.ok(Math.abs(m[i] - v) < 0.02, `yaw ${yaw}, pitch ${p} to ${q}: m[${i}] ${m[i]}`)
+      for (const [name, x, y] of [['eye', from.eye.centre, to.eye.centre], ['a foot', { x: from.feet.footL.cx, y: from.feet.footL.cy }, { x: to.feet.footL.cx, y: to.feet.footL.cy }]]) {
+        const at = apply2(m, x)
+        assert.ok(Math.hypot(at.x - y.x, at.y - y.y) < 0.35, `yaw ${yaw}, pitch ${p} to ${q}: ${name} lands ${Math.hypot(at.x - y.x, at.y - y.y).toFixed(3)} from where it is drawn`)
+      }
+    }
+  }
+  // Every silhouette point keeps its name from one drawing to the next; where both have the same points, the fit is the one by index.
+  const a = frame(-10, -3)
+  const b = frame(-11, -3.4)
+  assert.deepEqual(a.body.outline.map((p) => p.id), b.body.outline.map((p) => p.id))
+  const byIndex = fitAffine([...riderPoints(a).values()], [...riderPoints(b).values()])
+  fitPoints(riderPoints(a), riderPoints(b)).forEach((v, i) => assert.ok(Math.abs(v - byIndex[i]) < 1e-9))
+  // Too few points in common: no map (planRest then holds the sheet's last one).
+  assert.equal(fitPoints(new Map([[1, { x: 0, y: 0 }], [2, { x: 1, y: 0 }], [3, { x: 0, y: 1 }]]), new Map([[1, { x: 0, y: 0 }], [2, { x: 1, y: 0 }], [4, { x: 0, y: 1 }]])), null)
+})
+
+test('drone rotors at rest (F11): each rotor\'s flipbook shows one page at a time, the one nearest its blades, turning both ways', () => {
+  // The opacity a page's keyframes give at progress f (step-end: each keyframe's value holds until the next).
+  const opacityAt = (keys, f) => keys.filter((k) => k.offset <= f).at(-1).opacity
+  const near = (angle, page) => {
+    const d = (((angle - 15 * page) % 90) + 90) % 90
+    return Math.min(d, 90 - d)
+  }
+  for (const index of [0, 1, 2, 3]) {
+    for (const spin of [0, 7.4, 37.5, 200, 359]) {
+      const keys = Array.from({ length: 6 }, (_, page) => flipbookKeys(index, page, spin))
+      for (const k of keys) k.forEach((key, i) => i && assert.ok(key.offset >= k[i - 1].offset && key.easing === 'step-end'))
+      const seen = new Set()
+      for (let n = 0; n < 240; n += 1) {
+        const f = (n + 0.37) / 240
+        const shown = keys.map((k, page) => (opacityAt(k, f) === 1 ? page : -1)).filter((page) => page >= 0)
+        assert.equal(shown.length, 1, `rotor ${index} from ${spin}, at ${f.toFixed(3)}: one page shows (${shown})`)
+        // The animation runs a quarter turn of spin in one iteration: at f the blades are at spin + 90 f.
+        const angle = bladeAngle(index, 0, spin + 90 * f)
+        assert.ok(near(angle, shown[0]) <= 7.5 + 1e-6, `rotor ${index} from ${spin}, at ${f.toFixed(3)}: page ${shown[0]} for blades at ${angle.toFixed(1)}`)
+        seen.add(shown[0])
+      }
+      assert.equal(seen.size, 6, `rotor ${index} from ${spin}: every page takes its turn`)
+    }
+  }
+  // Alternate rotors turn opposite ways: the pages run up on one and down on the next.
+  const order = (index) => [0.02, 0.19, 0.36].map((f) => [0, 1, 2, 3, 4, 5].find((page) => opacityAt(flipbookKeys(index, page, 0), f) === 1))
+  const step = (pages) => (((pages[1] - pages[0]) % 6) + 6) % 6
+  assert.equal(step(order(1)), 1, `rotor 1 turns its pages forward (${order(1)})`)
+  assert.equal(step(order(0)), 5, `rotor 0 turns its pages back (${order(0)})`)
+})
+
 test('drone model: four rotor units and a hull, ordered by depth, banking in 3D', () => {
   const camera = createCamera({ distance: 900, tilt: 26, origin: { x: 100, y: 74 } })
   const level = droneFrame({}, camera, 0)
@@ -1348,7 +1496,9 @@ test('clips: pose tracks use known keys with ordered times; decal tracks resolve
 // ./obstacles.js, 5.4 KB) added about 14 KB, to 278.7 KB; 285 KB keeps about the 6 KB of headroom it had.
 // 285 KB until F6b (2026-11-17): making room when a fixed control comes or goes mid-album (obstacles.js's
 // watch, the actors' refit and eased move) took it from 291,777 to 298,221 bytes; raised to the next 5 KB.
-test('budget: the whole actor layer (models, decals, motion, cursor, obstacles, JS, CSS) stays under 295 KB of source', async () => {
+// 295 KB until 2026-11-17: the rest mode (F11), approved by the owner after the side-by-side: 323,296 bytes
+// (from 298,223); raised to the next 5 KB.
+test('budget: the whole actor layer (models, decals, motion, cursor, obstacles, JS, CSS) stays under 320 KB of source', async () => {
   const files = [
     '../src/pocket/actors/assets/mascot.svg',
     '../src/pocket/actors/assets/drone.svg',
@@ -1373,7 +1523,7 @@ test('budget: the whole actor layer (models, decals, motion, cursor, obstacles, 
   ]
   let total = 0
   for (const file of files) total += (await stat(new URL(file, import.meta.url))).size
-  assert.ok(total < 295 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
+  assert.ok(total < 320 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
 })
 
 /* -------------------------------------------------- Vodafone's pages (S12) */

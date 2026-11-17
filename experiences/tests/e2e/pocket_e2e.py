@@ -156,7 +156,7 @@ MARGIN_PROBE = """() => new Promise((done) => {
   const f = () => {
     const svg = document.querySelector('.pocket-mascot svg'), drone = document.querySelector('.pocket-drone')
     // The mascot's visible right edge: its body, or the end of its board where that reaches further.
-    const outline = svg.querySelector('[data-part="outline"]'), deck = svg.querySelector('[data-part="board"]')?.style.display === 'none' ? null : svg.querySelector('[data-part="board-deck"]')
+    const outline = svg.querySelector('[data-part="outline"]'), deck = document.querySelector('.pocket-mascot [data-part="board"]')?.style.display === 'none' ? null : document.querySelector('.pocket-mascot [data-part="board-deck"]')
     const unit = svg.getBoundingClientRect().width / 120
     m.push(Math.max(right(svg, '[data-part="outline"]') + (+outline.getAttribute('stroke-width') / 2) * unit, deck ? deck.getBoundingClientRect().right + (+deck.getAttribute('stroke-width') / 2) * unit : -Infinity))
     if (drone && !drone.hidden) d.push(right(drone, '[data-part^="rotor-unit"] > path') + 2.3 * drone.offsetWidth / 200)
@@ -170,8 +170,8 @@ MARGIN_PROBE = """() => new Promise((done) => {
 BOARD_TRACK = """() => { window.__board = []; const f = () => {
   const m = document.querySelector('.pocket-mascot'), svg = m?.querySelector('svg')
   if (svg) {
-    const b = (sel) => { const n = svg.querySelector(sel); return n && n.getClientRects().length && getComputedStyle(n).display !== 'none' ? n.getBoundingClientRect() : null }
-    const deck = svg.querySelector('[data-part="board"]')?.style.display === 'none' ? null : b('[data-part="board-deck"]')
+    const b = (sel) => { const n = m.querySelector(sel); return n && n.getClientRects().length && getComputedStyle(n).display !== 'none' ? n.getBoundingClientRect() : null }
+    const deck = m.querySelector('[data-part="board"]')?.style.display === 'none' ? null : b('[data-part="board-deck"]')
     const feet = Math.max(...['foot-l', 'foot-r'].map((p) => b(`[data-limb="${p}"]`)?.bottom ?? -Infinity))
     const body = b('[data-part="outline"]'), hands = ['l', 'r'].map((p) => b(`[data-place="hand-${p}"]`))
     const tr = /translate3d\\(([-\\d.]+)px/.exec(m.querySelector('.pocket-mascot__mover')?.style.transform || m.firstElementChild?.style.transform || '') || [0, 0]

@@ -329,7 +329,7 @@ const READ = `(() => {
 		curlLayers: [...document.querySelectorAll('.pocket-layer')].map((n) => ({ class: String(n.getAttribute('class') || ''), box: boxOf(n), children: n.children.length, pointerEvents: getComputedStyle(n).pointerEvents })),
 		curl,
 		curlSkipped,
-		mascot: albumOpen && mascotShown ? union([boxOf(svg && svg.querySelector('[data-part="outline"]')), boxOf(svg && svg.querySelector('[data-part="board-deck"]'))]) : null,
+		mascot: albumOpen && mascotShown ? union([boxOf(svg && svg.querySelector('[data-part="outline"]')), boxOf(m && m.querySelector('[data-part="board-deck"]'))]) : null,
 		drone: albumOpen && droneState && droneState.shown ? droneState.box : null,
 		droneState,
 		journeyLayer: jl ? boxOf(jl) : null,

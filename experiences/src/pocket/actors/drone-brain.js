@@ -42,7 +42,8 @@ export const DRONE_GROUNDED = new Set(['landing', 'landed', 'taking-off'])
 
 const PLAYFUL = new Set(['home-hover', 'curious', 'following'])
 
-export const createDroneBrain = ({ clock, timing = TIMING, reduced = () => false, onChange = () => {} }) => {
+/** `beforeChange(next, state)` runs just before a change of state, the old one still in force; `onChange` just after. */
+export const createDroneBrain = ({ clock, timing = TIMING, reduced = () => false, onChange = () => {}, beforeChange = () => {} }) => {
   let state = 'hidden'
   let timer = null
   let press = null // { x, y } where a press started, until it becomes a drag or ends
@@ -55,6 +56,7 @@ export const createDroneBrain = ({ clock, timing = TIMING, reduced = () => false
   }
 
   const enter = (next, { duration = null, then = null, info = {} } = {}) => {
+    beforeChange(next, state)
     clearTimer()
     const previous = state
     state = next
