@@ -12,14 +12,24 @@
  * no motion, so a hook moves a stage by one slide with a 0.6 s transition, as Owl's autoplay would) and
  * counts a slot pushed off its card as misplaced; the flight, the page turn, the ride (across to the right
  * in English, on the left in Arabic), the dash back and the portal filmed to disk with the numbers in
- * motion-report.json; the frame cost read from Chrome; a press refused when something not the layer's
- * own is at the press point; 'skipped: banner' with nothing pressed; a stop on a 403 and on a challenge
+ * motion-report.json; every screenshot the whole viewport in device pixels (its JPEG's own size), and
+ * captureViewport at ratio 1 and 2 in Playwright contexts of their own (a tall page set from a string,
+ * scrolled: the picture is the viewport, not the top of the document); the flight filmed from the press
+ * until the sticker has landed (pocket.js's own PEEL_MS + LIFT_MS + THROW_MS, read here) with every frame
+ * at its own time; the close filmed for 3 s with whether each chip's card is painted (cardsHiddenMs); Back
+ * filmed for 3 s with the mascot and the album's Back; the frame cost read from Chrome; a press refused
+ * when something not the layer's own is at the press point; 'skipped: banner' with nothing pressed; a stop on a 403 and on a challenge
  * page with nothing retried; clean-up of the sticker; nothing reaching the internet.
  *
  * What it cannot show: Owl's own motion (autoplay, its loop's jump back, drags) and whether Vodafone's
  * carousels move at all; Vodafone's scripts (Dynatrace, OneTrust's real banner, Angular's widget) and
  * their cost, so the frame numbers here are headless Chromium's on a script-free page, not Chrome's on
- * the live one; the HTTP cache (the kit's routes bypass it); the real scrollbar of headed Chrome.
+ * the live one; the HTTP cache (the kit's routes bypass it); the real scrollbar of headed Chrome; headed
+ * Chrome's window surface (what a capture on a session of our own grabbed live: headless has no window, so
+ * here the old capture was the viewport too); the whole flow at ratio 2 (the kit's contexts have ratio 1
+ * and no option for another; a ratio forced over a DevTools session of the test's own is not Playwright's,
+ * and its screenshots come out at Playwright's ratio); Owl hiding a carousel it finds out of sight
+ * (.owl-hidden: the stand-in has no Owl script, so cardsHiddenMs is about our layer only).
  *
  * The screenshots and motion-report.json go to a new folder in the system's temporary directory, removed
  * at the end; VG_MOTION_KEEP=1 keeps the four rounds' folder and prints where it is.
@@ -31,9 +41,11 @@ import path from 'node:path'
 import { after, before, test } from 'node:test'
 import { gunzipSync } from 'node:zlib'
 
-import type { Page } from 'playwright'
+import { chromium, type Page } from 'playwright'
 
-import { BANNER_MESSAGE, COMBOS, DESKTOP, LOADS_PER_COMBO, MAX_LOADS, MAX_PAGE_REQUESTS, type MotionHooks, MotionFailure, type MotionReport, MotionStop, requestsLine, runMotion } from '../live/motion.live.test.ts'
+import { BANNER_MESSAGE, captureViewport, COMBOS, DESKTOP, LOADS_PER_COMBO, MAX_LOADS, MAX_PAGE_REQUESTS, type MotionHooks, MotionFailure, type MotionReport, MotionStop, requestsLine, runMotion } from '../live/motion.live.test.ts'
+import { ROOT } from '#shared/config.ts'
+
 import { type LayerGateway, launchLayer, REPLAY, startLayerGateway, V, watch } from './vodafone-layer.ts'
 
 const PORT = 4465
@@ -121,7 +133,51 @@ const stickersLeft = (page: Page) =>
 
 const tmpOut = (name: string) => fs.mkdtempSync(path.join(os.tmpdir(), `vg-motion-${name}-`))
 
+/** The width and height a JPEG says it has (its start-of-frame marker). */
+const jpegSize = (file: string) => jpegSizeOf(fs.readFileSync(file), file)
+const jpegSizeOf = (b: Buffer, file = 'the picture') => {
+	assert.ok(b[0] === 0xff && b[1] === 0xd8, `${file} is a JPEG`)
+	let i = 2
+	while (i + 9 < b.length) {
+		if (b[i] !== 0xff) {
+			i++
+			continue
+		}
+		const marker = b[i + 1]
+		if (marker === 0xff || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+			i += marker === 0xff ? 1 : 2
+			continue
+		}
+		if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return { width: b.readUInt16BE(i + 7), height: b.readUInt16BE(i + 5) }
+		i += 2 + b.readUInt16BE(i + 2)
+	}
+	throw new Error(`${file}: no start-of-frame marker`)
+}
+
+/** Every screenshot of a run is its round's whole viewport in device pixels: the viewport's size times the ratio. */
+const assertWholeViewport = (report: MotionReport, out: string, dpr: number) => {
+	assert.ok(report.files.length > 0, 'screenshots were taken')
+	for (const f of report.files) {
+		const c = report.combos.find((x) => f.startsWith(`${x.name}-`))
+		assert.ok(c, `${f} belongs to a round`)
+		const ratio = c.dpr ?? dpr
+		assert.deepEqual(jpegSize(path.join(out, f)), { width: Math.round(c.viewport.width * ratio), height: Math.round(c.viewport.height * ratio) }, `${f} is the whole ${c.viewport.width}×${c.viewport.height} viewport at device pixel ratio ${ratio}`)
+	}
+	assert.deepEqual(
+		report.combos.map((c) => c.dpr),
+		report.combos.map(() => dpr),
+		'the ratio is recorded for every round',
+	)
+}
+
+/** pocket.js's own flight: a pocketed sticker lands PEEL_MS + LIFT_MS + THROW_MS after the press. */
+const POCKET_JS = fs.readFileSync(path.join(ROOT, '..', 'experiences/src/pocket/pocket.js'), 'utf8')
+const pocketMs = (name: string) => Number(new RegExp(`const ${name} = (\\d+)`).exec(POCKET_JS)?.[1])
+const LANDS_MS = pocketMs('PEEL_MS') + pocketMs('LIFT_MS') + pocketMs('THROW_MS')
+
 const STEPS = ['a', 'b', '1', '5a', '2', '3', '5b', '3c', '4', '6']
+/** The flight's frames after the press: 150 ms apart to 300 ms after the landing. */
+const FLIGHT_FRAMES = Math.ceil((LANDS_MS + 300) / 150)
 const KEEP = process.env.VG_MOTION_KEEP === '1'
 
 test('four rounds (English and Arabic, 1366×900 then 375×812), motion on, Owl: every step passes, every number and screenshot on disk, 12 page loads 1.2 s apart, the sticker removed, nothing reached the internet', { timeout: 540_000 }, async () => {
@@ -157,14 +213,24 @@ test('four rounds (English and Arabic, 1366×900 then 375×812), motion on, Owl:
 			assert.ok(ch.transitionSamples >= 1 && ch.cardMoveSamples >= 1 && ch.stagesMoved >= 1, `${c.name}: the carousel moved while sampled (a transition in ${ch.transitionSamples} samples, cards moved in ${ch.cardMoveSamples}, ${ch.stagesMoved} stages)`)
 			assert.deepEqual([ch.misplaced, ch.detached], [0, 0], `${c.name}: no chip misplaced or detached (${JSON.stringify(ch.perSample.filter((s: any) => s.misplaced.length || s.detached.length))})`)
 			assert.equal(ch.screenshots.length, 2, `${c.name}: two screenshots of the chips`)
-			// (2) The flight: 10 frames 150 ms apart and the corner.
+			// (2) The flight: a frame just before the press, then 150 ms apart from it until 300 ms after the
+			// sticker has landed, then the corner; every frame at its own time from the press.
 			const fl = c.flight!.frames
-			assert.equal(fl.length, 11, `${c.name}: 10 frames of the flight and one of the corner`)
+			const times = fl.map((f) => f.t).join(' ')
+			assert.ok(LANDS_MS > 1000, `pocket.js's flight read (${LANDS_MS} ms)`)
+			assert.equal(fl.length, FLIGHT_FRAMES + 2, `${c.name}: one frame before the press, ${FLIGHT_FRAMES} to ${LANDS_MS + 300} ms after it, the corner (${times})`)
+			assert.ok(fl[0].t <= 0, `${c.name}: the first frame is before the press (${fl[0].t} ms)`)
+			for (let i = 1; i < fl.length; i++) assert.ok(fl[i].t > fl[i - 1].t, `${c.name}: every frame at its own time, after the one before (${times})`)
+			for (let i = 1; i <= FLIGHT_FRAMES; i++) assert.ok(fl[i].t >= i * 150 - 5, `${c.name}: the frames 150 ms apart (${times})`)
+			assert.ok(fl[FLIGHT_FRAMES].t >= LANDS_MS + 300 - 5, `${c.name}: filmed until the sticker has landed (to ${fl[FLIGHT_FRAMES].t} ms; it lands at ${LANDS_MS} ms)`)
 			assert.ok(
 				fl.some((f) => f.sample?.flying),
 				`${c.name}: the card was filmed in flight`,
 			)
-			assert.ok(fl.at(-2)!.t >= 9 * 150 - 5, `${c.name}: the frames 150 ms apart (${fl.map((f) => f.t).join(' ')})`)
+			assert.ok(
+				fl.some((f) => f.t >= LANDS_MS && f.sample && f.sample.flying === 0),
+				`${c.name}: the landing was filmed (nothing in flight from ${LANDS_MS} ms: ${fl.map((f) => `${f.t}:${f.sample?.flying}`).join(' ')})`,
+			)
 			// (3) The page turn and the ride: 14 frames 200 ms apart, his box at each.
 			const al = c.album!.frames
 			assert.equal(al.length, 14, `${c.name}: 14 frames of the page turn and the ride`)
@@ -181,14 +247,35 @@ test('four rounds (English and Arabic, 1366×900 then 375×812), motion on, Owl:
 					al.some((f) => f.sample?.state === 'riding'),
 					`${c.name}: the ride was filmed`,
 				)
-			assert.ok(c.close!.frames.length >= 4, `${c.name}: the dash back filmed (${c.close!.frames.length} frames)`)
+			// The close: 200 ms apart for 3 s after Back, the paint of each shown chip's card in every frame.
+			const cl = c.close as NonNullable<MotionReport['combos'][number]['close']>
+			assert.equal(cl.frames.length, 3000 / 200 + 1, `${c.name}: the close filmed for 3 s, 200 ms apart (${cl.frames.map((f) => f.t).join(' ')})`)
+			assert.ok(cl.frames.at(-1)!.t >= 3000 - 5, `${c.name}: to 3 s after Back (${cl.frames.at(-1)!.t} ms)`)
+			assert.ok(
+				cl.frames.every((f) => f.sample?.cards),
+				`${c.name}: every frame says whether each shown chip's card is painted`,
+			)
+			assert.ok(
+				cl.frames.some((f) => f.sample.cards.slots.length > 0),
+				`${c.name}: chips seen after the page came back`,
+			)
+			assert.equal(typeof cl.pageBackMs, 'number', `${c.name}: the page came back within the film (${cl.pageBackMs})`)
+			assert.equal(typeof cl.cardsHiddenMs, 'number', `${c.name}: every shown chip's card painted within the film (cardsHiddenMs ${cl.cardsHiddenMs}; ${JSON.stringify(cl.unpainted?.slice(0, 4))})`)
 			// (4) The portal: frames every 250 ms until the navigation, then Back.
 			const po = c.portal!
 			assert.ok(po.navigatedMs! > 2000 && po.navigatedMs! < 9500, `${c.name}: navigated after the transition (${po.navigatedMs} ms)`)
 			assert.ok(po.frames.length >= 8, `${c.name}: the transition filmed (${po.frames.length} frames)`)
 			assert.ok(po.states.length >= 2, `${c.name}: the portal's states read (${po.states.join(' → ')})`)
 			assert.equal(po.status, 200, `${c.name}: the destination answered`)
-			assert.equal(c.back!.frames.length, 6, `${c.name}: Back filmed`)
+			// Back: 250 ms apart for 3 s, the mascot and the album's Back in every frame read.
+			const bk = c.back as NonNullable<MotionReport['combos'][number]['back']>
+			assert.equal(bk.frames.length, 3000 / 250 + 1, `${c.name}: Back filmed for 3 s, 250 ms apart (${bk.frames.map((f) => f.t).join(' ')})`)
+			assert.ok(bk.frames.at(-1)!.t >= 3000 - 5, `${c.name}: to 3 s after Back (${bk.frames.at(-1)!.t} ms)`)
+			assert.ok(
+				bk.frames.some((f) => f.sample) && bk.frames.every((f) => !f.sample || ('mascot' in f.sample && 'back' in f.sample && Number.isFinite(f.sample.scrollY))),
+				`${c.name}: every frame read says where the mascot and the album's Back are, with scrollY`,
+			)
+			assert.ok('mascotMs' in bk && 'backOnScreenMs' in bk, `${c.name}: when the mascot appeared and when the album's Back was on screen are in the report`)
 			// (5) The frame cost, with the album closed and open.
 			for (const cost of [c.cost.baseline!, c.cost.album!]) {
 				assert.ok(cost.frames > 100, `${c.name} ${cost.label}: frames counted (${cost.frames})`)
@@ -198,6 +285,7 @@ test('four rounds (English and Arabic, 1366×900 then 375×812), motion on, Owl:
 			assert.equal(c.cost.baseline!.view, 'page')
 			assert.equal(c.cost.baseline!.stickers, 0, `${c.name}: nothing pocketed for the baseline`)
 			assert.equal(c.cost.album!.view, 'pocket')
+			console.log(`# ${c.name}: flight to ${fl[FLIGHT_FRAMES].t} ms, landed by ${c.flight!.landedMs} ms; page back ${cl.pageBackMs} ms after the album's Back, cardsHiddenMs ${cl.cardsHiddenMs}; after the portal's Back the mascot at ${bk.mascotMs ?? 'never'} ms, the album's Back on screen at ${bk.backOnScreenMs ?? 'never'} ms (scrollY ${bk.backScrollY})`)
 			console.log(`# ${c.name}: chips ${ch.visibleMax} shown, a transition in ${ch.transitionSamples} samples, cards moved in ${ch.cardMoveSamples}, Vodafone's looping animations ${ch.loopingAnimations}, in place within ${ch.maxDeviationPx} px, lagged ${ch.lagged}; ride ${al.filter((f) => f.sample?.state === 'riding').length} frames; portal ${po.navigatedMs} ms ${po.states.join(' → ')}; cost baseline ${c.cost.baseline!.taskMs} ms task ${c.cost.baseline!.over33}/${c.cost.baseline!.frames} frames over 33 ms, album ${c.cost.album!.taskMs} ms task ${c.cost.album!.over33}/${c.cost.album!.frames}`)
 		}
 		// Page loads: exactly the planned twelve, paced, under the cap.
@@ -225,7 +313,9 @@ test('four rounds (English and Arabic, 1366×900 then 375×812), motion on, Owl:
 		// Every screenshot and the JSON on disk.
 		const missing = report.files.filter((f) => !fs.existsSync(path.join(out, f)))
 		assert.deepEqual(missing, [], 'every screenshot is on disk')
-		assert.ok(report.files.length >= 4 * (2 + 11 + 15 + 4 + 8 + 1 + 6), `screenshots (${report.files.length})`)
+		assert.ok(report.files.length >= 4 * (2 + (FLIGHT_FRAMES + 2) + 15 + 16 + 8 + 1 + 13), `screenshots (${report.files.length})`)
+		// Each one the whole viewport of its round, in device pixels.
+		assertWholeViewport(report, out, await l.page.evaluate(() => devicePixelRatio))
 		const written = JSON.parse(fs.readFileSync(path.join(out, 'motion-report.json'), 'utf8')) as MotionReport
 		assert.equal(written.outcome, 'passed')
 		assert.equal(written.loads.length, 12)
@@ -240,6 +330,50 @@ test('four rounds (English and Arabic, 1366×900 then 375×812), motion on, Owl:
 	} finally {
 		await l.close()
 		if (!KEEP) fs.rmSync(out, { recursive: true, force: true })
+	}
+})
+
+/** Colours of the bands of the tall test page, one per 300 px of the document. */
+const BANDS = ['#e60000', '#00a000', '#0040ff', '#ffd000', '#a000c0', '#00c0c0', '#ff8000', '#404040', '#ffffff', '#000000']
+
+test("captureViewport: the whole viewport in device pixels, where the page is scrolled, in a context of device pixel ratio 1 and one of 2 (Playwright's own emulation, as on the live run)", { timeout: 120_000 }, async () => {
+	// A browser of its own: the kit's contexts have ratio 1 and no option for another. Nothing is loaded:
+	// the page is set from a string.
+	const browser = await chromium.launch({ headless: true })
+	try {
+		for (const dpr of [1, 2]) {
+			const context = await browser.newContext({ viewport: DESKTOP, deviceScaleFactor: dpr })
+			const page = await context.newPage()
+			await page.setContent(`<!doctype html><style>body{margin:0}div{height:300px}</style>${BANDS.map((c) => `<div style="background:${c}"></div>`).join('')}`)
+			// Scrolled to 1250: the viewport (900 px) shows the end of band 4 (1200-1500), band 5 and the start of band 7 (2100-2400).
+			await page.evaluate(() => window.scrollTo(0, 1250))
+			const at = await page.evaluate(() => ({ scrollY, ratio: devicePixelRatio }))
+			assert.deepEqual(at, { scrollY: 1250, ratio: dpr })
+			const jpeg = await captureViewport(page)
+			const seen = await page.evaluate(async (src) => {
+				const img = new Image()
+				img.src = src
+				await img.decode()
+				const c = document.createElement('canvas')
+				c.width = img.naturalWidth
+				c.height = img.naturalHeight
+				const g = c.getContext('2d')!
+				g.drawImage(img, 0, 0)
+				// The colour 20 % of the way across at these heights of the picture (as fractions of its height).
+				const at = (fy: number) => [...g.getImageData(Math.round(img.naturalWidth * 0.2), Math.round(img.naturalHeight * fy), 1, 1).data].slice(0, 3)
+				return { width: img.naturalWidth, height: img.naturalHeight, top: at(0.1), middle: at(0.5), bottom: at(0.97) }
+			}, `data:image/jpeg;base64,${jpeg.toString('base64')}`)
+			const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+			const near = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) < 40)
+			assert.equal(jpegSizeOf(jpeg).width, seen.width, 'the JPEG says the size the browser decodes')
+			assert.deepEqual({ width: seen.width, height: seen.height }, { width: DESKTOP.width * dpr, height: DESKTOP.height * dpr }, `ratio ${dpr}: the whole ${DESKTOP.width}×${DESKTOP.height} viewport in device pixels`)
+			// 10 % down the picture is the document's 1340 (band 4), the middle its 1700 (band 5), 97 % down its 2123 (band 7).
+			assert.ok(near(seen.top, rgb(BANDS[4])) && near(seen.middle, rgb(BANDS[5])) && near(seen.bottom, rgb(BANDS[7])), `ratio ${dpr}: the picture is the viewport where the page is scrolled (${JSON.stringify(seen)})`)
+			console.log(`# ratio ${dpr}: captureViewport gave ${seen.width}×${seen.height}, the viewport at scrollY 1250 (${JSON.stringify([seen.top, seen.middle, seen.bottom])})`)
+			await context.close()
+		}
+	} finally {
+		await browser.close()
 	}
 })
 

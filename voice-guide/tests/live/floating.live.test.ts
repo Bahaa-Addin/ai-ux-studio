@@ -8,7 +8,7 @@
  *    S1 and S2, at 1366×900 and then at 375×812;
  *  - the banner pass on a throwaway profile, where OneTrust's banner shows: S1 on /en/services and
  *    /ar/services at both sizes, with no press at all.
- * Every cell is measured with S16's module and held to its rules a to g, and to the rule that none of our
+ * Every cell is measured with S16's module and held to its rules a to h, and to the rule that none of our
  * controls overlaps Vodafone's other fixed or sticky elements; a screenshot of each cell (and of each
  * ?aixc=off baseline) and the whole report as JSON (floating-live.json) go to VG_LIVE_OUT.
  *

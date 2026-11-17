@@ -22,15 +22,23 @@
  *  (5a) the baseline frame cost: nothing pocketed by this run, the album closed, the pointer still for
  *      5 s: Chrome's Performance.getMetrics before and after (TaskDuration, ScriptDuration, LayoutCount,
  *      RecalcStyleCount and their durations) and a requestAnimationFrame sample (frames over 33 ms);
- *  (2) a card pocketed through its chip (hovered, then pressed): 10 screenshots 150 ms apart of the
- *      flight and the corner;
+ *  (2) a card pocketed through its chip (hovered, then pressed): screenshots 150 ms apart from the press
+ *      until the sticker has landed (PEEL_MS + LIFT_MS + THROW_MS of experiences/src/pocket/pocket.js,
+ *      1.9 s, and 300 ms more), then the corner, each frame with its time from the press;
  *  (3) the album opened with the Pocket button: 14 screenshots 200 ms apart of the page turn and the
  *      mascot's hoverboard ride from the button to his place (English: across to the right; Arabic: a
  *      short way, to his place on the left), with his box at each frame;
  *  (5b) the same frame cost with the album open and the pointer still;
- *      then closed with its Back button, and the dash back filmed;
+ *      then closed with its Back button, filmed 200 ms apart for 3 s after the press: the dash back, the
+ *      page coming back, and for each chip that shows whether its card is painted (Owl's .owl-hidden, the
+ *      opacity of the card and of its carousel, what a press at its middle reaches): cardsHiddenMs, from
+ *      the page view coming back until every shown chip's card is painted (reported, not a check);
  *  (4) the album opened again and the sticker's link pressed: a screenshot every 250 ms until the
- *      navigation (about 3.3 s), the portal's state at each; then Back (the album reopens), closed.
+ *      navigation (about 3.3 s), the portal's state at each; then Back (the album reopens), filmed 250 ms
+ *      apart for 3 s: when the mascot appears (his box) and whether the album's Back is on screen, with
+ *      scrollY (reported, not a check); closed.
+ * Every screenshot is the whole emulated viewport in device pixels (captureViewport: the viewport's size
+ * times devicePixelRatio).
  * Last in each round: no [AIXC] error, no page error from the layer, Vodafone's accessibility button and
  * cookie banner as at the start, every element of the layer marked; the layer's own records of this run
  * removed (the sticker).
@@ -101,11 +109,16 @@ const CHIP_EVERY = 300
 /** px a slot may be off what shows of its card. */
 const CHIP_TOLERANCE = 3
 const COST_MS = 5000
-const FLIGHT = { frames: 10, every: 150 }
+/** A pocketed sticker lands this long after the press: PEEL_MS + LIFT_MS + THROW_MS in experiences/src/pocket/pocket.js. */
+export const FLIGHT_MS = 560 + 520 + 820
+/** The flight is filmed 150 ms apart from the press until 300 ms after the landing. */
+export const FLIGHT = { every: 150, untilMs: FLIGHT_MS + 300 }
 const ALBUM = { frames: 14, every: 200 }
-const CLOSE = { frames: 14, every: 200 }
+/** The close is filmed 200 ms apart for 3 s after the album's Back is pressed. */
+export const CLOSE = { every: 200, forMs: 3000 }
 const PORTAL = { every: 250, maxMs: 10_000 }
-const BACK = { frames: 6, every: 250 }
+/** Back (the album reopens) is filmed 250 ms apart for 3 s. */
+export const BACK = { every: 250, forMs: 3000 }
 /** px the mascot keeps from Vodafone's controls (ADR-0064). */
 const PAD = 16
 
@@ -137,7 +150,7 @@ type Box = { left: number; top: number; right: number; bottom: number }
 
 export interface Frame<T> {
 	i: number
-	/** ms from the frame strip's start (the press, for the frames after it). */
+	/** ms from the frame strip's start: the press, for a strip that films one (a frame just before it is negative). */
 	t: number
 	file: string | null
 	shotMs: number
@@ -176,15 +189,24 @@ export interface ComboReport {
 	name: string
 	path: string
 	viewport: Viewport
+	/** window.devicePixelRatio on the round's page: a screenshot is the viewport's size times it. */
+	dpr: number | null
 	steps: { id: string; name: string; ok: boolean; detail?: string; numbers?: Record<string, unknown> }[]
 	start: { button: number[] | null; banner: { box: number[]; display: string } | null; scrollbar: number | null; stickersAlready: number } | null
 	chips: Record<string, any> | null
 	cost: { baseline: CostReport | null; album: CostReport | null }
-	flight: { card: { id: string; href: string } | null; frames: Frame<any>[] } | null
+	/** `landedMs`: the first frame after the sticker was last seen in flight. */
+	flight: { card: { id: string; href: string } | null; frames: Frame<any>[]; landedMs: number | null } | null
 	album: { frames: Frame<any>[]; start: any; rest: any } | null
-	close: { frames: Frame<any>[]; after: any } | null
+	/**
+	 * `pageBackMs`: the first frame the page view is back; `cardsHiddenMs`: from it until the first frame in
+	 * which every shown chip's card is painted (null: not within the film, or no chip showed); `unpainted`:
+	 * the cards not painted, frame by frame (at most 40).
+	 */
+	close: { frames: Frame<any>[]; after: any; pageBackMs: number | null; cardsHiddenMs: number | null; unpainted: any[] } | null
 	portal: { destination: string; status: number | null; navigatedMs: number | null; states: string[]; frames: Frame<any>[] } | null
-	back: { status: number | null; albumReopened: boolean; frames: Frame<any>[] } | null
+	/** `mascotMs`, `backOnScreenMs`: the first frame the mascot shows (`mascotBox` his box then), and the album's Back is on screen (`backScrollY` then). */
+	back: { status: number | null; albumReopened: boolean; frames: Frame<any>[]; mascotMs: number | null; mascotBox: Box | null; backOnScreenMs: number | null; backScrollY: number | null } | null
 }
 
 export interface MotionReport {
@@ -249,6 +271,20 @@ const within = <T>(p: Promise<T>, ms: number, what: string): Promise<T> => {
 			timer = setTimeout(() => reject(new Error(`${what}: no answer in ${ms} ms`)), ms)
 		}),
 	])
+}
+
+/**
+ * A screenshot of the whole emulated viewport (JPEG, quality 70), in device pixels: the viewport's size
+ * times devicePixelRatio. Page.captureScreenshot without a clip, sent on a DevTools session of our own,
+ * handed back what headed Chrome's window surface held (the live run of 2026-11-17: 1000×1590 px, the
+ * top-left 500×795 CSS px, at both sizes). Playwright's own viewport screenshot clips to the viewport (at
+ * the visual viewport's scroll offsets: a clip's x and y are the document's) on the session that set the
+ * viewport and its ratio: a capture on another session comes out at that session's ratio, not the page's
+ * (the rehearsal saw 1366×900 from a page at ratio 2). Caret 'initial' and animations 'allow': nothing is
+ * added to the page. About 35 ms headless, as fast as the capture of our own session it replaces.
+ */
+export async function captureViewport(page: Page): Promise<Buffer> {
+	return page.screenshot({ type: 'jpeg', quality: 70, scale: 'device', caret: 'initial', animations: 'allow', timeout: 4000 })
 }
 
 /* ---------------------------------------------------------------- the guard (copied from ./pocket-smoke.ts) */
@@ -411,24 +447,16 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 		await page.mouse.click(at.x, at.y)
 	}
 
-	/* Screenshots and Chrome's own numbers, over the DevTools Protocol (nothing is put in the page). */
+	/* Screenshots (captureViewport) and Chrome's own numbers over the DevTools Protocol (nothing is put in the page). */
 	let cdp: CDPSession | null = null
 	const session = async () => (cdp ??= await page.context().newCDPSession(page))
 	const shoot = async (name: string) => {
 		const file = `${key}-${name}.jpg`
 		const t = Date.now()
 		try {
-			const s = await session()
-			const shot = await within(s.send('Page.captureScreenshot', { format: 'jpeg', quality: 70, optimizeForSpeed: true }), 4000, 'a screenshot')
-			fs.writeFileSync(path.join(out, file), Buffer.from(shot.data, 'base64'))
+			fs.writeFileSync(path.join(out, file), await within(captureViewport(page), 5000, 'a screenshot'))
 		} catch {
-			void cdp?.detach().catch(() => {})
-			cdp = null
-			try {
-				await page.screenshot({ path: path.join(out, file), type: 'jpeg', quality: 70, caret: 'initial', animations: 'allow', scale: 'css', timeout: 4000 })
-			} catch {
-				return { file: null, ms: Date.now() - t }
-			}
+			return { file: null, ms: Date.now() - t }
 		}
 		report.files.push(file)
 		return { file, ms: Date.now() - t }
@@ -796,15 +824,93 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 			'a read',
 		).catch(() => null)
 
+	/** After Back: the album's state, the mascot (his state, his box, whether he shows) and the album's Back (on screen, a press at it reaching it), with scrollY. */
 	const albumNow = () =>
 		within(
 			page.evaluate(() => {
 				const s = (window as any).__aixc?.demos?.pocket?.state
-				return { url: location.href, view: (s?.view ?? null) as string | null, busy: !!s?.busy, scrollY: Math.round(scrollY), overlays: document.querySelectorAll('.vf-portal').length }
+				const box = (n: Element | null | undefined) => {
+					if (!n || !n.getClientRects().length) return null
+					const r = n.getBoundingClientRect()
+					return r.width || r.height ? { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) } : null
+				}
+				const m = document.querySelector<HTMLElement>('.pocket-mascot')
+				const mover = box(m?.querySelector('.pocket-mascot__mover'))
+				const vw = document.documentElement.clientWidth
+				const onScreen = (b: { left: number; top: number; right: number; bottom: number } | null) => !!b && b.right > 0 && b.bottom > 0 && b.left < vw && b.top < innerHeight
+				const state = m?.dataset.mascotState ?? null
+				const mascot = m ? { state, box: mover, shown: !!mover && onScreen(mover) && getComputedStyle(m).visibility !== 'hidden' && state !== 'hidden' } : null
+				let back: { box: ReturnType<typeof box>; onScreen: boolean; reached: boolean } | null = null
+				const b = document.querySelector<HTMLElement>('#pocket-output:not([hidden]) .pocket-view__start > .pocket-back:not(.pocket-journey-cta)')
+				const bb = box(b)
+				if (b && bb) {
+					const whole = bb.top >= 0 && bb.bottom <= innerHeight && bb.left >= 0 && bb.right <= vw
+					const hit = whole ? document.elementFromPoint((bb.left + bb.right) / 2, (bb.top + bb.bottom) / 2) : null
+					back = { box: bb, onScreen: whole, reached: !!hit && (hit === b || b.contains(hit)) }
+				}
+				return { url: location.href, view: (s?.view ?? null) as string | null, busy: !!s?.busy, scrollY: Math.round(scrollY), overlays: document.querySelectorAll('.vf-portal').length, mascot, back }
 			}),
 			2000,
 			'a read',
 		).catch(() => null)
+
+	/**
+	 * For each chip slot that shows on the screen, whether its card (Vodafone's, the real one, not Owl's
+	 * copy) is painted: its carousel is not Owl's .owl-hidden, the opacity of the card (all the way up) and
+	 * of its carousel is above 0.05, it is visible, and at the middle of the part that shows (the slot is as
+	 * big as that part) the first element that is not ours is inside the card. Our own slot, chip and liner
+	 * lie over the card on purpose, so they are looked through.
+	 */
+	const cardsNow = () =>
+		within(
+			page.evaluate(() => {
+				const root = document.querySelector<HTMLElement>('.pocket-chips')
+				const slots: { id: string; painted: boolean; owlHidden: boolean | null; cardOpacity: number | null; carouselOpacity: number | null; visible: boolean | null; hit: string; at: number[] | null }[] = []
+				if (!root || root.hidden) return { rootHidden: true, slots }
+				const vw = document.documentElement.clientWidth
+				const chain = (n: Element) => {
+					let o = 1
+					for (let p: Element | null = n; p; p = p.parentElement) o *= Number(getComputedStyle(p).opacity)
+					return Math.round(o * 1000) / 1000
+				}
+				const name = (n: Element) => `${n.localName}${n.id ? `#${n.id}` : ''}${typeof (n as HTMLElement).className === 'string' && (n as HTMLElement).className ? `.${(n as HTMLElement).className.trim().split(/\s+/)[0]}` : ''}`
+				for (const slot of root.children) {
+					if (!(slot instanceof HTMLElement) || !slot.classList.contains('pocket-host') || slot.hidden || 'cut' in slot.dataset) continue
+					const id = slot.querySelector<HTMLElement>('.pocket-cta[data-pocket-for]')?.dataset.pocketFor
+					if (!id) continue
+					const sb = slot.getBoundingClientRect()
+					const l = Math.max(0, sb.left)
+					const r = Math.min(vw, sb.right)
+					const t = Math.max(0, sb.top)
+					const b = Math.min(innerHeight, sb.bottom)
+					if (r - l < 1 || b - t < 1) continue
+					const card = [...document.querySelectorAll(`#main-content [data-aixc-item="${CSS.escape(id)}"]`)].find((c) => !c.closest('.owl-item.cloned, [data-aixc]')) ?? null
+					if (!card) {
+						slots.push({ id, painted: false, owlHidden: null, cardOpacity: null, carouselOpacity: null, visible: null, hit: 'its card is gone', at: null })
+						continue
+					}
+					const carousel = card.closest('.owl-carousel')
+					const owlHidden = !!carousel?.classList.contains('owl-hidden')
+					const cardOpacity = chain(card)
+					const carouselOpacity = carousel ? chain(carousel) : null
+					const visible = card.checkVisibility?.({ visibilityProperty: true }) ?? true
+					const x = Math.round((l + r) / 2)
+					const y = Math.round((t + b) / 2)
+					const first = document.elementsFromPoint(x, y).find((n) => !n.closest('[data-aixc], [data-vg], vg-guide'))
+					const hit = !first ? 'nothing' : card.contains(first) ? 'card' : name(first)
+					slots.push({ id, painted: !owlHidden && cardOpacity > 0.05 && (carouselOpacity ?? 1) > 0.05 && visible && hit === 'card', owlHidden, cardOpacity, carouselOpacity, visible, hit, at: [x, y] })
+				}
+				return { rootHidden: false, slots }
+			}),
+			2000,
+			'a read',
+		).catch(() => null)
+
+	/** The close: the mascot as mascotNow reads him, and whether each shown chip's card is painted. */
+	const closeNow = async () => {
+		const [m, cards] = await Promise.all([mascotNow(), cardsNow()])
+		return m ? { ...m, cards } : null
+	}
 
 	/** Chrome's own numbers over `COST_MS` with the pointer still: Performance.getMetrics before and after, and the frames requestAnimationFrame saw. */
 	const frameCost = async (label: string): Promise<CostReport> => {
@@ -886,7 +992,7 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 		for (const c of combos) {
 			const lang = c.path.startsWith('/ar/') ? 'ar' : 'en'
 			key = `${lang}-${c.viewport.width}`
-			combo = { name: key, path: c.path, viewport: c.viewport, steps: [], start: null, chips: null, cost: { baseline: null, album: null }, flight: null, album: null, close: null, portal: null, back: null }
+			combo = { name: key, path: c.path, viewport: c.viewport, dpr: null, steps: [], start: null, chips: null, cost: { baseline: null, album: null }, flight: null, album: null, close: null, portal: null, back: null }
 			report.combos.push(combo)
 			const url = `${base}${c.path}?aixc-debug`
 			const W = c.viewport.width
@@ -906,6 +1012,7 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 				await page.waitForLoadState('load', { timeout: 45_000 }).catch(() => {})
 				await layerReady('a')
 				report.userAgent ??= await page.evaluate(() => navigator.userAgent)
+				combo!.dpr = await page.evaluate(() => devicePixelRatio)
 				const s = await pocketState()
 				keysAtStart ??= s.keys
 				return { status: res?.status() ?? null, stickersAlready: s.keys.length }
@@ -1003,7 +1110,7 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 				return { taskMs: cost.taskMs, frames: cost.frames, over33: cost.over33 }
 			})
 
-			await step('2', 'hover a card and press its "Pocket it" chip: 10 screenshots 150 ms apart of the flight and the corner', async () => {
+			await step('2', 'hover a card and press its "Pocket it" chip: screenshots 150 ms apart from the press until the sticker has landed, then the corner', async () => {
 				const before = await pocketState()
 				const found = await page.evaluate(async () => {
 					const tick = () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 80))))
@@ -1030,7 +1137,7 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 				})
 				if (!found) fail('2', 'no card whose chip a press reaches and whose link goes to another page of this site')
 				card = { id: found!.id, href: found!.href }
-				combo!.flight = { card, frames: [] }
+				combo!.flight = { card, frames: [], landedMs: null }
 				log(`  card ${card.id}, its link ${card.href}`)
 				// Hovering the card pauses its carousel (Owl's autoplayHoverPause), so the chip stays put for the press.
 				await page.mouse.move(found!.cardX, found!.cardY, { steps: 6 })
@@ -1043,18 +1150,26 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 				}, card.id)
 				if (!chip) fail('2', 'the chip went away while the card was hovered')
 				await page.mouse.move(chip!.x, chip!.y, { steps: 4 })
-				const frames = await film('flight', 0, 1, FLIGHT.every, Date.now(), flightNow)
+				const filmedAt = Date.now()
+				const frames = await film('flight', 0, 1, FLIGHT.every, filmedAt, flightNow)
 				dirty = true
 				const pressedAt = Date.now()
 				await press('2', chip!, `the chip "${chip!.label}"`, '.pocket-chips .pocket-cta[data-pocket-for]', { for: card.id })
-				frames.push(...(await film('flight', 1, FLIGHT.frames - 1, FLIGHT.every, pressedAt, flightNow)))
+				// Every frame's time is from the press: the one just before it is negative.
+				frames[0].t += filmedAt - pressedAt
+				const n = Math.ceil(FLIGHT.untilMs / FLIGHT.every)
+				frames.push(...(await film('flight', 1, n, FLIGHT.every, pressedAt, flightNow)))
 				await page.waitForFunction((id) => ((window as any).__aixc.demos.pocket.store.all() as any[]).some((r) => r.id === id), card.id, { timeout: 8_000 }).catch(() => fail('2', 'the sticker was not kept in the Pocket'))
 				const b = await pocketButton('2')
-				frames.push(...(await film('flight', FLIGHT.frames, 1, 0, Date.now(), flightNow)))
+				// The corner, at its own time from the press.
+				frames.push(...(await film('flight', n + 1, 1, 0, pressedAt, flightNow)))
+				const lastInFlight = frames.findLastIndex((f) => !!f.sample?.flying)
 				combo!.flight.frames = frames
+				combo!.flight.landedMs = lastInFlight >= 0 && lastInFlight + 1 < frames.length ? frames[lastInFlight + 1].t : null
+				log(`  the flight filmed ${frames.length} frames at ${frames.map((f) => f.t).join(' ')} ms from the press; in flight until ${lastInFlight >= 0 ? frames[lastInFlight].t : '-'} ms, landed by ${combo!.flight.landedMs ?? '-'} ms (${FLIGHT_MS} ms by pocket.js)`)
 				const expected = before.keys.length + 1
 				checkThat('pocket-button', b.count === String(expected) && b.reached && b.left < b.innerWidth / 2 && b.bottomGap >= 0 && b.bottomGap < 200, `the Pocket button shows ${b.count} (${expected} expected), a press at its centre reaches ${b.reached ? 'it' : b.onTop}, at the bottom-left (left ${b.left}, ${b.bottomGap} px above the bottom)`)
-				return { frames: frames.length, flewIn: frames.filter((f) => f.sample?.flying).length, count: b.count }
+				return { frames: frames.length, flewIn: frames.filter((f) => f.sample?.flying).length, landedMs: combo!.flight.landedMs, lastMs: frames.at(-2)!.t, count: b.count }
 			})
 
 			await step('3', 'open the album with the Pocket button: 14 screenshots 200 ms apart of the page turn and the mascot\'s ride, his box at each', async () => {
@@ -1119,9 +1234,9 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 				return { taskMs: cost.taskMs, frames: cost.frames, over33: cost.over33, taskVsBaseline: b && b.taskMs ? r1(cost.taskMs / b.taskMs) : null }
 			})
 
-			await step('3c', "close the album with its Back button: the dash back filmed, 200 ms apart, until he is hidden", async () => {
+			await step('3c', "close the album with its Back button: filmed 200 ms apart for 3 s after the press (the dash back, the page coming back, whether each shown chip's card is painted)", async () => {
 				const back = await backButton()
-				const frames = await film('close', 0, 1, CLOSE.every, Date.now(), mascotNow)
+				const frames = await film('close', 0, 1, CLOSE.every, Date.now(), closeNow)
 				const pressedAt = Date.now()
 				if (back) await press('3c', back, "the album's Back button", '#pocket-output .pocket-back')
 				else {
@@ -1130,12 +1245,19 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 					log('  key: Escape (the Back button is not on screen)')
 					await page.keyboard.press('Escape')
 				}
-				frames.push(...(await film('close', 1, CLOSE.frames - 1, CLOSE.every, pressedAt, mascotNow, (s, i) => i >= 3 && !!s && s.view === 'page' && !s.busy && (s.state === 'hidden' || s.state === null))))
+				frames.push(...(await film('close', 1, Math.round(CLOSE.forMs / CLOSE.every), CLOSE.every, pressedAt, closeNow)))
 				await waitView('3c', 'page')
 				await page.waitForFunction(() => ['hidden', ''].includes(document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? ''), null, { timeout: 8_000 }).catch(() => {})
 				await pocketButton('3c')
 				const after = await mascotNow()
-				combo!.close = { frames, after }
+				// The cards under the chips once the page is back (reported, not a check): Owl hides a carousel it
+				// finds out of sight (.owl-hidden, opacity 0) until it looks again.
+				const pageBack = frames.find((f) => f.i > 0 && f.sample?.view === 'page')
+				const allPainted = (f: (typeof frames)[number]) => !!f.sample?.cards && f.sample.cards.slots.length > 0 && f.sample.cards.slots.every((x) => x.painted)
+				const painted = pageBack ? frames.find((f) => f.t >= pageBack.t && allPainted(f)) : undefined
+				const unpainted = frames.flatMap((f) => (f.sample?.cards?.slots ?? []).filter((x) => !x.painted).map((x) => ({ t: f.t, ...x }))).slice(0, 40)
+				combo!.close = { frames, after, pageBackMs: pageBack?.t ?? null, cardsHiddenMs: pageBack && painted ? painted.t - pageBack.t : null, unpainted }
+				log(`  the page came back ${pageBack ? `${pageBack.t} ms after the press` : 'not within the film'}; every shown chip's card painted ${combo!.close.cardsHiddenMs !== null ? `${combo!.close.cardsHiddenMs} ms after that (cardsHiddenMs)` : 'not within the film (cardsHiddenMs null)'}${unpainted.length ? `; not painted: ${[...new Set(unpainted.map((x) => `${x.id} (${x.owlHidden ? '.owl-hidden, ' : ''}opacity ${x.cardOpacity}, carousel ${x.carouselOpacity}, a press reaches ${x.hit})`))].slice(0, 6).join('; ')}` : ''}`)
 				const leaving = frames.filter((f) => f.sample?.visible && f.sample.mover && f.sample.state === 'leaving')
 				const problems: string[] = []
 				if (lang === 'en' && W >= 640) {
@@ -1147,7 +1269,7 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 				if (combo!.album && combo!.album.rest?.state) checkThat('dash', problems.length === 0, problems.length ? problems.join('; ') : `back behind the button (${leaving.length} frames riding back: ${leaving.map((f) => Math.round(cx(f.sample!.mover!))).join(' ')})`)
 				const touched = [...frames.map((f) => f.sample), after].map((m) => buttonAsAtStart(m, start!)).filter(Boolean)
 				checkThat('button-close', touched.length === 0 && !frames.some((f) => f.sample?.hit === 'mascot'), touched.length ? `Vodafone's accessibility button changed: ${touched.join('; ')}` : "Vodafone's accessibility button as at the start while he went back; a press never reaches him")
-				return { frames: frames.length, leaving: leaving.length, after: after?.state ?? null }
+				return { frames: frames.length, leaving: leaving.length, after: after?.state ?? null, pageBackMs: combo!.close.pageBackMs, cardsHiddenMs: combo!.close.cardsHiddenMs }
 			})
 
 			await step('4', "the portal: the album opened again, the sticker's link pressed; a screenshot every 250 ms until the navigation; then Back", async () => {
@@ -1206,18 +1328,22 @@ export async function runMotion(page: Page, options: MotionOptions): Promise<Mot
 				const res = await page.goBack({ waitUntil: 'domcontentloaded', timeout: 45_000 })
 				recordLoad('Back', page.url(), res?.status() ?? null)
 				await stopIfBlocked(res?.status() ?? null)
-				const backFrames = await film('back', 0, BACK.frames, BACK.every, Date.now(), albumNow)
+				const backFrames = await film('back', 0, Math.round(BACK.forMs / BACK.every) + 1, BACK.every, Date.now(), albumNow)
 				await page.waitForLoadState('load', { timeout: 45_000 }).catch(() => {})
 				if (page.url().split('#')[0] !== url) fail('4', `Back is not on the page again (${page.url()})`)
 				await layerReady('4')
 				const s = await pocketState()
 				const reopened = backFrames.some((f) => f.sample?.view === 'pocket') || s.view === 'pocket'
-				combo!.back = { status: res?.status() ?? null, albumReopened: reopened, frames: backFrames }
+				// When the mascot appears and when the album's Back is on screen (reported, not a check).
+				const mascotAt = backFrames.find((f) => f.sample?.mascot?.shown)
+				const backAt = backFrames.find((f) => f.sample?.back?.onScreen)
+				combo!.back = { status: res?.status() ?? null, albumReopened: reopened, frames: backFrames, mascotMs: mascotAt?.t ?? null, mascotBox: mascotAt?.sample?.mascot?.box ?? null, backOnScreenMs: backAt?.t ?? null, backScrollY: backAt?.sample?.scrollY ?? null }
+				log(`  after Back, filmed ${backFrames.length} frames for ${backFrames.at(-1)?.t ?? 0} ms: the album ${reopened ? 'reopened' : 'did not reopen'}; the mascot ${mascotAt ? `appeared ${mascotAt.t} ms in at ${fmt(mascotAt.sample!.mascot!.box)}` : `did not appear (${[...new Set(backFrames.map((f) => (!f.sample ? 'no read' : !f.sample.mascot ? 'not on the page' : `${f.sample.mascot.state ?? 'no state'}, ${f.sample.mascot.box ? `at ${fmt(f.sample.mascot.box)}` : 'no box'}`)))].join('; ')})`}; the album's Back ${backAt ? `on screen ${backAt.t} ms in (scrollY ${backAt.sample!.scrollY})` : `not on screen (scrollY ${backFrames.map((f) => f.sample?.scrollY ?? '-').join(' ')})`}`)
 				if (s.view === 'pocket') {
 					await waitView('4', 'pocket')
 					await closeAlbum('4')
 				}
-				return { navigatedMs: combo!.portal.navigatedMs, states: states.join(' → '), frames: frames.length, status, back: res?.status() ?? null, albumReopened: reopened }
+				return { navigatedMs: combo!.portal.navigatedMs, states: states.join(' → '), frames: frames.length, status, back: res?.status() ?? null, albumReopened: reopened, mascotMs: combo!.back.mascotMs, backOnScreenMs: combo!.back.backOnScreenMs }
 			})
 
 			await step('6', "compare: no [AIXC] error, no page error from the layer, Vodafone's button and banner as at the start, every element of the layer marked, the layer still ready", async () => {
@@ -1394,7 +1520,7 @@ if (MAIN) {
 			const ch = c.chips
 			const b = c.cost.baseline
 			const a = c.cost.album
-			console.log(`# ${c.name}: chips ${ch ? `${ch.samples} samples, ${ch.visibleMax} shown, misplaced ${ch.misplaced}, detached ${ch.detached}, lagged ${ch.lagged}, moving in ${ch.transitionSamples} samples (cards moved in ${ch.cardMoveSamples})` : '-'}; flight ${c.flight?.frames.length ?? 0} frames; album ${c.album?.frames.length ?? 0} frames (rest ${c.album?.rest?.state ?? '-'}); close ${c.close?.frames.length ?? 0}; portal ${c.portal ? `${c.portal.frames.length} frames, ${c.portal.navigatedMs} ms, ${c.portal.states.join(' → ')}` : '-'}; cost baseline ${b ? `${b.taskMs} ms task, ${b.over33}/${b.frames} frames over 33 ms` : '-'}, album ${a ? `${a.taskMs} ms task, ${a.over33}/${a.frames} frames over 33 ms` : '-'}`)
+			console.log(`# ${c.name}: ${c.dpr ? `device pixel ratio ${c.dpr}; ` : ''}chips ${ch ? `${ch.samples} samples, ${ch.visibleMax} shown, misplaced ${ch.misplaced}, detached ${ch.detached}, lagged ${ch.lagged}, moving in ${ch.transitionSamples} samples (cards moved in ${ch.cardMoveSamples})` : '-'}; flight ${c.flight?.frames.length ?? 0} frames (to ${c.flight?.frames.at(-2)?.t ?? '-'} ms, landed by ${c.flight?.landedMs ?? '-'} ms); album ${c.album?.frames.length ?? 0} frames (rest ${c.album?.rest?.state ?? '-'}); close ${c.close?.frames.length ?? 0} (page back at ${c.close?.pageBackMs ?? '-'} ms, cardsHiddenMs ${c.close ? (c.close.cardsHiddenMs ?? 'null') : '-'}); back ${c.back ? `mascot at ${c.back.mascotMs ?? 'never'} ms, the album's Back on screen at ${c.back.backOnScreenMs ?? 'never'} ms (scrollY ${c.back.backScrollY ?? '-'})` : '-'}; portal ${c.portal ? `${c.portal.frames.length} frames, ${c.portal.navigatedMs} ms, ${c.portal.states.join(' → ')}` : '-'}; cost baseline ${b ? `${b.taskMs} ms task, ${b.over33}/${b.frames} frames over 33 ms` : '-'}, album ${a ? `${a.taskMs} ms task, ${a.over33}/${a.frames} frames over 33 ms` : '-'}`)
 		}
 		console.log(`# ${r.loads.length} page loads by this run; ${requestsLine(r)}`)
 		console.log(`# report: ${JSON.stringify({ outcome: r.outcome, message: r.message, out: r.out, loads: r.loads.map((l) => `${l.combo} ${l.how} ${l.status}`), pageRequests: r.pageRequests.map((x) => `${x.combo} ${x.type}${x.reload ? ' (its own reload)' : ''} ${x.url}${x.failure ? ` failed: ${x.failure}` : ''}`), presses: r.presses, failedChecks: r.checks.filter((c) => !c.ok), cleanup: r.cleanup })}`)

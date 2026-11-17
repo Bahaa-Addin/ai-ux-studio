@@ -4,7 +4,7 @@
  * (./floating.live.test.ts, run by the lead on the real web.vodafone.com.eg in the installed Google Chrome)
  * and the offline rehearsal on the saved pages (../e2e/floating-live-rehearsal.e2e.test.ts) both call, so
  * the walk is proven without touching the site. It measures with S16's module (../e2e/floating-controls.ts:
- * measureControls, hitsAt, cellViolations and its rules a to g, unchanged) and adds what only real pages
+ * measureControls, hitsAt, cellViolations and its rules a to h) and adds what only real pages
  * have: Vodafone's other floaters, the real banner's own z-index, and a screenshot of every cell.
  *
  * Two passes, in this order (PLAN; 20 page loads, never more than MAX_LOADS = 24):
@@ -17,8 +17,12 @@
  *    a narrowed desktop window, not a phone; the report says how it differs);
  *  - banner (a throwaway profile, where OneTrust's banner shows): S1 only, on /en/services and /ar/services
  *    at both sizes, and no press at all.
- * Each page is opened with ?aixc=off first: the accessibility button's box, style attribute and computed
- * style there are rule (d)'s baseline, once per page, size and pass (and a screenshot of it).
+ * Each page is opened with ?aixc=off first, Vodafone's page alone: ?aixc=off stops only the experience
+ * layer, so for that one load every request whose path starts with /__vg/ is refused (page.route, removed
+ * right after the baseline is read): neither the guide (guide.js, its mic and the trail's pill) nor the
+ * layer (aixc.js) nor any call to the gateway runs. The accessibility button's box, style attribute and
+ * computed style there are rule (d)'s baseline, once per page, size and pass (and a screenshot of it); a
+ * baseline with anything of ours on it is a violation, since rule (d) would then compare ours with ours.
  *
  * Every cell: S16's measure, what a press at the points of each control reaches, the violations of rules a
  * to g, every fixed or sticky element of Vodafone's that is not the banner or the accessibility widget
@@ -50,7 +54,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { Page } from 'playwright'
+import type { Page, Route } from 'playwright'
 
 import { ROOT } from '#shared/config.ts'
 
@@ -215,6 +219,10 @@ export interface Baseline {
 	button: Measure['button']
 	floaters: Floater[]
 	screenshot: string | null
+	/** Requests to /__vg/ refused for this load (the guide's and the layer's scripts, calls to the gateway). */
+	blocked: number
+	/** Anything of ours found on the baseline page (none: it is Vodafone's page alone). */
+	ours: string[]
 }
 
 export interface Environment {
@@ -719,6 +727,9 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 		const v = cellViolations(m, { where: ctx.where, off: ctx.off, hits: h.hits, bannerHits: h.bannerHits })
 		const notes: string[] = []
 		const w = `${ctx.where} ${state}`
+		// Readings that could not be taken are said (their rules did not see them): the curl's painted part, the fonts.
+		if (m.curlSkipped) notes.push(`skipped: ${m.curlSkipped} (rule (a) did not see the curl)`)
+		if (m.fontsSkipped) notes.push(`skipped: ${m.fontsSkipped} (rule (h) did not see our words)`)
 		const floaters = await floatersOf(page)
 		// Vodafone's other floaters: none of our controls (nor the mascot or the drone) over one, and a press at one reaches it, never ours.
 		const ours: [string, Box][] = shownControls(m)
@@ -755,17 +766,52 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 		for (const line of v) violation(line)
 		const shownNames = shownControls(m).map(([n]) => n)
 		const vf = floaters.filter((f) => f.shown).map((f) => `${f.what} ${fmt(f.box)}`)
-		log(`  cell ${cell.n} ${w}: ${v.length ? `${v.length} violation(s)` : 'ok'}; shown ${shownNames.join(', ')}; Vodafone's floaters ${vf.join(' | ') || 'none'}${screenshot ? `; ${screenshot}` : ''}`)
+		const curl = m.curl.filter((c) => c.shown).map((c) => `${c.what} ${fmt(c.box)}`)
+		const drone = m.droneState ? (m.drone ? `drone ${fmt(m.drone)}` : `drone not shown (${m.droneState.why})`) : 'no drone'
+		const faces = [...new Set(m.fonts.flatMap((f) => f.fonts.map((x) => `${x.familyName}${x.isCustomFont ? '' : ' (system)'}`)))]
+		log(`  cell ${cell.n} ${w}: ${v.length ? `${v.length} violation(s)` : 'ok'}; shown ${shownNames.join(', ')}; Vodafone's floaters ${vf.join(' | ') || 'none'}; curl ${curl.join(' | ') || 'none painted'}; ${drone}; our words in ${faces.join(', ') || 'no font read'}${screenshot ? `; ${screenshot}` : ''}`)
 		return m
 	}
 
-	const baseline = async (page: Page, ctx: PageCtx, banner: boolean) => {
+	/**
+	 * For the ?aixc=off load only: every request whose path starts with /__vg/ is refused, so the page is
+	 * Vodafone's alone (the loader's script tag stays; what it would fetch never comes). `done()` removes it.
+	 */
+	const vodafoneOnly = async (page: Page) => {
+		let blocked = 0
+		const ours = (u: URL) => u.pathname.startsWith('/__vg/')
+		const refuse = (route: Route) => {
+			blocked++
+			return route.abort('blockedbyclient').catch(() => {})
+		}
+		await page.route(ours, refuse)
+		return { blocked: () => blocked, done: () => page.unroute(ours, refuse).catch(() => {}) }
+	}
+
+	/** What of ours is on the page (nothing, on a baseline). */
+	const oursOnPage = (page: Page) =>
+		page.evaluate(() => {
+			const found: string[] = []
+			if (document.querySelector('vg-guide')) found.push('the guide (vg-guide)')
+			const aixc = document.querySelectorAll('[data-aixc]').length
+			if (aixc) found.push(`${aixc} element(s) of the layer ([data-aixc])`)
+			const vg = document.querySelectorAll('[data-vg]').length
+			if (vg) found.push(`${vg} element(s) [data-vg]`)
+			if ((window as any).__aixc) found.push('the layer (window.__aixc)')
+			if ((window as any).voiceGuide) found.push('the guide (window.voiceGuide)')
+			return found
+		})
+
+	const baseline = async (page: Page, ctx: PageCtx, banner: boolean, blocked: number) => {
 		const m = await measureControls(page, 'off')
 		const floaters = await floatersOf(page)
+		const ours = await oursOnPage(page)
 		const screenshot = await shoot(page, `${pass} ${ctx.pathname} ${vpName(ctx.vp)} baseline aixc-off`)
-		report.baselines.push({ pass, page: ctx.pathname, viewport: vpName(ctx.vp), banner, button: m.button, floaters, screenshot })
+		report.baselines.push({ pass, page: ctx.pathname, viewport: vpName(ctx.vp), banner, button: m.button, floaters, screenshot, blocked, ours })
 		if (!m.button) violation(`${ctx.where}: (d) no accessibility button with ?aixc=off (Vodafone's widget did not load): rule (d) is unchecked here`)
-		log(`  baseline ?aixc=off: the accessibility button ${m.button ? JSON.stringify(m.button.box) : 'absent'}; the banner ${m.controls.banner?.shown ? fmt(m.controls.banner.box) : 'not showing'}`)
+		if (ours.length) violation(`${ctx.where}: (d) the ?aixc=off baseline is not Vodafone's page alone (${ours.join(', ')}): rule (d) would compare ours with ours`)
+		if (!blocked) note(`${ctx.where}: the ?aixc=off load asked for nothing under /__vg/ (the loader did not run?)`)
+		log(`  baseline ?aixc=off, Vodafone's page alone (${blocked} request(s) to /__vg/ refused${ours.length ? `; still of ours: ${ours.join(', ')}` : ''}): the accessibility button ${m.button ? JSON.stringify(m.button.box) : 'absent'}; the banner ${m.controls.banner?.shown ? fmt(m.controls.banner.box) : 'not showing'}`)
 		return m.button
 	}
 
@@ -842,20 +888,31 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 				throw new StateFailed(what)
 			})
 
-	/** The album at rest: the mascot standing (or tucked), the drone up (none under 640 px). */
+	/**
+	 * The album at rest: the mascot standing (or tucked), the drone up. Under 640 px there is no drone by
+	 * design; at 640 px and wider it is waited for (up to 10 s), and one that never comes out is left to the
+	 * cell's rule (f) ('the drone did not show in the album'), not passed as at rest.
+	 */
 	const albumAtRest = async (page: Page) => {
 		await waitView(page, 'pocket', 'the album did not open')
 		await page.waitForFunction(() => ['idle', 'tucked', 'flinching'].includes(document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? ''), null, { timeout: 10_000 }).catch(async () => {
 			throw new StateFailed(`the mascot did not come to rest in the album (it is '${await page.evaluate(() => document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? null)}')`)
 		})
-		await page.waitForFunction(() => {
-			const d = document.querySelector<HTMLElement>('.pocket-drone')
-			// At rest: hovering at home (or curious, following the pointer), landed, or not out at all.
-			return !d || d.hidden || ['hidden', 'home-hover', 'curious', 'following', 'landed'].includes(d.dataset.droneState ?? '')
-		}, null, { timeout: 10_000 }).catch(async () => {
-			const s = await page.evaluate(() => ({ drone: document.querySelector<HTMLElement>('.pocket-drone')?.dataset.droneState ?? null, mascot: document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? null }))
-			throw new StateFailed(`the drone did not come to rest in the album (the drone is '${s.drone}', the mascot '${s.mascot}')`)
-		})
+		const rest = () =>
+			page.evaluate(() => {
+				const d = document.querySelector<HTMLElement>('.pocket-drone')
+				const out = !!d && !d.hidden
+				// At rest: hovering at home (or curious, following the pointer), landed; or, under 640 px, not out at all.
+				return { out, wide: innerWidth >= 640, state: d?.dataset.droneState ?? null, mascot: document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? null, resting: out ? ['hidden', 'home-hover', 'curious', 'following', 'landed'].includes(d!.dataset.droneState ?? '') : innerWidth < 640 }
+			})
+		const end = Date.now() + 10_000
+		let s = await rest()
+		while (!s.resting && Date.now() < end) {
+			await sleep(200)
+			s = await rest()
+		}
+		if (!s.resting && s.out) throw new StateFailed(`the drone did not come to rest in the album (the drone is '${s.state}', the mascot '${s.mascot}')`)
+		if (!s.out && s.wide) note(`the drone did not come out in the album within 10 s at ${await page.evaluate(() => innerWidth)} px (it is '${s.state}'): the cell's rule (f) says so`)
 		await frames(page, 1200)
 	}
 
@@ -961,14 +1018,20 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 	const walkMain = async (page: Page, vp: Viewport, target: { pathname: string; full: boolean }) => {
 		const ctx: PageCtx = { pathname: target.pathname, vp, where: `${target.pathname} ${vpName(vp)} banner absent`, off: null }
 		log(`${ctx.where}: ${target.full ? 'S1, S2, S5, S3, S4' : 'S1, S2'}`)
-		await load(page, target.pathname, '?aixc=off', 'baseline, ?aixc=off')
-		const ok = await state(ctx.where, 'the ?aixc=off baseline', async () => {
-			await loaderThere(page)
-			await settle(page)
-		})
-		if (await bannerShows(page)) throw new BannerShows()
-		await environment(page, vp)
-		ctx.off = await baseline(page, ctx, false)
+		const only = await vodafoneOnly(page)
+		let ok = false
+		try {
+			await load(page, target.pathname, '?aixc=off', "baseline, ?aixc=off, Vodafone's page alone")
+			ok = await state(ctx.where, 'the ?aixc=off baseline', async () => {
+				await loaderThere(page)
+				await settle(page)
+			})
+			if (await bannerShows(page)) throw new BannerShows()
+			await environment(page, vp)
+			ctx.off = await baseline(page, ctx, false, only.blocked())
+		} finally {
+			await only.done()
+		}
 		if (!ok) return
 		await load(page, target.pathname, '?aixc-debug', 'with the layer, ?aixc-debug')
 		let keysBefore: string[] | null = null
@@ -1096,13 +1159,19 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 	const walkBanner = async (page: Page, vp: Viewport, pathname: string) => {
 		const ctx: PageCtx = { pathname, vp, where: `${pathname} ${vpName(vp)} banner present`, off: null }
 		log(`${ctx.where}: S1 only, no press`)
-		await load(page, pathname, '?aixc=off', 'baseline, ?aixc=off, a first visit')
-		const ok = await state(ctx.where, 'the ?aixc=off baseline', async () => {
-			await loaderThere(page)
-			await settleBanner(page)
-		})
-		await environment(page, vp)
-		ctx.off = await baseline(page, ctx, await bannerShows(page))
+		const only = await vodafoneOnly(page)
+		let ok = false
+		try {
+			await load(page, pathname, '?aixc=off', "baseline, ?aixc=off, Vodafone's page alone, a first visit")
+			ok = await state(ctx.where, 'the ?aixc=off baseline', async () => {
+				await loaderThere(page)
+				await settleBanner(page)
+			})
+			await environment(page, vp)
+			ctx.off = await baseline(page, ctx, await bannerShows(page), only.blocked())
+		} finally {
+			await only.done()
+		}
 		if (!ok) return
 		await load(page, pathname, '?aixc-debug', 'with the layer, ?aixc-debug, a first visit')
 		if (

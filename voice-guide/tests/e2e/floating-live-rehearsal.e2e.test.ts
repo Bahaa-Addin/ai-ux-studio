@@ -12,7 +12,13 @@
  *   S1 at both sizes with no press. Every cell keeps the rules; 20 page loads at least 1.2 s apart; a
  *   screenshot of the viewport for every cell and baseline at the viewport's size; the JSON written; a
  *   stand-in of another of Vodafone's floaters listed and clear; the layer's own data cleaned up; nothing
- *   reached the internet.
+ *   reached the internet. Each ?aixc=off baseline is Vodafone's page alone (the requests to /__vg/
+ *   refused for that load, nothing of ours on it); the curl's painted corner measured where the Pocket
+ *   peeks; the fonts of our words read in every cell. Two rules fail on today's product code and are the
+ *   last assertion here: (f) the drone does not show in the album at 1366 px, and (h) on /en/home (the
+ *   maintheme has no Vodafone bold face) our chips, liner and Back are drawn in a system font.
+ * - The rules (a) for what the curl paints, (f) for a drone that does not show and (h) for a system font,
+ *   on measures made by hand: each fires where it should and nowhere else.
  * - The banner showing in the main pass: 'skipped: banner', nothing pressed, the banner as it came.
  * - A bot check (403 "Access denied") and a challenge page (200 "Just a moment…") on the first load: the run
  *   stops, nothing is pressed, nothing is retried, the banner pass never opens.
@@ -34,7 +40,7 @@ import type { Page } from 'playwright'
 import { ROOT } from '#shared/config.ts'
 
 import { ACTORS_TEST, BANNER_MESSAGE, DESKTOP, type FloatingOptions, FloatingStop, MAX_LOADS, MIC_STAND_IN, outsideRepo, PHONE, PLAN, type Plan, plannedLoads, runFloatingMatrix } from '../live/floating-walk.ts'
-import { WIDGET_DEFINED } from './floating-controls.ts'
+import { type Box, cellViolations, type Control, type Measure, WIDGET_DEFINED } from './floating-controls.ts'
 import { type Layer, type LayerGateway, launchLayer, startLayerGateway, V } from './vodafone-layer.ts'
 
 const PORT = 4462
@@ -156,8 +162,6 @@ test('the whole live run on the saved pages: every cell keeps the rules, 20 page
 		})
 		console.log(`# ${r.rec.lines.join('\n# ')}`)
 		console.log(`# the whole run took ${Math.round((Date.now() - t0) / 1000)} s`)
-		assert.deepEqual(report.violations, [], 'every cell keeps the rules')
-		assert.equal(report.outcome, 'passed')
 		assert.equal(report.main, 'done')
 		assert.equal(report.banner, 'done')
 		assert.deepEqual(r.rec.opened, ['main', 'banner'], 'the main pass, then the banner pass')
@@ -235,6 +239,45 @@ test('the whole live run on the saved pages: every cell keeps the rules, 20 page
 		assert.deepEqual({ stickers: r.rec.ends.main.stickers, consent: r.rec.ends.main.consent }, { stickers: 0, consent: 'unset' }, 'nothing of the run is left in the Pocket or the trail')
 		assert.deepEqual(report.layerPageErrors, [])
 		assert.ok(r.rec.layers.every((l) => l.reached.length === 0), 'nothing reached the internet')
+
+		// The ?aixc=off baselines are Vodafone's page alone: every request to /__vg/ refused for that load (the
+		// guide, the layer, the gateway), nothing of ours on the page; the page with the layer has the guide.
+		for (const b of report.baselines) {
+			assert.deepEqual(b.ours, [], `${b.pass} ${b.page} ${b.viewport}: nothing of ours on the baseline`)
+			assert.ok(b.blocked > 0, `${b.pass} ${b.page} ${b.viewport}: the requests to /__vg/ were refused (${b.blocked})`)
+		}
+		assert.ok(
+			report.cells.every((c) => c.measure.controls.mic),
+			'the guide is on every page with the layer',
+		)
+		// What the curl paints: nothing on load; where the Pocket peeks (S2), the corner at the bottom-left
+		// (physical left in both languages), much smaller than the viewport, the Pocket button inside it.
+		for (const c of report.cells.filter((c) => c.state === 'S1 on load')) assert.ok(c.measure.curl.length && c.measure.curl.every((p) => !p.shown), `${c.page} ${c.viewport} S1: the curl paints nothing (${JSON.stringify(c.measure.curl)})`)
+		for (const c of report.cells.filter((c) => c.state.startsWith('S2'))) {
+			const [w, h] = c.viewport.split('x').map(Number)
+			const parts = c.measure.curl.filter((p) => p.shown && p.box && p.polys?.length)
+			assert.ok(parts.length >= 1, `${c.page} ${c.viewport} S2: the peeking corner paints (${JSON.stringify(c.measure.curl)})`)
+			const all = { left: Math.min(...parts.map((p) => p.box!.left)), top: Math.min(...parts.map((p) => p.box!.top)), right: Math.max(...parts.map((p) => p.box!.right)), bottom: Math.max(...parts.map((p) => p.box!.bottom)) }
+			assert.ok(all.left <= 1 && all.bottom >= h - 1, `${c.page} ${c.viewport} S2: the corner at the bottom-left (${JSON.stringify(all)})`)
+			assert.ok((all.right - all.left) * (all.bottom - all.top) < 0.25 * w * h, `${c.page} ${c.viewport} S2: smaller than a quarter of the viewport (${JSON.stringify(all)})`)
+			const p = c.measure.controls.pocket!.box!
+			const x = (p.left + p.right) / 2
+			const y = (p.top + p.bottom) / 2
+			assert.ok(x > all.left && x < all.right && y > all.top && y < all.bottom, `${c.page} ${c.viewport} S2: the Pocket button in the peeking corner`)
+		}
+		// The fonts of our words read in every cell: the chips', the liner's in S2, the album's title in S3.
+		for (const c of report.cells) assert.equal(c.measure.fontsSkipped, null, `${c.page} ${c.viewport} ${c.state}: the fonts read`)
+		for (const c of report.cells.filter((c) => c.state.startsWith('S2'))) assert.ok(c.measure.fonts.some((f) => f.what === 'the liner' && f.fonts.length), `${c.page} ${c.viewport} S2: the liner's words read (${JSON.stringify(c.measure.fonts)})`)
+		for (const c of report.cells.filter((c) => c.state.startsWith('S3'))) assert.ok(c.measure.fonts.some((f) => f.what === "the album's title" && f.fonts.length), `${c.page} ${c.viewport} S3: the album's title read`)
+		// The drone read in every album cell, shown or not, with why not.
+		for (const c of report.cells.filter((c) => c.measure.state.pocketView === 'pocket')) assert.ok(c.measure.droneState && (c.measure.drone || c.measure.droneState.why), `${c.page} ${c.viewport} ${c.state}: the drone read (${JSON.stringify(c.measure.droneState)})`)
+
+		// Last: every cell keeps the rules. On today's product code this fails with (f) on the 1366 album cells
+		// (the drone does not show) and (h) on /en/home (our words in a system font): findings F1 and F6.
+		const grouped = [...new Set(report.violations.map((v) => v.replace(/^(\S+ \S+) banner \w+ (.+?): \((\w+)\).*$/, '($3) $1 $2')))]
+		console.log(`# violations by rule, page, size and state:\n#   ${grouped.join('\n#   ')}`)
+		assert.deepEqual(report.violations, [], 'every cell keeps the rules')
+		assert.equal(report.outcome, 'passed')
 		fs.rmSync(r.out, { recursive: true, force: true })
 	} catch (e) {
 		console.log(`# the screenshots and the JSON are kept in ${r.out}`)
@@ -419,4 +462,70 @@ test('an output directory inside the repository is refused; one outside is made'
 	} finally {
 		fs.rmSync(dir, { recursive: true, force: true })
 	}
+})
+
+/* The new rules on measures made by hand (no browser): each fires where it should, and nowhere else. */
+
+const control = (box: Box, owner: Control['owner'] = 'layer'): Control => ({ owner, box, shown: true, display: 'block', visibility: 'visible', opacity: 1, inert: false, z: '1', stackZ: 1, fixed: true })
+
+/** A measure of nothing at 1366×900 on the page, with `over` laid on it. */
+const measureOf = (over: Partial<Measure>): Measure => ({
+	at: 'by hand',
+	view: { width: 1366, height: 900, scrollY: 0, dir: 'ltr', lang: 'en' },
+	state: { pocketView: 'page', busy: false, journey: false, mic: 'idle', listening: false, consent: null, mascot: null, covered: false },
+	controls: { accessibility: control({ left: 1291, top: 825, right: 1346, bottom: 880 }, 'vodafone'), banner: null, mic: null, kbd: null, bar: null, pill: null, card: null, pocket: null, reimagine: null, tips: null },
+	filter: null,
+	curlLayers: [],
+	curl: [],
+	curlSkipped: null,
+	mascot: null,
+	drone: null,
+	droneState: null,
+	journeyLayer: null,
+	journeyBand: null,
+	albumInner: null,
+	content: [],
+	chips: [],
+	aboveBanner: [],
+	button: null,
+	fonts: [],
+	fontsSkipped: null,
+	...over,
+})
+const rules = (m: Measure) => cellViolations(m, { where: 'by hand', off: null, hits: {} })
+
+test("rule (a) holds what the curl paints, not its viewport-sized layer: a control inside the peeking corner is reported; one inside the corner's box but off the fold, the Pocket button, and the mic are not", () => {
+	// The peeking corner at the bottom-left: a triangle to (260, 900) and (0, 600).
+	const corner = { what: 'pocket-layer--plane', box: { left: 0, top: 600, right: 260, bottom: 900 }, shown: true, polys: [[[0, 600], [260, 900], [0, 900]]] as [number, number][][], bands: 1, inert: false }
+	const base = { curl: [corner] }
+	const pocket = control({ left: 22, top: 820, right: 80, bottom: 878 })
+	const mic = control({ left: 1286, top: 745, right: 1350, bottom: 809 }, 'guide')
+	assert.deepEqual(rules(measureOf({ ...base, controls: { ...measureOf({}).controls, pocket, mic } })), [], 'the Pocket button sits in the corner by design; the mic is far from it')
+	// Inside the corner's box, above the fold line (y = 600 + 300x/260 is 830 at x = 200): not under the paint.
+	assert.deepEqual(rules(measureOf({ ...base, controls: { ...measureOf({}).controls, pill: control({ left: 200, top: 610, right: 250, bottom: 650 }, 'trail') } })), [], 'a control in the box but off the painted triangle')
+	const v = rules(measureOf({ ...base, controls: { ...measureOf({}).controls, pill: control({ left: 10, top: 860, right: 50, bottom: 890 }, 'trail') } }))
+	assert.deepEqual(v, ["by hand by hand: (a) the curl's painted part (pocket-layer--plane) [0,600,260,900] over pill [10,860,50,890]"])
+	// A layer that paints nothing is never held to the rule (the old reading's inert, viewport-sized layer).
+	assert.deepEqual(rules(measureOf({ curl: [{ ...corner, shown: false, box: null, polys: [] }], controls: { ...measureOf({}).controls, pill: control({ left: 10, top: 860, right: 50, bottom: 890 }, 'trail') } })), [])
+})
+
+test('rule (f): in the album at 640 px and wider a drone that does not show is reported; under 640 px, with the journey open, the album busy, the trail\'s card open or the drone scrolled off, it is not', () => {
+	const hidden = { state: 'hidden', anchor: 'none', hidden: true, shown: false, why: 'its hidden attribute is set (anchor none)', box: null }
+	const album = { pocketView: 'pocket', busy: false, journey: false, mic: 'idle', listening: false, consent: null, mascot: 'idle', covered: false }
+	assert.deepEqual(rules(measureOf({ state: album, droneState: hidden })), ['by hand by hand: (f) the drone did not show in the album (its hidden attribute is set (anchor none); state hidden)'])
+	assert.deepEqual(rules(measureOf({ state: album, droneState: null })), ['by hand by hand: (f) the drone did not show in the album (there is no drone on the page)'])
+	assert.deepEqual(rules(measureOf({ state: album, droneState: hidden, view: { width: 375, height: 812, scrollY: 0, dir: 'ltr', lang: 'en' }, controls: { ...measureOf({}).controls, accessibility: null } })), [], 'none under 640 px by design')
+	assert.deepEqual(rules(measureOf({ state: { ...album, journey: true }, droneState: hidden })), [], "the journey open hides the actors' layer by design")
+	assert.deepEqual(rules(measureOf({ state: { ...album, busy: true }, droneState: hidden })), [], 'the page still turning')
+	assert.deepEqual(rules(measureOf({ state: album, droneState: { ...hidden, hidden: false, why: 'off the screen' } })), [], 'scrolled off, it is there')
+	assert.deepEqual(rules(measureOf({ state: album, droneState: hidden, controls: { ...measureOf({}).controls, card: control({ left: 930, top: 156, right: 1350, bottom: 560 }, 'trail') } })), [], "the trail's card open: the drone makes room for it (F6b)")
+	assert.deepEqual(rules(measureOf({ state: { ...album, pocketView: 'page' }, droneState: hidden })), [], 'not in the album')
+	const box = { left: 1100, top: 200, right: 1180, bottom: 256 }
+	assert.deepEqual(rules(measureOf({ state: album, drone: box, droneState: { ...hidden, hidden: false, shown: true, why: null, box } })), [], 'shown')
+})
+
+test('rule (h): our words drawn in a system font are reported, each font by name; in a web font they are not', () => {
+	const font = (familyName: string, isCustomFont: boolean) => ({ familyName, postScriptName: familyName, isCustomFont, glyphCount: 9 })
+	assert.deepEqual(rules(measureOf({ fonts: [{ what: 'a chip', text: 'Pocket it', fonts: [font('vodafone_rgbold', true)] }] })), [])
+	assert.deepEqual(rules(measureOf({ fonts: [{ what: 'a chip', text: 'Pocket it', fonts: [font('Helvetica', false)] }, { what: "the album's Back", text: 'Back to the page', fonts: [font('Vodafone Rg', true), font('Arial', false)] }] })), ['by hand by hand: (h) our text drawn in a system font: a chip "Pocket it" Helvetica', 'by hand by hand: (h) our text drawn in a system font: the album\'s Back "Back to the page" Arial'])
 })
