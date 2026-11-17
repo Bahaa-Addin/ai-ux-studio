@@ -629,6 +629,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     box.append(scroller)
     // The copy is its own scroll container, so sticky parts sit where they do on screen.
     scroller.scrollTop = scrollY
+    // A reimagined view on Vodafone's pages scrolls in a box of its own (ADR-0076): its copy where the reader left it.
+    const view = shell.querySelector('.aixc-box')
+    if (view) view.scrollTop = composer?.state?.boxScroll ?? source.querySelector('.aixc-box')?.scrollTop ?? 0
   }
 
   /* -------------------------------------------------------------- peek */

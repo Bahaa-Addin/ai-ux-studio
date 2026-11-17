@@ -266,9 +266,11 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     update()
   })
 
-  // A press: the shell's chunk, asked for only now, and its open().
+  // A press: the shell's chunk, asked for only now, and its open(). One at a time: a second press while the chunk
+  // loads (a double click, an impatient press) would close what the first opens; the button is busy meanwhile.
   let shell = null
   let opened = null
+  let busy = false
   const launcher = {
     button,
     /** The shell's own reasons to keep the button hidden ('composer', say), on top of the launcher's. */
@@ -279,11 +281,19 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     },
   }
   guard.listen(button, 'click', async () => {
-    checkpoint('reimagine-press')
-    shell ??= import('./reimagine/shell.js')
-    const mod = await shell
-    if (guard.stopped) return
-    opened = (await mod.open({ host, adapter, guard, layer, ensureCss, checkpoint, launcher })) ?? opened
+    if (busy) return
+    busy = true
+    button.setAttribute('aria-busy', 'true')
+    try {
+      checkpoint('reimagine-press')
+      shell ??= import('./reimagine/shell.js')
+      const mod = await shell
+      if (guard.stopped) return
+      opened = (await mod.open({ host, adapter, guard, layer, ensureCss, checkpoint, launcher })) ?? opened
+    } finally {
+      busy = false
+      button.removeAttribute('aria-busy')
+    }
   })
 
   useTrail(window.voiceGuide?.trailHost)

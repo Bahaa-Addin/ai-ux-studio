@@ -479,7 +479,8 @@ export const points = (b: Box) => {
 /**
  * What a press at each point reaches, named: 'accessibility' (the button or anything in its widget host),
  * 'banner', 'filter', a control of ours by its matrix name ('mic', 'kbd', 'bar', 'pill', 'card', 'pocket',
- * 'reimagine', 'tips'), 'ours:<tag.class>' for anything else of ours (the album, a chip, the mascot), or
+ * 'reimagine', 'tips'), Reimagine's view bar and composer ('viewbar', 'composer': phase 4a, ADR-0076; not yet matrix
+ * controls, B2 makes them so), 'ours:<tag.class>' for anything else of ours (the album, a chip, the mascot), or
  * 'page:<tag>' for Vodafone's page. Descends into the guide's shadow root.
  */
 export async function hitsAt(page: Page, pts: [number, number][]): Promise<Hit[]> {
@@ -503,7 +504,7 @@ export async function hitsAt(page: Page, pts: [number, number][]): Promise<Hit[]
 				for (const [n, sel] of [['mic', '.vg-mic'], ['kbd', '.vg-kbd'], ['bar', '.vg-bar'], ['pill', '.tr-pill'], ['card', '.tr-card']]) if (el.closest(sel)) return n
 				return `ours:vg-guide ${el.localName}.${String(el.getAttribute('class') || '').split(' ')[0]}`
 			}
-			for (const [n, sel] of [['pocket', '.pocket-peek'], ['reimagine', '.aixc-launcher'], ['tips', '.tips-entry']]) if (el.closest(sel)) return n
+			for (const [n, sel] of [['pocket', '.pocket-peek'], ['reimagine', '.aixc-launcher'], ['viewbar', '.aixc-viewbar'], ['composer', '.aixc-composer'], ['tips', '.tips-entry']]) if (el.closest(sel)) return n
 			if (el.closest('[data-aixc], [data-vg], vg-guide')) return `ours:${el.localName}.${String(el.getAttribute('class') || '').split(' ')[0]}`
 			return `page:${el.localName}`
 		}

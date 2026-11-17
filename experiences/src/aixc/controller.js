@@ -16,7 +16,9 @@ import { buildFallbackSchema } from './fallback-schema.js'
 import { DEFAULT_MODEL, GeminiError, requestComposition } from './gemini-client.js'
 import { experienceLabel, renderExperience, warmExperiences } from './experience-renderer.js'
 import { TEMPLATES, buildTemplateSchema, matchTemplate } from './templates.js'
-import { countItems, lang, t } from '../i18n.js'
+import { countItems, lang } from '../i18n.js'
+// Its own words (prompt, Gemini, key, model) are the clone's only: every word goes through them, then ../i18n.js.
+import { t } from './composer-words.js'
 
 const ICON_SPARKLE = 'M11 2.5 13.1 9 19.5 11l-6.4 2.1L11 19.5 8.9 13.1 2.5 11 8.9 9zM19 2l.9 2.6 2.6.9-2.6.9L19 9l-.9-2.6-2.6-.9 2.6-.9z'
 const ICON_CLOSE = 'M18.3 7.1 16.9 5.7 12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z'

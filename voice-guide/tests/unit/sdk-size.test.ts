@@ -150,16 +150,41 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  * the DEMOS line within its budget (8,003 -> 8,026 bytes); the chips' chunk 4,616 -> 4,683 with the launcher in
  * their obstacle list, 4,801 after the review (a control hidden mid-page keeps its place at the top; measured
  * again there when one came or went); the Pocket's unchanged (30,143).
+ *
+ * 2026-11-17, stage 2 (the shell): the shell's chunk (./demos/reimagine/shell.js with the box's measures, its words,
+ * live.css as text, the template cards, the validator, the content index, and what it shares with the experiences:
+ * shared.js and dom.js, the clone's copy in i18n.js, the faces' sheet) 24,973 bytes gzipped, so 24.5 KB; i18n.js
+ * (8,314) and the faces' sheet (364) are chunks the Pocket's chunk loads too, so on a page where the Pocket runs they
+ * are there before the press. Each experience a chunk of its own the shell loads when its template is chosen, with
+ * its renderer, experience-wrap.js and its stylesheets as text (vodafone.css shared by both): magazine 10,508 bytes,
+ * so 10.5 KB; spotlight 7,733, so 7.75 KB. The Pocket's chunk 30,143 -> 30,393 bytes: i18n.js and the faces' sheet,
+ * now shared with Reimagine's chunks, are files of their own in its closure (30,336 with its own code unchanged,
+ * +193), and its composer handle and the turning copy's box scroll (+57); its budget the smallest dated step that
+ * fits, 29.75 KB.
+ *
+ * 2026-11-17, stage 2's review: the clone composer's own words (its prompt, Gemini, key and model, 51 entries) moved
+ * from i18n.js to src/aixc/composer-words.js, which only the clone's controller imports: the i18n.js chunk 8,314 ->
+ * 6,171 bytes, so the Pocket's chunk 30,393 -> 28,249 and the shell's 24,973 -> 22,828; then the review's fixes in
+ * the shell (a template still loading dropped when the reader moves on, the composer closed on the album and on
+ * Original and never in Vodafone's header band, the box's rest read again on a resize) 22,980. The launcher 3,151 ->
+ * 3,192 (one press at a time, busy meanwhile). Magazine 10,505 and spotlight 7,731 bytes. Every budget unchanged.
  */
 const REIMAGINE_BUDGETS: Record<string, number> = {
 	'src/host/demos/reimagine.js': 3.125 * 1024,
-	'src/host/demos/reimagine/shell.js': 0.125 * 1024,
+	'src/host/demos/reimagine/shell.js': 24.5 * 1024,
+	'src/host/demos/reimagine/magazine.js': 10.5 * 1024,
+	'src/host/demos/reimagine/spotlight.js': 7.75 * 1024,
 }
-/** Never in a Reimagine chunk on live pages (templates only, owner 2026-11-10; the credits as comments, 2026-11-17). Case-sensitive. */
-const REIMAGINE_FORBIDDEN = /generativelanguage|aixc-key|aixc-model|fonts\.googleapis|x-goog-api-key|codepen/
+/**
+ * Never in a Reimagine chunk on live pages (templates only, owner 2026-11-10; the credits as comments, 2026-11-17):
+ * Gemini's endpoint and header, the stored key and model, and any word that names Gemini or its key, in English or
+ * Arabic (مفتاح, key: the clone composer's copy lives in experiences/src/aixc/composer-words.js, never in the i18n.js
+ * the shell shares with the Pocket); Google Fonts; CodePen. Case-sensitive.
+ */
+const REIMAGINE_FORBIDDEN = /generativelanguage|aixc-key|aixc-model|fonts\.googleapis|x-goog-api-key|codepen|Gemini|API key|مفتاح/
 
 const AIXC_DEMO_BUDGETS: Record<string, number> = {
-	'src/host/demos/pocket.js': 29.5 * 1024,
+	'src/host/demos/pocket.js': 29.75 * 1024,
 	'src/host/demos/chips.js': 4.75 * 1024,
 	'src/host/demos/journey.js': 8.75 * 1024,
 	// 2026-11-17 F6b (the actors make room when a fixed control comes or goes mid-album: obstacles.js's watch, the refit, the eased move): 45,004 bytes, 44,277 before; rounded up to a quarter KB, 44 KB.
@@ -180,6 +205,9 @@ const AIXC_LOADED_BY: Record<string, string> = {
 	'src/pocket/portal/controller.js': 'src/host/demos/portal.js',
 	// Reimagine (phase 4a, ADR-0076): the core loads the launcher at idle; the launcher loads the shell on its first press.
 	'src/host/demos/reimagine/shell.js': 'src/host/demos/reimagine.js',
+	// The shell loads each experience when its template is chosen (stage 2).
+	'src/host/demos/reimagine/magazine.js': 'src/host/demos/reimagine/shell.js',
+	'src/host/demos/reimagine/spotlight.js': 'src/host/demos/reimagine/shell.js',
 }
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
@@ -283,6 +311,9 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	assert.ok(launcher, 'the launcher is a chunk of its own')
 	assert.deepEqual(launcher.imports.filter((i) => i.kind === 'import-statement'), [], 'the launcher\'s chunk imports no other chunk statically')
 	assert.match(fs.readFileSync(path.join(aixc, launcher.file), 'utf8'), /aixc-launcher/, 'the launcher\'s button and stylesheet are in its chunk')
+	// The shell carries no experience: each renderer and its stylesheet come with their own chunk, on the template's choice.
+	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/reimagine/shell.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /aixc-magazine|sp-stage|mag-cover/, `no experience in the shell's closure (${f})`)
+	assert.match(fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/reimagine/shell.js')?.file ?? ''), 'utf8'), /aixc-composer/, 'the composer is in the shell\'s chunk')
 	for (const entry of Object.keys(REIMAGINE_BUDGETS))
 		for (const f of closure(manifest.files.find((x) => x.entry === entry)?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), REIMAGINE_FORBIDDEN, `nothing of Gemini, a key, Google Fonts or CodePen in ${f} (${entry})`)
 	assert.doesNotMatch(pocket, /pocket-journey/, 'the journey is not in the Pocket\'s chunk: it loads only where a trail host can be claimed (S10)')

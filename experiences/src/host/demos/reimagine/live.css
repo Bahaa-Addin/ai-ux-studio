@@ -1,0 +1,444 @@
+/*
+ * Reimagine's shell on Vodafone's own pages (live plan phase 4a; voice-guide ADR-0076, phase 4 design §3.1, §3.3):
+ * the box the reimagined view scrolls in, its view bar, the end band and the view note, and the composer. The clone's
+ * aixc.css never comes to Vodafone's pages: no :root block, nothing outside our own classes. Every selector keys on
+ * a class (the Pocket's turning copy keeps classes and drops ids and data-aixc-*). Vodafone's tokens (#e60000,
+ * #990000, #14141e, #333, #666, #ccc, #ebebeb, #f4f4f4, white) and its faces through the shared sheet's stacks
+ * (../../vodafone-faces.css: --pocket-regular, --pocket-bold). The raw measures (--aixc-*) come from ./box.js.
+ */
+
+.aixc-box[hidden],
+.aixc-viewbar[hidden],
+.aixc-viewnote[hidden],
+.aixc-composer[hidden],
+.aixc-launcher[hidden] {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------- the box */
+
+/* In the flow after #main-content, as tall as the screen under Vodafone's pinned navigation, with its own scroll: sticky
+   works again inside it (Vodafone's themes set overflow-x: hidden on html and body). Its scroll never chains into the
+   page's, so a pinned stage's gestures stay in it; its stacking context keeps the view under Vodafone's navigation. */
+.aixc-box {
+  display: block;
+  position: relative;
+  box-sizing: border-box;
+  height: var(--aixc-box-h, 100svh);
+  margin: var(--aixc-box-push, 0px) 0 0;
+  padding: 0;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  isolation: isolate;
+  background: #f4f4f4;
+  text-align: start;
+}
+
+.aixc-box > .aixc-stage {
+  position: relative;
+  z-index: 0;
+}
+
+/* -------------------------------------------------------------- the view bar */
+
+/* The box's first row, sticky at its top (shared.js chromeOffset() reads it there). */
+.aixc-box > .aixc-viewbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  box-sizing: border-box;
+  margin: 0;
+  background: #fff;
+  border-bottom: 1px solid #ccc;
+  color: #333;
+  font-family: var(--pocket-regular, vodafone-regular-en, sans-serif);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.aixc-viewbar__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  box-sizing: border-box;
+  min-height: 60px;
+  margin: 0;
+  padding-block: 8px;
+  padding-inline: 16px max(16px, var(--aixc-pill-room, 0px));
+}
+
+.aixc-viewbar__meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #14141e;
+  font-family: var(--pocket-bold, vodafone-bold-en, sans-serif);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aixc-viewbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Phones: the bar's buttons go on a row below the trail's pill; the experience's name sits beside it. */
+@media (max-width: 767px) {
+  .aixc-viewbar__inner {
+    gap: 6px 8px;
+    padding-inline: 12px;
+  }
+
+  .aixc-viewbar__meta {
+    display: flex;
+    align-items: center;
+    order: -1;
+    flex-basis: 100%;
+    box-sizing: border-box;
+    min-height: var(--aixc-pill-drop, 0px);
+    padding-inline-end: var(--aixc-pill-room, 0px);
+  }
+
+  .aixc-viewbar__actions {
+    margin-inline-start: auto;
+  }
+}
+
+/* ------------------------------------------------- buttons: bar, composer, end */
+
+.aixc-segmented {
+  display: inline-flex;
+  flex: none;
+  margin: 0;
+  padding: 3px;
+  border-radius: 999px;
+  background: #f4f4f4;
+}
+
+.aixc-viewbar .aixc-seg,
+.aixc-composer .aixc-seg,
+.aixc-viewbar .aixc-text-btn,
+.aixc-composer .aixc-template,
+.aixc-composer .aixc-icon-btn,
+.aixc-end .aixc-end__btn {
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: #14141e;
+  font-family: var(--pocket-regular, vodafone-regular-en, sans-serif);
+  font-size: 15px;
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1.25;
+  letter-spacing: normal;
+  text-align: center;
+  text-decoration: none;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.aixc-viewbar .aixc-seg,
+.aixc-composer .aixc-seg {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+}
+
+/* The shown view: a filled pill and Vodafone's bold face, not colour alone. */
+.aixc-viewbar .aixc-seg[aria-pressed='true'],
+.aixc-composer .aixc-seg[aria-pressed='true'] {
+  background: #e60000;
+  color: #fff;
+  font-family: var(--pocket-bold, vodafone-bold-en, sans-serif);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.aixc-viewbar .aixc-seg:disabled,
+.aixc-composer .aixc-seg:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.aixc-viewbar .aixc-text-btn {
+  min-height: 40px;
+  padding: 0 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.aixc-viewbar .aixc-text-btn:hover {
+  color: #e60000;
+}
+
+@media (max-width: 520px) {
+  .aixc-viewbar .aixc-wide-only {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .aixc-viewbar .aixc-seg {
+    padding: 0 12px;
+  }
+
+  .aixc-viewbar .aixc-text-btn {
+    padding: 0 6px;
+  }
+}
+
+.aixc-viewbar .aixc-seg:focus-visible,
+.aixc-viewbar .aixc-text-btn:focus-visible,
+.aixc-composer .aixc-seg:focus-visible,
+.aixc-composer .aixc-template:focus-visible,
+.aixc-composer .aixc-icon-btn:focus-visible,
+.aixc-end .aixc-end__btn:focus-visible {
+  outline: 3px solid #333;
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------- the composer */
+
+/* Non-modal, under what opened it at the inline end, as the launcher's and the trail's pill's; its height ends above
+   the bottom corners' controls (./box.js), its padding giving way where that room is shorter than 64 px. On a short
+   screen it may go beside them instead ([data-placement='beside']: its place and width are box.js's). It gives way
+   to Vodafone's open menus and dialogs as the launcher does, by the same rule; the short visibility transition tells
+   the shell, which closes it then. The Pocket's album takes it out of the layout (pocket.css) and the shell closes it
+   on the album's mark (body[data-pocket-view]). */
+.aixc-composer {
+  position: fixed;
+  z-index: 19;
+  top: var(--aixc-composer-top, 80px);
+  inset-inline-end: calc(16px + env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+  width: min(400px, calc(100vw - 32px));
+  max-height: var(--aixc-composer-room, 60vh);
+  margin: 0;
+  padding: 16px;
+  padding-block: min(16px, max(0px, (var(--aixc-composer-room, 64px) - 32px) / 2));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 8px;
+  background: #fff;
+  color: #333;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  font-family: var(--pocket-regular, vodafone-regular-en, sans-serif);
+  font-size: 15px;
+  line-height: 1.4;
+  text-align: start;
+  visibility: visible;
+  transition: visibility 1ms;
+}
+
+/* Beside its opener: a physical left (box.js measures in the screen's coordinates), over the inline end above. */
+.aixc-composer[data-placement='beside'] {
+  right: auto;
+  left: var(--aixc-composer-left, 16px);
+  width: var(--aixc-composer-w, min(400px, calc(100vw - 32px)));
+}
+
+body.modal-open .aixc-composer,
+body:has(#header :is([aria-expanded='true'], .show, .nav-opened, .nav-flag:checked, .checker:checked, .active .nav-startup), .modal.show) .aixc-composer {
+  visibility: hidden;
+}
+
+@media (min-width: 992px) {
+  body:has(#header li:hover > .nav-step-two:not(.d-lg-none)) .aixc-composer {
+    visibility: hidden;
+  }
+}
+
+.aixc-composer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.aixc-composer .aixc-composer__title,
+.aixc-composer .aixc-templates__title {
+  margin: 0;
+  padding: 0;
+  color: #14141e;
+  font-family: var(--pocket-bold, vodafone-bold-en, sans-serif);
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.aixc-composer .aixc-composer__title {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.aixc-composer .aixc-templates__title {
+  margin: 16px 0 8px;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.aixc-composer .aixc-icon-btn {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin: -8px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.aixc-composer .aixc-icon-btn:hover {
+  background: #f4f4f4;
+}
+
+.aixc-composer svg {
+  display: block;
+  flex: none;
+  fill: currentColor;
+}
+
+.aixc-composer .aixc-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.aixc-composer .aixc-templates__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.aixc-composer .aixc-templates__list > li {
+  display: flex;
+  margin: 0;
+  padding: 0;
+}
+
+.aixc-composer .aixc-template {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+  text-align: start;
+}
+
+.aixc-composer .aixc-template:hover {
+  border-color: #e60000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+.aixc-composer .aixc-template[aria-pressed='true'] {
+  border-color: #e60000;
+  box-shadow: inset 0 0 0 1px #e60000;
+}
+
+.aixc-composer .aixc-template:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.aixc-composer .aixc-template__icon {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 6px;
+  background: #f4f4f4;
+  color: #e60000;
+}
+
+.aixc-composer .aixc-template[aria-pressed='true'] .aixc-template__icon {
+  background: #e60000;
+  color: #fff;
+}
+
+.aixc-composer .aixc-template__name {
+  color: #14141e;
+  font-family: var(--pocket-bold, vodafone-bold-en, sans-serif);
+}
+
+/* ------------------------------------------------- the note and the end band */
+
+/* About the shown view (the page changed since it was made); it scrolls with the view, under the bar. */
+.aixc-box > .aixc-viewnote {
+  margin: 0;
+  padding: 10px 16px;
+  background: #ebebeb;
+  color: #14141e;
+  font-family: var(--pocket-regular, vodafone-regular-en, sans-serif);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* The view's end: back to Vodafone's page, or on past the box to its footer. Its buttons stay above the bottom
+   corners' controls when the box is scrolled to its end. */
+.aixc-box > .aixc-end {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 32px 16px max(32px, var(--aixc-safe-left-h, 0px), var(--aixc-safe-right-h, 0px));
+  border-top: 1px solid #ebebeb;
+  background: #fff;
+}
+
+.aixc-end .aixc-end__btn {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid #ccc;
+  border-radius: 6px;
+  font-family: var(--pocket-bold, vodafone-bold-en, sans-serif);
+}
+
+.aixc-end .aixc-end__btn:hover {
+  border-color: #e60000;
+}
+
+.aixc-end .aixc-end__btn--primary {
+  border-color: #e60000;
+  background: #e60000;
+  color: #fff;
+}
+
+.aixc-end .aixc-end__btn--primary:hover {
+  border-color: #990000;
+  background: #990000;
+}
+
+/* Read out, not shown. */
+.aixc-live {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------- the Pocket's curl over a view */
+
+/* While a view shows, the Pocket's resting curl is not drawn (phase 4 design §3.2: ADR-0044's tuck, without the lift);
+   its button stays, keeps its count and opens the album with the page turn, which draws again (data-pocket-view). */
+body[data-aixc-view='reimagined']:not([data-pocket-view]) :is(.pocket-layer--plane, .pocket-layer--lift) {
+  opacity: 0;
+}

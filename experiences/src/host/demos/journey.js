@@ -19,13 +19,24 @@ import { initJourney } from '../../pocket/journey.js'
 /** What PageHost.hideSource changes on #main-content (and showSource gives back exactly). */
 const HIDING = ['style', 'inert', 'hidden']
 
+/** #main-content's attributes as they are while it shows, read again whenever the trail asks with it shown. */
+const coverOf = (host) => {
+  let shown = null
+  return {
+    node: host.main,
+    covered: () => host.sourceHidden,
+    shown: () => (host.sourceHidden ? shown : (shown = Object.fromEntries(HIDING.map((name) => [name, host.main.getAttribute(name)])))),
+  }
+}
+
 export async function start({ host, guard, ensureCss, checkpoint, pocket, api }) {
   ensureCss('journey', css)
-  // #main-content's attributes as they are while it shows, read again whenever the trail asks with it shown.
-  let shown = null
-  const asShown = () => (host.sourceHidden ? shown : (shown = Object.fromEntries(HIDING.map((name) => [name, host.main.getAttribute(name)]))))
-  asShown()
-  api.setCover?.({ node: host.main, covered: () => host.sourceHidden, shown: asShown })
+  // One cover per page, kept on the host: Reimagine's shell (./reimagine/shell.js) may have set it first, with the
+  // attributes it read before hiding #main-content for a view; a journey that starts later keeps it, so it never
+  // remembers an empty page (ADR-0075 §8, ADR-0076).
+  const cover = (host.trailCover ??= coverOf(host))
+  cover.shown()
+  api.setCover?.(cover)
   // Registered before the journey exists: a stop while it starts (its first render failing in the
   // guard, say) still gives the claim back once initJourney has returned.
   let journey = null

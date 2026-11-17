@@ -266,7 +266,14 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
   }
 
   const regions = { sourceRoot: host.main, outputRoot: host.outputRoot, viewbar: host.viewbar, header: host.header, main: host.main }
-  const pocket = initPocket({ adapter, regions, store, seams, createActors, createPortal, portal: { live: true }, model: layer.model ?? null })
+  // Reimagine's view (phase 4a, ADR-0076), read when the album opens and closes: the album unmounts it and mounts it
+  // again (which puts its box's scroll back), and the turning copy shows its box where the reader left it.
+  const composer = {
+    get state() {
+      return layer.demos.reimagine?.state ?? null
+    },
+  }
+  const pocket = initPocket({ adapter, regions, composer, store, seams, createActors, createPortal, portal: { live: true }, model: layer.model ?? null })
   guard.onStop(() => pocket.destroy())
   // The actors at idle where something is pocketed or there are chips to pocket with; at once on a first press or focus.
   const actorsIfUseful = () => (pocket.state.ids.length || pocket.chips()?.shown.length) && loadActors()
