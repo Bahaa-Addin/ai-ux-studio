@@ -13,7 +13,7 @@
 
 import { vodafoneServicesPage } from '../content/vodafone-services.js'
 import { vodafoneServicesPageAr } from '../content/vodafone-services-ar.js'
-import { normalizeContentModel } from '../aixc/content-index.js'
+import { normalizeContentModel } from '../host/model.js'
 import { svgUse } from '../shell.js'
 import { t } from '../i18n.js'
 

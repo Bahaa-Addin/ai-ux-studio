@@ -46,6 +46,7 @@
  *   (the album's sticker links open in this tab) and loads the chunk when the album opens, or at once when
  *   this history entry says the album was open (Back). If the chunk fails, a sticker's link is a plain link.
  */
+import faces from '../vodafone-faces.css'
 import css from '../../pocket/pocket.css'
 import { initPocket } from '../../pocket/pocket.js'
 import { recordFrom, siteOf } from '../../pocket/record.js'
@@ -76,6 +77,8 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     return chipsChunk
   }
   if (wellRead(layer.coverage)) askChips()
+  // Vodafone's faces and our stacks first (../vodafone-faces.css): one sheet by one name, which Reimagine's chunks load too.
+  ensureCss('vodafone-faces', faces)
   ensureCss('pocket', css)
   const store = openPocketStore({ onError: (error) => console.warn(`[AIXC] the Pocket keeps its stickers for this page only: ${error?.message || error}`) })
   guard.onStop(() => store.close())

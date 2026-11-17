@@ -19,7 +19,7 @@
  * readPage() only reads (it runs on any document, in tests too); createLiveAdapter() also tags what
  * it read (data-aixc-section, data-aixc-item) and can take the tags off again.
  */
-import { normalizeContentModel } from '../aixc/content-index.js'
+import { normalizeContentModel } from './model.js'
 import { RECOGNISERS, SECTION_SUBTITLE, SECTION_TITLE, SKIP } from './recognisers.js'
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
@@ -390,9 +390,13 @@ export function readPage(doc, { origin = doc.defaultView?.location.origin || 'ht
   return { model, problems, coverage, tags }
 }
 
-/** The marks the layer puts on Vodafone's elements, as dataset names and as a selector. */
+/**
+ * The marks the layer puts on Vodafone's elements, as dataset names and as a selector. The selector
+ * finds them under #main-content only, where the adapter reads: the same marks elsewhere are the layer's
+ * own views' (a reimagined view's cards in #experience-output carry their items' ids), never stale.
+ */
 const MARKS = ['aixcItem', 'aixcSection']
-const MARKED = '[data-aixc-item], [data-aixc-section]'
+const MARKED = '#main-content [data-aixc-item],#main-content [data-aixc-section]'
 
 /**
  * True when a change to the page is the layer's own: it happened inside something the layer added, or
@@ -410,9 +414,11 @@ const ours = (record) => {
  * The adapter the demos take (src/aixc/page-adapters.js contract): pageId, label, renderOriginal()
  * (nothing to draw: the page is Vodafone's) and extractContent() (the model as last read).
  *
- * tag() marks what was read on Vodafone's elements and takes the marks off everything else: a
- * carousel builds its copies from the cards' own markup, so a copy made after tagging carries the
- * mark until the next tag(). untag() takes every mark off the page (the guard's clean-up).
+ * tag() marks what was read on Vodafone's elements and takes the marks off everything else under
+ * #main-content: a carousel builds its copies from the cards' own markup, so a copy made after tagging
+ * carries the mark until the next tag(). untag() takes every mark off #main-content (the guard's
+ * clean-up; the layer's own regions go with the guard's stop). Marks outside #main-content are the
+ * layer's own views' and are left alone (phase 4 design §3.5; amends ADR-0049 §7).
  *
  * The page changes after it loads (carousels, lazy sections, an editor's banner): refresh() reads
  * it again, with the same ids for the same cards, and watch() does so whenever Vodafone's own

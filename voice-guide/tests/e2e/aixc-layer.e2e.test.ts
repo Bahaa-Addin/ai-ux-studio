@@ -167,6 +167,98 @@ test('Vodafone\'s page changes after load: the layer reads it again and keeps it
 	}
 })
 
+test('a re-read keeps the marks on the layer\'s own views (#experience-output) and clears the stale ones under #main-content as before (phase 4 design §3.5)', async () => {
+	const b = await launch()
+	try {
+		const seen = watch(b.page)
+		await open(b.page, '/en/services', '?aixc-debug')
+		const state = () =>
+			b.page.evaluate(() => {
+				const l = (window as unknown as { __aixc: { state: string; reads: number } }).__aixc
+				const out = document.getElementById('experience-output')!
+				return {
+					state: l.state,
+					reads: l.reads,
+					// The view's marks, as a reimagined view draws them: the cards carry Vodafone's item ids, a group its section's.
+					view: [...out.querySelectorAll<HTMLElement>('[data-aixc-item], [data-aixc-section]')].map((e) => `${e.dataset.aixcSection ?? ''}/${e.dataset.aixcItem ?? ''}`),
+					main: document.querySelectorAll('#main-content [data-aixc-item]').length,
+					onCopies: document.querySelectorAll('.cloned [data-aixc-item]').length,
+					inOurs: document.querySelectorAll('#main-content [data-aixc] [data-aixc-item]').length,
+				}
+			})
+		const first = await state()
+		assert.deepEqual([first.state, first.reads, first.onCopies], ['ready', 1, 0])
+		const drawn = await b.page.evaluate(() => {
+			const cards = [...document.querySelectorAll<HTMLElement>('#main-content [data-aixc-item]')].slice(0, 3)
+			const section = cards[0].closest<HTMLElement>('[data-aixc-section]')!.dataset.aixcSection!
+			// A reimagined view in the layer's own region (marked data-aixc by PageHost).
+			const out = document.getElementById('experience-output')!
+			const group = document.createElement('section')
+			group.dataset.aixcSection = section
+			for (const c of cards) {
+				const card = Object.assign(document.createElement('article'), { className: 'vx-card', textContent: c.textContent })
+				card.dataset.aixcItem = c.dataset.aixcItem
+				group.append(card)
+			}
+			out.append(group)
+			// A node of ours inside Vodafone's content holding a copy of a card (as a lift would): the scope is #main-content, so its mark still goes.
+			const lift = document.createElement('div')
+			lift.dataset.aixc = ''
+			lift.append(cards[0].cloneNode(true))
+			cards[0].append(lift)
+			return [...out.querySelectorAll<HTMLElement>('[data-aixc-item], [data-aixc-section]')].map((e) => `${e.dataset.aixcSection ?? ''}/${e.dataset.aixcItem ?? ''}`)
+		})
+		assert.equal(drawn.length, 4, 'a group and three cards drawn in #experience-output')
+		// Vodafone's page changes (Owl's copies of three cards): the adapter reads it again and re-tags.
+		await b.page.evaluate(() => {
+			for (const c of [...document.querySelectorAll('#main-content [data-aixc-item]')].filter((c) => !c.closest('[data-aixc]')).slice(0, 3)) c.insertAdjacentHTML('afterend', `<div class="owl-item cloned">${c.outerHTML}</div>`)
+		})
+		await b.page.waitForFunction(() => (window as unknown as { __aixc: { reads: number } }).__aixc.reads >= 2, null, { timeout: 5_000 })
+		const second = await state()
+		assert.deepEqual(second.view, drawn, 'the view keeps its marks after the re-read')
+		assert.deepEqual([second.state, second.main, second.onCopies, second.inOurs], ['ready', first.main, 0, 0], 'under #main-content: the read cards keep theirs, no mark on a copy, none on a copy inside a node of ours')
+		// Stopped: the view goes with the layer's regions, and no mark is left anywhere.
+		await b.page.evaluate(() => (window as unknown as { __aixc: { guard: { stop(): void } } }).__aixc.guard.stop())
+		assert.deepEqual(await b.page.evaluate(() => [document.getElementById('experience-output'), document.querySelectorAll('[data-aixc-item], [data-aixc-section]').length]), [null, 0])
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+		assert.deepEqual(seen.layer.filter((l) => !l.startsWith('info:')), [], 'the layer logged no warning or error')
+	} finally {
+		await b.close()
+	}
+})
+
+test('Vodafone\'s faces come as a sheet of their own name, before the Pocket\'s, once each, and go when the layer stops (phase 4 design §3.5)', async () => {
+	const b = await launch()
+	try {
+		const seen = watch(b.page)
+		for (const [pathname, bold] of [['/en/services', 'vodafone-bold-en'], ['/ar/services', 'vodafone-bold-ar']]) {
+			await open(b.page, pathname, '?aixc-debug')
+			await b.page.waitForFunction(() => (window as unknown as { __aixc?: { demos?: { pocket?: unknown } } }).__aixc?.demos?.pocket, null, { timeout: 15_000 })
+			const sheets = () =>
+				b.page.evaluate(() => ({
+					names: [...document.head.querySelectorAll<HTMLStyleElement>('style[data-aixc-css]')].map((s) => s.dataset.aixcCss),
+					marked: [...document.head.querySelectorAll('style[data-aixc-css]')].every((s) => s.hasAttribute('data-aixc') && s.hasAttribute('data-vg')),
+					faces: ['aixc-vodafone-bold-en', 'aixc-vodafone-bold-ar', 'aixc-vodafone-light-en', 'aixc-vodafone-light-ar', '--pocket-regular:', '--pocket-bold:', '--pocket-light:'].filter((s) => document.querySelector('style[data-aixc-css="vodafone-faces"]')?.textContent?.includes(s)).length,
+					inPocket: /@font-face|--pocket-bold:/.test(document.querySelector('style[data-aixc-css="pocket"]')?.textContent ?? ''),
+					bold: getComputedStyle(document.documentElement).getPropertyValue('--pocket-bold').trim(),
+				}))
+			const on = await sheets()
+			const names = on.names.filter((n) => n === 'vodafone-faces' || n === 'pocket')
+			assert.deepEqual(names, ['vodafone-faces', 'pocket'], `${pathname}: the faces' sheet, then the Pocket's, once each (${on.names.join(', ')})`)
+			assert.equal(new Set(on.names).size, on.names.length, `${pathname}: one sheet per name`)
+			assert.deepEqual([on.marked, on.faces, on.inPocket], [true, 7, false], `${pathname}: marked; the four aliases and the three stacks in the faces' sheet, none left in the Pocket's`)
+			assert.ok(on.bold.startsWith(bold), `${pathname}: --pocket-bold starts with Vodafone's own face (${on.bold})`)
+			await b.page.evaluate(() => (window as unknown as { __aixc: { guard: { stop(): void } } }).__aixc.guard.stop())
+			const off = await sheets()
+			assert.deepEqual([off.names, off.bold], [[], ''], `${pathname}: stopped, no sheet of ours and no stack left`)
+		}
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+		assert.deepEqual(seen.layer.filter((l) => !l.startsWith('info:')), [], 'the layer logged no warning or error')
+	} finally {
+		await b.close()
+	}
+})
+
 test('the layer shifts nothing of Vodafone\'s page (geometry with it and with ?aixc=off)', async () => {
 	const b = await launch()
 	try {

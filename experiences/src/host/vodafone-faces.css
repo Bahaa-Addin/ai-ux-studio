@@ -1,0 +1,57 @@
+/*
+ * Vodafone's faces for everything the layer draws on Vodafone's pages and on the clone: four aliases of
+ * Vodafone's own bold and light files, and the stacks our stylesheets read (--pocket-regular,
+ * --pocket-bold, --pocket-light; AGENTS.md §4.8, ADR-0052 §12, ADR-0075 §1). Moved here from
+ * ../pocket/pocket.css on 2026-11-17 (phase 4 design §3.5), so that every chunk that draws words loads the
+ * same sheet by the same name and reads the same stacks: on live pages the layer's ensureCss('vodafone-faces')
+ * puts it on the page once, whichever chunk asks first (the Pocket's, before its own sheet; Reimagine's
+ * later); the clone links it before pocket.css (index.html, ar/index.html).
+ */
+
+/* Vodafone's Arabic pages name the Arabic faces apart (vodafone-bold-ar…, the theme's @font-face); the
+   clone's Arabic page gives the -en names Arabic glyphs instead (src/rtl.css), so either way Arabic text
+   is drawn in Vodafone Arabic.
+   Some of Vodafone's themes declare only the regular faces (maintheme: home; static-lite-theme: the
+   bundles, Wireless Net, promotions), where bold and light words fell to a system font (F1). So the
+   stacks name the page's own faces first (a page that has them never fetches ours), then four aliases
+   of our own for Vodafone's own bold and light files on Vodafone's origin (static-theme's, which
+   Services loads; root-relative, so the page's origin; we ship no font file), then the page's regular
+   face; a system font only if even that is missing. The clone declares every name before ours itself
+   (src/style.css, src/rtl.css). */
+@font-face {
+  font-family: aixc-vodafone-bold-en;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/en/vodafone-bold-en.woff) format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: aixc-vodafone-bold-ar;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/ar/vodafone-bold-ar.woff) format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: aixc-vodafone-light-en;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/en/vodafone-light-en.woff) format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: aixc-vodafone-light-ar;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/ar/vodafone-light-ar.woff) format('woff');
+  font-display: swap;
+}
+
+:root,
+[lang|="en"] {
+  --pocket-regular: vodafone-regular-en, vf-regular, sans-serif;
+  --pocket-bold: vodafone-bold-en, vf-bold, aixc-vodafone-bold-en, vodafone-regular-en, sans-serif;
+  --pocket-light: vodafone-light-en, vf-light, aixc-vodafone-light-en, vodafone-regular-en, sans-serif;
+}
+
+:root:lang(ar),
+[lang|="ar"] {
+  --pocket-regular: vodafone-regular-ar, vodafone-regular-en, vf-regular, sans-serif;
+  --pocket-bold: vodafone-bold-ar, vodafone-bold-en, vf-bold, aixc-vodafone-bold-ar, aixc-vodafone-bold-en, vodafone-regular-ar, vodafone-regular-en, sans-serif;
+  --pocket-light: vodafone-light-ar, vodafone-light-en, vf-light, aixc-vodafone-light-ar, aixc-vodafone-light-en, vodafone-regular-ar, vodafone-regular-en, sans-serif;
+}

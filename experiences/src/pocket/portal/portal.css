@@ -3,9 +3,9 @@
  *
  * Palette: white and soft neutral whites for the hall (#fff, #f7f7f8 … #c7c7cd), Vodafone red
  * #e60000 with dark red #990000 for the portal, ink #14141e only in shadows at low alpha.
- * Type in the preview: the page's own Vodafone faces, by ../pocket.css's stacks (--pocket-regular,
- * --pocket-bold), which are always on the page with the portal (the live portal's chunk is loaded by the
- * Pocket's, after its stylesheet; the clone links both). Every selector is .vf-portal- prefixed;
+ * Type in the preview: the page's own Vodafone faces, by the stacks of ../../host/vodafone-faces.css
+ * (--pocket-regular, --pocket-bold), which are always on the page with the portal (the live portal's chunk
+ * is loaded by the Pocket's, after its stylesheets; the clone links them). Every selector is .vf-portal- prefixed;
  * nothing here applies outside the transition except two layering rules while it runs.
  * Only transform and opacity change per frame.
  */

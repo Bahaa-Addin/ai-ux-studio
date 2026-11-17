@@ -11,7 +11,9 @@ import { gzipSync } from 'node:zlib'
 
 import { ROOT } from '#shared/config.ts'
 
-import { buildSdk } from '../../packages/sdk/build.ts'
+import * as esbuild from 'esbuild'
+
+import { AIXC_ENTRY, aixcBuildOptions, buildSdk, EXPERIENCES } from '../../packages/sdk/build.ts'
 
 const BUDGET = 21 * 1024
 
@@ -67,6 +69,10 @@ test('the trail adds only a gate to guide.js; rrweb lives in its own on-demand c
  * (dynamic imports), never in it. 8,000 bytes on 2026-11-17 (W2-A: PageHost hides #main-content laid out at
  * its width, no height, transparent and inert, and gives back its style, inert and hidden attributes exactly,
  * so Owl's AutoRefresh never fades Vodafone's carousels out under the album; 7,886 before), so 7.875 KB.
+ * 8,003 bytes on 2026-11-17 (phase 4a groundwork, from 7,999: the live adapter's marks scoped to #main-content
+ * +4; normalizeContentModel moved to src/host/model.js +0, so content-index.js, which Reimagine's chunks will
+ * import, stays out of the core: with a demo chunk importing it the core measured 8,852 bytes before the move,
+ * 8,027 after, the same as with a chunk that does not import it).
  */
 const AIXC_CORE_BUDGET = 7.875 * 1024
 
@@ -123,6 +129,12 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  * reading lets them show; the Pocket's chunk keeps the chip, the liner and the lift (pocket.js decorate,
  * pocket.css), which the clone draws in its cards too. Budgets the measures rounded up to the next quarter KB:
  * the Pocket's 29.5 KB, back under the 32,000 bytes asked for; the chips' 4.75 KB.
+ *
+ * 2026-11-17, phase 4a groundwork: Vodafone's faces and our stacks in a stylesheet of their own
+ * (src/host/vodafone-faces.css, ensureCss('vodafone-faces') before 'pocket'), so Reimagine's chunks load the
+ * same sheet by the same name: the Pocket 30,143 bytes (from 30,118). Once another chunk imports that sheet,
+ * esbuild moves it into a chunk of its own that both import: measured with a probe chunk the same day, that
+ * chunk 364 bytes and the Pocket 30,284, over its budget by 76: measure again when Reimagine lands.
  */
 const AIXC_DEMO_BUDGETS: Record<string, number> = {
 	'src/host/demos/pocket.js': 29.5 * 1024,
@@ -156,7 +168,46 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	const core = [...eager].reduce((sum, f) => sum + gzipSync(fs.readFileSync(path.join(aixc, f)), { level: 9 }).length, 0)
 	assert.ok(core <= AIXC_CORE_BUDGET, `the core (${[...eager].join(', ')}) is ${core} bytes gzipped, over the ${AIXC_CORE_BUDGET}-byte budget`)
 	for (const f of eager) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-peek|pocket-chips|pocket-journey|aixc-composer|pz-world|tips-coach|vf-portal/, `no demo code in the core (${f})`)
+	// content-index.js (the composer's and the experiences' index; these property names survive minifying) and Vodafone's faces never
+	// come with the core: its model check is src/host/model.js, so a chunk that imports the index never makes it a chunk the core loads.
+	for (const f of eager) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /serviceIds|promotionIds|sourceOrder|aixc-vodafone-/, `no content-index.js and no faces in the core (${f})`)
 	assert.doesNotMatch(fs.readFileSync(path.join(dist, 'guide.js'), 'utf8'), /experience-output|aixc-viewbar|__aixc/, 'nothing of the layer in guide.js')
+	// The check above passes on a build where nothing imports content-index.js. Reimagine's chunks will, so build once more in memory
+	// with a probe entry that does (as they will) and walk the core's static imports in that build's metafile: the index must land in
+	// a chunk of its own, never in one the core loads (which it would if the core's model check still lived in the index's module).
+	const probeSrc = path.join(EXPERIENCES, 'src/host/demos/probe-content-index.js')
+	const probe = await esbuild.build({
+		...aixcBuildOptions({ minify: true }),
+		write: false,
+		entryPoints: { aixc: AIXC_ENTRY, probe: 'probe-content-index' },
+		plugins: [
+			{
+				name: 'probe',
+				setup(b) {
+					b.onResolve({ filter: /^probe-content-index$/ }, () => ({ path: probeSrc, namespace: 'probe' }))
+					b.onLoad({ filter: /.*/, namespace: 'probe' }, () => ({
+						contents: "import { buildContentIndex } from '../../aixc/content-index.js'\nexport const probe = buildContentIndex",
+						loader: 'js',
+						resolveDir: path.dirname(probeSrc),
+					}))
+				},
+			},
+			...(aixcBuildOptions({ minify: true }).plugins ?? []),
+		],
+	})
+	const outputs = probe.metafile?.outputs ?? {}
+	const byName = (name: string) => Object.entries(outputs).find(([f]) => path.basename(f) === name)
+	const probeCore = new Set<string>()
+	const walk = (key: string | undefined) => {
+		if (!key || probeCore.has(key)) return
+		probeCore.add(key)
+		for (const i of outputs[key]?.imports ?? []) if (i.kind === 'import-statement' && !i.external) walk(i.path)
+	}
+	walk(byName('aixc.js')?.[0])
+	assert.ok(probeCore.size >= 1, 'the probe build has aixc.js')
+	const indexChunks = Object.keys(outputs).filter((f) => f.endsWith('.js') && probe.outputFiles?.find((o) => o.path === path.resolve(f))?.text.match(/serviceIds|promotionIds|sourceOrder/))
+	assert.ok(indexChunks.length > 0, 'the probe build carries content-index.js somewhere (else this proves nothing)')
+	for (const f of indexChunks) assert.ok(!probeCore.has(f), `content-index.js is in ${f}, which the core loads statically: a chunk that imports the index must not move it into the core`)
 	// Each demo chunk within its budget; a file next to a module (new URL('./x', import.meta.url)) would 404 on the gateway, which serves only .js.
 	const closure = (file: string) => {
 		const files = new Set([file])
@@ -189,6 +240,10 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	assert.match(actors, /pocket-actor-floor/, 'the actors\' stylesheet is in their chunk as text')
 	const pocket = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/pocket.js')?.file ?? ''), 'utf8')
 	assert.doesNotMatch(pocket, /vf-portal|pocket-mascot|pocket-drone|generativelanguage|aixc-composer__/, 'the Pocket on live pages carries no portal, mascot, drone or composer (pocket.css only hides the composer\'s launcher)')
+	// Vodafone's faces come with the Pocket as a sheet of their own name (src/host/vodafone-faces.css), which Reimagine's chunks load too.
+	assert.match(pocket, /vodafone-faces/, 'the Pocket asks for the faces\' sheet by its name')
+	const pocketClosure = closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '').map((f) => fs.readFileSync(path.join(aixc, f), 'utf8'))
+	for (const face of ['aixc-vodafone-bold-en', 'aixc-vodafone-bold-ar', 'aixc-vodafone-light-en', 'aixc-vodafone-light-ar', '--pocket-regular:', '--pocket-bold:', '--pocket-light:']) assert.ok(pocketClosure.some((src) => src.includes(face)), `${face} loads with the Pocket`)
 	// The chips (S6) are a chunk of their own, with their stylesheet as text; the Pocket's chunk only names their region (the page turn's copy).
 	const chips = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/chips.js')?.file ?? ''), 'utf8')
 	assert.match(chips, /pocket-chips\[data-aixc\]/, 'the chips\' stylesheet is in their chunk as text')

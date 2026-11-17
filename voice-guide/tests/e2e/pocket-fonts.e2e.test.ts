@@ -2,7 +2,8 @@
  * Our words on Vodafone's pages are drawn in Vodafone's own faces, never in a system font (finding F1,
  * seen on the live /en/home on 2026-11-17: "Pocket it" and the liner drawn in Helvetica; AGENTS.md §4.8,
  * ADR-0052 §12). The home pages' theme (maintheme) and the bundles' (static-lite-theme) declare only
- * Vodafone's regular faces, so pocket.css names four aliases of Vodafone's own bold and light files on
+ * Vodafone's regular faces, so experiences/src/host/vodafone-faces.css (the Pocket's chunk loads it before
+ * pocket.css; ADR-0076) names four aliases of Vodafone's own bold and light files on
  * Vodafone's origin, after the page's own names: a page whose theme has the face never fetches ours.
  *
  * On the saved pages with the live-page kit (./vodafone-layer.ts), at 1366×900: the chips drawn, one card

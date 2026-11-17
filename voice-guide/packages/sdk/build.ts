@@ -133,10 +133,8 @@ export interface AixcManifestFile {
  * injected once by the layer. Skipped while the entry does not exist. Writes manifest.json (each
  * file, its entry, its imports, its size) for the size budgets.
  */
-export async function buildAixc(opts: { minify?: boolean } = {}): Promise<Record<string, number>> {
-	if (!fs.existsSync(AIXC_ENTRY)) return {}
-	fs.rmSync(AIXC_OUT, { recursive: true, force: true })
-	const result = await esbuild.build({
+export function aixcBuildOptions(opts: { minify?: boolean } = {}): esbuild.BuildOptions {
+	return {
 		bundle: true,
 		format: 'esm',
 		splitting: true,
@@ -154,7 +152,13 @@ export async function buildAixc(opts: { minify?: boolean } = {}): Promise<Record
 		loader: { '.css': 'text' },
 		plugins: (opts.minify ?? true) ? [cssText, svgInline] : [svgInline],
 		metafile: true,
-	})
+	}
+}
+
+export async function buildAixc(opts: { minify?: boolean } = {}): Promise<Record<string, number>> {
+	if (!fs.existsSync(AIXC_ENTRY)) return {}
+	fs.rmSync(AIXC_OUT, { recursive: true, force: true })
+	const result = await esbuild.build({ ...aixcBuildOptions(opts), metafile: true })
 	const files: AixcManifestFile[] = Object.entries(result.metafile.outputs)
 		.filter(([f]) => f.endsWith('.js'))
 		.map(([f, o]) => ({

@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { vodafoneServicesPage as en } from '../src/content/vodafone-services.js'
 import { vodafoneServicesPageAr as ar } from '../src/content/vodafone-services-ar.js'
-import { normalizeContentModel } from '../src/aixc/content-index.js'
+import { normalizeContentModel } from '../src/host/model.js'
 
 const items = (page) => page.sections.flatMap((section) => section.items.map((item) => ({ ...item, section: section.id })))
 const arabic = /[؀-ۿ]/
