@@ -68,7 +68,13 @@ The design pass is `voice-guide/docs/reference/live-way2-phase4-design-2026-11-1
 
 [Reimagine is offered on every CMS page that passes its gate (coverage at least 0.9 and two sections with three or more items), checked on each page load.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="a fixed demo list only"} [BB](https://console.nimbalyst.com/app/cite/claude-code/b9cadb26-fdce-4a3a-8d61-ed661f395924/answer/toolu_01PTvjn7FU51H9P8iDYoW4Mp%7E3 "by='Bahaà Addin Balashoni' email=bahaa.addin@hotmail.com at=2026-11-17T04:26:30.867Z ctx='answering Which Vodafone pages should offer Reimagine? Today Services, bundles, Benefits…' quote='Every page that passes %28Recommended%29'") This answers D3.
 
-[Phase 4's build starts on the owner's go-ahead.]{open by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com} Also open: the template credits on live pages (links as merged is the recommendation) and who reviews the Arabic microcopy.
+[Phase 4a (the frame: the box, the launcher, the templates-only composer and view bar, magazine and spotlight) is built now.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="waiting"} (in a Claude Code session, 2026-11-17: "Go ahead"). The phase's ADR is ADR-0076.
+
+[On live pages no template credit is shown; each experience adapted from a CodePen pen carries the MIT licence text and its copyright as a comment at the top of its source files.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="credit links as merged; plain-text credits"} He said the MIT licence is honoured that way, which is enough (in a Claude Code session, 2026-11-17).
+
+[The native review of the Arabic microcopy blocks phase 4c's final live check.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="checking live before the review"} (in a Claude Code session, 2026-11-17). Who reviews it is still to be named.
+
+[The actors' rest mode (F11) lands, after he watched the side-by-side recording.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="keeping it held"} (in a Claude Code session, 2026-11-17). It is ported onto the branch head first, since the drone's F6b fix landed after it was built.
 
 ## Still open
 
