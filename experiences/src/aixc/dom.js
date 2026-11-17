@@ -55,13 +55,21 @@ export const h = (tag, attributes, ...children) => {
   return element
 }
 
+/** True when the page itself has <symbol id> (the clone's sprite, or Vodafone's own), not one of ours under [data-aixc]. */
+const pageHasSymbol = (id) => [...document.getElementsByTagName('symbol')].some((symbol) => symbol.id === id && !symbol.closest('[data-aixc]'))
+
+/**
+ * An icon from a sprite symbol: the page's own `#id` when it has one, else ours, `#aixc-id` (on Vodafone's
+ * pages the shell injects only the symbols the page lacks, prefixed; voice-guide ADR-0076). No id, no <use>.
+ */
 export const svgIcon = (symbolId, className) => {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('class', className)
   svg.setAttribute('aria-hidden', 'true')
   svg.setAttribute('focusable', 'false')
+  if (!symbolId) return svg
   const use = document.createElementNS(SVG_NS, 'use')
-  use.setAttribute('href', `#${symbolId}`)
+  use.setAttribute('href', `#${pageHasSymbol(symbolId) ? symbolId : `aixc-${symbolId}`}`)
   svg.append(use)
   return svg
 }

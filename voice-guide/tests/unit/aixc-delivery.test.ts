@@ -101,3 +101,16 @@ test('the demo browser builds the loader settings from the site config: web orig
 	assert.equal(loaderExperiences({ site, replayDir: '/replay', clone, experiences: false }), null, 'experiences: false keeps it off')
 	assert.equal(loaderExperiences({ site: { ...site, experiences: { ...site.experiences, enabled: false } } }), null, 'off in the site config')
 })
+
+test('Reimagine\'s kill switch: demos.reimagine false in the site config leaves it out of the tag, so the core never loads its launcher (phase 4a)', () => {
+	const site = loadSiteConfig(path.join(ROOT, 'config/sites/vodafone-eg.yaml'))
+	assert.equal(site.experiences.demos.reimagine, true, 'on in the site config')
+	const on = loaderExperiences({ site })!
+	assert.ok(on.demos.includes('reimagine'), 'the loader names it while it is on')
+	assert.ok(layer(load(`${WEB}/en/services`, { experiences: on }))!.dataset.aixcDemos.split(' ').includes('reimagine'), 'and the tag carries it')
+	const off = loaderExperiences({ site: { ...site, experiences: { ...site.experiences, demos: { ...site.experiences.demos, reimagine: false } } } })!
+	assert.ok(!off.demos.includes('reimagine'), 'demos.reimagine false: the loader leaves it out')
+	assert.ok(off.demos.includes('pocket'), 'the other demos stay')
+	const tag = layer(load(`${WEB}/en/services`, { experiences: off }))!
+	assert.ok(!tag.dataset.aixcDemos.split(' ').includes('reimagine'), 'the tag does not carry it, so the core has no reimagine to load')
+})

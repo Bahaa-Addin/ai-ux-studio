@@ -96,6 +96,13 @@ const AR = {
   "Start automatic rotation": "شغّل التقليب التلقائي",
   "Jump to a category": "روح لنوع خدمات",
   "Vodafone services spotlight": "خدمات ڤودافون تحت الضوء",
+  // Reimagined experiences on pages not about services (shared.js words(), copy 'items'; 'Next' is the tips' own)
+  Previous: 'السابق',
+  Spotlight: 'تحت الضوء',
+  'View details': 'شوف التفاصيل',
+  'More on this page': 'كمان في الصفحة دي',
+  Items: 'العناصر',
+  'Jump to a section': 'روح لقسم',
   "{title}, piece {n} of {total}": "{title}، برواز {n} من {total}",
   "Previous piece": "البرواز اللي قبله",
   "Next piece": "البرواز اللي بعده",

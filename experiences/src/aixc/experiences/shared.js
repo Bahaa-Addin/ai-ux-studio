@@ -2,6 +2,11 @@
  * Building blocks shared by the group-based experiences (spotlight, journey,
  * gallery, flipbook, cube). Facts always come from the content index; these
  * helpers only decide markup. Styles live in vodafone.css under .aixc-vx.
+ *
+ * The seam (voice-guide ADR-0076, phase 4a): where the experiences scroll (the window on the clone, the
+ * reimagined view's own box on Vodafone's pages), how their listeners, frames and timers run (plain, or
+ * through the layer's guard) and which words they use about the page's items. Nothing is configured on
+ * the clone, so every number and word there is as before.
  */
 
 import { h, pathIcon, svgIcon, visuallyHidden } from '../dom.js'
@@ -38,6 +43,179 @@ export const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion:
 
 export const pad2 = (value) => String(value).padStart(2, '0')
 
+/* ------------------------------------------------------------------ the seam */
+
+const settings = { scroller: null, wrap: null, copy: 'services', configured: false }
+/**
+ * Every off and cancel the seam handed out while configured whose work is not undone or done yet. The
+ * clone never configures the seam, so it holds nothing there (and keeps no old view alive: some
+ * experiences still add their arrow keys when they render).
+ */
+const kept = new Set()
+
+/** Keeps `undo` until it runs (off) or its work ends by itself (done: a frame or timer that ran). */
+const hold = (undo) => {
+  let live = true
+  const done = () => {
+    live = false
+    kept.delete(off)
+  }
+  const off = () => {
+    if (!live) return
+    done()
+    undo()
+  }
+  if (settings.configured) kept.add(off)
+  return { off, done }
+}
+const keep = (undo) => hold(undo).off
+
+/**
+ * Sets where the experiences scroll and how they listen, after undoing every listener, frame, timer and
+ * observer the seam handed out while configured (so a reset, or the guard's stop, leaves none behind).
+ * No argument: the clone's settings (the window, plain listeners, the clone's words).
+ *   scroller  the element the view scrolls in, or null for the window
+ *   wrap      the guard's wrap(name, fn), or null: every handler, frame, timer and observer runs through it
+ *   copy      'services' (the clone's words) or 'items' (neutral words, for pages not about services)
+ * The guard's listen is not part of this: it keeps a clean-up for each listener until the guard stops, which
+ * would hold every old view and every drag's click swallow for the page's life. The seam adds and removes its
+ * own listeners (wrapped) and keeps their offs instead, and the shell's configure() on the guard's stop undoes
+ * them; a `listen` passed here is ignored.
+ */
+export const configure = ({ scroller = null, wrap = null, copy = 'services' } = {}) => {
+  const offs = [...kept]
+  kept.clear()
+  let failure = null
+  for (const off of offs) {
+    try {
+      off()
+    } catch (error) {
+      failure ??= error
+    }
+  }
+  settings.scroller = scroller
+  settings.wrap = wrap
+  settings.copy = copy === 'items' ? 'items' : 'services'
+  settings.configured = Boolean(scroller || wrap || settings.copy === 'items')
+  if (failure) throw failure
+}
+
+/** How many offs the seam holds (listeners, frames, timers, observers not undone yet, while configured): for checks. */
+export const keptCount = () => kept.size
+
+/** `fn` through the guard's wrap, named `name`, when one is configured; else `fn` itself. Not kept. */
+export const guarded = (name, fn) => (settings.wrap ? settings.wrap(name, fn) : fn)
+
+/** addEventListener with the handler through the guard's wrap; returns an off, kept until it runs. */
+export const on = (target, type, handler, options) => {
+  const added = guarded(`${type} handler`, handler)
+  target.addEventListener(type, added, options)
+  return keep(() => target.removeEventListener(type, added, options))
+}
+
+/** requestAnimationFrame through the guard; returns a cancel. */
+export const frame = (callback) => {
+  const run = guarded('frame', callback)
+  let id = 0
+  const { off, done } = hold(() => window.cancelAnimationFrame(id))
+  id = window.requestAnimationFrame((now) => {
+    done()
+    run(now)
+  })
+  return off
+}
+
+/** setTimeout through the guard; returns a cancel. */
+export const later = (callback, ms) => {
+  const run = guarded('timer', callback)
+  let id = 0
+  const { off, done } = hold(() => window.clearTimeout(id))
+  id = window.setTimeout(() => {
+    done()
+    run()
+  }, ms)
+  return off
+}
+
+/** A ResizeObserver on `element` through the guard; returns an off (disconnect). */
+export const observeResize = (element, callback) => {
+  if (typeof ResizeObserver !== 'function') return () => {}
+  const run = guarded('resize observer', callback)
+  const observer = new ResizeObserver(() => run())
+  observer.observe(element)
+  return keep(() => observer.disconnect())
+}
+
+/** The element the view scrolls in, or null when the window scrolls (the clone). */
+export const viewScroller = () => settings.scroller
+
+const scrollerTop = () => (settings.scroller ? settings.scroller.getBoundingClientRect().top + settings.scroller.clientTop : 0)
+
+/** The scroller's scrollTop, or the window's scrollY. */
+export const scrollTop = () => (settings.scroller ? settings.scroller.scrollTop : window.scrollY)
+
+/** The scrolling area's height: the scroller's clientHeight, or the window's innerHeight. */
+export const viewHeight = () => (settings.scroller ? settings.scroller.clientHeight : window.innerHeight)
+
+/**
+ * Height of the sticky chrome above the content, inside the scrolling area: for sticky tops and scroll
+ * targets. The clone: the site header and the AIXC view bar. A scroller: its own view bar row when shown.
+ */
+export const chromeOffset = () => {
+  const scroller = settings.scroller
+  if (scroller) {
+    const bar = scroller.querySelector(':scope > .aixc-viewbar')
+    return bar && !bar.hidden ? bar.getBoundingClientRect().height : 0
+  }
+  const header = document.querySelector('#site-header')
+  const viewbar = document.querySelector('#aixc-viewbar')
+  const headerH = header ? header.getBoundingClientRect().height : 0
+  const viewbarH = viewbar && !viewbar.hidden ? viewbar.getBoundingClientRect().height : 0
+  return headerH + viewbarH
+}
+
+/** Viewport y of the pin line (compare with getBoundingClientRect values, not chromeOffset()). */
+export const viewTop = () => scrollerTop() + chromeOffset()
+
+/** Viewport y of the scrolling area's bottom. */
+export const viewBottom = () => (settings.scroller ? scrollerTop() + settings.scroller.clientHeight : window.innerHeight)
+
+/** Smoothly scrolls the view to an absolute y (the scroller's content coordinates), honouring reduced motion. */
+export const scrollToY = (y, { instant = false } = {}) =>
+  (settings.scroller ?? window).scrollTo({ top: Math.max(0, y), behavior: instant || reducedMotion() ? 'auto' : 'smooth' })
+
+/** Scrolls the view by `dy` at once. */
+export const scrollByY = (dy) => (settings.scroller ?? window).scrollBy({ top: dy, behavior: 'auto' })
+
+/** Scrolls the view so `element`'s top meets the pin line; with a scroller the window never moves. */
+export const scrollToElement = (element, { instant = false } = {}) =>
+  scrollToY(element.getBoundingClientRect().top - viewTop() + scrollTop(), { instant })
+
+/** The view's scroll (the scroller's, or the window's), every event; returns an off. */
+export const onViewScroll = (callback) => on(settings.scroller ?? window, 'scroll', callback, { passive: true })
+
+/** The window's resize and, with a scroller, the scroller's size; returns an off. */
+export const onViewResize = (callback) => {
+  const offs = [on(window, 'resize', callback)]
+  if (settings.scroller) offs.push(observeResize(settings.scroller, callback))
+  return keep(() => offs.forEach((off) => off()))
+}
+
+// The words the clone says about its services, and what pages that are not about services say instead.
+const NEUTRAL_WORDS = {
+  'Previous service': 'Previous',
+  'Next service': 'Next',
+  'Vodafone services spotlight': 'Spotlight',
+  'View service': 'View details',
+  'More services': 'More on this page',
+  Services: 'Items',
+  // Neutral in English, but the clone's Arabic for it says services.
+  'Jump to a category': 'Jump to a section',
+}
+
+/** UI copy about the page's items, in the page's language: the clone's words, or neutral ones (copy 'items'). */
+export const words = (key, values) => t(settings.copy === 'items' ? (NEUTRAL_WORDS[key] ?? key) : key, values)
+
 /* ------------------------------------------------------------------ content */
 
 /** Validated sections resolved against the index (closing promotion excluded). */
@@ -57,7 +235,7 @@ export const groupsOf = (schema, index) =>
         id: section.id,
         items,
         sources,
-        title: section.title ?? sourceTitles[0] ?? t('More services'),
+        title: section.title ?? sourceTitles[0] ?? words('More services'),
         authored,
         // Real source names to show next to a model-authored label.
         provenance: authored && sourceTitles.length ? t('From {sources}', { sources: sourceTitles.join(isRTL ? '، ' : ', ') }) : null,
@@ -101,7 +279,7 @@ export const ctaFor = (item, { variant = 'primary', standalone = false, onDark =
   const tone = onDark ? ' vx-on-dark' : ''
   if (label && href) return externalLink(href, `vx-btn vx-btn--${variant}${tone}`, label)
   if (label) return h('span', { class: `vx-inert${tone}` }, label)
-  if (href && standalone) return externalLink(href, `vx-btn vx-btn--${variant}${tone}`, t('View service'))
+  if (href && standalone) return externalLink(href, `vx-btn vx-btn--${variant}${tone}`, words('View service'))
   return null
 }
 
@@ -137,7 +315,7 @@ export const media = (item, { className = '', eager = false, alt = '' } = {}) =>
     return figure
   }
   const img = h('img', { src: image.src, alt, width: image.width, height: image.height, loading: eager ? 'eager' : 'lazy', decoding: 'async' })
-  img.addEventListener('error', fallback, { once: true })
+  img.addEventListener('error', guarded('image error', fallback), { once: true })
   figure.append(img)
   return figure
 }
@@ -183,6 +361,19 @@ export const groupExtras = (group, { onDark = false } = {}) => {
 export const groupTitle = (group, level = 'h2', className = 'vx-group-title', id) =>
   h(level, { class: className, id, 'data-aixc-authored': group.authored ? 'layout-label' : null }, group.title)
 
+/**
+ * A store's badge link, or its name as a text link when the store has no icon (Vodafone's own pages give
+ * none): never a <use> of a symbol that is not there.
+ */
+export const storeLink = (store, iconClass, textClass) =>
+  store.icon
+    ? h(
+        'a',
+        { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} ${t('(opens in a new tab)')}` },
+        svgIcon(store.icon, iconClass),
+      )
+    : h('a', { class: textClass, href: store.href, target: '_blank', rel: 'noopener noreferrer' }, store.label, visuallyHidden(` ${t('(opens in a new tab)')}`))
+
 /** The Vodafone app promotion, styled like the original page's download band. */
 export const closingBand = (promo) => {
   if (!promo) return null
@@ -206,17 +397,7 @@ export const closingBand = (promo) => {
               h(
                 'ul',
                 null,
-                promo.stores.map((store) =>
-                  h(
-                    'li',
-                    null,
-                    h(
-                      'a',
-                      { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} ${t('(opens in a new tab)')}` },
-                      svgIcon(store.icon, 'vx-closing__store-icon'),
-                    ),
-                  ),
-                ),
+                promo.stores.map((store) => h('li', null, storeLink(store, 'vx-closing__store-icon', 'vx-btn vx-btn--secondary vx-on-dark'))),
               ),
             )
           : null,
@@ -248,48 +429,35 @@ export const pageHeading = (index, { visible = false, className = '' } = {}) =>
 /* ----------------------------------------------------------------- behaviour */
 
 /**
- * Calls `callback` at most once per animation frame while the page scrolls or
- * resizes. Returns a function that stops listening.
+ * Calls `callback` at most once per animation frame while the view scrolls (the scroller, or the window)
+ * or resizes (the window; with a scroller, its size too), and once at the start. Returns an off.
  */
 export const onScrollFrame = (callback) => {
-  let frame = 0
+  let cancel = null
   const schedule = () => {
-    if (frame) return
-    frame = window.requestAnimationFrame(() => {
-      frame = 0
+    if (cancel) return
+    cancel = frame(() => {
+      cancel = null
       callback()
     })
   }
-  window.addEventListener('scroll', schedule, { passive: true })
-  window.addEventListener('resize', schedule)
+  const offs = [on(settings.scroller ?? window, 'scroll', schedule, { passive: true }), on(window, 'resize', schedule)]
+  if (settings.scroller) offs.push(observeResize(settings.scroller, schedule))
   schedule()
-  return () => {
-    window.removeEventListener('scroll', schedule)
-    window.removeEventListener('resize', schedule)
-    if (frame) window.cancelAnimationFrame(frame)
-    frame = 0
-  }
+  return keep(() => {
+    for (const off of offs) off()
+    cancel?.()
+    cancel = null
+  })
 }
-
-/** Height of the sticky chrome above the content (site header + AIXC view bar). */
-export const chromeOffset = () => {
-  const header = document.querySelector('#site-header')
-  const viewbar = document.querySelector('#aixc-viewbar')
-  const headerH = header ? header.getBoundingClientRect().height : 0
-  const viewbarH = viewbar && !viewbar.hidden ? viewbar.getBoundingClientRect().height : 0
-  return headerH + viewbarH
-}
-
-/** Smoothly scrolls the window to an absolute Y, honouring reduced motion. */
-export const scrollToY = (y, { instant = false } = {}) =>
-  window.scrollTo({ top: Math.max(0, y), behavior: instant || reducedMotion() ? 'auto' : 'smooth' })
 
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 
 /**
  * Pinned-stage stepping shared by the scroll-driven experiences. The stage is
  * sticky inside `track`, which is one stage tall plus `step()` pixels per item,
- * so page scroll (wheel, keys, scrollbar, touch) moves through the items.
+ * so the view's scroll (wheel, keys, scrollbar, touch) moves through the items.
+ * Positions are in the scroller's coordinates (the page's on the clone).
  *
  *   position()  fractional item index from the scroll position (0 … count - 1)
  *   goTo(i)     scrolls to item i
@@ -297,29 +465,34 @@ export const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
  *               the nearest item so the next step always starts from a whole item
  */
 export const scrollStepper = ({ track, count, step, settleMs = 200, tolerance = 0.02 }) => {
-  let timer = 0
+  let cancel = null
   const last = Math.max(0, count - 1)
-  const trackTop = () => track.getBoundingClientRect().top + window.scrollY
-  const position = () => clamp((chromeOffset() - track.getBoundingClientRect().top) / step(), 0, last)
+  // The track's top in the scroller's content.
+  const trackTop = () => track.getBoundingClientRect().top - scrollerTop() + scrollTop()
+  const position = () => clamp((viewTop() - track.getBoundingClientRect().top) / step(), 0, last)
   const pinned = () => {
     const rect = track.getBoundingClientRect()
-    return rect.top <= chromeOffset() + 1 && rect.bottom >= window.innerHeight - 1
+    return rect.top <= viewTop() + 1 && rect.bottom >= viewBottom() - 1
   }
   const goTo = (at, { instant = false } = {}) => scrollToY(trackTop() + clamp(at, 0, last) * step() - chromeOffset() + 1, { instant })
+  const stop = () => {
+    cancel?.()
+    cancel = null
+  }
   const settle = () => {
-    window.clearTimeout(timer)
-    timer = window.setTimeout(() => {
+    stop()
+    cancel = later(() => {
+      cancel = null
       if (!pinned()) return
       const at = position()
       if (Math.abs(at - Math.round(at)) > tolerance) goTo(Math.round(at))
     }, settleMs)
   }
-  const stop = () => window.clearTimeout(timer)
   return { position, goTo, settle, stop, pinned }
 }
 
 /**
- * Lets a mouse (or pen) drag on `surface` scroll the page, so dragging moves a
+ * Lets a mouse (or pen) drag on `surface` scroll the view, so dragging moves a
  * scroll-driven stage like the references' drag handlers did. `axis` is the drag
  * direction that maps onto scrolling; `factor` is scroll pixels per dragged pixel
  * (drag up, or against the reading line, = forward). With `touch`, horizontal touch drags are handled too
@@ -349,7 +522,7 @@ export const dragToScroll = (surface, { axis = 'y', factor = 1, touch = false } 
       surface.classList.add('is-dragging')
     }
     start = coord(event)
-    window.scrollBy({ top: -delta * factor, behavior: 'auto' })
+    scrollByY(-delta * factor)
   }
   const onUp = (event) => {
     if (event.pointerId !== pointer) return
@@ -360,20 +533,11 @@ export const dragToScroll = (surface, { axis = 'y', factor = 1, touch = false } 
         click.stopPropagation()
         click.preventDefault()
       }
-      surface.addEventListener('click', swallow, { capture: true, once: true })
-      window.setTimeout(() => surface.removeEventListener('click', swallow, { capture: true }), 0)
+      later(on(surface, 'click', swallow, { capture: true, once: true }), 0)
     }
   }
-  surface.addEventListener('pointerdown', onDown)
-  surface.addEventListener('pointermove', onMove)
-  surface.addEventListener('pointerup', onUp)
-  surface.addEventListener('pointercancel', onUp)
-  return () => {
-    surface.removeEventListener('pointerdown', onDown)
-    surface.removeEventListener('pointermove', onMove)
-    surface.removeEventListener('pointerup', onUp)
-    surface.removeEventListener('pointercancel', onUp)
-  }
+  const offs = [on(surface, 'pointerdown', onDown), on(surface, 'pointermove', onMove), on(surface, 'pointerup', onUp), on(surface, 'pointercancel', onUp)]
+  return () => offs.forEach((off) => off())
 }
 
 /**
@@ -384,12 +548,12 @@ export const dragToScroll = (surface, { axis = 'y', factor = 1, touch = false } 
  */
 const sidewaysDelta = (event) => {
   if (event.ctrlKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return 0
-  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerWidth : 1
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? (settings.scroller?.clientWidth ?? window.innerWidth) : 1
   return event.deltaX * unit * inlineSign
 }
 
 /**
- * Lets a sideways swipe on `surface` scroll the page, so a horizontal gesture
+ * Lets a sideways swipe on `surface` scroll the view, so a horizontal gesture
  * walks a scroll-driven stage the same way as the wheel. The browser's
  * swipe-to-go-back is held off while the gesture is over the stage. Returns a cleanup.
  */
@@ -398,10 +562,9 @@ export const sidewaysWheel = (surface, { factor = 1 } = {}) => {
     const delta = sidewaysDelta(event)
     if (!delta) return
     event.preventDefault()
-    window.scrollBy({ top: delta * factor, behavior: 'auto' })
+    scrollByY(delta * factor)
   }
-  surface.addEventListener('wheel', onWheel, { passive: false })
-  return () => surface.removeEventListener('wheel', onWheel)
+  return on(surface, 'wheel', onWheel, { passive: false })
 }
 
 /**
@@ -413,14 +576,15 @@ export const sidewaysWheel = (surface, { factor = 1 } = {}) => {
 export const sidewaysSwipe = (surface, step, { threshold = 40, quietMs = 260, enabled = () => true } = {}) => {
   let total = 0
   let fired = false
-  let timer = 0
+  let cancel = null
   const onWheel = (event) => {
     const delta = sidewaysDelta(event)
     if (!delta || !enabled()) return
     event.preventDefault()
     // A trackpad swipe is a stream of events (with momentum): one step per stream.
-    window.clearTimeout(timer)
-    timer = window.setTimeout(() => {
+    cancel?.()
+    cancel = later(() => {
+      cancel = null
       total = 0
       fired = false
     }, quietMs)
@@ -431,20 +595,21 @@ export const sidewaysSwipe = (surface, step, { threshold = 40, quietMs = 260, en
       step(Math.sign(total))
     }
   }
-  surface.addEventListener('wheel', onWheel, { passive: false })
+  const off = on(surface, 'wheel', onWheel, { passive: false })
   return () => {
-    window.clearTimeout(timer)
-    surface.removeEventListener('wheel', onWheel)
+    cancel?.()
+    cancel = null
+    off()
   }
 }
 
-/** Arrow-key stepping for a stage: calls step(-1 | 1) and first/last for Home/End. */
+/** Arrow-key stepping for a stage: calls step(-1 | 1) and first/last for Home/End. Returns an off. */
 export const arrowKeys = (stage, { step, first, last, axis = 'both' }) => {
   // Horizontal keys follow the reading line: in RTL, ArrowLeft moves forward.
   const [backX, forwardX] = isRTL ? ['ArrowRight', 'ArrowLeft'] : ['ArrowLeft', 'ArrowRight']
   const back = axis === 'y' ? ['ArrowUp'] : axis === 'x' ? [backX] : [backX, 'ArrowUp']
   const forward = axis === 'y' ? ['ArrowDown'] : axis === 'x' ? [forwardX] : [forwardX, 'ArrowDown']
-  stage.addEventListener('keydown', (event) => {
+  return on(stage, 'keydown', (event) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return
     if (event.target.closest?.('input, textarea, select')) return
     if (back.includes(event.key)) step(-1)

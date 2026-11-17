@@ -136,6 +136,28 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  * esbuild moves it into a chunk of its own that both import: measured with a probe chunk the same day, that
  * chunk 364 bytes and the Pocket 30,284, over its budget by 76: measure again when Reimagine lands.
  */
+/**
+ * Reimagine on Vodafone's pages (phase 4a, ADR-0076): the launcher's chunk (./demos/reimagine.js: the gate, the
+ * button, its place under the trail's pill, its stylesheet as text), which the core loads at idle where the site
+ * enables the demo, and the shell's (./demos/reimagine/shell.js), which the launcher loads on its first press.
+ * The launcher imports nothing the core or the Pocket imports (its words and the website check inline), so no
+ * shared chunk comes with the core. Measured 2026-11-17 (stage 1): the launcher 2,778 bytes gzipped; with its tuck
+ * the same day (it goes up off the screen with the trail's pill, and without a pill below the top of the page:
+ * the stylesheet's transform and transition, the watch on the pill's class, the focus listeners) 3,029, so 3 KB;
+ * after the review the same day (it finds the pill as it mounts, before the trail says it is up; it gives way to
+ * the login card of a signed-out visitor) 3,151, so 3.125 KB, the smallest step that fits.
+ * The shell's stub 100 bytes, so 0.125 KB (stage 2 measures the real shell and sets its budget). The core took
+ * the DEMOS line within its budget (8,003 -> 8,026 bytes); the chips' chunk 4,616 -> 4,683 with the launcher in
+ * their obstacle list, 4,801 after the review (a control hidden mid-page keeps its place at the top; measured
+ * again there when one came or went); the Pocket's unchanged (30,143).
+ */
+const REIMAGINE_BUDGETS: Record<string, number> = {
+	'src/host/demos/reimagine.js': 3.125 * 1024,
+	'src/host/demos/reimagine/shell.js': 0.125 * 1024,
+}
+/** Never in a Reimagine chunk on live pages (templates only, owner 2026-11-10; the credits as comments, 2026-11-17). Case-sensitive. */
+const REIMAGINE_FORBIDDEN = /generativelanguage|aixc-key|aixc-model|fonts\.googleapis|x-goog-api-key|codepen/
+
 const AIXC_DEMO_BUDGETS: Record<string, number> = {
 	'src/host/demos/pocket.js': 29.5 * 1024,
 	'src/host/demos/chips.js': 4.75 * 1024,
@@ -146,6 +168,7 @@ const AIXC_DEMO_BUDGETS: Record<string, number> = {
 	'src/host/demos/actors.js': 48.25 * 1024,
 	'src/host/demos/portal.js': 6.5 * 1024,
 	'src/pocket/portal/controller.js': 17.5 * 1024,
+	...REIMAGINE_BUDGETS,
 }
 
 /** Which chunk loads a demo chunk on intent (a dynamic import), by entry; the core unless named here. */
@@ -155,6 +178,8 @@ const AIXC_LOADED_BY: Record<string, string> = {
 	'src/host/demos/actors.js': 'src/host/demos/pocket.js',
 	'src/host/demos/portal.js': 'src/host/demos/pocket.js',
 	'src/pocket/portal/controller.js': 'src/host/demos/portal.js',
+	// Reimagine (phase 4a, ADR-0076): the core loads the launcher at idle; the launcher loads the shell on its first press.
+	'src/host/demos/reimagine/shell.js': 'src/host/demos/reimagine.js',
 }
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
@@ -252,6 +277,14 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	assert.match(chips, /pocket-chips\[data-aixc\]/, 'the chips\' stylesheet is in their chunk as text')
 	assert.match(chips, /pocket-cta--icon/, 'the overlay is in the chips\' chunk')
 	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-chips\[data-aixc\]|pocket-cta--icon/, `no chips overlay or its stylesheet with the Pocket (${f}): they load on their own where chips can show`)
+	// Reimagine (phase 4a): the launcher imports nothing (a module it shared with the core or the Pocket would become a
+	// chunk the core loads); neither it nor the shell carries anything of Gemini, a key, Google Fonts or CodePen.
+	const launcher = manifest.files.find((f) => f.entry === 'src/host/demos/reimagine.js')
+	assert.ok(launcher, 'the launcher is a chunk of its own')
+	assert.deepEqual(launcher.imports.filter((i) => i.kind === 'import-statement'), [], 'the launcher\'s chunk imports no other chunk statically')
+	assert.match(fs.readFileSync(path.join(aixc, launcher.file), 'utf8'), /aixc-launcher/, 'the launcher\'s button and stylesheet are in its chunk')
+	for (const entry of Object.keys(REIMAGINE_BUDGETS))
+		for (const f of closure(manifest.files.find((x) => x.entry === entry)?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), REIMAGINE_FORBIDDEN, `nothing of Gemini, a key, Google Fonts or CodePen in ${f} (${entry})`)
 	assert.doesNotMatch(pocket, /pocket-journey/, 'the journey is not in the Pocket\'s chunk: it loads only where a trail host can be claimed (S10)')
 	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-mascot|pocket-drone|pocket-actor|data:image\/svg|vf-portal/, `no mascot, drone or portal with the Pocket (${f}): they load on their own (S12, S13)`)
 })

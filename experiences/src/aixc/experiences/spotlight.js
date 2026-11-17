@@ -29,12 +29,20 @@
  * the stage, touch and the scrollbar all move between cards; the timer, arrow
  * keys, prev/next and category jumps scroll the page to their card. The closing
  * app promotion follows the stage.
+ *
+ * On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box instead of the page: every
+ * scroll read and write goes through shared.js's seam, every handler, frame and timer through on(),
+ * frame() and later() while mounted, and spotlight.css keeps the controls and the queue out of the
+ * bottom corners' safe zones (below 1180 px, and in a window too short for the desktop layout, the queue is
+ * not shown there; on phones the controls row sits under the slide's title, placed by placeRow()).
+ * reveal(itemId) steps the stage to an item's card.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
   ICON_NEXT, ICON_PAUSE, ICON_PLAY, ICON_PREV, arrowKeys, chromeOffset, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems,
-  groupsOf, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t,
+  frame, groupsOf, guarded, media, observeResize, on, onScrollFrame, onViewResize, onViewScroll, pad2, pageHeading, promotionOf,
+  reducedMotion, scrollStepper, sidewaysWheel, t, viewHeight, viewScroller, words,
 } from './shared.js'
 
 const DWELL_MS = 6500
@@ -49,7 +57,7 @@ export const renderSpotlight = (schema, index) => {
   const total = entries.length
   const promo = promotionOf(schema, index)
 
-  const state = { active: 0, playing: !reducedMotion(), hovered: false, focused: false, elapsed: 0, last: 0, frame: 0, mounted: false }
+  const state = { active: 0, playing: !reducedMotion(), hovered: false, focused: false, elapsed: 0, last: 0, frame: null, mounted: false }
 
   /* ------------------------------------------------------------- backdrops */
   const backdropFor = (entry) => {
@@ -57,7 +65,7 @@ export const renderSpotlight = (schema, index) => {
     if (entry.item.image?.src) {
       const img = h('img', { src: entry.item.image.src, alt: '', decoding: 'async' })
       if (entry.item.image.fit === 'contain') layer.classList.add('is-contain')
-      img.addEventListener('error', () => img.remove(), { once: true })
+      img.addEventListener('error', guarded('image error', () => img.remove()), { once: true })
       layer.append(img)
     }
     return layer
@@ -85,22 +93,20 @@ export const renderSpotlight = (schema, index) => {
   const slideList = h('div', { class: 'sp-slides', 'aria-live': state.playing ? 'off' : 'polite' }, slides)
 
   /* ----------------------------------------------------------------- queue */
-  const cards = entries.map(({ item, group }, at) => {
-    const card = h(
+  const cards = entries.map(({ item, group }, at) =>
+    h(
       'button',
       // data-drag-through: a drag that starts on a card still moves the queue.
-      { type: 'button', class: 'sp-card', 'aria-label': t('Show {title}', { title: item.title }), 'data-index': String(at), 'data-drag-through': '' },
+      { type: 'button', class: 'sp-card', 'aria-label': words('Show {title}', { title: item.title }), 'data-index': String(at), 'data-drag-through': '' },
       media(item, { className: 'sp-card__media' }),
       h('span', { class: 'sp-card__text', 'aria-hidden': 'true' }, h('span', { class: 'sp-card__place' }, group.title), h('span', { class: 'sp-card__title' }, item.title)),
-    )
-    card.addEventListener('click', () => goTo(at))
-    return card
-  })
+    ),
+  )
   const queue = h('div', { class: 'sp-queue', role: 'group', 'aria-label': t('Up next') }, cards)
 
   /* -------------------------------------------------------------- controls */
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': words('Previous service') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': words('Next service') }, pathIcon(ICON_NEXT, ''))
   const playButton = h('button', { type: 'button', class: 'vx-round vx-on-dark sp-play', 'aria-pressed': 'false' })
   const progressFill = h('span', { class: 'sp-progress__fill' })
   const counter = h('span', { class: 'sp-counter__now' }, '01')
@@ -120,20 +126,17 @@ export const renderSpotlight = (schema, index) => {
   entries.forEach((entry, at) => {
     if (!firstIndexOf.has(entry.group.id)) firstIndexOf.set(entry.group.id, at)
   })
-  const jumpButtons = groups.map((group) => {
-    const button = h('button', { type: 'button', class: 'sp-jump', 'data-group': group.id }, group.title)
-    button.addEventListener('click', () => goTo(firstIndexOf.get(group.id)))
-    return button
-  })
-  const jumps = h('nav', { class: 'sp-jumps', 'aria-label': t('Jump to a category') }, h('ul', null, jumpButtons.map((button) => h('li', null, button))))
+  const jumpButtons = groups.map((group) => h('button', { type: 'button', class: 'sp-jump', 'data-group': group.id }, group.title))
+  const jumps = h('nav', { class: 'sp-jumps', 'aria-label': words('Jump to a category') }, h('ul', null, jumpButtons.map((button) => h('li', null, button))))
+  const details = h('div', { class: 'sp-details' }, slideList)
 
   const stage = h(
     'section',
-    { class: 'sp-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services spotlight') },
+    { class: 'sp-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': words('Vodafone services spotlight') },
     backdrops,
     timer,
     jumps,
-    h('div', { class: 'sp-details' }, slideList),
+    details,
     queue,
     controls,
   )
@@ -181,13 +184,13 @@ export const renderSpotlight = (schema, index) => {
     slideList.setAttribute('aria-live', state.playing ? 'off' : 'polite')
   }
 
-  let reveal = null
+  let growing = null
 
   /** Expands a new backdrop from `fromEl` (a queue card) to the full stage. */
   const revealBackdrop = (entry, fromEl) => {
     // Scrolling fast through several services: drop the reveal still running.
-    reveal?.cancel()
-    reveal = null
+    growing?.cancel()
+    growing = null
     const layer = backdropFor(entry)
     backdrops.append(layer)
     const previous = [...backdrops.children].slice(0, -1)
@@ -212,7 +215,7 @@ export const renderSpotlight = (schema, index) => {
     )
     animation.onfinish = finish
     animation.oncancel = finish
-    reveal = animation
+    growing = animation
   }
 
   /** Shows service `next` (called as the scroll position reaches it). */
@@ -220,9 +223,10 @@ export const renderSpotlight = (schema, index) => {
     if (next === state.active) return
     const outgoing = slides[state.active]
     const incoming = slides[next]
-    // Stepping forward, the backdrop grows out of the card that was next up.
+    // Stepping forward, the backdrop grows out of the card that was next up (when it shows: on phones in a
+    // box the queue is not shown, and a card with no box has nothing to grow from).
     const fromEl = next === state.active + 1 ? cards[next] : null
-    revealBackdrop(entries[next], fromEl && !fromEl.inert ? fromEl : null)
+    revealBackdrop(entries[next], fromEl && !fromEl.inert && fromEl.getClientRects().length ? fromEl : null)
     outgoing.hidden = true
     incoming.hidden = false
     incoming.classList.remove('is-entering')
@@ -233,6 +237,7 @@ export const renderSpotlight = (schema, index) => {
     state.elapsed = 0
     layoutQueue()
     syncControls()
+    placeRow()
     if (document.activeElement && cards.includes(document.activeElement) && document.activeElement.inert) {
       // The clicked card moved away; keep focus on the stage controls.
       nextButton.focus({ preventScroll: true })
@@ -245,11 +250,29 @@ export const renderSpotlight = (schema, index) => {
   const render = () => show(Math.round(stepper.position()))
 
   /**
-   * Pinned under the site chrome; when the stage is taller than the window (a
-   * short window, long copy) it pins higher instead, so its controls stay in view.
+   * Pinned under the chrome (the site's on the clone, the view bar in the box); when the stage is taller
+   * than the view (a short window, long copy) it pins higher instead, so its controls stay in view.
    */
   const pinTop = () => {
-    stage.style.setProperty('--sp-top', `${Math.round(Math.min(chromeOffset(), window.innerHeight - stage.offsetHeight))}px`)
+    stage.style.setProperty('--sp-top', `${Math.round(Math.min(chromeOffset(), viewHeight() - stage.offsetHeight))}px`)
+  }
+
+  /**
+   * On phones in a box the controls row sits right under the shown slide's title (spotlight.css keeps the room
+   * for it there), so only the title's lines move it and a heading, not a link, is above it: its top in the
+   * stage, from offsets (the title's entrance is a transform and does not move it). Unused from 720 px.
+   */
+  const placeRow = () => {
+    if (!viewScroller()) return
+    const title = slides[state.active].querySelector('.sp-slide__title')
+    let bottom = title.offsetHeight
+    for (let at = title; at && at !== stage; at = at.offsetParent) bottom += at.offsetTop
+    stage.style.setProperty('--sp-row-top', `${bottom}px`)
+  }
+
+  const fit = () => {
+    pinTop()
+    placeRow()
   }
 
   // The timer only runs while the stage is pinned, so it never scrolls the page
@@ -269,32 +292,44 @@ export const renderSpotlight = (schema, index) => {
     }
     timer.firstChild.style.transform = `scaleX(${Math.min(state.elapsed / DWELL_MS, 1)})`
     timer.classList.toggle('is-paused', paused())
-    state.frame = window.requestAnimationFrame(tick)
+    state.frame = frame(tick)
   }
 
   /* ---------------------------------------------------------------- events */
-  prevButton.addEventListener('click', () => goTo(state.active - 1))
-  nextButton.addEventListener('click', () => goTo(state.active + 1))
-  playButton.addEventListener('click', () => {
-    state.playing = !state.playing
-    syncControls()
-  })
-  stage.addEventListener('pointerenter', () => (state.hovered = true))
-  stage.addEventListener('pointerleave', () => (state.hovered = false))
-  stage.addEventListener('focusin', () => (state.focused = true))
-  stage.addEventListener('focusout', (event) => {
-    if (!stage.contains(event.relatedTarget)) state.focused = false
-  })
-  // Left/right follow the reading line (ArrowLeft advances in Arabic).
-  arrowKeys(stage, { step: (direction) => goTo(state.active + direction), first: () => goTo(0), last: () => goTo(total - 1), axis: 'x' })
-  const onResize = () => {
+  const resized = () => {
     layoutQueue()
-    pinTop()
+    fit()
   }
-  const onScroll = () => stepper.settle()
-  let stopFrames = null
-  let stopDrag = null
-  let stopWheel = null
+  // Everything the stage listens to while it shows, added on mount through the seam and undone on unmount
+  // (or by the seam's reset), so a kept view mounted again listens again.
+  const listen = () => [
+    onScrollFrame(render),
+    dragToScroll(stage, { axis: 'x', factor: STEP_PX / DRAG_PX, touch: true }),
+    sidewaysWheel(stage),
+    onViewScroll(() => stepper.settle()),
+    onViewResize(resized),
+    on(prevButton, 'click', () => goTo(state.active - 1)),
+    on(nextButton, 'click', () => goTo(state.active + 1)),
+    on(playButton, 'click', () => {
+      state.playing = !state.playing
+      syncControls()
+    }),
+    on(stage, 'pointerenter', () => (state.hovered = true)),
+    on(stage, 'pointerleave', () => (state.hovered = false)),
+    on(stage, 'focusin', () => (state.focused = true)),
+    on(stage, 'focusout', (event) => {
+      if (!stage.contains(event.relatedTarget)) state.focused = false
+    }),
+    // Left/right follow the reading line (ArrowLeft advances in Arabic).
+    arrowKeys(stage, { step: (direction) => goTo(state.active + direction), first: () => goTo(0), last: () => goTo(total - 1), axis: 'x' }),
+    ...cards.map((card, at) => on(card, 'click', () => goTo(at))),
+    ...jumpButtons.map((button) => on(button, 'click', () => goTo(firstIndexOf.get(button.dataset.group)))),
+    // In a box, where the stage flows (below 1180 px, or a short window) it is as tall as each service's copy:
+    // pin it again when that changes, so a stage taller than the view keeps its bottom (and its controls) at
+    // the box's bottom; and on phones keep the row under the title when the copy reflows (a font arriving).
+    ...(viewScroller() ? [observeResize(stage, fit), observeResize(details, placeRow)] : []),
+  ]
+  let offs = []
 
   layoutQueue()
   syncControls()
@@ -304,25 +339,27 @@ export const renderSpotlight = (schema, index) => {
     mount() {
       state.mounted = true
       state.last = 0
-      pinTop()
-      stopFrames = onScrollFrame(render)
-      stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / DRAG_PX, touch: true })
-      stopWheel = sidewaysWheel(stage)
-      window.addEventListener('scroll', onScroll, { passive: true })
-      window.addEventListener('resize', onResize)
-      state.frame = window.requestAnimationFrame(tick)
+      // Focus left the stage while it was away (its focusout was not heard): start from where it is.
+      state.focused = stage.contains(document.activeElement)
+      fit()
+      offs = listen()
+      state.frame = frame(tick)
     },
     unmount() {
       state.mounted = false
-      stopFrames?.()
-      stopDrag?.()
-      stopWheel?.()
-      stopFrames = stopDrag = stopWheel = null
+      for (const off of offs.splice(0)) off()
       stepper.stop()
-      reveal?.cancel()
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onResize)
-      window.cancelAnimationFrame(state.frame)
+      growing?.cancel()
+      state.frame?.()
+      state.frame = null
+    },
+    /** Steps the stage to the card of `itemId` at once (the guide's spotlight comes next); false if it has none. */
+    reveal(itemId) {
+      const at = entries.findIndex((entry) => entry.item.id === itemId)
+      if (at < 0) return false
+      stepper.goTo(at, { instant: true })
+      show(at)
+      return true
     },
   }
 }

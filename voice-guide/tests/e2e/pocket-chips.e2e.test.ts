@@ -42,6 +42,8 @@ const LABELS = {
 	ar: { group: 'زرار «في الجيب» لخدمات الصفحة دي', chip: 'في الجيب: ', undo: 'رجّعها: ', liner: 'في جيبك' },
 }
 const langOf = (path: string) => (path.startsWith('/ar/') ? 'ar' : 'en')
+/** Reimagine's launcher, as focusNow names it (phase 4a): the clone's words (src/i18n.js). */
+const LAUNCHER = { en: 'Reimagine this page', ar: 'غيّر شكل الصفحة' }
 
 /** Two frames and a little more: the chips' pass runs on a frame. */
 const settle = (page: Page) => page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 60)))))
@@ -570,8 +572,18 @@ test('keyboard: the Tab order is Vodafone\'s own; screen readers reach each chip
 			await chipsReady(l.page)
 			assert.ok((await chippedIds(l.page)).length > 0, `${where}: chips are drawn`)
 			await clearStore(l.page)
+			await l.page.waitForFunction(() => (window as any).__aixc?.demos?.reimagine, null, { timeout: 15_000 })
 			const on = await tabs(l.page, 60)
-			assert.deepEqual(on, off, `${where}: the Tab sequence is the one ?aixc=off gives, no stop added`)
+			// Reimagine's launcher (phase 4a) is the one stop the layer adds, on the pages that pass its gate (Services);
+			// none where they do not (Vodafone Cash). Every other stop is Vodafone's own, in the order ?aixc=off gives.
+			const launcher = `button  ${LAUNCHER[langOf(c.path)]}`
+			const added = on.filter((stop) => stop === launcher).length
+			assert.equal(added, c.path.endsWith('/vodafone-cash') ? 0 : 1, `${where}: the launcher is ${c.path.endsWith('/vodafone-cash') ? 'no' : 'the one added'} stop (${on.join(' | ')})`)
+			assert.deepEqual(
+				on.filter((stop) => stop !== launcher),
+				off.slice(0, on.length - added),
+				`${where}: the Tab sequence is the one ?aixc=off gives, no other stop added`,
+			)
 			if (c.viewport !== DESKTOP) continue
 			// A card a keyboard user reaches on Vodafone's page, and its chip by name.
 			const pick = await l.page.evaluate(() => {

@@ -6,6 +6,13 @@
  * #f4f4f4, footer ink #14141e, Vodafone Regular / Bold / Light, 6px button radius,
  * 8px card radius and the site's card shadow. Everything is scoped to .aixc-vx so
  * nothing leaks into the protected header, footer or original view.
+ *
+ * Two places (voice-guide ADR-0076): on the clone the window scrolls, under the site header and the AIXC
+ * view bar; on Vodafone's pages the view scrolls in its own box (.aixc-box), whose shell sets raw measures
+ * on it (--aixc-box-h, --aixc-viewbar-h, --aixc-pin-y, the safe zones --aixc-safe-left-w/-h and
+ * --aixc-safe-right-w/-h) that the block after @supports maps to the variables below. --vx-top is a
+ * sticky top inside the scrolling area; --vx-fixed-top a viewport top for anything position: fixed.
+ * The faces are the shared sheet's stacks (src/host/vodafone-faces.css), with the clone's as fallback.
  */
 
 .aixc-vx {
@@ -23,15 +30,17 @@
   --vx-radius-btn: 6px;
   --vx-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
   --vx-shadow-lift: 0 12px 32px rgba(0, 0, 0, 0.22);
-  --vx-font: vodafone-regular-en, vf-regular, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  --vx-font-bold: vodafone-bold-en, vf-bold, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  --vx-font-light: vodafone-light-en, vf-light, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --vx-font: var(--pocket-regular, vodafone-regular-en, vf-regular, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif);
+  --vx-font-bold: var(--pocket-bold, vodafone-bold-en, vf-bold, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif);
+  --vx-font-light: var(--pocket-light, vodafone-light-en, vf-light, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif);
   --vx-ease: cubic-bezier(0.6, 0.045, 0.165, 1);
   --vx-max: 1240px;
   --vx-gutter: clamp(16px, 4vw, 48px);
   /* Space under the sticky site header and AIXC view bar (set by the controller). */
   --vx-top: calc(var(--aixc-header-h, 104px) + var(--aixc-viewbar-h, 57px));
   --vx-vh: calc(100vh - var(--vx-top));
+  /* A viewport top for fixed layers: the same line as the sticky top on the clone. */
+  --vx-fixed-top: var(--vx-top);
 
   position: relative;
   overflow-x: clip;
@@ -46,6 +55,14 @@
   .aixc-vx {
     --vx-vh: calc(100svh - var(--vx-top));
   }
+}
+
+/* Vodafone's pages: the view scrolls in its box, under the box's own view bar (its first, sticky row).
+   Sticky tops are in the box's coordinates; fixed layers start at the bar's bottom in the viewport. */
+.aixc-box .aixc-vx {
+  --vx-top: var(--aixc-viewbar-h, 0px);
+  --vx-vh: calc(var(--aixc-box-h, 100svh) - var(--aixc-viewbar-h, 0px));
+  --vx-fixed-top: var(--aixc-pin-y, 0px);
 }
 
 .aixc-vx *,
@@ -114,7 +131,9 @@
   unicode-bidi: isolate;
 }
 
-.aixc-vx .vx-sr-only {
+/* Read out, not shown; .aixc-sr-only too (dom.js visuallyHidden), as Vodafone's pages do not load aixc.css. */
+.aixc-vx .vx-sr-only,
+.aixc-vx .aixc-sr-only {
   position: absolute !important;
   width: 1px;
   height: 1px;
@@ -446,6 +465,11 @@
 
 .aixc-vx .vx-closing a:focus-visible {
   outline-color: var(--vx-white);
+}
+
+/* A store with no badge is a text button (shared.js storeLink): the button's own corners. */
+.aixc-vx .vx-closing__stores .vx-btn {
+  border-radius: var(--vx-radius-btn);
 }
 
 .aixc-vx .vx-closing__store-icon {

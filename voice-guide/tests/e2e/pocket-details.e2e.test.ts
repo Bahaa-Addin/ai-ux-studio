@@ -12,7 +12,9 @@
  *   (experiences/public/assets/images) and a plain 230x170 one answer at their live addresses.
  * - F9: at scroll 0, the first screen a visitor sees, no "Pocket it" lies under the trail's pill, and the
  *   hero card's chip is wholly pressable; the chips pick again when the pill shows, goes or changes size,
- *   and nothing moves on scroll.
+ *   and nothing moves on scroll. Held without Reimagine's launcher (the kit's `demos: { reimagine: false }`),
+ *   and again with it (phase 4a, ADR-0076): it sits under the pill, and where the pill was once the pill goes,
+ *   so no chip lies under either, and the hero card's chip keeps clear of it there.
  * - F8b: on a phone at scroll 0 no "Pocket it" lies under the guide's microphone either; the chips pick again
  *   when the guide arrives or its microphone shows or goes, and nothing moves on scroll.
  * - F8a: with the album's end at the bottom of the screen, its last sticker's link and date are clear of the
@@ -333,10 +335,13 @@ const firstScreen = (page: Page, hero: string) =>
 		}
 	}, hero)
 
-test('F9: at scroll 0 no "Pocket it" lies under the trail\'s pill and the hero card\'s chip is wholly pressable; chips pick again when the pill shows or goes, not on scroll', async () => {
+// Without Reimagine's launcher: once the pill goes, nothing else is in the hero card's top end corner. With it, the
+// launcher takes its place without a pill (under Vodafone's header, at the inline end) and the chip rightly keeps
+// clear of it: the next case.
+test('F9: at scroll 0 no "Pocket it" lies under the trail\'s pill and the hero card\'s chip is wholly pressable; chips pick again when the pill shows or goes, not on scroll (Reimagine off)', async () => {
 	const HERO = 'vodafone-red1'
 	for (const viewport of [DESKTOP, PHONE]) {
-		const l = await launchLayer(gw, { viewport, owl: true, reducedMotion: true })
+		const l = await launchLayer(gw, { viewport, owl: true, reducedMotion: true, demos: { reimagine: false } })
 		try {
 			const seen = watch(l.page)
 			for (const pathname of ['/en/home', '/ar/home']) {
@@ -374,6 +379,97 @@ test('F9: at scroll 0 no "Pocket it" lies under the trail\'s pill and the hero c
 				await settle(l.page, 300)
 				const back = await firstScreen(l.page, HERO)
 				assert.deepEqual(back.chips.filter((c) => meets(c.box, back.pill)).map((c) => c.id), [], `${where}: the pill back, no chip under it`)
+				assert.deepEqual(back.hero?.inCard, a.hero.inCard, `${where}: the hero card's chip where it was with the pill`)
+			}
+			assert.deepEqual(seen.pageErrors, [], 'no page errors')
+			assert.ok(!seen.layer.some((x) => x.startsWith('error:')), `no layer error: ${seen.layer.join(' | ')}`)
+			assert.deepEqual(l.reached, [], 'nothing reached the internet')
+		} finally {
+			await l.close()
+		}
+	}
+})
+
+/** Reimagine's launcher once it shows (on the page, not hidden, not tucked away, not given way), and the chips settled after it. */
+async function launcherShows(page: Page) {
+	await page.waitForFunction(() => {
+		const b = document.querySelector<HTMLElement>('.aixc-launcher')
+		return !!(window as any).__aixc?.demos?.reimagine && !!b && !b.hidden && !b.hasAttribute('data-tucked') && getComputedStyle(b).visibility !== 'hidden' && b.getBoundingClientRect().width > 0
+	}, null, { timeout: 15_000 })
+	await settle(page, 400)
+}
+
+/** The launcher's box while it shows (as launcherShows), or null. */
+const launcherBox = (page: Page) =>
+	page.evaluate(() => {
+		const b = document.querySelector<HTMLElement>('.aixc-launcher')
+		if (!b || b.hidden || b.hasAttribute('data-tucked') || getComputedStyle(b).visibility === 'hidden') return null
+		const r = b.getBoundingClientRect()
+		return r.width > 0 ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null
+	})
+
+/** Directly under `pill` (within the launcher's 12 px gap and a little more), on its side. */
+const underPill = (b: Box, pill: Box) => b.top >= pill.bottom - 0.5 && b.top - pill.bottom <= 16 && b.left < pill.right && pill.left < b.right
+
+test('F9 with Reimagine\'s launcher: at scroll 0 no "Pocket it" lies under the pill or the launcher under it; when the pill goes the launcher takes its place and the hero card\'s chip keeps clear of it, wholly on the screen and pressable; when the pill comes back the launcher is under it and no chip lies under either', async () => {
+	const HERO = 'vodafone-red1'
+	const under = (chips: { id: string; box: Box }[], b: Box) => chips.filter((c) => meets(c.box, b)).map((c) => `${c.id} ${fmt(c.box)}`)
+	for (const viewport of [DESKTOP, PHONE]) {
+		const l = await launchLayer(gw, { viewport, owl: true, reducedMotion: true })
+		try {
+			const seen = watch(l.page)
+			for (const pathname of ['/en/home', '/ar/home']) {
+				const where = `${pathname} ${viewport.width}`
+				const vw = viewport.width
+				const vh = viewport.height
+				const wholly = (b: Box) => b.left >= 0 && b.right <= vw && b.top >= 0 && b.bottom <= vh
+				await ready(l.page, pathname)
+				await pillShows(l.page)
+				await launcherShows(l.page)
+				const a = await firstScreen(l.page, HERO)
+				const la = await launcherBox(l.page)
+				await shot(l.page, `F9-launcher-${pathname.slice(1, 3)}-home-${viewport.width}`)
+				assert.equal(a.scrollY, 0, `${where}: at the top of the page`)
+				assert.ok(la && underPill(la, a.pill), `${where}: the launcher ${fmt(la)} is under the pill ${fmt(a.pill)}`)
+				assert.deepEqual(under(a.chips, a.pill), [], `${where}: no chip under the pill ${fmt(a.pill)}`)
+				assert.deepEqual(under(a.chips, la), [], `${where}: no chip under the launcher ${fmt(la)}`)
+				assert.ok(a.hero, `${where}: the hero card (${HERO}) has its chip`)
+				assert.equal(a.hero.hit, true, `${where}: a press at the middle of the hero card's chip ${fmt(a.hero.box)} reaches it (it reaches ${a.hero.at})`)
+				assert.ok(wholly(a.hero.box), `${where}: the hero card's chip is wholly on the screen ${fmt(a.hero.box)}`)
+
+				// Nothing moves on scroll: down the page (the pill tucks away, the launcher with it) and back.
+				await l.page.evaluate(() => scrollTo(0, 400))
+				await settle(l.page, 400)
+				const down = await firstScreen(l.page, HERO)
+				assert.deepEqual(down.hero?.inCard, a.hero.inCard, `${where}: the hero card's chip keeps its corner on scroll`)
+				await l.page.evaluate(() => scrollTo(0, 0))
+				await settle(l.page, 400)
+
+				// The pill goes (Not now): the launcher takes its place without a pill, under Vodafone's header at the inline
+				// end, where the pill was; no chip lies under it, and the hero card's chip, kept out of that corner, is
+				// wholly on the screen and pressable.
+				const hide = (on: boolean) =>
+					l.page.evaluate((on) => {
+						document.querySelector('vg-guide')!.shadowRoot!.querySelector<HTMLElement>('.tr-pill')!.hidden = on
+					}, on)
+				await hide(true)
+				await settle(l.page, 300)
+				const gone = await firstScreen(l.page, HERO)
+				const lg = await launcherBox(l.page)
+				assert.ok(lg && meets(lg, a.pill), `${where}: without the pill the launcher ${fmt(lg)} is where the pill was ${fmt(a.pill)}`)
+				assert.deepEqual(under(gone.chips, lg), [], `${where}: without the pill no chip under the launcher ${fmt(lg)}`)
+				assert.ok(gone.hero, `${where}: without the pill the hero card has its chip`)
+				assert.equal(gone.hero.hit, true, `${where}: without the pill a press at the middle of the hero card's chip ${fmt(gone.hero.box)} reaches it (it reaches ${gone.hero.at})`)
+				assert.ok(wholly(gone.hero.box), `${where}: without the pill the hero card's chip is wholly on the screen ${fmt(gone.hero.box)}`)
+
+				// The pill comes back: the launcher under it again, and no chip under either.
+				await hide(false)
+				await settle(l.page, 300)
+				const back = await firstScreen(l.page, HERO)
+				const lb = await launcherBox(l.page)
+				assert.ok(lb && underPill(lb, back.pill), `${where}: the pill back, the launcher ${fmt(lb)} is under it ${fmt(back.pill)}`)
+				assert.deepEqual(under(back.chips, back.pill), [], `${where}: the pill back, no chip under it ${fmt(back.pill)}`)
+				assert.deepEqual(under(back.chips, lb), [], `${where}: the pill back, no chip under the launcher ${fmt(lb)}`)
 				assert.deepEqual(back.hero?.inCard, a.hero.inCard, `${where}: the hero card's chip where it was with the pill`)
 			}
 			assert.deepEqual(seen.pageErrors, [], 'no page errors')

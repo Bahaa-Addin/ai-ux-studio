@@ -9,12 +9,18 @@
  * Styling lives in magazine.css, fully scoped under .aixc-magazine. Variants are
  * chosen here as semantic classes (is-lead, is-flipped, shape) rather than CSS
  * nth-child rules, so any composition renders predictably.
+ *
+ * On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box: handlers are added on
+ * mount through shared.js's seam and undone on unmount, and the contents links scroll the box rather than
+ * write a #fragment into Vodafone's address. reveal(itemId) scrolls to an item.
  */
 
 import { h, pathIcon, slug, svgIcon, visuallyHidden } from '../dom.js'
 import { describeImageShape, PROMOTION_KIND } from '../content-index.js'
-// Direction-aware chevrons, the reading direction and the page's UI copy.
-import { ICON_NEXT, ICON_PREV, inlineSign, isRTL, t } from './shared.js'
+// Direction-aware chevrons, the reading direction, the page's UI copy and the scroller seam.
+import {
+  ICON_NEXT, ICON_PREV, guarded, inlineSign, isRTL, observeResize, on, scrollToElement, storeLink, t, viewScroller, words,
+} from './shared.js'
 
 const ICON_EXTERNAL = 'M14 3h7v7h-2V6.4l-9.3 9.3-1.4-1.4L17.6 5H14V3zM5 5h6v2H7v10h10v-4h2v6H5V5z'
 /** List separator for source names: the Arabic comma on the Arabic page. */
@@ -86,7 +92,7 @@ const media = (item, variant = 'default') => {
     loading: variant === 'cover' ? 'eager' : 'lazy',
     decoding: 'async',
   })
-  img.addEventListener('error', showFallback, { once: true })
+  img.addEventListener('error', guarded('image error', showFallback), { once: true })
   figure.append(img)
   return figure
 }
@@ -192,12 +198,30 @@ const compactStory = (item, level = 'h3') =>
     h('div', { class: 'mag-story__text' }, h(level, { class: 'mag-story__title' }, titleContent(item)), description(item), ctaFor(item, { quiet: true })),
   )
 
+/**
+ * A contents link in a view that scrolls in its own box: scroll the box to the section (its top to the pin
+ * line) and move focus there, never following the link (its #fragment would change Vodafone's address).
+ * On the clone (no scroller) the browser follows it as before.
+ */
+const followContents = (event, link) => {
+  if (!viewScroller()) return
+  event.preventDefault()
+  const id = decodeURIComponent(new URL(link.href).hash.slice(1))
+  const target = id ? link.closest('.aixc-magazine')?.querySelector(`#${globalThis.CSS?.escape?.(id) ?? id}`) : null
+  if (!target) return
+  scrollToElement(target)
+  if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1')
+  target.focus({ preventScroll: true })
+}
+
 /* --------------------------------------------------------------- primitives */
 
 const hero = (section, ctx) => {
   const page = ctx.index.model
   const [story, ...more] = items(section, ctx)
   const contents = ctx.schema.sections.filter((other) => other !== section && other.type !== 'closing-promotion')
+  const links = contents.map((other) => h('a', { href: `#${sectionDomId(other)}` }, naming(other, ctx).title ?? words('More services')))
+  ctx.onMount.push(() => links.map((link) => on(link, 'click', (event) => followContents(event, link))))
 
   const el = h(
     'section',
@@ -239,10 +263,7 @@ const hero = (section, ctx) => {
             h(
               'ul',
               null,
-              contents.map((other) => {
-                const label = naming(other, ctx).title ?? t('More services')
-                return h('li', null, h('a', { href: `#${sectionDomId(other)}` }, label))
-              }),
+              links.map((link) => h('li', null, link)),
             ),
           )
         : null,
@@ -338,7 +359,7 @@ const splitSpread = (section, ctx) => {
 
 const shelf = (section, ctx) => {
   const names = naming(section, ctx)
-  const label = names.title ?? t('Services')
+  const label = names.title ?? words('Services')
   const track = h(
     'div',
     { class: 'mag-shelf__track', role: 'region', 'aria-label': t('{label}, scrollable list', { label }), tabindex: '0' },
@@ -356,8 +377,6 @@ const shelf = (section, ctx) => {
   // Forward runs along the reading line: toward the left on the Arabic page.
   const scrollByPage = (direction) =>
     track.scrollBy({ left: direction * inlineSign * track.clientWidth * 0.85, behavior: reducedMotion() ? 'auto' : 'smooth' })
-  prev.addEventListener('click', () => scrollByPage(-1))
-  next.addEventListener('click', () => scrollByPage(1))
   const sync = () => {
     const max = track.scrollWidth - track.clientWidth - 2
     // In RTL scrollLeft is 0 at the start and grows negative going forward.
@@ -365,10 +384,14 @@ const shelf = (section, ctx) => {
     prev.disabled = at <= 2
     next.disabled = at >= max
   }
-  track.addEventListener('scroll', sync, { passive: true })
-  ctx.afterMount.push(() => {
+  ctx.onMount.push(() => {
     sync()
-    if (typeof ResizeObserver === 'function') new ResizeObserver(sync).observe(track)
+    return [
+      on(prev, 'click', () => scrollByPage(-1)),
+      on(next, 'click', () => scrollByPage(1)),
+      on(track, 'scroll', sync, { passive: true }),
+      observeResize(track, sync),
+    ]
   })
 
   const head = sectionHead(section, ctx, names, 'mag-head mag-head--row')
@@ -448,21 +471,7 @@ const closingPromotion = (section, ctx) => {
             'div',
             { class: 'mag-closing__stores' },
             promo.storesLabel ? h('p', { class: 'mag-closing__stores-label' }, promo.storesLabel) : null,
-            h(
-              'ul',
-              null,
-              promo.stores.map((store) =>
-                h(
-                  'li',
-                  null,
-                  h(
-                    'a',
-                    { href: store.href, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${store.label} ${t('(opens in a new tab)')}` },
-                    svgIcon(store.icon, 'mag-closing__store-icon'),
-                  ),
-                ),
-              ),
-            ),
+            h('ul', null, promo.stores.map((store) => h('li', null, storeLink(store, 'mag-closing__store-icon', 'mag-closing__store-text')))),
           )
         : null,
     ),
@@ -499,6 +508,8 @@ export const renderMagazine = (schema, index, { onPrimitiveError } = {}) => {
     index,
     extrasRendered: new Set(),
     afterMount: [],
+    // Each runs on every mount and returns the offs of what it added (shared.js on(), observeResize()).
+    onMount: [],
     nextFlip(kind) {
       const count = flips.get(kind) ?? 0
       flips.set(kind, count + 1)
@@ -518,5 +529,28 @@ export const renderMagazine = (schema, index, { onPrimitiveError } = {}) => {
     }
     if (node) root.append(node)
   }
-  return { element: root, afterMount: ctx.afterMount }
+  let offs = []
+  return {
+    element: root,
+    afterMount: ctx.afterMount,
+    mount() {
+      offs = ctx.onMount.flatMap((start) => start() ?? [])
+    },
+    unmount() {
+      for (const off of offs.splice(0)) off()
+    },
+    /** Scrolls the view to the item (and a shelf sideways to its card) at once; false if the view has none. */
+    reveal(itemId) {
+      const item = [...root.querySelectorAll('[data-aixc-item]')].find((node) => node.dataset.aixcItem === itemId)
+      if (!item) return false
+      const shelf = item.closest('.mag-shelf__track')
+      if (shelf) {
+        const view = shelf.getBoundingClientRect()
+        const card = item.getBoundingClientRect()
+        if (card.left < view.left || card.right > view.right) shelf.scrollLeft += card.left + card.width / 2 - (view.left + view.width / 2)
+      }
+      scrollToElement(item, { instant: true })
+      return true
+    },
+  }
 }

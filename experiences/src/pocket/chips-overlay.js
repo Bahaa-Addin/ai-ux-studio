@@ -13,9 +13,11 @@
  *   (./chips-place.js), picked again only when the card's size or the fonts change. A card cut by Owl's stage (or any clipping ancestor) is cut the same way, hit-testing included.
  * - On the first screen (the page at scroll 0, as a visitor first sees it), a chip is not under the trail's
  *   pill (F9) or the guide's microphone (F8b; its keyboard button and transcript bar too while they show)
- *   either: a card whose corner one of them would cover there takes the next corner. Picked again when the
- *   pill or the mic shows, goes or changes size (a ResizeObserver on each), when the trail says it is up
- *   (vg:trail-ready) and when the guide's host arrives on the page; never on scroll.
+ *   or Reimagine's launcher (phase 4a, ADR-0076) either: a card whose corner one of them would cover there
+ *   takes the next corner. Picked again when the pill, the mic or the launcher shows, goes or changes size (a
+ *   ResizeObserver on each), when the trail says it is up (vg:trail-ready) and when the guide's host or the
+ *   launcher arrives on the page. One that goes while the page is scrolled keeps where it rested at the top; one
+ *   that came or went there is measured again when the page is back at the top. Never on scroll otherwise.
  * - When: only on the website, where the page was read well enough (`gate`), while the page shows.
  * - A slot is as big as the part of its card that shows: a card cut by Owl's stage or a scroller gets
  *   a slot cut the same way, so nothing of ours extends past what shows (and body never scrolls
@@ -42,20 +44,26 @@ const FOLLOW_MS = 1000
  * the actors (its TRAIL, GUIDE_ALWAYS and GUIDE_WHILE_SHOWN): read here, not imported, since that module
  * would come whole into the chunk the Pocket loads at once (1,147 bytes gzipped more, measured 2026-11-17).
  * The trail's pill (F9); the guide's microphone, and its keyboard button and transcript bar while they
- * show (F8b), faded out otherwise.
+ * show (F8b), faded out otherwise; Reimagine's launcher under the pill (phase 4a, ADR-0076), which keeps its
+ * place while one of Vodafone's menus opens over it (it gives way with visibility only), so the chips do not
+ * move into its spot and back.
  */
-const FIXED = '.tr-pill, .vg-mic'
+const FIXED = '.tr-pill, .vg-mic, .aixc-launcher'
 const FADING = '.vg-kbd, .vg-bar'
+const STEADY = '.aixc-launcher'
 
 /** Every match of `selector`, in the guide's shadow root (where they mount) and in the page. */
 const inGuide = (selector) =>
   [...document.querySelectorAll('vg-guide')].flatMap((host) => [...(host.shadowRoot?.querySelectorAll(selector) ?? [])]).concat(...document.querySelectorAll(selector))
 
-/** True while `node` shows (tucked away above the screen or not); one that `fades` also not faded out (opacity 0.05 or less, as for the actors). */
+/**
+ * True while `node` shows (tucked away above the screen or not); one that `fades` also not faded out (opacity 0.05 or
+ * less, as for the actors). A STEADY one counts while it has a box, hidden by visibility or not.
+ */
 const showing = (node, fades) => {
   if (!node.getClientRects().length) return false
   const style = getComputedStyle(node)
-  return style.visibility !== 'hidden' && !(fades && +style.opacity <= 0.05)
+  return (style.visibility !== 'hidden' || node.matches(STEADY)) && !(fades && +style.opacity <= 0.05)
 }
 
 /** True when a button shows its own box (a fill or a border); a plain link shows only its words. */
@@ -108,6 +116,13 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
 
   /** The fixed controls that show, each where it rests at scroll 0, in viewport coordinates there (F9, F8b); and the ones watched. */
   let rests = new Map()
+  /**
+   * Where each rested at scroll 0 when last seen, shown or not: one hidden while the page is scrolled (Reimagine's
+   * launcher while the trail's card shows) keeps it, since further down it sits higher, under a pinned header.
+   */
+  const kept = new Map()
+  /** One came or went while the page was scrolled (its place may have changed meanwhile: "Not now"): measured again at the top. */
+  let recheck = false
   const fixedNodes = new Set()
   const fixedWatch = observe(new ResizeObserver(wrap('pocket chips fixed', () => schedule())))
   /** Reads them (read phase only): the guide and its trail can come after the chips, change size or go. */
@@ -118,12 +133,14 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
         fixedNodes.delete(node)
         fixedWatch.unobserve(node)
       }
+    for (const node of kept.keys()) if (!node.isConnected) kept.delete(node)
     const fixed = inGuide(FIXED)
     for (const node of fixed)
       if (!fixedNodes.has(node)) {
         fixedNodes.add(node)
         fixedWatch.observe(node)
       }
+    const scrolled = window.scrollY > 0
     const now = new Map()
     for (const node of [...fixed, ...inGuide(FADING)]) {
       if (!showing(node, node.matches(FADING))) continue
@@ -131,9 +148,13 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       const r = node.getBoundingClientRect()
       const m = new DOMMatrixReadOnly(getComputedStyle(node).transform)
       // Further down it keeps the top it had at scroll 0: the trail may raise its pill under a header that has left.
-      const top = window.scrollY > 0 && rests.has(node) ? rests.get(node).top : r.top - m.f
-      now.set(node, { left: r.left - m.e, top, right: r.right - m.e, bottom: top + r.height })
+      const top = scrolled && kept.has(node) ? kept.get(node).top : r.top - m.f
+      const rest = { left: r.left - m.e, top, right: r.right - m.e, bottom: top + r.height }
+      now.set(node, rest)
+      kept.set(node, rest)
     }
+    if (!scrolled) recheck = false
+    else if (now.size !== rests.size || [...now.keys()].some((node) => !rests.has(node))) recheck = true
     rests = now
   }
 
@@ -342,10 +363,23 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
   // The trail's own word that it is up (its pill shown): the pass finds the pill and watches its size from then on.
   on(window, 'vg:trail-ready', () => schedule())
   // The guide has no word of its own that it is up: its host arrives on body, before the chips or after them
-  // (its script is not ours to order), and the pass then finds its mic and watches its size.
-  observe(new MutationObserver(wrap('pocket chips guide', (records) => records.some((r) => [...r.addedNodes].some((node) => node.localName === 'vg-guide')) && schedule()))).observe(document.body, { childList: true })
-  // Inner scrollers (Owl's stage outer when focus moves into a hidden slide, horizontal lists).
-  on(document, 'scroll', (event) => event.target !== document && schedule(), { capture: true, passive: true })
+  // (its script is not ours to order), and the pass then finds its mic and watches its size. Reimagine's launcher
+  // (a chunk of its own, at idle like the chips) arrives beside the content, before it: the same, there.
+  const arrives = observe(new MutationObserver(wrap('pocket chips guide', (records) => records.some((r) => [...r.addedNodes].some((node) => node.localName === 'vg-guide' || node.classList?.contains('aixc-launcher'))) && schedule())))
+  arrives.observe(document.body, { childList: true })
+  if (content.parentNode && content.parentNode !== document.body) arrives.observe(content.parentNode, { childList: true })
+  // Inner scrollers (Owl's stage outer when focus moves into a hidden slide, horizontal lists). The page's own scroll
+  // only when it reaches the top while a fixed control's place there is to be measured again (readFixed): a frame
+  // later, once the trail and the launcher have moved there (they move in the frame of the scroll).
+  on(
+    document,
+    'scroll',
+    (event) => {
+      if (event.target !== document) schedule()
+      else if (recheck && window.scrollY <= 0) requestAnimationFrame(wrap('pocket chips top', schedule))
+    },
+    { capture: true, passive: true },
+  )
   const follow = (event) => {
     if (event.target.closest?.('[data-aixc]')) return
     followUntil = performance.now() + FOLLOW_MS
@@ -441,6 +475,8 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       shown: [...slots.values()].filter((s) => !root.hidden && !s.slot.hidden && !('cut' in s.slot.dataset)).map((s) => s.id),
       unplaced: [...unplaced],
       icon: [...slots.values()].filter((s) => s.pick?.icon).map((s) => s.id),
+      /** The fixed controls where the first screen's chips keep clear of them (each where it rests at scroll 0). */
+      fixed: [...rests].map(([node, rest]) => ({ name: node.classList[0], ...rest })),
     }),
     destroy() {
       stopped = true

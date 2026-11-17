@@ -44,8 +44,8 @@ const pageMapFor = (settings) =>
         .catch(() => null)
     : Promise.resolve(null)
 
-/** The demos this core can load, each its own chunk (voice-guide ADR-0052). */
-const DEMOS = { pocket: () => import('./demos/pocket.js') }
+/** The demos this core can load, each its own chunk (voice-guide ADR-0052; Reimagine's launcher, ADR-0076). */
+const DEMOS = { pocket: () => import('./demos/pocket.js'), reimagine: () => import('./demos/reimagine.js') }
 
 /** A demo's stylesheet, once, in <head>; marked, so a stop removes it with the rest of the layer. */
 const ensureCss = (name, text) => {

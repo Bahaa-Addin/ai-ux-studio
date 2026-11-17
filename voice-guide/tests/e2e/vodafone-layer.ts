@@ -96,6 +96,11 @@ export interface LayerOptions {
 	reducedMotion?: boolean
 	/** The experience layer; false keeps it off. Default: the site config (on). */
 	experiences?: boolean
+	/**
+	 * Demos turned off (or on) over the site config's `experiences.demos`, for this browser only: `{ reimagine: false }`
+	 * leaves Reimagine's launcher out, as the site's own kill switch does. Default: the site config (every demo it enables).
+	 */
+	demos?: Partial<SiteConfig['experiences']['demos']>
 	initScripts?: string[]
 	/** Chromium's own network log goes to this file (to show nothing left, even as the browser closed). */
 	netLog?: string
@@ -115,7 +120,7 @@ export async function launchLayer(gw: LayerGateway, o: LayerOptions = {}): Promi
 	const refused: { url: string; type: string }[] = []
 	const reached: string[] = []
 	const b = await launchDemoBrowser({
-		site: gw.site,
+		site: o.demos ? { ...gw.site, experiences: { ...gw.site.experiences, demos: { ...gw.site.experiences.demos, ...o.demos } } } : gw.site,
 		gatewayUrl: gw.url,
 		start: 'about:blank',
 		headless: true,

@@ -1,12 +1,13 @@
 /**
  * Experience registry. Each experience is a plugin:
  *
- *   render(schema, index, options) → { element, mount?(), unmount?(), afterMount?: [] }
+ *   render(schema, index, options) → { element, mount?(), unmount?(), afterMount?: [], reveal?(itemId) }
  *
  * `mount` runs when the experience becomes visible (start timers, scroll
  * listeners); `unmount` runs when it is hidden or replaced. The registry wraps
- * both so they are idempotent. Adding an experience: write the renderer, add it
- * here, and allow its name in schema-validator.js (EXPERIENCES).
+ * both so they are idempotent (experience-wrap.js, which the live registry on
+ * Vodafone's pages uses too: voice-guide ADR-0076). Adding an experience: write
+ * the renderer, add it here, and allow its name in schema-validator.js (EXPERIENCES).
  */
 
 import { renderMagazine } from './experiences/magazine.js'
@@ -22,6 +23,7 @@ import { renderRing } from './experiences/ring.js'
 import { renderTunnel } from './experiences/tunnel.js'
 import { renderCanvas } from './experiences/canvas.js'
 import { renderCoverflow } from './experiences/coverflow.js'
+import { wrapExperience } from './experience-wrap.js'
 
 const experiences = {
   magazine: { label: 'Magazine experience', render: renderMagazine },
@@ -47,29 +49,10 @@ export const warmExperiences = () => {
 }
 
 /**
- * @returns {{ element: HTMLElement, mount: Function, unmount: Function }}
+ * @returns {{ element: HTMLElement, mounted: boolean, mount: Function, unmount: Function, reveal: Function }}
  */
 export const renderExperience = (schema, index, options = {}) => {
   const experience = experiences[schema.experience]
   if (!experience) throw new Error(`AIXC: no renderer for experience "${schema.experience}"`)
-  const output = experience.render(schema, index, options)
-  let mounted = false
-  let afterMountDone = false
-  return {
-    element: output.element,
-    mount() {
-      if (mounted) return
-      mounted = true
-      if (!afterMountDone) {
-        afterMountDone = true
-        output.afterMount?.forEach((callback) => callback())
-      }
-      output.mount?.()
-    },
-    unmount() {
-      if (!mounted) return
-      mounted = false
-      output.unmount?.()
-    },
-  }
+  return wrapExperience(experience.render(schema, index, options))
 }

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seam in a box</title>
+<script>
+  // ?lang=ar: the Arabic page, set before i18n.js and shared.js read it.
+  if (new URLSearchParams(location.search).get('lang') === 'ar') {
+    document.documentElement.lang = 'ar'
+    document.documentElement.dir = 'rtl'
+  }
+</script>
+<link rel="stylesheet" href="/src/host/vodafone-faces.css">
+<link rel="stylesheet" href="/src/aixc/experiences/vodafone.css">
+<link rel="stylesheet" href="/src/aixc/experiences/spotlight.css">
+<link rel="stylesheet" href="/src/aixc/experiences/magazine.css">
+<style>
+  /* Like Vodafone's static themes: sticky never sticks on the page itself. */
+  html, body { overflow-x: hidden; margin: 0; }
+  #header { height: 100px; background: #e60000; color: #fff; }
+  #experience-output {
+    height: var(--aixc-box-h);
+    overflow-y: auto;
+    overflow-x: clip;
+    overscroll-behavior: contain;
+    isolation: isolate;
+  }
+  .aixc-viewbar { position: sticky; top: 0; z-index: 30; box-sizing: border-box; height: 57px; background: #fff; border-bottom: 1px solid #ccc; }
+  #footer { height: 1500px; background: #14141e; }
+</style>
+</head>
+<body>
+<div id="header">Stand-in header, 100 px</div>
+<div id="experience-output" class="aixc-box" data-aixc>
+  <div class="aixc-viewbar">Stand-in view bar, 57 px</div>
+  <div class="aixc-stage"></div>
+</div>
+<div id="footer"></div>
+<script type="module">
+  import * as seam from '/src/aixc/experiences/shared.js'
+  import { wrapExperience } from '/src/aixc/experience-wrap.js'
+  import { buildTemplateSchema } from '/src/aixc/template-schema.js'
+  import { validateSchema } from '/src/aixc/schema-validator.js'
+  import { buildContentIndex } from '/src/aixc/content-index.js'
+  import { normalizeContentModel } from '/src/host/model.js'
+  import { vodafoneServicesPage } from '/src/content/vodafone-services.js'
+  import { vodafoneServicesPageAr } from '/src/content/vodafone-services-ar.js'
+  import { renderSpotlight } from '/src/aixc/experiences/spotlight.js'
+  import { renderMagazine } from '/src/aixc/experiences/magazine.js'
+
+  const box = document.getElementById('experience-output')
+  const stage = box.querySelector('.aixc-stage')
+  const page = document.documentElement.lang === 'ar' ? vodafoneServicesPageAr : vodafoneServicesPage
+  const index = buildContentIndex(normalizeContentModel(page).model)
+  const renderers = { spotlight: renderSpotlight, magazine: renderMagazine }
+  // The safe zones the shell would measure (px): set per test.
+  const measure = (zones) => {
+    box.style.setProperty('--aixc-box-h', `${innerHeight - 100}px`)
+    box.style.setProperty('--aixc-viewbar-h', '57px')
+    box.style.setProperty('--aixc-pin-y', `${box.getBoundingClientRect().top + 57}px`)
+    for (const [name, value] of Object.entries(zones)) box.style.setProperty(`--aixc-safe-${name}`, `${value}px`)
+  }
+  let current = null
+  window.__h = {
+    seam,
+    box,
+    measure,
+    open(name, { copy = 'services' } = {}) {
+      current?.unmount()
+      seam.configure({ scroller: box, copy })
+      const schema = validateSchema(buildTemplateSchema({ experience: name }, index), index).schema
+      current = wrapExperience(renderers[name](schema, index))
+      stage.replaceChildren(current.element)
+      current.mount()
+      return current
+    },
+    get current() {
+      return current
+    },
+    close() {
+      current?.unmount()
+      seam.configure()
+    },
+  }
+  window.__ready = true
+</script>
+</body>
+</html>

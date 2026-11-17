@@ -38,9 +38,10 @@
   --mag-display: 1;
   --mag-body: 1rem;
 
-  --mag-font: vodafone-regular-en, vf-regular, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  --mag-font-bold: vodafone-bold-en, vf-bold, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  --mag-font-light: vodafone-light-en, vf-light, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  /* The shared faces sheet's stacks (src/host/vodafone-faces.css, voice-guide ADR-0076), the clone's as fallback. */
+  --mag-font: var(--pocket-regular, vodafone-regular-en, vf-regular, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif);
+  --mag-font-bold: var(--pocket-bold, vodafone-bold-en, vf-bold, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif);
+  --mag-font-light: var(--pocket-light, vodafone-light-en, vf-light, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif);
 
   overflow-x: clip;
   padding-bottom: 0;
@@ -109,6 +110,19 @@
 
 .aixc-magazine [tabindex='-1']:focus {
   outline: none;
+}
+
+/* Read out, not shown (dom.js visuallyHidden): Vodafone's pages do not load aixc.css (voice-guide ADR-0076). */
+.aixc-magazine .aixc-sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ------------------------------------------------------------------ spreads */
@@ -1065,6 +1079,21 @@
 .aixc-magazine .mag-closing__store-icon {
   width: 60px;
   height: 60px;
+}
+
+/* A store with no badge (Vodafone's pages give none): its name as an outlined link on the red band. */
+.aixc-magazine .mag-closing__stores .mag-closing__store-text {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.6rem 1.15rem;
+  border: 1px solid #fff;
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--mag-font-bold);
+  font-size: 0.9375rem;
+  line-height: 1.2;
+  text-decoration: none;
 }
 
 .aixc-magazine .mag-closing__qr {

@@ -930,11 +930,22 @@ describe('with the trail on', () => {
 		}
 		await pressPeek(page)
 		await waitView(page, 'pocket')
-		// Then the pointer goes to the open album, away from the stickers and the bar, and stays there.
+		// Then the pointer goes to the open album, away from the stickers and the bar, and stays there. Off every
+		// sticker: one the pointer comes to rest on while he is idle turns him to it (cardDwell), and at rest his eye
+		// stays on that card, not the cards' centre; on one, whether it did would hang on his ride in ending after the
+		// pointer's arrival and its 350 ms dwell (1.8 s after it, alone; not always under load). With three stickers the
+		// first pick (55% across) lies on the third: then the nearest point along its row clear of them all.
 		const at = await page.evaluate(() => {
 			const r = document.querySelector('#pocket-output .pocket-view__inner')!.getBoundingClientRect()
-			return { x: r.left + r.width * 0.55, y: Math.min(innerHeight - 120, r.bottom + 420) }
+			const y = Math.min(innerHeight - 120, r.bottom + 420)
+			const x0 = r.left + r.width * 0.55
+			const MARGIN = 24
+			const cards = [...document.querySelectorAll('#pocket-output .pocket-grid__item')].map((n) => n.getBoundingClientRect())
+			const clear = (x: number) => !cards.some((b) => x > b.left - MARGIN && x < b.right + MARGIN && y > b.top - MARGIN && y < b.bottom + MARGIN)
+			for (let d = 0; d <= r.width; d += 8) for (const x of d ? [x0 + d, x0 - d] : [x0]) if (x >= r.left + MARGIN && x <= r.right - MARGIN && clear(x)) return { x, y, clear: true }
+			return { x: x0, y, clear: false }
 		})
+		assert.ok(at.clear, `${where}: a place in the album for the pointer clear of the stickers (${Math.round(at.x)},${Math.round(at.y)})`)
 		await page.mouse.move(at.x, at.y, { steps: 4 })
 		await mascotIn(page, ['idle', 'tucked'], 10_000)
 		await page.waitForFunction(() => {

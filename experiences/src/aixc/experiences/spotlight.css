@@ -496,3 +496,157 @@
     transition: none;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the stage pins inside the view's own box, and the box's bottom
+   corners belong to Vodafone's accessibility button and the guide's microphone, with its transcript bar while
+   it listens (right), and the Pocket's button (left). The shell measures how far each reaches into the box
+   from its bottom edge and side (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits
+   in either. From 720 px the previous / next / pause row runs along the bottom between them; from 1180 px the
+   stage is the room under the bar, and the queue keeps its bottom above both zones. Below 1180 px, and in a
+   window too short for that layout (under 850 px tall), the stage flows top to bottom with the copy over the
+   zones' height and the queue is not shown. On phones the row sits under the slide's title (placeRow()). */
+.aixc-box .aixc-vx--spotlight {
+  --sp-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  /* The row from 720 px: each side kept clear of its own zone (physical sides, as the zones are) plus 16 px,
+     never nearer the edge than the gutter. When the gap between them is narrower than the row's own width
+     (340 px measured: three 48 px buttons, the progress bar's 60, the counter, four gaps), the row is lifted
+     above the taller zone and spans the stage instead of shrinking. --sp-row-fit is the gap less that width,
+     times 1000: at least +1000 px when the row fits, at most -1000 px when it does not, so min() and max()
+     below pick one placement or the other. 100cqw is the track's width, the stage's. */
+  --sp-row-min: 360px;
+  --sp-row-l: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px));
+  --sp-row-r: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px));
+  --sp-row-fit: calc((100cqw - var(--sp-row-l) - var(--sp-row-r) - var(--sp-row-min)) * 1000);
+  --sp-row-bottom: 28px;
+  /* The stage's height follows each service's copy where the stage flows: the box must not move its scroll for
+     it (scroll anchoring would, and the stepper would land between services). */
+  overflow-anchor: none;
+}
+
+@media (min-width: 720px) {
+  .aixc-box .aixc-vx--spotlight .sp-track {
+    container-type: inline-size;
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-controls {
+    position: absolute;
+    left: max(var(--vx-gutter), min(var(--sp-row-l), var(--sp-row-fit)));
+    right: max(var(--vx-gutter), min(var(--sp-row-r), var(--sp-row-fit)));
+    bottom: max(var(--sp-row-bottom), min(calc(var(--sp-safe-h) + 16px), calc(-1 * var(--sp-row-fit))));
+    justify-content: center;
+    width: auto;
+    max-width: calc(3 * var(--sp-card-w) + 2 * var(--sp-card-gap) + var(--sp-card-w) * 0.5);
+    margin: 0 auto;
+  }
+
+  /* Its buttons keep their round 48 px; the counter stays on one line. */
+  .aixc-box .aixc-vx--spotlight .sp-controls > .vx-round {
+    flex: none;
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-counter {
+    white-space: nowrap;
+  }
+}
+
+/* Where the stage flows in the box, the queue is not shown (the controls row, the category jumps and scrolling
+   still reach every service): it takes no room, no focus and is not read. */
+@media (max-width: 1179px), (height < 850px) {
+  .aixc-box .aixc-vx--spotlight .sp-queue {
+    display: none;
+  }
+}
+
+/* The flowing stage from 720 px: the room kept under the copy is the zones' height, no more (never less than
+   the row's own 96 px), or, with the row lifted above the taller zone, up to the row's top plus 16 px. That
+   room already parts the copy from the row and the zones, so the copy keeps no margin of its own under it. */
+@media (min-width: 720px) and (max-width: 1179px), (min-width: 1180px) and (height < 850px) {
+  .aixc-box .aixc-vx--spotlight .sp-stage {
+    padding-bottom: max(96px, var(--sp-safe-h), min(calc(var(--sp-safe-h) + 80px), calc(-1 * var(--sp-row-fit))));
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-details {
+    margin-bottom: 0;
+  }
+}
+
+/* From 1180 px, a window tall enough: the desktop layout, the stage the room under the bar, never more (the
+   clone's 620 px floor would push its bottom and controls out of a shorter box). On the Services copy it fits
+   (every card's details clear of the row and both zones, the queue clear of both) from 833 px tall at worst
+   (Arabic, 1600 px wide and up; 766..819 px elsewhere: measured 2026-11-17 with a 100 px header); the switch at
+   850 px leaves room for other pages' copy. */
+@media (min-width: 1180px) and (height >= 850px) {
+  .aixc-box .aixc-vx--spotlight {
+    --sp-row-bottom: 40px;
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-stage {
+    height: var(--vx-vh);
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-queue {
+    bottom: max(128px, calc(var(--sp-safe-h) + 16px));
+  }
+}
+
+/* From 1180 px, a window too short for the desktop layout (a laptop's): the 720..1179 px box layout, the stage
+   the room's height: its title sized to the room and its spacing tighter, so the Services copy fits over the
+   zones' reserve from a 700 px window (measured 2026-11-17); longer copy grows the stage, which then pins with
+   its bottom at the box's. */
+@media (min-width: 1180px) and (height < 850px) {
+  .aixc-box .aixc-vx--spotlight .sp-stage {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: var(--vx-vh);
+    padding-top: 16px;
+    padding-inline: var(--vx-gutter);
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-jumps,
+  .aixc-box .aixc-vx--spotlight .sp-details {
+    position: relative;
+    inset: auto;
+    width: auto;
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-details {
+    margin: clamp(16px, 4vh, 40px) 0 0;
+    max-width: 640px;
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-slide__title {
+    font-size: clamp(2.25rem, min(4.4vw, var(--vx-vh) * 0.07), 4.25rem);
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-backdrop::after {
+    background:
+      linear-gradient(180deg, rgba(20, 20, 30, 0.9) 0%, rgba(20, 20, 30, 0.74) 55%, rgba(20, 20, 30, 0.92) 100%);
+  }
+}
+
+/* Phones: the controls row right under the shown slide's title, in room the title keeps for it (48 px and
+   16 px under it); the room under the copy is only what keeps it clear of both zones: their height, no more
+   (the copy's own margin under it 8 px, so the stage is no taller than with the row after the copy). */
+@media (max-width: 719px) {
+  .aixc-box .aixc-vx--spotlight .sp-stage {
+    padding-bottom: max(28px, var(--sp-safe-h));
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-details {
+    margin-bottom: 8px;
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-slide__title {
+    margin-bottom: 64px;
+  }
+
+  .aixc-box .aixc-vx--spotlight .sp-controls {
+    position: absolute;
+    top: calc(var(--sp-row-top, 0px) + 16px);
+    inset-inline: var(--vx-gutter);
+    margin: 0;
+  }
+}
