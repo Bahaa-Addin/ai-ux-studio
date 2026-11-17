@@ -47,6 +47,12 @@ On 2026-11-17 the floating-control and motion checks were run again on the real 
 - The turning sheet is cut at the bottom of Vodafone's header on every frame, and its copy hides what is fixed on the live page: the header no longer shows twice, nor goes missing.
 - The portal keeps a classic scrollbar's gutter, so nothing moves sideways. Its falling wall hides whatever the page keeps off screen (the skip link, the mobile menu).
 - At scroll 0, chips on first-screen cards avoid the trail's pill and the guide's mic.
+- The peel starts at the card's top-end corner (top-left in Arabic), and a long card such as the Vodafone Cash band peels across its height and shrinks to a sticker's size.
+- The album's drone shows at 1366 again. The drone and the mascot make room when one of our fixed controls comes or goes mid-album, and they load at once after the portal's Back.
+- The journey's memory of a page shows the page even when the trail started recording while the album covered it.
+- The "Pocket it" chips load as a chunk of their own, so the Pocket's chunk is 30,118 bytes gzipped, under the owner's 32,000.
+
+On the same day both live checks passed on the real site with these fixes in (floating: 32 cells, 0 violations; motion: whole-viewport screenshots, the carousels painted the moment the page returns). The fixes are on `feature/live-way2` in 45ee9da, 9e5a369 and 920a0be. A rest mode for the actors (finding F11) was built but is held for the owner's look review (`output/live-verify-2026-11-17/`).
 
 ADR numbers 0068 to 0074 belong to the revamp branch (`feature/vg-revamp`, not yet merged here), so this branch's next ADR is 0075 (the revamp session, 2026-11-17).
 
