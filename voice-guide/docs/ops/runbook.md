@@ -114,7 +114,7 @@ Not in this build: the shop (`eshop.vodafone.com.eg`) was not crawled, so moment
 
 ## 3d. The Pocket's live smoke (live plan phase 3, S17; the owner runs it)
 
-The one check of the Pocket on the real site. It is yours to run, after O29 is updated (the live site answered the demo browser) and never in a loop. The flow was rehearsed on the saved pages first (`tests/e2e/pocket-smoke-rehearsal.e2e.test.ts`, 6 tests), so what it finds is about the real site, not the flow.
+The one check of the Pocket on the real site. It is yours to run, never in a loop. O29 is resolved: this Mac reaches web.vodafone.com.eg only through a browser (`curl`, `nc` and Node's `fetch` time out on port 443; DNS 82.129.223.108), so every live check does its requests inside Google Chrome; the Pocket smoke passed in English and Arabic on 2026-11-15. The flow was rehearsed on the saved pages first (`tests/e2e/pocket-smoke-rehearsal.e2e.test.ts`, 6 tests), so what it finds is about the real site, not the flow.
 
 ```
 VG_LIVE=1 VG_LIVE_BROWSER=chrome node --test --test-timeout=600000 tests/live/pocket.live.test.ts
@@ -128,6 +128,28 @@ It opens `/en/services`, and `/ar/services` if the first passes, in your install
 - **It measures the portal's requests** (the open question of ADR-0065): "the destination was requested N times from the network (fetch: a, navigation: b, from cache: c)", with the response's `Cache-Control`, `Vary` and the NAMES of any `Set-Cookie` cookies (never values). One request means the navigation was served from the cache; two means it was not, and the live default should become the picture preview (ADR-0065, "Revisit when"). This is a measurement, not a pass/fail.
 - **It passes** when no `[AIXC]` error was logged, no page error came from the layer, Vodafone's accessibility button and the cookie banner have the same boxes, styles and `style` attributes as before, every element of the layer carries `data-aixc`, and the layer is still `ready`. It then removes only what it added (its stickers; the trail's consent only if it gave it); it never touches Vodafone's cookies or storage.
 - Send the printed report back (the request count and the cache headers are the facts the plan is waiting for).
+
+## 3e. The floating and motion live checks (ADR-0075; run after any change to the Pocket, its turn, the portal or the actors)
+
+Two checks of what the Pocket and the layer do on Vodafone's real pages, with the numbers and the pictures to look at. Both passed on 2026-11-15 and on 2026-11-17 (before the fixes of ADR-0075), and the review of the pictures still found defects: a pass means the rules held, not that nothing looks wrong. **Always look at the screenshots.** Run them from `voice-guide/`, with the sandbox off, in your installed Google Chrome, with the demo profile (the cookie banner already answered by you). Each loads at most a few pages, 1.2 s apart, stops at a bot check or challenge page and never answers the banner.
+
+```
+VG_LIVE=1 VG_LIVE_OUT=<a directory outside the repository> VG_LIVE_PROFILE=$PWD/data/demo-profile node --test --test-force-exit --test-timeout=1200000 tests/live/floating.live.test.ts
+VG_LIVE=1 VG_LIVE_BROWSER=chrome VG_LIVE_OUT=<a directory outside the repository> VG_LIVE_PROFILE=$PWD/data/demo-profile node --test --test-force-exit --test-timeout=900000 tests/live/motion.live.test.ts
+```
+
+- **`VG_LIVE_OUT`** is where the run writes its screenshots and reports (`floating-live.json`, the motion report and JPEGs). It must be **outside the repository**: a path inside it is refused. Without it the run writes to a temporary folder. The folder is yours; nothing of it is committed.
+- **Where to keep the evidence:** copy a run you want to keep to `output/live-verify-<date>/` at the repository root (for example `floating-before/`, `motion-before/` and a `confirmation.md` that says which finding each picture shows). It is git-ignored (`.git/info/exclude`). 2026-11-17's is `output/live-verify-2026-11-17/`. A scratch folder can be cleared at any time, as 2026-11-15's was, so copy it the same day.
+- **Floating** (32 cells: English and Arabic, 1366x900 and 375x812, states from load to the open journey, with the banner absent and present): rules on boxes, covers and the accessibility button's style. New since ADR-0075: rule **(f)**, a drone that is hidden at 640 px or wider in the album is a violation (before, the drone was never measured and its rules never ran); rule **(a)**, the curl's *painted polygons* are measured (before, the rule could never fire); rule **(h)**, our words drawn in a system font (Helvetica, Geeza Pro, a generic sans) are a violation, read through Chrome DevTools. 2026-11-17, before the fixes: passed, 32 cells, 20 page loads (20 planned), 38 presses (0 in the banner pass), 0 violations.
+- **Baselines are Vodafone alone.** The `?aixc=off` baseline pages refuse `/__vg/` requests by route, so the guide's mic and the trail's pill are not in them; the number of page loads does not change.
+- **Motion** (rounds of chips, ride, dash back, portal and Back): the screenshots are **whole-viewport** (Playwright's viewport screenshot at device scale), not the 500x795 CSS px corner the first version wrote (every JPEG was 1000x1590 px at a pixel ratio of 2). The report fields to read:
+  - the **flight to the landing**: filmed to 2,250 ms (560 + 520 + 820 + 300 ms) with the real times, so the end of the flight is in the film;
+  - **`cardsHiddenMs`** (and the unpainted count): after the album closes, how long Vodafone's carousel cards are not painted, over a film of 3 s. A long time here is the F3 fault (carousel cards invisible while our chips float over empty grey). It is reported only: the check has no threshold, so read the number and the film;
+  - **`mascotMs`** and **`backOnScreenMs`**: after the portal's Back, how long until the mascot is on screen and until the album's Back is on screen, over a film of 3 s (NEW-2: the mascot was absent for over 3 s);
+  - frames over 33 ms with the album open, and layout counts and script time at rest (F11: +301 layouts in 5 s against 0 for the page alone).
+  2026-11-17, before the fixes: passed, 12 page loads (cap 16), 17 page requests (12 documents, 4 portal fetches, 1 self-reload of `/en/vodafone-cash`, which Vodafone's page does once per browser session), 24 presses, 228 screenshots.
+- **Page errors that are not ours:** Vodafone's scripts throw `TenantFeatures` errors; `/vodafone-cash` reloads itself once per session. Neither fails a check.
+- **Offline rehearsals** run the same flows on the saved pages first: `tests/e2e/motion-live-rehearsal.e2e.test.ts` (7 tests), `floating-live-rehearsal.e2e.test.ts` and `floating-controls-live.e2e.test.ts` (4 tests). A rule that fails in a rehearsal is a fault in the layer or the rule, not in the site.
 
 ## 3a. The guide's voice: VoiceTut (ADR-0047; the owner's demos only)
 
