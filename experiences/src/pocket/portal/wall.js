@@ -139,21 +139,74 @@ const copyOf = (node, make) => {
 }
 
 /**
- * A frozen copy of one element for the wall: its look right now, no ids, no lazy images, no live
- * media and no custom elements (each an inert stub), the copied element itself included.
+ * What the page keeps off screen (F5, 2026-11-17): a skip link above the top, an off-canvas menu beside
+ * the screen, a label clipped to a pixel. The elements under `root` (itself included) positioned
+ * absolute or fixed, or transformed, whose box lies wholly outside the `width` × `height` viewport with
+ * nothing of theirs on it, or is clipped to a pixel or less. Copied, they would show on the tipping wall:
+ * a fixed copy is placed from the wall (a transformed box) instead of the screen, outside the face's
+ * clip, and a rule that kept one away may name an id the copy has lost. Bounded: only those elements are
+ * measured (a branch once, by its outermost; none under display: none), and every box is read before
+ * anything is written.
  */
-const freeze = (node, make) => {
+export const offScreen = (root, width, height) => {
+  const away = []
+  // A box on screen; `e` -1 lets one with no area touch an edge (it stands for what it holds).
+  const on = (r, e = 0) => r.right > e && r.bottom > e && r.left < width - e && r.top < height - e
+  let skip = null
+  for (const node of [root, ...root.querySelectorAll('*')]) {
+    if (skip?.contains(node)) continue
+    const style = getComputedStyle(node)
+    if (style.display === 'none') skip = node
+    else if (/^(absolute|fixed)$/.test(style.position) || style.transform !== 'none' || (style.translate || 'none') !== 'none') {
+      const r = node.getBoundingClientRect()
+      const clipped = style.overflow !== 'visible' || style.clip !== 'auto' || style.clipPath !== 'none'
+      // Wholly outside or clipped to a pixel, with nothing in it on screen (inside its clip only a fixed
+      // part can be: it escapes the clip).
+      if (
+        ((r.width <= 1 && r.height <= 1 && clipped) || !on(r, r.width * r.height > 0 ? 0 : -1)) &&
+        ![...node.querySelectorAll('*')].some((child) => {
+          const c = child.getBoundingClientRect()
+          return c.width * c.height > 0 && on(c) && (!clipped || getComputedStyle(child).position === 'fixed')
+        })
+      )
+        away.push((skip = node))
+    }
+  }
+  return away
+}
+
+/**
+ * Hides the copies of `away` (elements under `live`) in `copy`, a frozen copy of `live`, where they stand,
+ * so the copy's layout is unchanged; opacity too, so a part that sets its own visibility stays hidden.
+ * (In a stub only `live` itself has a copy.)
+ */
+export const hideIn = (live, copy, away) => {
+  for (const node of away) {
+    const twin = follow(copy, pathFrom(live, node))
+    if (twin) twin.style.cssText += ';visibility:hidden!important;opacity:0!important'
+  }
+}
+
+/**
+ * A frozen copy of one element for the wall: its look right now, no ids, no lazy images, no live
+ * media and no custom elements (each an inert stub), the copied element itself included; what the page
+ * keeps off screen is hidden in it (`view`: the viewport's size).
+ */
+const freeze = (node, make, view) => {
+  const away = offScreen(node, view.W, view.H)
   if (node.matches(MEDIA) || isDefinedCustom(node)) {
     const stub = stubOf(node, make)
     stub.setAttribute('aria-hidden', 'true')
     stub.inert = true
+    hideIn(node, stub, away)
     return stub
   }
   const copy = copyOf(node, make)
-  freezeState(node, copy, window.innerWidth * window.innerHeight)
+  freezeState(node, copy, view.W * view.H)
   stripIds(copy)
   for (const img of copy.querySelectorAll('img[loading="lazy"]')) img.loading = 'eager'
   for (const media of copy.querySelectorAll(MEDIA)) media.replaceWith(make('div', { class: 'vf-portal__media-stub' }))
+  hideIn(node, copy, away)
   copy.setAttribute('aria-hidden', 'true')
   copy.inert = true
   return copy
@@ -180,17 +233,6 @@ const isShown = (node) => {
   return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0
 }
 
-/** Classic (non-overlay) scrollbars take width; the wall carries a copy so it matches the screen. */
-const scrollbarStrip = ({ width, height, scrollY, scrollHeight, make }) => {
-  const thumbHeight = Math.max(30, (height * height) / Math.max(height, scrollHeight))
-  const thumbTop = ((height - thumbHeight) * scrollY) / Math.max(1, scrollHeight - height)
-  return make(
-    'div',
-    { class: 'vf-portal__scrollbar', style: { width: `${width}px` } },
-    make('div', { class: 'vf-portal__scrollbar-thumb', style: { top: `${thumbTop}px`, height: `${thumbHeight}px` } }),
-  )
-}
-
 /**
  * Builds the slab from the page as it is now. Call in the click handler: the copy is taken
  * before the next paint, so the first frame of the overlay is identical to the page.
@@ -201,11 +243,12 @@ export const createWall = ({ camera, config, make, exclude = [] }) => {
   const d = config.wall.thickness
   const scrollY = window.scrollY
   const scrollX = window.scrollX
-  const pageWidth = document.documentElement.clientWidth
   const background = getComputedStyle(document.body).backgroundColor
   const pageBackground = /rgba\(.*,\s*0\)$|transparent/.test(background) ? getComputedStyle(document.documentElement).backgroundColor || '#fff' : background
 
-  const flow = make('div', { class: 'vf-portal__flow', style: { width: `${pageWidth}px`, height: `${H}px`, background: pageBackground } })
+  // As wide as the page: a classic scrollbar's gutter is kept beside the overlay (portal.css, F4), so the
+  // wall stands for the page alone and carries no copy of the scrollbar.
+  const flow = make('div', { class: 'vf-portal__flow', style: { width: `${W}px`, height: `${H}px`, background: pageBackground } })
   const floating = []
   for (const child of document.body.children) {
     if (exclude.includes(child) || child.matches('script, style, link, template, noscript') || child.matches(KEEP_LIVE)) continue
@@ -213,17 +256,15 @@ export const createWall = ({ camera, config, make, exclude = [] }) => {
     if (!isShown(child)) continue
     // (Each copy is marked as the portal's own, as everything it adds: config.mark.)
     if (isFloating(child)) {
-      if (!floatsAbove(child)) floating.push(mark(freeze(child, make)))
-    } else flow.append(mark(freeze(child, make)))
+      if (!floatsAbove(child)) floating.push(mark(freeze(child, make, camera)))
+    } else flow.append(mark(freeze(child, make, camera)))
   }
 
   const shade = make('div', { class: 'vf-portal__shade' })
   const seep = make('div', { class: 'vf-portal__seep' })
   const haze = make('div', { class: 'vf-portal__haze' })
   const wash = make('div', { class: 'vf-portal__wash' })
-  const face = make('div', { class: 'vf-portal__face', style: { background: pageBackground } }, flow, ...floating)
-  if (W > pageWidth) face.append(scrollbarStrip({ width: W - pageWidth, height: H, scrollY, scrollHeight: document.documentElement.scrollHeight, make }))
-  face.append(shade, seep, haze, wash)
+  const face = make('div', { class: 'vf-portal__face', style: { background: pageBackground } }, flow, ...floating, shade, seep, haze, wash)
 
   const underside = make('div', { class: 'vf-portal__underside', style: { height: `${d}px` } })
   const spill = make('div', { class: 'vf-portal__spill', style: { transform: `translateZ(${-d - 2}px)` } })

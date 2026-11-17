@@ -468,9 +468,11 @@ export class TrailView {
 		const offOrUnset = m.consent !== 'granted' && m.consent !== 'paused'
 		// ---- pill ----
 		e.pill.hidden = m.pillHidden
-		e.label.textContent = offOrUnset ? tt('offer', L) : tt('journey', L)
+		const name = offOrUnset ? tt('offer', L) : tt('journey', L)
+		e.label.textContent = name
 		e.pill.setAttribute('aria-expanded', String(m.view === 'expanded' || m.consentCard))
-		e.pill.setAttribute('aria-label', `${offOrUnset ? tt('offer', L) : tt('journey', L)}. ${stateLine(m.rec, L)}`)
+		const state = stateLine(m.rec, L)
+		e.pill.setAttribute('aria-label', state === name ? name : `${name}. ${state}`)
 		const ticks = m.steps.slice(-6)
 		e.ticks.innerHTML = ticks.map((s) => `<i class="${s.type === 'boundary' ? 'boundary' : s.id === m.currentStepId ? 'on' : ''}"></i>`).join('')
 		e.ticks.hidden = offOrUnset || !ticks.length

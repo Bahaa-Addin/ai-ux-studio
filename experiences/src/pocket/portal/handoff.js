@@ -145,6 +145,17 @@ const presentable = (doc) => {
   return text > 60 || pictures > 1
 }
 
+/**
+ * The drawn page with no scrollbar of its own. The frame is as wide as the overlay, the page's width less a
+ * classic scrollbar's gutter, which the page keeps (portal.css): the destination's scrollbar comes there,
+ * so the frame shows the page at the width it will have. With its own, the page would be drawn narrower,
+ * and in a right-to-left page shifted, since a frame puts its scrollbar on the left there (Chromium) while
+ * the window keeps it on the right (F4).
+ */
+const fitFrame = (doc) => {
+  doc.documentElement.style.cssText += ';overflow:hidden!important;scrollbar-gutter:auto!important'
+}
+
 const firstScreenImages = (doc, height) =>
   [...doc.images].filter((img) => {
     const rect = img.getBoundingClientRect()
@@ -214,6 +225,7 @@ export const createDestination = ({ url, link, camera, config, make, timeout, wr
     if (blocked) return usePreview('blocked')
     if (status >= 400) return usePreview(`http-${status}`)
     if (!presentable(doc)) return usePreview('not-presentable')
+    fitFrame(doc)
     // Fonts and first-screen pictures, so the page does not change while it approaches.
     await withTimeout(Promise.all([doc.fonts?.ready, ...firstScreenImages(doc, camera.H).map((img) => img.decode().catch(() => {}))]), 1200, wrap)
     return { kind: 'frame', reason: 'loaded' }
@@ -222,8 +234,10 @@ export const createDestination = ({ url, link, camera, config, make, timeout, wr
     setTimeout(wrap(() => {
       // Too slow: show what has arrived if it is presentable, else the preview.
       const { blocked, doc, status } = inspect()
-      if (!blocked && status < 400 && doc && doc.readyState !== 'loading' && presentable(doc)) resolve({ kind: 'frame', reason: 'partial' })
-      else resolve(usePreview('timeout'))
+      if (!blocked && status < 400 && doc && doc.readyState !== 'loading' && presentable(doc)) {
+        fitFrame(doc)
+        resolve({ kind: 'frame', reason: 'partial' })
+      } else resolve(usePreview('timeout'))
     }), timeout),
   )
   return {
@@ -323,6 +337,7 @@ const fetchedDestination = ({ url, link, camera, make, timeout, wrap, facts, nod
       doc = null
     }
     if (!doc || !presentable(doc)) return usePreview(doc ? 'not-presentable' : 'blocked')
+    fitFrame(doc)
     await withTimeout(Promise.all([doc.fonts?.ready, ...firstScreenImages(doc, camera.H).map((img) => img.decode().catch(() => {}))]), 1200, wrap)
     return { kind: 'frame', reason: 'fetched' }
   }
@@ -340,8 +355,10 @@ const fetchedDestination = ({ url, link, camera, make, timeout, wrap, facts, nod
         }
         // Too slow: what has been drawn, if it is presentable, else the preview (the fetch goes on
         // for the cache, unless the transition is given up).
-        if (doc && doc.URL === 'about:srcdoc' && doc.readyState !== 'loading' && presentable(doc)) resolve({ kind: 'frame', reason: 'partial' })
-        else resolve(usePreview('timeout'))
+        if (doc && doc.URL === 'about:srcdoc' && doc.readyState !== 'loading' && presentable(doc)) {
+          fitFrame(doc)
+          resolve({ kind: 'frame', reason: 'partial' })
+        } else resolve(usePreview('timeout'))
       }),
       timeout,
     )

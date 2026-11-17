@@ -191,13 +191,16 @@ const lightToward = (base, at, source, strength = 0.7) => {
  * @param {(node: Element) => Element} [options.mark]  called on every node the actors add
  * @param {() => Array<{left:number,top:number,right:number,bottom:number}>} [options.obstacles]  fixed
  *   controls to keep 16 px from (viewport px; ./obstacles.js fixedObstacles); null: none
+ * @param {(onChange: () => void) => () => void} [options.watch]  calls onChange when one of those controls
+ *   comes, goes or changes size, until the function it returns is called (./obstacles.js
+ *   watchFixedObstacles); the actors watch while the album shows. null: none
  * @param {(error: unknown) => void} [options.report]
  * @param {(step: string) => void} [options.checkpoint]  test seam: reached as 'actors-frame' in the mascot's frame
  * @returns the lifecycle API, or null when another instance is alive (the rigs' SVG ids are fixed: one at a time)
  */
 let instance = null
 
-export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotion, corner = 'right', side = 'right', floor: floorMode = 'sticky', wrap = (fn) => fn, mark = (node) => node, obstacles = null, report = null, checkpoint = null }) => {
+export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotion, corner = 'right', side = 'right', floor: floorMode = 'sticky', wrap = (fn) => fn, mark = (node) => node, obstacles = null, watch = null, report = null, checkpoint = null }) => {
   if (instance) {
     console.warn('Pocket actors: one instance at a time; this one is not created (null)')
     return null
@@ -1137,16 +1140,14 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     measureMascotInset(clamp(toCards.yaw, -timing.bodyMaxTurn, timing.bodyMaxTurn), clamp(-0.12 * toCards.pitch, -6, 3))
     let home = homeFor()
     // Fixed controls (Vodafone's accessibility button, the guide's): it keeps 16 px from each, moving
-    // in toward the content only as far as that takes; with no room it tucks away.
-    layout.blocked = false
-    const boxes = fixedBoxes()
-    if (boxes.length) {
-      const floorLine = Math.min(window.innerHeight, line.top)
-      const drawn = { left: line.left + home + layout.width * insets.mascotLeft, right: line.left + home + layout.width * (1 - insets.mascot), top: floorLine - layout.height - layout.lift, bottom: floorLine }
-      const inset = insetForObstacles(drawn, boxes, OBSTACLE_PAD, { min: line.left + 8, max: line.right - 8, toward: inward })
-      home = clamp(home + inset.dx, 0, Math.max(0, line.width - layout.width))
-      layout.blocked = !inset.clear
-    }
+    // in toward the content only as far as that takes; with no room it tucks away. His place (drawn,
+    // viewport px) and whether a control met it are kept for refit().
+    const floorLine = Math.min(window.innerHeight, line.top)
+    const drawn = (layout.drawn = { left: line.left + home + layout.width * insets.mascotLeft, right: line.left + home + layout.width * (1 - insets.mascot), top: floorLine - layout.height - layout.lift, bottom: floorLine })
+    const inset = insetForObstacles(drawn, fixedBoxes(), OBSTACLE_PAD, { min: line.left + 8, max: line.right - 8, toward: inward })
+    home = clamp(home + inset.dx, 0, Math.max(0, line.width - layout.width))
+    layout.blocked = !inset.clear
+    layout.met = inset.dx !== 0 || layout.blocked
     // Cards where it stands: it stands a little lower, or tucks away (it keeps to the margin).
     const spot = measureSpot(line, home)
     layout.homeLeft = Math.round(home)
@@ -1312,7 +1313,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   /* ======================================================== the drone */
   const rest = restDronePose()
   const flight = createFlight(rest.yaw)
-  const fly = { frame: null, last: 0, spin: 0, path: null, home: null, onScreen: true, mode: null, toward: null, follow: null, hop: null, slack: null, regions: [], obstacles: [], heartStart: 0, trailLength: 0, queue: [], sticks: null, spot: null, grounded: false, takeOffAt: 0, openParked: false, layerBox: null }
+  const fly = { frame: null, last: 0, spin: 0, path: null, home: null, onScreen: true, mode: null, toward: null, follow: null, hop: null, slack: null, regions: [], obstacles: [], heartStart: 0, trailLength: 0, queue: [], sticks: null, spot: null, grounded: false, takeOffAt: 0, openParked: false, layerBox: null, move: null }
   const droneWander = Array.from({ length: 4 }, (_, i) => createWander(random, { hz: [0.11, 0.08, 0.06, 0.05][i] }))
 
   const droneLive = () => droneView && !drone.hidden && !document.hidden && fly.onScreen && !reducedMotion()
@@ -1361,8 +1362,14 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       case 'entering':
       case 'closing':
         return { target: { x: 0, y: 0, z: 0 }, heading: rest.yaw }
-      default:
-        return { target: hover, heading }
+      default: {
+        // Its home moved (refit()): the target eases there from where it was, so a long way is flown
+        // without overshooting it (the bare spring overshoots 1,220 px by about 260).
+        const m = fly.move
+        const k = m ? 1 - easeInOutSine(clamp((now - m.start) / m.duration, 0, 1)) : 0
+        if (!k) fly.move = null
+        return { target: k ? { x: hover.x + k * m.x, y: hover.y + k * m.y, z: hover.z } : hover, heading }
+      }
     }
   }
 
@@ -1548,6 +1555,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
   /** Back on its home at rest (and drawn once, for a still or reduced-motion drone). */
   const land = () => {
     fly.queue = []
+    fly.move = null
     Object.assign(flight, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0 })
     resetSpring(flight.roll, 0)
     resetSpring(flight.pitch, 0)
@@ -1682,28 +1690,33 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       return rect(r.left - box.left, r.top - box.top, r.width, r.height)
     }
     const q = (selector) => pocketRoot.querySelector(selector)
-    const back = local(q('.pocket-view__bar .pocket-back'))
+    const all = (selector) => [...pocketRoot.querySelectorAll(selector)].map(local).filter(Boolean)
     const clear = local(q('.pocket-clear'))
     const bar = local(q('.pocket-view__bar'))
     const inner = local(q('.pocket-view__inner'))
     const view = local(q('.pocket-view'))
     if (!bar || !inner || !view) return null
-    const cards = [...pocketRoot.querySelectorAll('.pocket-grid__item')].map(local).filter(Boolean)
+    const cards = all('.pocket-grid__item')
     const rowTop = Math.min(...cards.map((r) => r.top), local(q('.pocket-empty'))?.top ?? Infinity)
     // "Empty pocket" is destructive: the drone keeps at least 24 px from it (16 here + the 8 px margin).
     const clearZone = clear ? rect(clear.left - 16, clear.top - 16, clear.width + 32, clear.height + 32) : null
-    const heads = [...pocketRoot.querySelectorAll('.pocket-group__head')].map(local).filter(Boolean)
-    const obstacles = [back, clearZone, local(q('.pocket-view__mark')), local(q('#pocket-title')), local(q('.pocket-view__lead')), local(q('.pocket-empty')), ...heads, ...cards.filter((r) => r.top < rowTop + 8)].filter(Boolean)
-    // Fixed controls (options.obstacles), in the layer's terms as it lies now: its drift and its
-    // flights stop short of them; they never move its home.
+    const heads = all('.pocket-group__head')
+    // The trail's pages under the bar ("Your journey", ./journey.js): the band starts below them.
+    const pages = local(q('.pocket-journey'))
+    const head = local(q('.pocket-view__head'))
+    const obstacles = [...all('.pocket-view__bar button'), clearZone, pages, local(q('.pocket-view__mark')), local(q('#pocket-title')), local(q('.pocket-view__lead')), local(q('.pocket-empty')), ...heads, ...cards.filter((r) => r.top < rowTop + 8)].filter(Boolean)
+    // Fixed controls (options.obstacles), in the layer's terms as it lies now: its home, drift and flights avoid them.
     const fixed = fixedBoxes().map((o) => rect(o.left - box.left, o.top - box.top, o.right - o.left, o.bottom - o.top))
     const viewportWidth = document.documentElement.clientWidth
     const bounds = rect(8 - box.left, view.top + 4, viewportWidth - 16, Math.max(0, (Number.isFinite(rowTop) ? rowTop : view.bottom) - view.top))
     const w = drone.offsetWidth
     const h = drone.offsetHeight
     measureDroneInset()
-    const bandTop = bar.bottom + 4
-    const bandBottom = Number.isFinite(rowTop) ? rowTop - 6 : bar.bottom + 120
+    const above = Math.max(bar.bottom, pages?.bottom ?? -Infinity)
+    const bandTop = above + 4
+    // It ends above the cards and the first group head (F6, 2026-11-17).
+    const floorOfBand = Math.min(rowTop, ...heads.map((r) => r.top).filter((top) => top > above))
+    const bandBottom = Number.isFinite(floorOfBand) ? floorOfBand - 6 : bar.bottom + 120
     const rightGutter = viewportWidth - box.left - inner.right
     const leftGutter = inner.left + box.left
     const mascotWidth = mascot.offsetWidth || 80
@@ -1711,9 +1724,10 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const band = { top: bandTop, bottom: bandBottom }
     // Its visible edge on the content's margin on their side (as "Empty pocket" above it): the right
     // one, or the left one for a right-to-left album.
-    const upper = leftSide
-      ? { name: 'upper-left', rect: rect(inner.left - w * insets.droneLeft, bandMiddle, w, h), band }
-      : { name: 'upper-right', rect: rect(inner.right - w * (1 - insets.drone), bandMiddle, w, h), band }
+    const onMargin = leftSide ? inner.left - w * insets.droneLeft : inner.right - w * (1 - insets.drone)
+    const upper = { name: leftSide ? 'upper-left' : 'upper-right', rect: rect(onMargin, bandMiddle, w, h), band }
+    // Or on that margin level with the title block, whose row's inline end is free.
+    const beside = head ? { name: leftSide ? 'title-left' : 'title-right', rect: rect(onMargin, (head.top + head.bottom) / 2 - h / 2, w, h), band } : null
     // In the gutter on their side it hovers level with the band above the cards (below the bar), so
     // its flights pass under "Empty pocket" rather than through it.
     const endGutter = leftSide
@@ -1723,9 +1737,9 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     const farGutter = leftSide
       ? rightGutter >= w + 24 ? { name: 'right-gutter', rect: rect(inner.right + (rightGutter - w) / 2, bar.top, w, h), band: { top: bar.top, bottom: bandBottom } } : null
       : leftGutter >= w + 24 ? { name: 'left-gutter', rect: rect(inner.left - leftGutter + (leftGutter - w) / 2, bar.top, w, h), band: { top: bar.top, bottom: bandBottom } } : null
-    // The margin first; the gutters only when the band above the cards has no room.
-    const candidates = [upper, endGutter, farGutter]
-    const choice = chooseAnchor({ candidates, obstacles, bounds, margin: 8 })
+    // The margin first (under the bar, then by the title); the gutters only when neither has room.
+    const candidates = [upper, beside, endGutter, farGutter]
+    const choice = chooseAnchor({ candidates, obstacles: [...obstacles, ...fixed], bounds, margin: 8 })
     if (!choice) return null
     // How far it may drift each way without nearing anything.
     const free = (dx, dy) => {
@@ -1764,9 +1778,10 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     return { ...choice, heart, slack, regions, obstacles: [...obstacles, ...fixed], layerBox: { left: box.left, top: box.top } }
   }
 
-  const placeDrone = () => {
+  /** Puts the drone at its home: `next`, an anchor measureDrone() gave in this frame, or measured now. */
+  const placeDrone = (next) => {
     drone.hidden = false // measurable (still under the turning page, or about to move in this frame)
-    anchor = measureDrone()
+    anchor = next === undefined ? measureDrone() : next
     drone.dataset.droneAnchor = anchor?.name ?? 'none'
     if (!anchor) {
       drone.hidden = true
@@ -1792,6 +1807,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     fly.slack = anchor.slack
     fly.regions = anchor.regions
     fly.obstacles = anchor.obstacles
+    // Its home kept (refit()): a heart in flight keeps its path.
+    if (droneBrain.state === 'drawing-heart') return
     if (anchor.heart) {
       fly.path = anchor.heart.flight
       const inked = fly.path.points.slice(fly.path.heart.from, fly.path.heart.to + 1)
@@ -1893,17 +1910,64 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
       if (!['riding', 'leaving'].includes(mascotBrain.state)) measureFloor()
       else boundFloor()
       watchSpot()
-      // On the floor (or on its way down): find the spot again, or fly it up if there is none.
-      if (DRONE_GROUNDED.has(droneBrain.state) && droneBrain.state !== 'taking-off') {
-        const spot = parkingSpot(fly.openParked ? [openSide] : inwardFirst)
-        if (spot) {
-          fly.spot = spot.flight
-          if (droneBrain.state === 'landed') {
-            Object.assign(flight, { x: spot.flight.x, y: spot.flight.y })
-            applyFlight()
-          }
-        } else takeOffSoon(0)
+      respot()
+    })
+  }
+
+  /** On the floor (or on its way down): find the spot again, or fly it up if there is none. */
+  const respot = () => {
+    if (!DRONE_GROUNDED.has(droneBrain.state) || droneBrain.state === 'taking-off') return
+    const spot = parkingSpot(fly.openParked ? [openSide] : inwardFirst)
+    if (!spot) return takeOffSoon(0)
+    fly.spot = spot.flight
+    if (droneBrain.state === 'landed') {
+      Object.assign(flight, { x: spot.flight.x, y: spot.flight.y })
+      applyFlight()
+    }
+  }
+
+  /**
+   * A fixed control came, went or changed size while the album shows (options.watch; F6b, 2026-11-17:
+   * the trail's consent card opening over the drone). The drone measures its home again: moved, it flies
+   * there from where it is (put there under reduced motion); with no free place it hides, and comes
+   * back when one is free. The mascot measures again when the control meets his place, or met it.
+   */
+  let refitFrame = null
+  const refit = () => {
+    if (!visit || refitFrame !== null) return
+    refitFrame = visit.frame(() => {
+      refitFrame = null
+      if (droneBrain.state === 'closing') return
+      const was = drone.hidden ? null : anchor?.rect
+      drone.hidden = false // measurable
+      const next = measureDrone()
+      const at = (r) => (r ? `${r.left} ${r.top}` : '')
+      const moved = at(was) !== at(next?.rect)
+      if (moved) droneBrain.relayout()
+      placeDrone(next)
+      // No place was free as the album opened: it starts now, as openStart would have started it.
+      if (next && droneBrain.state === 'hidden') {
+        droneBrain.open()
+        droneBrain.revealed()
       }
+      if (moved && next) {
+        if (!was || reducedMotion()) land()
+        else {
+          // Its home moved under it: from where it was on screen it flies there (droneTarget), 1.1 ms a px.
+          const x = (flight.x += was.left - next.rect.left)
+          const y = (flight.y += was.top - next.rect.top)
+          fly.queue = []
+          fly.move = { x, y, start: performance.now(), duration: clamp(Math.hypot(x, y) * 1.1, 450, 1600) }
+          applyFlight()
+        }
+        startDrone()
+      }
+      respot()
+      if (['riding', 'leaving'].includes(mascotBrain.state)) return
+      const reach = insetForObstacles(layout.drawn, fixedBoxes(), OBSTACLE_PAD)
+      if (!layout.met && !reach.dx && reach.clear) return
+      measureFloor()
+      watchSpot()
     })
   }
 
@@ -2030,6 +2094,8 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     )
     v.on(window, 'resize', relayout)
     v.observe(new ResizeObserver(wrap(relayout))).observe(pocketRoot)
+    // The fixed controls (options.watch): one that comes, goes or changes size makes them measure again.
+    if (watch) v.defer(watch(wrap(refit)))
     // The drone flies only while it is on screen.
     v.observe(
       new IntersectionObserver(

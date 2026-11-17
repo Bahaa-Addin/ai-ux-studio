@@ -23,6 +23,10 @@
  *   `site.trail.demoKit`). `seed` replaces the current journey with a sample one (`SeedJourney`) only with
  *   consent granted, right after a press on the page and on a page the trail records; `reset` removes every
  *   journey and both copies of the consent ("Reset demo"). Both resolve to `{ ok }` or `{ ok: false, reason }`.
+ * - 2, part 4 (F12, 2026-11-17): `setCover(cover)`, for a host whose own views hide the page under them (the
+ *   experience layer's Pocket album, a reimagined view). The trail records the covered node as it shows, never
+ *   as the host hides it, so the memory of a page is the page the visitor saw. Optional: a host that hides
+ *   nothing never calls it, and a host written for an earlier part works unchanged.
  * - 1 (ADR-0040): the first contract, for a page that declares itself with the meta.
  */
 import type { TrailKey } from './i18n.ts'
@@ -50,6 +54,19 @@ export interface SeedJourney {
  */
 export type SeedReason = 'not-a-demo' | 'no-consent' | 'no-press' | 'not-here' | 'busy' | 'invalid' | 'version' | 'too-big' | 'too-long' | 'failed'
 export type SeedResult = { ok: true } | { ok: false; reason: SeedReason }
+
+/**
+ * What a host's own views cover (version 2, part 4; F12): `node` is the element it hides while they show (Vodafone's
+ * #main-content under the Pocket's album), `covered()` says whether it hides it now, and `shown()` gives the
+ * attributes it changes to hide it with their values while it shows (null for one it removes; null when it has
+ * not seen the node shown yet). While covered, a full snapshot gets those values and the host's changes to them
+ * are not recorded. Both are called while recording, on the events that concern the node, and must not throw.
+ */
+export interface TrailHostCover {
+	node: Element
+	covered(): boolean
+	shown(): Record<string, string | null> | null
+}
 
 export interface TrailHostSnapshot {
 	consent: Consent
@@ -90,6 +107,8 @@ export interface TrailHostApi {
 	claim(): (() => void) | null
 	/** Where the sandboxed preview renders: an element of the host's own design. */
 	setPreviewRoot(el: HTMLElement | null): void
+	/** Version 2, part 4: what the host's own views cover, so the trail records it as shown (`TrailHostCover`); null forgets it. */
+	setCover(cover: TrailHostCover | null): void
 	open(): void
 	close(): void
 	select(stepId: string): void

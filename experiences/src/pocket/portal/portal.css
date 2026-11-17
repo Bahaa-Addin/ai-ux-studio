@@ -3,21 +3,32 @@
  *
  * Palette: white and soft neutral whites for the hall (#fff, #f7f7f8 … #c7c7cd), Vodafone red
  * #e60000 with dark red #990000 for the portal, ink #14141e only in shadows at low alpha.
- * Type in the preview: the page's own Vodafone faces. Every selector is .vf-portal- prefixed;
+ * Type in the preview: the page's own Vodafone faces, by ../pocket.css's stacks (--pocket-regular,
+ * --pocket-bold), which are always on the page with the portal (the live portal's chunk is loaded by the
+ * Pocket's, after its stylesheet; the clone links both). Every selector is .vf-portal- prefixed;
  * nothing here applies outside the transition except two layering rules while it runs.
  * Only transform and opacity change per frame.
  */
 
-/* While a transition runs: the page's scrollbar goes (the wall carries a copy of it), and the
-   things that exist on every page (Vodafone's accessibility button, the Voice Guide) stay
-   above the transition. ./controller.js (holdLive) starts them where the page has them (the
-   open Pocket lifts them) and brings them down to their usual place as the destination comes,
-   inline; the usual place below is the fallback. Those two rules are the clone's only (its
-   button is a stand-in of ours): scoped to its page (.page-shell) as ../pocket.css is, with
-   :where so their weight is unchanged; on Vodafone's live pages nothing of Vodafone's or the
-   guide's is restyled (ADR-0064). */
+/* While a transition runs: the page does not scroll, and the things that exist on every page
+   (Vodafone's accessibility button, the Voice Guide) stay above the transition.
+   Where a classic scrollbar takes width (./controller.js then sets data-vf-portal-gutter), its
+   gutter is kept, so the page's width and everything fixed on it (Vodafone's button, the guide's
+   mic) stay where they are: the scrollbar goes and its column shows the page's own background
+   until the destination's scrollbar comes (F4, 2026-11-17). Only where there is one: a browser
+   that hides its scrollbars (headless Chromium) would reserve a gutter the page never had.
+   ./controller.js (holdLive) starts the button and the guide where the page has them (the open
+   Pocket lifts them) and brings them down to their usual place as the destination comes, inline;
+   the usual place below is the fallback. Those two rules are the clone's only (its button is a
+   stand-in of ours): scoped to its page (.page-shell) as ../pocket.css is, with :where so their
+   weight is unchanged; on Vodafone's live pages nothing of Vodafone's or the guide's is restyled
+   (ADR-0064). */
 html[data-vf-portal='active'] {
   overflow: hidden !important;
+}
+
+html[data-vf-portal='active'][data-vf-portal-gutter] {
+  scrollbar-gutter: stable !important;
 }
 
 html[data-vf-portal='active'] :where(body:has(.page-shell)) #vodafone-aw-icon {
@@ -143,24 +154,6 @@ html[data-vf-portal='active'] :where(body:has(.page-shell)) vg-guide {
 
 .vf-portal__media-stub {
   background: #f4f4f4;
-}
-
-.vf-portal__scrollbar {
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 100%;
-  box-sizing: border-box;
-  background: #f1f1f1;
-  border-left: 1px solid #e6e6e6;
-}
-
-.vf-portal__scrollbar-thumb {
-  position: absolute;
-  left: 2px;
-  right: 2px;
-  border-radius: 6px;
-  background: #c1c1c1;
 }
 
 /* Backlit as it lets go: a little darker toward its foot. */
@@ -382,7 +375,7 @@ html[data-vf-portal='active'] :where(body:has(.page-shell)) vg-guide {
   padding: 48px 24px;
   background: #fff;
   color: #333;
-  font-family: vodafone-regular-en, vf-regular, sans-serif;
+  font-family: var(--pocket-regular);
 }
 
 .vf-portal__preview-inner {
@@ -417,7 +410,7 @@ html[data-vf-portal='active'] :where(body:has(.page-shell)) vg-guide {
 .vf-portal__preview-from {
   margin: 0 0 10px;
   color: #e60000;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: 0.95rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -426,7 +419,7 @@ html[data-vf-portal='active'] :where(body:has(.page-shell)) vg-guide {
 .vf-portal__preview-title {
   margin: 0 0 14px;
   color: #333;
-  font-family: vodafone-bold-en, vf-bold, sans-serif;
+  font-family: var(--pocket-bold);
   font-size: clamp(1.8rem, 1.2rem + 2vw, 2.442rem);
   line-height: 1.15;
 }

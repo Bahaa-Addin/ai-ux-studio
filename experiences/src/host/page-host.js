@@ -3,7 +3,11 @@
  * ADR-0048 §6), in place of the clone's shell (src/shell.js).
  *
  * - main and sourceRoot are Vodafone's #main-content. The layer only tags what it reads there, or
- *   hides it as a whole while a reimagined view shows, and restores it exactly.
+ *   hides it as a whole while a reimagined view or the Pocket's album shows, and restores it exactly.
+ *   Hidden, it stays laid out at its width (no height, unseen, inert), so Vodafone's scripts never find
+ *   it hidden: Owl's AutoRefresh fades out a carousel it finds hidden until its next poll (W2-A). Unseen
+ *   by opacity, which is not inherited: an inherited visibility would set off Vodafone's own transitions
+ *   (its .owl-item has `transition: all`), and its cards would be hidden for the frame they come back.
  * - outputRoot (#experience-output) and viewbar (#aixc-viewbar) are the layer's, inserted beside
  *   #main-content and hidden until a demo needs them. They keep the clone's ids, so the modules'
  *   CSS (ADR-0044 keys on #experience-output) works unchanged.
@@ -54,9 +58,13 @@ export const createPageHost = (doc = document, { path = doc.defaultView?.locatio
   main.before(viewbar)
   main.after(outputRoot)
 
-  // #main-content as Vodafone served it, so hiding it can be undone exactly.
-  const served = { hidden: main.hidden }
-  let sourceHidden = false
+  // #main-content's attributes as Vodafone served them, kept while the layer hides it, so they come back exactly.
+  const KEPT = ['style', 'inert', 'hidden']
+  let served = null
+  const showSource = () => {
+    served?.forEach((value, i) => (value === null ? main.removeAttribute(KEPT[i]) : main.setAttribute(KEPT[i], value)))
+    served = null
+  }
   const regions = [outputRoot]
 
   return {
@@ -80,17 +88,18 @@ export const createPageHost = (doc = document, { path = doc.defaultView?.locatio
         }
         return Math.max(0, Math.round(bottom))
       },
+      /** Hides #main-content: `hidden` and inert, but laid out at its width (its display kept), at no height and transparent. */
       hideSource() {
-        sourceHidden = true
-        main.hidden = true
+        if (served) return
+        served = KEPT.map((name) => main.getAttribute(name))
+        // Written as the attribute, not through main.style: Chrome would write an emptied inline style back as style="".
+        main.setAttribute('style', `${served[0] ?? ''};display:${view.getComputedStyle(main).display}!important;height:0!important;overflow:hidden!important;opacity:0!important`)
+        main.inert = main.hidden = true
       },
-      showSource() {
-        sourceHidden = false
-        main.hidden = served.hidden
-      },
+      showSource,
       /** True while the layer hides #main-content. */
       get sourceHidden() {
-        return sourceHidden
+        return !!served
       },
       /** Puts a demo's own region after the layer's, marked like them (it keeps its own hidden state). */
       addRegion(node) {
@@ -101,8 +110,7 @@ export const createPageHost = (doc = document, { path = doc.defaultView?.locatio
         return node
       },
       destroy() {
-        if (sourceHidden) main.hidden = served.hidden
-        sourceHidden = false
+        showSource()
         viewbar.remove()
         for (const node of regions.splice(0)) node.remove()
       },

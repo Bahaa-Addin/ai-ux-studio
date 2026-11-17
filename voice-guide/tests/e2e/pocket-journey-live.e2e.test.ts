@@ -12,6 +12,13 @@
  *   the claim back and leaves the page as with ?aixc=off), the pill opens the guide's own sheet.
  * - A question chip in the journey sends the trail's hint; no replay data leaves the browser; every
  *   journey node is marked data-vg and data-aixc.
+ * - The trail allowed while the album shows (the live floating walk's S4): the memory of this page replays
+ *   the page as the visitor saw it, its content and cards, never the layer's hidden #main-content, and no
+ *   grey square where Vodafone's blocked accessibility button sat (F12); the memory is a still preview, with
+ *   no replayer cursor in it (NEW-8). In English and in Arabic. Recorded before the album opened, the memory
+ *   played to its end still shows the page: the layer's hiding is never recorded (F12).
+ *
+ * JOURNEY_SHOTS=<dir> saves the memory of those two cases (for a report).
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -26,9 +33,10 @@ import { loadPlatformConfig, loadSiteConfig, ROOT } from '#shared/config.ts'
 
 import { createGateway } from '../../services/gateway/server.ts'
 import { createServices } from '../../services/index.ts'
-import { buildOnce, type Layer, type LayerGateway, launchLayer, open, V, watch } from './vodafone-layer.ts'
+import { buildOnce, DESKTOP, type Layer, type LayerGateway, launchLayer, open, PHONE, V, watch } from './vodafone-layer.ts'
 
 const PORT = 4489
+const SHOTS = process.env.JOURNEY_SHOTS || ''
 let gw: LayerGateway
 
 /**
@@ -378,6 +386,117 @@ test("Arabic: the journey's question chip sends the trail's hint; no replay data
 		for (const r of l.requests) assert.ok(!/"childNodes"|IncrementalSnapshot|rr_width/.test(`${r.url} ${r.body}`), `replay data in ${r.url}`)
 		assert.ok(!l.requests.some((r) => r.url.includes('/v1/experience/contributions')), 'no aggregate is sent')
 		assert.deepEqual(l.reached, [], 'nothing reached the internet')
+	} finally {
+		await l.close()
+	}
+})
+
+/**
+ * What the memory frame shows: the replay's own document (rrweb's sandboxed iframe, same origin), its #main-content
+ * and the cards on its first screen that would be seen (no ancestor transparent, collapsed or hidden), Vodafone's
+ * accessibility button where it is drawn (blocked from recordings, it keeps only its class and size, so it would show
+ * as the browser's own grey button at the corner of its fixed holder), and the replayer's cursor.
+ */
+const memoryFrame = (page: Page) =>
+	page.evaluate(() => {
+		const frame = document.querySelector('.pocket-journey-memory__frame')!
+		const iframe = frame.querySelector('iframe')
+		const doc = iframe?.contentDocument
+		const win = doc?.defaultView
+		const mouse = frame.querySelector<HTMLElement>('.replayer-mouse')
+		const mouseStyle = mouse && getComputedStyle(mouse)
+		const mouseBox = mouse?.getBoundingClientRect()
+		const cursor = !!mouse && mouseStyle!.display !== 'none' && mouseStyle!.visibility !== 'hidden' && Number(mouseStyle!.opacity) > 0 && mouseBox!.width > 0 && mouseBox!.height > 0
+		if (!doc || !win) return { replay: false, cursor, main: null, cards: 0, button: [] as string[] }
+		const seen = (el: Element) => {
+			for (let n: Element | null = el; n && n !== doc.documentElement; n = n.parentElement) {
+				const s = win.getComputedStyle(n)
+				if (s.display === 'none' || s.visibility === 'hidden' || Number(s.opacity) === 0 || n.hasAttribute('hidden')) return false
+			}
+			return true
+		}
+		const onScreen = (r: DOMRect) => r.bottom > 0 && r.top < win.innerHeight && r.right > 0 && r.left < win.innerWidth
+		const main = doc.getElementById('main-content')
+		const box = main?.getBoundingClientRect()
+		const cards = main ? [...main.querySelectorAll('*')].filter((el) => {
+			const r = el.getBoundingClientRect()
+			return r.width >= 120 && r.height >= 80 && onScreen(r) && (el.textContent ?? '').trim().length > 0 && seen(el)
+		}).length : 0
+		const button = [...doc.querySelectorAll('.vf-aw-fab')]
+			.map((el) => ({ el, r: el.getBoundingClientRect() }))
+			.filter(({ el, r }) => r.width > 0 && r.height > 0 && onScreen(r) && seen(el))
+			.map(({ el, r }) => `${el.tagName.toLowerCase()} at ${Math.round(r.left)},${Math.round(r.top)}, ${Math.round(r.width)}x${Math.round(r.height)}`)
+		return {
+			replay: true,
+			cursor,
+			main: main ? { hidden: main.hidden, inert: main.hasAttribute('inert'), opacity: win.getComputedStyle(main).opacity, height: Math.round(box!.height), seen: seen(main) } : null,
+			cards,
+			button,
+		}
+	})
+
+for (const c of [
+	{ path: '/en/services', viewport: DESKTOP, name: 'English, 1366' },
+	{ path: '/ar/services', viewport: PHONE, name: 'Arabic, 375' },
+]) {
+	test(`${c.name}: the trail allowed while the album shows, the memory of this page replays its content, never the layer's hidden page, with no grey square and no cursor (F12, NEW-8)`, async () => {
+		const l = await launchLayer(gw, { reducedMotion: true, viewport: c.viewport })
+		try {
+			const seen = watch(l.page)
+			await open(l.page, c.path, '?aixc-debug')
+			await l.page.waitForFunction(() => (window as any).__vgTrailActive?.state?.rec === 'awaiting-consent', null, { timeout: 20_000 })
+			await hosting(l.page)
+			// The album first, as the floating walk opens it (S3); the trail is allowed from its pill there (S4).
+			await l.page.evaluate(() => (window as any).__aixc.demos.pocket.open())
+			await l.page.waitForFunction(() => (window as any).__aixc.demos.pocket.state.view === 'pocket' && !(window as any).__aixc.demos.pocket.state.busy, null, { timeout: 10_000 })
+			assert.equal(await l.page.evaluate(() => document.getElementById('main-content')!.hidden), true, 'the album hides #main-content')
+			await l.page.locator('.tr-pill').click()
+			await l.page.locator('.tr-card:not([hidden]) .tr-allow').click()
+			await l.page.waitForFunction(() => (window as any).__vgTrailActive.state.rec === 'recording', null, { timeout: 10_000 })
+			await l.page.waitForTimeout(800)
+			assert.equal(await l.page.evaluate(() => (window as any).__aixc.demos.pocket.state.view), 'pocket', 'the album still shows')
+			await l.page.locator('.tr-pill').click()
+			await journeyOpen(l.page)
+			await l.page.waitForFunction(() => ['ready', 'playing'].includes((window as any).__vgTrailActive.state.preview), null, { timeout: 15_000 })
+			await l.page.waitForTimeout(600)
+			const s = await here(l.page)
+			assert.equal(s.selected, s.lastPage, 'the memory is of the page you are on')
+			const m = await memoryFrame(l.page)
+			if (SHOTS) await l.page.locator('.pocket-journey-memory').screenshot({ path: path.join(SHOTS, `memory-${c.path.split('/')[1]}-${c.viewport.width}.png`) })
+			assert.equal(m.replay, true, 'the memory replays')
+			assert.ok(m.main && !m.main.hidden && !m.main.inert && m.main.seen && m.main.height > 300, `the memory's #main-content is the page as shown, not hidden by the layer: ${JSON.stringify(m.main)}`)
+			assert.ok(m.cards >= 2, `the memory's first screen shows the page's cards (${m.cards})`)
+			assert.deepEqual(m.button, [], "Vodafone's accessibility button, blocked from recordings, draws nothing in the memory (no grey square)")
+			assert.equal(m.cursor, false, 'no replayer cursor in the memory frame (a still preview)')
+			assert.deepEqual(seen.pageErrors, [], 'no page errors')
+			assert.ok(!seen.layer.some((x) => x.startsWith('error:')), `no layer error: ${seen.layer.join(' | ')}`)
+			assert.deepEqual(l.reached, [], 'nothing reached the internet')
+		} finally {
+			await l.close()
+		}
+	})
+}
+
+test("recorded before the album opened, the memory of this page shows it to its end, where the album hid it: the layer's hiding is never recorded (F12)", async () => {
+	const l = await launch()
+	try {
+		await visit(l.page, '/en/home')
+		await visit(l.page, '/en/vodafone-cash')
+		await hosting(l.page)
+		await l.page.locator('.tr-pill').click()
+		await journeyOpen(l.page)
+		await l.page.waitForFunction(() => ['ready', 'playing'].includes((window as any).__vgTrailActive.state.preview), null, { timeout: 15_000 })
+		const s = await here(l.page)
+		assert.equal(s.selected, s.lastPage, 'the memory is of the page you are on')
+		// Its end is the moment the page turned to the album, which hid #main-content: played from near there to the end.
+		await l.page.evaluate((id) => (window as any).voiceGuide.trailHost.scrub(id, 0.9, 'keyboard'), s.selected)
+		await l.page.evaluate(() => (window as any).voiceGuide.trailHost.togglePlay())
+		await l.page.waitForFunction(() => (window as any).__vgTrailActive.state.preview === 'playing', null, { timeout: 5_000 })
+		await l.page.waitForFunction(() => (window as any).__vgTrailActive.state.preview !== 'playing', null, { timeout: 20_000 })
+		await l.page.waitForTimeout(300)
+		const m = await memoryFrame(l.page)
+		assert.ok(m.main && !m.main.hidden && !m.main.inert && m.main.seen && m.main.height > 300, `at its end the memory's #main-content is as shown: ${JSON.stringify(m.main)}`)
+		assert.ok(m.cards >= 2, `and its cards show (${m.cards})`)
 	} finally {
 		await l.close()
 	}

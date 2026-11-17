@@ -18,7 +18,12 @@
  *   the carousel's own attributes give (Owl 2: the stage's width over `items`, less the margin, so 255 px
  *   at four in 1140 px, as the capture of 2026-11-05 measures), the first ones `.active`, and Owl's
  *   copies (`.owl-item.cloned`) before and after on looping carousels (RED live: 6). Not its motion;
- * - Vodafone's navigation pinned once the page scrolls (`.nav-header.nav-fixed`, z-index 20), on request.
+ * - Vodafone's navigation pinned once the page scrolls (`.nav-header.nav-fixed`, z-index 20), on request:
+ *   always pinned (`fixedHeader: true`), or pinned only while the page is scrolled and back in the flow at
+ *   the top, as Vodafone's own script toggles it (`fixedHeader: 'scroll'`);
+ * - Owl Carousel 2's AutoRefresh, on request (`owlAutoRefresh`, with `owl`): every 500 ms a carousel that is
+ *   not visible by jQuery's rule gets `.owl-hidden` (opacity 0), which goes only on a poll that finds it
+ *   visible again.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -83,8 +88,10 @@ export interface LayerOptions {
 	themeClear?: boolean
 	/** Owl Carousel's layout of the carousels. Default false. */
 	owl?: boolean
-	/** Vodafone's navigation pinned at the top, as after a scroll. Default false. */
-	fixedHeader?: boolean
+	/** Vodafone's navigation pinned at the top, as after a scroll (true), or only while the page is scrolled ('scroll'). Default false. */
+	fixedHeader?: boolean | 'scroll'
+	/** Owl Carousel 2's AutoRefresh (needs `owl`): a carousel that is not visible fades out until a poll sees it again. Default false. */
+	owlAutoRefresh?: boolean
 	viewport?: { width: number; height: number }
 	reducedMotion?: boolean
 	/** The experience layer; false keeps it off. Default: the site config (on). */
@@ -121,7 +128,7 @@ export async function launchLayer(gw: LayerGateway, o: LayerOptions = {}): Promi
 		experiences: o.experiences,
 		netLog: o.netLog,
 		viewport: o.viewport || DESKTOP,
-		initScripts: [SPEECH_STUB, ...(o.widget === false ? [] : [WIDGET_STAND_IN]), ...(o.banner ? [BANNER_STAND_IN] : []), ...(o.themeClear ? [THEME_CLEAR_STAND_IN] : []), ...(o.owl ? [OWL_STAND_IN] : []), ...(o.fixedHeader ? [FIXED_HEADER_STAND_IN] : []), ...(o.initScripts || [])],
+		initScripts: [SPEECH_STUB, ...(o.widget === false ? [] : [WIDGET_STAND_IN]), ...(o.banner ? [BANNER_STAND_IN] : []), ...(o.themeClear ? [THEME_CLEAR_STAND_IN] : []), ...(o.owl ? [OWL_STAND_IN] : []), ...(o.owlAutoRefresh ? [OWL_AUTO_REFRESH_STAND_IN] : []), ...(o.fixedHeader === 'scroll' ? [FIXED_HEADER_SCROLL_STAND_IN] : o.fixedHeader ? [FIXED_HEADER_STAND_IN] : []), ...(o.initScripts || [])],
 	})
 	if (o.reducedMotion) await b.page.emulateMedia({ reducedMotion: 'reduce' })
 	// A response a route fulfilled has no server address; one from the network has. The gateway's own
@@ -339,4 +346,50 @@ export const FIXED_HEADER_STAND_IN = `(() => {
 		nav.classList.add('nav-fixed')
 	}
 	${WHEN_READY('pin')}
+})()`
+
+/* ------------------------------------------------ the page turn's stand-ins (W2-A, 2026-11-17) */
+
+/**
+ * Vodafone's navigation as its own script pins it: in the flow at the top of the page, and
+ * `.nav-header.nav-fixed` (fixed at the top, z-index 20, the theme's rule) from the first scroll event
+ * that finds the page scrolled, until one finds it at the top again.
+ */
+export const FIXED_HEADER_SCROLL_STAND_IN = `(() => {
+	${ONLY_CMS}
+	const start = () => {
+		const nav = document.querySelector('.nav-header')
+		if (!nav) return
+		const css = document.createElement('style')
+		css.setAttribute('data-stand-in', 'nav-fixed-scroll')
+		css.textContent = '.nav-header.nav-fixed{position:fixed;top:0;left:0;right:0;z-index:20;background:#fff}'
+		document.head.appendChild(css)
+		const pin = () => {
+			if (nav.classList.contains('nav-fixed') !== scrollY > 0) nav.classList.toggle('nav-fixed')
+		}
+		addEventListener('scroll', pin, { passive: true })
+		pin()
+	}
+	${WHEN_READY('start')}
+})()`
+
+/**
+ * Owl Carousel 2's AutoRefresh plugin, on the carousels the Owl stand-in laid out (Vodafone's own, never a
+ * copy of them): every 500 ms, a carousel that is not visible by jQuery's rule (offsetWidth, offsetHeight or
+ * a client rect) gets `.owl-hidden` (Owl's CSS: opacity 0), and loses it only on a poll that finds it visible
+ * again. Only a change is written.
+ */
+export const OWL_AUTO_REFRESH_STAND_IN = `(() => {
+	${ONLY_CMS}
+	const start = () => {
+		const css = document.createElement('style')
+		css.setAttribute('data-stand-in', 'owl-auto-refresh')
+		css.textContent = '.owl-carousel.owl-hidden{opacity:0}'
+		document.head.appendChild(css)
+		const visible = (c) => !!(c.offsetWidth || c.offsetHeight || c.getClientRects().length)
+		setInterval(() => {
+			for (const c of document.querySelectorAll('#main-content .owl-carousel.owl-loaded')) if (c.classList.contains('owl-hidden') === visible(c)) c.classList.toggle('owl-hidden')
+		}, 500)
+	}
+	${WHEN_READY('start')}
 })()`

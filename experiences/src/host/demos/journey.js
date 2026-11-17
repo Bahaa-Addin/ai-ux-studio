@@ -8,17 +8,32 @@
  * adds, every handler through the guard, and a run-time claim of the journey that the guard gives
  * back when the layer stops (a failure, ?aixc=off at run time): the trail's pill then opens the
  * guide's own sheet (owner, 2026-11-13, OD-5), never nothing.
+ *
+ * It also tells the trail what the layer covers (its host API's setCover; F12): #main-content, hidden
+ * while the album (or a reimagined view) shows, so the trail records it as it shows and the memory of
+ * this page is the page the visitor saw, never an empty page under the header.
  */
 import css from '../../pocket/journey.css'
 import { initJourney } from '../../pocket/journey.js'
 
+/** What PageHost.hideSource changes on #main-content (and showSource gives back exactly). */
+const HIDING = ['style', 'inert', 'hidden']
+
 export async function start({ host, guard, ensureCss, checkpoint, pocket, api }) {
   ensureCss('journey', css)
+  // #main-content's attributes as they are while it shows, read again whenever the trail asks with it shown.
+  let shown = null
+  const asShown = () => (host.sourceHidden ? shown : (shown = Object.fromEntries(HIDING.map((name) => [name, host.main.getAttribute(name)]))))
+  asShown()
+  api.setCover?.({ node: host.main, covered: () => host.sourceHidden, shown: asShown })
   // Registered before the journey exists: a stop while it starts (its first render failing in the
   // guard, say) still gives the claim back once initJourney has returned.
   let journey = null
   let stoppedEarly = false
-  guard.onStop(() => (journey ? journey.destroy() : (stoppedEarly = true)))
+  guard.onStop(() => {
+    api.setCover?.(null)
+    journey ? journey.destroy() : (stoppedEarly = true)
+  })
   journey = initJourney({
     pocket,
     api,

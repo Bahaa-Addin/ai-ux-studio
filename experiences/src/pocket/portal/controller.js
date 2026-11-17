@@ -84,9 +84,21 @@ const openingLabel = (config, title, put) => {
 /** If the browser has not left this page this long after the handoff, the page is given back. */
 const STAY_TIMEOUT = 10000
 
+/** The page's root as it was: no html[data-vf-portal], no kept gutter (./portal.js destroy does the same). */
+const giveBack = () => {
+  const { dataset } = document.documentElement
+  delete dataset.vfPortal
+  delete dataset.vfPortalGutter
+}
+
 export const STATES = ['idle', 'preparing', 'wall-falling', 'portal-revealing', 'destination-approaching', 'handoff', 'completed', 'error']
 
-export const cameraFor = (W = window.innerWidth, H = window.innerHeight) => ({ W, H, cx: W / 2, cy: H / 2, P: perspectiveFor(W, H) })
+/**
+ * The width fixed elements are laid out in: the window's, less a classic scrollbar's gutter, which the page
+ * keeps while a transition runs (portal.css), so the overlay, and the scene in it, are this wide. Read it
+ * before the transition starts: once the root's overflow is hidden, clientWidth no longer subtracts the gutter.
+ */
+export const cameraFor = (W = document.documentElement.clientWidth || window.innerWidth, H = window.innerHeight) => ({ W, H, cx: W / 2, cy: H / 2, P: perspectiveFor(W, H) })
 
 /** Environments painted ahead of time, by viewport size (the hall never changes otherwise). */
 const prepared = new Map()
@@ -197,6 +209,9 @@ export const runTransition = (options) => {
 const transition = ({ url, link, config, make, onState = () => {}, onDone = () => {}, onError = () => {}, log = () => {}, wrap = (fn) => fn }, undo) => {
   const T = timingFor(config)
   const camera = cameraFor()
+  // A classic scrollbar takes width: its gutter is kept while the scrollbar is hidden (portal.css), so
+  // nothing fixed of Vodafone's or ours moves sideways (F4). The window's own width, for a resize.
+  const windowWidth = window.innerWidth
   const narrow = camera.W < 700 || camera.W < camera.H
   let state = 'idle'
   let raf = 0
@@ -240,8 +255,9 @@ const transition = ({ url, link, config, make, onState = () => {}, onDone = () =
   const live = config.live ? holdNothing : holdLive()
   undo.push(() => live.release())
   live.to(0)
-  undo.push(() => delete document.documentElement.dataset.vfPortal)
+  undo.push(giveBack)
   document.documentElement.dataset.vfPortal = 'active'
+  if (windowWidth > camera.W) document.documentElement.dataset.vfPortalGutter = ''
   undo.push(() => root.remove())
   document.body.append(root)
   wall.mount()
@@ -539,7 +555,7 @@ const transition = ({ url, link, config, make, onState = () => {}, onDone = () =
     destination.destroy()
     root.remove()
     live.release()
-    delete document.documentElement.dataset.vfPortal
+    giveBack()
     state = 'idle'
     onDone(reason)
   }
@@ -568,7 +584,7 @@ const transition = ({ url, link, config, make, onState = () => {}, onDone = () =
   // go straight to the destination rather than finish with the wrong geometry. Height alone
   // changes as phone toolbars slide, which the scene tolerates.
   const onResize = guarded(() => {
-    if (!finished && Math.abs(window.innerWidth - camera.W) > 1) handoff('resized')
+    if (!finished && Math.abs(window.innerWidth - windowWidth) > 1) handoff('resized')
   })
   undo.push(() => window.removeEventListener('resize', onResize))
   window.addEventListener('resize', onResize)

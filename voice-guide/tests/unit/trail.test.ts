@@ -297,6 +297,26 @@ test('the sanitizer removes everything that could run, navigate, submit or call 
 	assert.equal(sanitizeEvents([{ type: 3, timestamp: 1, data: { source: 1 } }], { origin: ORIGIN }).events.length, 0, 'nothing to show without a full snapshot')
 })
 
+test('a node the recorder blocked replays as an empty box of its size marked data-vg-blocked (drawn as nothing), in a full snapshot and in a mutation (F12)', () => {
+	// rrweb keeps only a blocked node's class and size: Vodafone's accessibility button would replay as the browser's own grey button.
+	const button = { type: 2, tagName: 'button', id: 5, attributes: { class: 'vf-aw-fab', rr_width: '55px', rr_height: '55px' }, childNodes: [] }
+	const body = { type: 2, tagName: 'body', id: 3, attributes: {}, childNodes: [{ type: 2, tagName: 'p', id: 4, attributes: { class: 'card' }, childNodes: [{ type: 3, id: 6, textContent: 'Shown' }] }, button] }
+	const node = { type: 0, id: 1, childNodes: [{ type: 2, tagName: 'html', id: 2, attributes: {}, childNodes: [body] }] }
+	const pill = { type: 2, tagName: 'div', id: 7, attributes: { class: 'tr-pill', rr_width: '120px', rr_height: '44px' }, childNodes: [] }
+	const { events } = sanitizeEvents(
+		[
+			{ type: 4, timestamp: 1, data: { href: `${ORIGIN}/en/services`, width: 1366, height: 900 } },
+			{ type: 2, timestamp: 2, data: { node, initialOffset: { top: 0, left: 0 } } },
+			{ type: 3, timestamp: 3, data: { source: 0, adds: [{ parentId: 3, nextId: null, node: pill }], removes: [], texts: [], attributes: [] } },
+		],
+		{ origin: ORIGIN },
+	)
+	const full = (events[1].data as any).node.childNodes[0].childNodes[0].childNodes
+	assert.deepEqual(full[1].attributes, { class: 'vf-aw-fab', rr_width: '55px', rr_height: '55px', 'data-vg-blocked': '' }, 'the blocked button: its class and size, marked')
+	assert.equal(full[0].attributes['data-vg-blocked'], undefined, 'a node the recorder kept is not marked')
+	assert.equal((events[2].data as any).adds[0].node.attributes['data-vg-blocked'], '', 'a blocked node added later is marked too')
+})
+
 test('the replay resource policy allows only same-origin, query-free static assets', () => {
 	assert.equal(allowedResource(`${ORIGIN}/assets/site.css`, ORIGIN), true)
 	assert.equal(allowedResource(`${ORIGIN}/assets/site.css?v=2`, ORIGIN), false)

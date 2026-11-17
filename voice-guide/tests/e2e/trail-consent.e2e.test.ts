@@ -7,6 +7,7 @@
  *   on the pages that clear storage and the ones that do not.
  * - A person who turned it off is not offered it again after a clear.
  * - Nothing is stored for a person who has chosen nothing.
+ * - Before consent the pill's accessible name says the offer once, not twice (W1-C; ADR-0050).
  */
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
@@ -88,5 +89,27 @@ test('turned off, the trail stays off after the theme clears storage: the offer 
 		assert.ok((await sitekey(l.page)).length > 0)
 	} finally {
 		await l.close()
+	}
+})
+
+test('before consent the pill is named by its offer once, not twice; after consent it is "Your journey. Saving" (W1-C)', async () => {
+	const l = await launchLayer(gw, { themeClear: true, reducedMotion: true })
+	try {
+		await trailOn(l.page, '/en/home')
+		assert.equal(await l.page.locator('.tr-pill').getAttribute('aria-label'), 'Remember my journey', 'en: the offer once')
+		await l.page.locator('.tr-pill').click()
+		await l.page.locator('.tr-allow').click()
+		await l.page.waitForFunction(() => (window as any).__vgTrailActive.state.rec === 'recording', null, { timeout: 5_000 })
+		await l.page.waitForTimeout(300)
+		assert.equal(await l.page.locator('.tr-pill').getAttribute('aria-label'), 'Your journey. Saving', 'en: after consent')
+	} finally {
+		await l.close()
+	}
+	const a = await launchLayer(gw, { themeClear: true, reducedMotion: true })
+	try {
+		await trailOn(a.page, '/ar/home')
+		assert.equal(await a.page.locator('.tr-pill').getAttribute('aria-label'), 'افتكر رحلتي', 'ar: the offer once')
+	} finally {
+		await a.close()
 	}
 })

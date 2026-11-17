@@ -21,7 +21,7 @@ import { Resolver } from './resolver.ts'
 import { type Effect, INITIAL, reduce, type TrailEvent, type TrailState } from './state.ts'
 import { CorruptChunk, decodeChunk, encodeEvents, planEviction, QuotaError, TrailStore } from './storage.ts'
 import { type ExploredItem, type I18n, type PageMap, type RawEvent, TRAIL_SCHEMA, type TrailSession, type TrailStepSummary } from './types.ts'
-import type { SeedResult, TrailHostApi, TrailHostSnapshot } from './host.ts'
+import type { SeedResult, TrailHostApi, TrailHostCover, TrailHostSnapshot } from './host.ts'
 import { TRAIL_CSS, TrailView, type ViewIntents } from './view.ts'
 
 /** What the trail needs from the guide (`packages/sdk/src/guide.ts`), and nothing more. */
@@ -143,6 +143,8 @@ export class TrailController {
 		return this.#metaHost || this.#claim !== null
 	}
 	#hostRoot: HTMLElement | null = null
+	/** What the host's own views cover, recorded as it shows (F12). */
+	#cover: TrailHostCover | null = null
 	/** Gives the guide's `request` and `api.post` back (ADR-0050 §5). */
 	#unwatch: (() => void) | null = null
 	#subscribers = new Set<(s: TrailHostSnapshot) => void>()
@@ -573,6 +575,9 @@ export class TrailController {
 			setPreviewRoot: (el) => {
 				this.#hostRoot = el
 			},
+			setCover: (c) => {
+				this.#cover = c
+			},
 			open: () => {
 				if (this.state.consent !== 'granted' && this.state.consent !== 'paused') return
 				this.dispatch({ type: 'EXPAND' })
@@ -852,9 +857,14 @@ export class TrailController {
 			const t0 = performance.now()
 			// Before rrweb's first emit, so its Meta and full snapshot land in the same chunk.
 			this.#chunkStartedAt = Date.now()
-			this.#recorder = w.__vgTrailRecord.startRecording(recorderOptions(this.policy), (e: RawEvent) => this.#onEvent(e), (err: unknown) => {
-				console.warn('[voice-guide] trail recorder', err)
-			})
+			this.#recorder = w.__vgTrailRecord.startRecording(
+				recorderOptions(this.policy),
+				(e: RawEvent) => this.#onEvent(e),
+				(err: unknown) => {
+					console.warn('[voice-guide] trail recorder', err)
+				},
+				() => this.#cover,
+			)
 			if (!this.#recorder) throw new Error('recorder did not start')
 			;(window as any).__vgTrailInitMs = Math.round(performance.now() - t0)
 		} catch (e) {

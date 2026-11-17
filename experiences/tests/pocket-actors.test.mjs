@@ -21,6 +21,7 @@ import { createSpring, stepSpring, stepAngleSpring, resetSpring, springSettled, 
 import { planRide, ridePoint, shuffle } from '../src/pocket/actors/gait.js'
 import { createFlight, stepFlight, followPoint, kick, flightSettled, command, sticksFor, spool, FLIGHT, BOARD_FLIGHT } from '../src/pocket/actors/drone-flight.js'
 import { crossPace, DASH_PACE } from '../src/pocket/pocket-actors.js'
+import { watchFixedObstacles } from '../src/pocket/obstacles.js'
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -1345,7 +1346,9 @@ test('clips: pose tracks use known keys with ordered times; decal tracks resolve
 // 250 KB until ADR-0004: the hoverboard took the layer's source past it (about 1.8 KB gzipped in the build).
 // 270 KB until S12: Vodafone's pages (the left corner's ride across, the fixed floor, wrap and mark, and
 // ./obstacles.js, 5.4 KB) added about 14 KB, to 278.7 KB; 285 KB keeps about the 6 KB of headroom it had.
-test('budget: the whole actor layer (models, decals, motion, cursor, obstacles, JS, CSS) stays under 285 KB of source', async () => {
+// 285 KB until F6b (2026-11-17): making room when a fixed control comes or goes mid-album (obstacles.js's
+// watch, the actors' refit and eased move) took it from 291,777 to 298,221 bytes; raised to the next 5 KB.
+test('budget: the whole actor layer (models, decals, motion, cursor, obstacles, JS, CSS) stays under 295 KB of source', async () => {
   const files = [
     '../src/pocket/actors/assets/mascot.svg',
     '../src/pocket/actors/assets/drone.svg',
@@ -1370,7 +1373,7 @@ test('budget: the whole actor layer (models, decals, motion, cursor, obstacles, 
   ]
   let total = 0
   for (const file of files) total += (await stat(new URL(file, import.meta.url))).size
-  assert.ok(total < 285 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
+  assert.ok(total < 295 * 1024, `${(total / 1024).toFixed(1)} KB uncompressed`)
 })
 
 /* -------------------------------------------------- Vodafone's pages (S12) */
@@ -1412,4 +1415,83 @@ test('ride across: from the left corner the board turns round so its nose (-x) l
   // The way back is a dash that is there before the page lands (1100 ms), whatever the width.
   assert.ok(planRide({ from: 0, to: -1150, timing: DASH_PACE }).duration <= 760)
   assert.ok(planRide({ from: 0, to: -280, timing: DASH_PACE }).duration >= 420)
+})
+
+test('watchFixedObstacles: a fixed control that comes, goes, changes size, changes class or ends a transition calls onChange; first sizes, other nodes and its children do not; stop() lets go (F6b)', () => {
+  const made = { resize: [], mutation: [] }
+  class FakeResize {
+    constructor(callback) {
+      Object.assign(this, { callback, targets: new Set() })
+      made.resize.push(this)
+    }
+    observe(node) { this.targets.add(node) }
+    unobserve(node) { this.targets.delete(node) }
+    disconnect() { this.targets.clear() }
+  }
+  class FakeMutation {
+    constructor(callback) {
+      Object.assign(this, { callback, targets: new Map() })
+      made.mutation.push(this)
+    }
+    observe(node, options) { this.targets.set(node, options) }
+    disconnect() { this.targets.clear() }
+  }
+  // A node answers selector lists by its one class; `inside` is what it holds.
+  const node = (name, w = 0, h = 0, inside = []) => {
+    const listeners = new Set()
+    const has = (selector) => selector.split(',').includes(name)
+    return { name, offsetWidth: w, offsetHeight: h, listeners, matches: has, querySelector: (selector) => inside.find((n) => n.matches(selector)) ?? null, addEventListener: (_, fn) => listeners.add(fn), removeEventListener: (_, fn) => listeners.delete(fn) }
+  }
+  const mic = node('.vg-mic', 56, 56)
+  const kbd = node('.vg-kbd', 40, 40)
+  const card = node('.tr-card') // closed: no box
+  const pill = node('.tr-pill', 150, 44)
+  const trail = node('.tr', 0, 0, [pill, card]) // the trail's host, arriving in the guide's shadow root
+  let inGuide = [mic, kbd] // every node in the shadow root, its descendants too
+  const shadowRoot = { querySelectorAll: (selector) => inGuide.filter((n) => n.matches(selector)) }
+  const doc = { body: {}, getElementById: () => null, querySelectorAll: (selector) => (selector === 'vg-guide' ? [{ shadowRoot }] : []) }
+  const saved = { ResizeObserver: globalThis.ResizeObserver, MutationObserver: globalThis.MutationObserver }
+  Object.assign(globalThis, { ResizeObserver: FakeResize, MutationObserver: FakeMutation })
+  try {
+    let calls = 0
+    const stop = watchFixedObstacles(() => (calls += 1), doc)
+    const [sizes] = made.resize
+    const [tree] = made.mutation
+    assert.deepEqual([...sizes.targets], [mic, kbd], 'a ResizeObserver on each control there')
+    assert.deepEqual(tree.targets.get(doc.body), { childList: true }, "body's direct children")
+    assert.deepEqual(tree.targets.get(shadowRoot), { childList: true, subtree: true }, "the guide's shadow root")
+    assert.deepEqual(tree.targets.get(kbd), { attributes: true, attributeFilter: ['class'] }, 'its class')
+    // The first sizes the observer reports are the ones it started with: nothing to do.
+    sizes.callback([{ target: mic }, { target: kbd }])
+    assert.equal(calls, 0, 'not on the first sizes')
+    kbd.offsetWidth = 48
+    sizes.callback([{ target: kbd }])
+    assert.equal(calls, 1, 'a size that changed')
+    tree.callback([{ type: 'attributes', target: kbd }])
+    assert.equal(calls, 2, 'a class that changed (the keyboard button fades in by class)')
+    const [end] = kbd.listeners
+    end({ target: kbd, currentTarget: kbd })
+    assert.equal(calls, 3, 'the end of its own transition')
+    end({ target: {}, currentTarget: kbd })
+    assert.equal(calls, 3, "not the end of a child's")
+    tree.callback([{ type: 'childList', addedNodes: [node('.w')], removedNodes: [] }])
+    assert.equal(calls, 3, 'not a node that is no control (a word in the transcript bar)')
+    // The trail arrives: its pill and card are watched from then on; the card opening is a size that changed.
+    inGuide = [mic, kbd, trail, pill, card]
+    tree.callback([{ type: 'childList', addedNodes: [trail], removedNodes: [] }])
+    assert.equal(calls, 4, 'a control that arrives')
+    assert.ok(sizes.targets.has(card) && sizes.targets.has(pill), 'and is watched')
+    Object.assign(card, { offsetWidth: 420, offsetHeight: 404 })
+    sizes.callback([{ target: card }])
+    assert.equal(calls, 5, 'the card that opens')
+    inGuide = [mic, kbd]
+    tree.callback([{ type: 'childList', addedNodes: [], removedNodes: [trail] }])
+    assert.equal(calls, 6, 'a control that leaves')
+    assert.ok(!sizes.targets.has(card) && card.listeners.size === 0, 'and is let go')
+    stop()
+    assert.equal(sizes.targets.size + tree.targets.size, 0, 'stop() disconnects both observers')
+    assert.equal(mic.listeners.size + kbd.listeners.size, 0, 'and removes its listeners')
+  } finally {
+    Object.assign(globalThis, saved)
+  }
 })

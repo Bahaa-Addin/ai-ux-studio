@@ -263,6 +263,7 @@ export const initPocketPortal = ({ options = {}, isPocketPage, openPocket, viewE
       // Whatever the transition left, the page is given back.
       for (const node of document.querySelectorAll('.vf-portal')) node.remove()
       delete document.documentElement.dataset.vfPortal
+      delete document.documentElement.dataset.vfPortalGutter
       stylesheet?.remove()
       if (config.debug && window.__vfPortal?.config === config) delete window.__vfPortal
     }

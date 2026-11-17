@@ -255,7 +255,8 @@ test('one "Pocket it" on every card a person can see, drawn outside Vodafone\'s 
 			const s = await structure(l.page)
 			assert.equal((await layerState(l.page)).coverage, 0)
 			assert.equal(s.chips, 0, `wireless-net ${viewport.width}: no chips below the coverage gate`)
-			assert.equal(s.root?.hidden, true)
+			// Below the gate the chips' chunk is not even asked for (2026-11-17), so there may be no region at all: none shows.
+			assert.ok(!s.root || s.root.hidden, 'no chips region shows below the gate')
 			assert.ok(await l.page.evaluate(() => !!(window as any).__aixc.demos.pocket.store), `wireless-net ${viewport.width}: the Pocket itself is there`)
 			assert.deepEqual(seen.pageErrors, [], 'no page errors')
 			assert.deepEqual(l.reached, [], 'nothing reached the internet')
@@ -354,18 +355,21 @@ const watchMain = (page: Page) =>
 		const w = window as any
 		const main = document.getElementById('main-content')!
 		w.__mainWrites = [] as string[]
+		w.__mainServed = [...main.attributes].map((a) => `${a.name}=${a.value}`).sort()
 		w.__models = 0
 		document.addEventListener('aixc:model', () => w.__models++)
 		new MutationObserver((list) => {
 			for (const r of list) {
 				if (r.type === 'attributes' && (r.attributeName === 'data-aixc-item' || r.attributeName === 'data-aixc-section')) continue
-				if (r.type === 'attributes' && r.attributeName === 'hidden' && r.target === main) continue
+				// The layer hides #main-content as a whole while the album shows (hidden, an inline style that keeps it
+				// laid out, inert: F3, 2026-11-17) and gives every one of those back exactly (checked after Back).
+				if (r.type === 'attributes' && ['hidden', 'style', 'inert'].includes(r.attributeName!) && r.target === main) continue
 				w.__mainWrites.push(`${r.type} ${r.attributeName ?? ''} on ${(r.target as Element).nodeName ?? '#text'}.${(r.target as Element).className ?? ''}`)
 			}
 		}).observe(main, { subtree: true, childList: true, attributes: true, characterData: true })
 		return { reads: w.__aixc.reads as number, marks: [...document.querySelectorAll<HTMLElement>('[data-aixc-item]')].map((n) => n.dataset.aixcItem) }
 	})
-const mainSince = (page: Page) => page.evaluate(() => ({ writes: (window as any).__mainWrites as string[], models: (window as any).__models as number, reads: (window as any).__aixc.reads as number, marks: [...document.querySelectorAll<HTMLElement>('[data-aixc-item]')].map((n) => n.dataset.aixcItem) }))
+const mainSince = (page: Page) => page.evaluate(() => ({ writes: (window as any).__mainWrites as string[], attributes: { served: (window as any).__mainServed as string[], now: [...document.getElementById('main-content')!.attributes].map((a) => `${a.name}=${a.value}`).sort() }, models: (window as any).__models as number, reads: (window as any).__aixc.reads as number, marks: [...document.querySelectorAll<HTMLElement>('[data-aixc-item]')].map((n) => n.dataset.aixcItem) }))
 
 /** The largest number of elements marked as card `id` seen over `ms`, sampled every frame. */
 const marksOver = (page: Page, id: string, ms: number) =>
@@ -447,6 +451,7 @@ test('hover, pocket, put back and the album change nothing of Vodafone\'s page; 
 			await other.close()
 			const after = await mainSince(l.page)
 			assert.deepEqual(after.writes, [], `${where}: nothing written into Vodafone's content`)
+			assert.deepEqual(after.attributes.now, after.attributes.served, `${where}: #main-content's own attributes as served, after the album`)
 			assert.deepEqual([after.models, after.reads - before.reads], [0, 0], `${where}: the page was never read again`)
 			assert.deepEqual(after.marks, before.marks, `${where}: the same elements, marked the same`)
 			assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)

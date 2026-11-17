@@ -86,7 +86,8 @@ export async function createPreview(o: PreviewOptions): Promise<Preview> {
 		UNSAFE_replayCanvas: false,
 		useVirtualDom: true,
 		mouseTail: o.reducedMotion ? false : { duration: 700, lineCap: 'round', lineWidth: 3, strokeStyle: 'rgba(230, 0, 0, .55)' },
-		insertStyleRules: ['*, *::before, *::after { cursor: default !important; caret-color: transparent !important; }', 'html { pointer-events: none !important; user-select: none !important; }'],
+		// A blocked node keeps its place and size and draws nothing (sanitize.ts marks it).
+		insertStyleRules: ['*, *::before, *::after { cursor: default !important; caret-color: transparent !important; }', 'html { pointer-events: none !important; user-select: none !important; }', '[data-vg-blocked] { visibility: hidden !important; }'],
 		logger: { log() {}, warn() {} },
 	})
 	const iframe = replayer.iframe

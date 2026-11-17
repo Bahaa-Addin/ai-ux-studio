@@ -4,7 +4,8 @@
  * Guide's microphone (and its keyboard button and transcript bar while they show), the trail's pill and
  * card, and the Pocket's own button. The actors never lift, cover or restyle any of them (AGENTS.md 4.6); they stand back.
  *
- * Pure geometry (insetForObstacles) and one read of the page (fixedObstacles). Nothing here throws.
+ * Pure geometry (insetForObstacles), one read of the page (fixedObstacles) and a watch on those controls
+ * (watchFixedObstacles). Nothing here throws.
  */
 
 /** The Voice Guide's microphone: always there, so always reserved. */
@@ -67,6 +68,84 @@ export const fixedObstacles = (doc = globalThis.document) => {
     for (const selector of TRAIL) for (const node of doc.querySelectorAll?.(selector) ?? []) add(node, { needShown: true })
   } catch {}
   return out
+}
+
+/** The controls above as nodes, shown or not (not the Pocket's own button: it changes only as the album opens and closes). */
+const IN_GUIDE = [...GUIDE_ALWAYS, ...GUIDE_WHILE_SHOWN, ...TRAIL].join()
+const CONTROL = `#vodafone-aw-icon,#onetrust-banner-sdk,vg-guide,${IN_GUIDE}`
+const controls = (doc) => [doc.getElementById('vodafone-aw-icon'), doc.getElementById('onetrust-banner-sdk'), ...[...doc.querySelectorAll('vg-guide')].flatMap((host) => [...(host.shadowRoot?.querySelectorAll(IN_GUIDE) ?? [])]), ...doc.querySelectorAll(TRAIL.join())].filter(Boolean)
+
+/**
+ * Calls `onChange` when one of the controls above comes, goes, shows, hides or changes size, until the
+ * function it returns is called (F6b, 2026-11-17: the trail's consent card opening over the drone). Cheap:
+ * a ResizeObserver on each control once it exists, its class (the guide's keyboard button and bar fade
+ * in and out by class) and the end of its own transitions, and a MutationObserver on body's direct
+ * children and in each guide's shadow root for a control that arrives or leaves. Nothing per frame,
+ * nothing on scroll; it never throws.
+ */
+export const watchFixedObstacles = (onChange, doc = globalThis.document) => {
+  const seen = new Map() // control → its size ("w h") when last read
+  const roots = new Set()
+  const size = (node) => `${node.offsetWidth} ${node.offsetHeight}`
+  const end = (event) => event.target === event.currentTarget && onChange()
+  let sizes = null
+  let tree = null
+  const scan = () => {
+    const now = controls(doc)
+    let changed = false
+    for (const node of now) {
+      if (seen.has(node)) continue
+      seen.set(node, size(node))
+      sizes.observe(node)
+      tree.observe(node, { attributes: true, attributeFilter: ['class'] })
+      node.addEventListener('transitionend', end)
+      changed = true
+    }
+    for (const node of seen.keys()) {
+      if (now.includes(node)) continue
+      seen.delete(node)
+      sizes.unobserve(node)
+      node.removeEventListener('transitionend', end)
+      changed = true
+    }
+    for (const host of doc.querySelectorAll('vg-guide')) {
+      const root = host.shadowRoot
+      if (!root || roots.has(root)) continue
+      roots.add(root)
+      tree.observe(root, { childList: true, subtree: true })
+    }
+    return changed
+  }
+  const relevant = (nodes) => [...nodes].some((n) => n.matches?.(CONTROL) || n.querySelector?.(CONTROL))
+  try {
+    sizes = new ResizeObserver((entries) => {
+      try {
+        let changed = false
+        for (const { target } of entries) {
+          const now = size(target)
+          if (!seen.has(target) || seen.get(target) === now) continue
+          seen.set(target, now)
+          changed = true
+        }
+        if (changed) onChange()
+      } catch {}
+    })
+    tree = new MutationObserver((records) => {
+      try {
+        if (records.some((r) => r.type === 'attributes') || (records.some((r) => relevant(r.addedNodes) || relevant(r.removedNodes)) && scan())) onChange()
+      } catch {}
+    })
+    tree.observe(doc.body, { childList: true })
+    scan()
+  } catch {}
+  return () => {
+    try {
+      sizes?.disconnect()
+      tree?.disconnect()
+      for (const node of seen.keys()) node.removeEventListener('transitionend', end)
+      seen.clear()
+    } catch {}
+  }
 }
 
 const near = (box, o, padding) => o.left < box.right + padding && o.right > box.left - padding && o.top < box.bottom + padding && o.bottom > box.top - padding

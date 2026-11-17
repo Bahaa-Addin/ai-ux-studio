@@ -10,17 +10,50 @@
 
 /* Vodafone's faces. Its Arabic pages name the Arabic faces apart (vodafone-bold-ar…, the theme's
    @font-face); the clone's Arabic page gives the -en names Arabic glyphs instead (src/rtl.css), so
-   either way Arabic text is drawn in Vodafone Arabic. */
-:root {
-  --pocket-regular: vodafone-regular-en, vf-regular, sans-serif;
-  --pocket-bold: vodafone-bold-en, vf-bold, sans-serif;
-  --pocket-light: vodafone-light-en, vf-light, sans-serif;
+   either way Arabic text is drawn in Vodafone Arabic.
+   Some of Vodafone's themes declare only the regular faces (maintheme: home; static-lite-theme: the
+   bundles, Wireless Net, promotions), where bold and light words fell to a system font (F1). So the
+   stacks name the page's own faces first (a page that has them never fetches ours), then four aliases
+   of our own for Vodafone's own bold and light files on Vodafone's origin (static-theme's, which
+   Services loads; root-relative, so the page's origin; we ship no font file), then the page's regular
+   face; a system font only if even that is missing (AGENTS.md §4.8, ADR-0052 §12). The clone declares
+   every name before ours itself (src/style.css, src/rtl.css). */
+@font-face {
+  font-family: aixc-vodafone-bold-en;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/en/vodafone-bold-en.woff) format('woff');
+  font-display: swap;
 }
 
-:root:lang(ar) {
+@font-face {
+  font-family: aixc-vodafone-bold-ar;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/ar/vodafone-bold-ar.woff) format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: aixc-vodafone-light-en;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/en/vodafone-light-en.woff) format('woff');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: aixc-vodafone-light-ar;
+  src: url(/theme-assets/static-theme/fonts/splitted-fonts/ar/vodafone-light-ar.woff) format('woff');
+  font-display: swap;
+}
+
+:root,
+[lang|="en"] {
+  --pocket-regular: vodafone-regular-en, vf-regular, sans-serif;
+  --pocket-bold: vodafone-bold-en, vf-bold, aixc-vodafone-bold-en, vodafone-regular-en, sans-serif;
+  --pocket-light: vodafone-light-en, vf-light, aixc-vodafone-light-en, vodafone-regular-en, sans-serif;
+}
+
+:root:lang(ar),
+[lang|="ar"] {
   --pocket-regular: vodafone-regular-ar, vodafone-regular-en, vf-regular, sans-serif;
-  --pocket-bold: vodafone-bold-ar, vodafone-bold-en, vf-bold, sans-serif;
-  --pocket-light: vodafone-light-ar, vodafone-light-en, vf-light, sans-serif;
+  --pocket-bold: vodafone-bold-ar, vodafone-bold-en, vf-bold, aixc-vodafone-bold-ar, aixc-vodafone-bold-en, vodafone-regular-ar, vodafone-regular-en, sans-serif;
+  --pocket-light: vodafone-light-ar, vodafone-light-en, vf-light, aixc-vodafone-light-ar, aixc-vodafone-light-en, vodafone-regular-ar, vodafone-regular-en, sans-serif;
 }
 
 /* Read out, not shown (the same rule as aixc.css, which Vodafone's pages do not load). */
@@ -227,75 +260,8 @@
 
 /* ----------------------------------- "Pocket it" on Vodafone's own pages */
 
-/* The overlay (ADR-0052 §10): a slot over each of Vodafone's cards, nothing written into the card.
-   Only the chip, and the liner of a pocketed card, take the pointer; every other click reaches the
-   card underneath. The chip keeps the clone's pill (white, red text, a soft shadow, red fill on hover):
-   the owner chose it over Vodafone's secondary button on 2026-11-14 (SPEC-01 §3, ADR-0052 §12). */
-.pocket-chips[hidden],
-.pocket-chips[data-aixc] > [hidden] {
-  display: none !important;
-}
-
-.pocket-chips[data-aixc] > .pocket-host {
-  position: absolute;
-  left: 0;
-  top: 0;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-/* Placed by the overlay (left and top), so the clone's right-hand corner does not apply. */
-.pocket-chips[data-aixc] .pocket-cta {
-  right: auto;
-  box-sizing: border-box;
-  pointer-events: auto;
-}
-
-/* Two tones, so the ring shows on white cards and on red ones. */
-.pocket-chips[data-aixc] .pocket-cta:focus-visible,
-.pocket-chips[data-aixc] .pocket-liner__undo:focus-visible {
-  outline: 2px solid #333;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 2px #fff;
-}
-
-/* A tight card: the icon alone (a round chip), its name still read out. */
-.pocket-chips[data-aixc] .pocket-cta--icon {
-  width: 32px;
-  padding: 0;
-  justify-content: center;
-}
-
-.pocket-chips[data-aixc] .pocket-cta--icon .pocket-cta__label {
-  display: none;
-}
-
-.pocket-chips[data-aixc] .pocket-liner {
-  border: 1px dashed #ccc;
-  background: #f4f4f4;
-}
-
-/* The liner lets every press, drag and swipe through to Vodafone's card and carousel under it (a stage binds its
-   touch handlers on itself, so a swipe that began on the liner would never reach it); only Put back takes the pointer. */
-.pocket-chips[data-aixc] .pocket-liner__undo {
-  pointer-events: auto;
-}
-
-/* A card wholly cut by its carousel: its buttons stay for screen readers, in a 1 px box nothing can press. */
-.pocket-chips[data-aixc] > .pocket-host[data-cut] * {
-  pointer-events: none !important;
-}
-
-/* Focus inside a pocketed card: the card shows through, so its focused link is never hidden. */
-.pocket-chips[data-aixc] > .pocket-host[data-focus-in] > .pocket-liner {
-  opacity: 0.35;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pocket-chips[data-aixc] .pocket-cta {
-    transition: none;
-  }
-}
+/* The overlay's rules (its region, slots, placed chip, icon-only chip, liner, cut and focused slots) are in
+   ./chips-overlay.css, put on the page by the chips' chunk (experiences/src/host/demos/chips.js) with the overlay. */
 
 /* -------------------------------------------------- the peeking corner */
 
@@ -518,8 +484,12 @@ body[data-pocket-view='open'] .aixc-composer {
   padding: 0;
 }
 
+/* Its foot keeps the guide's floating column clear (F8a): the microphone's top is 155 px above the
+   screen's bottom at 1366x900 and at 375x812, Vodafone's accessibility button below it, so with the
+   album's end in view its last sticker stands 16 px or more above them. The clone keeps its 88 px. */
 .pocket-output[data-aixc] .pocket-view {
   min-height: 100vh;
+  padding-bottom: 172px;
 }
 
 .pocket-output[hidden],
@@ -559,7 +529,8 @@ body[data-pocket-view='open'] .aixc-composer {
   align-items: center;
   gap: 6px;
   min-height: 46px;
-  padding: 0 20px 0 12px;
+  padding-block: 0;
+  padding-inline: 12px 20px; /* the chevron's side first, in either reading direction */
   border: 1px solid #ccc;
   border-radius: 6px;
   background: #fff;
@@ -593,6 +564,13 @@ body[data-pocket-view='open'] .aixc-composer {
 .pocket-back__icon {
   width: 22px;
   height: 22px;
+}
+
+/* In a right-to-left page the way back is to the right, and a sticker link's arrow leaves up and to the
+   left (F7a), as the journey's step arrow turns (journey.css). */
+[dir='rtl'] .pocket-back__icon,
+[dir='rtl'] .pocket-sticker__cta-icon {
+  transform: scaleX(-1);
 }
 
 .pocket-clear {
@@ -793,9 +771,21 @@ body[data-pocket-view='open'] .aixc-composer {
 
 .pocket-sticker__desc {
   margin: 0;
+  font-family: var(--pocket-regular);
   color: #666;
   font-size: 0.95rem;
   line-height: 1.5;
+}
+
+/* The album's own headings are ours, not Vodafone's content, so they draw in our bold stack on every
+   theme: the theme's heading rules ([dir] h1/h2/h3 { font-family: vodafone-regular-en ... } on maintheme,
+   vodafone-light-en on static-theme, some only above a width) are for Vodafone's content and outrank our
+   classes (ADR-0052 §12). Words kept in the other language carry their own lang, so the stack is theirs
+   (no Arabic glyphs in the page's Latin face on /en). */
+.pocket-view .pocket-view__title,
+.pocket-view .pocket-group__title,
+.pocket-view .pocket-sticker__title {
+  font-family: var(--pocket-bold);
 }
 
 /* The day a sticker was kept (Vodafone's pages): its copy, price included, is that day's. */

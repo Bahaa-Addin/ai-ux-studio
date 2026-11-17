@@ -11,6 +11,11 @@
  * - Where: each slot follows its card's box; the chip takes a corner that meets none of the words of
  *   the card's headings and links, none of its smaller buttons and none of its smaller pictures
  *   (./chips-place.js), picked again only when the card's size or the fonts change. A card cut by Owl's stage (or any clipping ancestor) is cut the same way, hit-testing included.
+ * - On the first screen (the page at scroll 0, as a visitor first sees it), a chip is not under the trail's
+ *   pill (F9) or the guide's microphone (F8b; its keyboard button and transcript bar too while they show)
+ *   either: a card whose corner one of them would cover there takes the next corner. Picked again when the
+ *   pill or the mic shows, goes or changes size (a ResizeObserver on each), when the trail says it is up
+ *   (vg:trail-ready) and when the guide's host arrives on the page; never on scroll.
  * - When: only on the website, where the page was read well enough (`gate`), while the page shows.
  * - A slot is as big as the part of its card that shows: a card cut by Owl's stage or a scroller gets
  *   a slot cut the same way, so nothing of ours extends past what shows (and body never scrolls
@@ -22,7 +27,7 @@
  *
  * Every pass reads first and writes after. Every callback runs through the guard (`wrap`, `on`).
  */
-import { clipBox, placeChip } from './chips-place.js'
+import { clipBox, overFirstScreen, placeChip } from './chips-place.js'
 
 /** Owl's loop copies of a slide, and anything the layer drew: never cards of their own. */
 const COPIES = '.owl-item.cloned, [data-aixc]'
@@ -32,6 +37,26 @@ const PICTURES = 'img, svg, picture, video'
 const TABBABLE = 'a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable="true"]'
 /** How long the slots follow a transition in Vodafone's content (Owl's stage, the home slides). */
 const FOLLOW_MS = 1000
+/**
+ * The fixed controls the chips of the first screen keep clear of, found where ./obstacles.js finds them for
+ * the actors (its TRAIL, GUIDE_ALWAYS and GUIDE_WHILE_SHOWN): read here, not imported, since that module
+ * would come whole into the chunk the Pocket loads at once (1,147 bytes gzipped more, measured 2026-11-17).
+ * The trail's pill (F9); the guide's microphone, and its keyboard button and transcript bar while they
+ * show (F8b), faded out otherwise.
+ */
+const FIXED = '.tr-pill, .vg-mic'
+const FADING = '.vg-kbd, .vg-bar'
+
+/** Every match of `selector`, in the guide's shadow root (where they mount) and in the page. */
+const inGuide = (selector) =>
+  [...document.querySelectorAll('vg-guide')].flatMap((host) => [...(host.shadowRoot?.querySelectorAll(selector) ?? [])]).concat(...document.querySelectorAll(selector))
+
+/** True while `node` shows (tucked away above the screen or not); one that `fades` also not faded out (opacity 0.05 or less, as for the actors). */
+const showing = (node, fades) => {
+  if (!node.getClientRects().length) return false
+  const style = getComputedStyle(node)
+  return style.visibility !== 'hidden' && !(fades && +style.opacity <= 0.05)
+}
 
 /** True when a button shows its own box (a fill or a border); a plain link shows only its words. */
 const drawn = (node) => {
@@ -80,6 +105,37 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       }),
     ),
   )
+
+  /** The fixed controls that show, each where it rests at scroll 0, in viewport coordinates there (F9, F8b); and the ones watched. */
+  let rests = new Map()
+  const fixedNodes = new Set()
+  const fixedWatch = observe(new ResizeObserver(wrap('pocket chips fixed', () => schedule())))
+  /** Reads them (read phase only): the guide and its trail can come after the chips, change size or go. */
+  const readFixed = () => {
+    // The pill and the mic are watched once found, shown or not: their size says when they go or come back.
+    for (const node of fixedNodes)
+      if (!node.isConnected) {
+        fixedNodes.delete(node)
+        fixedWatch.unobserve(node)
+      }
+    const fixed = inGuide(FIXED)
+    for (const node of fixed)
+      if (!fixedNodes.has(node)) {
+        fixedNodes.add(node)
+        fixedWatch.observe(node)
+      }
+    const now = new Map()
+    for (const node of [...fixed, ...inGuide(FADING)]) {
+      if (!showing(node, node.matches(FADING))) continue
+      // Where it rests: without the transform that moves it (the trail tucks its pill away while the page scrolls down).
+      const r = node.getBoundingClientRect()
+      const m = new DOMMatrixReadOnly(getComputedStyle(node).transform)
+      // Further down it keeps the top it had at scroll 0: the trail may raise its pill under a header that has left.
+      const top = window.scrollY > 0 && rests.has(node) ? rests.get(node).top : r.top - m.f
+      now.set(node, { left: r.left - m.e, top, right: r.right - m.e, bottom: top + r.height })
+    }
+    rests = now
+  }
 
   /** The ancestors that cut what shows of `card` (Owl's stage, horizontal scrollers). */
   const clipsOf = (card) => {
@@ -155,8 +211,8 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
     schedule()
   }
 
-  /** The chip's corner on `card`, as offsets from the part of it that shows (read phase only). */
-  const pickFor = (card, box, seen, s) => {
+  /** The chip's corner on `card`, as offsets from the part of it that shows (read phase only). `fixed`: the fixed controls over the first screen. */
+  const pickFor = (card, box, seen, s, fixed) => {
     const area = box.width * box.height
     const avoid = []
     // Words, line by line: a heading's or a plain link's box often spans the card while its words do not.
@@ -174,7 +230,7 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       else wordsOf(node)
     }
     const icon = { width: chipSize.height, height: chipSize.height }
-    const p = placeChip({ card: box, clips: [seen], avoid, size: chipSize, iconSize: icon, dir: getComputedStyle(card).direction, small: window.innerWidth < 640 })
+    const p = placeChip({ card: box, clips: [seen], avoid, fixed, size: chipSize, iconSize: icon, dir: getComputedStyle(card).direction, small: window.innerWidth < 640 })
     return p && { dx: p.x - seen.left, dy: p.y - seen.top, icon: p.icon, unplaced: p.unplaced, corner: p.corner, id: s.id }
   }
 
@@ -202,6 +258,10 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       for (const [card, s] of slots) s.clips = clipsOf(card)
       reclip = false
     }
+    readFixed()
+    const scroll = { x: window.scrollX, y: window.scrollY }
+    const atRest = [...rests.values()]
+    const restKey = atRest.map((r) => [r.left, r.top, r.right, r.bottom].map(Math.round)).join(';')
     const plans = []
     for (const [card, s] of slots) {
       const box = card.isConnected ? card.getBoundingClientRect() : null
@@ -212,11 +272,13 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       }
       const seen = clipBox(box, s.clips.map((node) => node.getBoundingClientRect()))
       if (seen) {
-        // Picked again when the card's size, the fonts or the part that shows change, not while it merely moves.
-        const key = `${Math.round(box.width)}x${Math.round(box.height)}:${fonts}:${Math.round(seen.left - box.left)},${Math.round(seen.top - box.top)},${Math.round(box.right - seen.right)},${Math.round(box.bottom - seen.bottom)}`
+        // The fixed controls, for a card of the first screen; moving with the page, so the same pick at any scroll.
+        const fixed = atRest.map((rest) => overFirstScreen(rest, { card: box, scroll, height: window.innerHeight })).filter(Boolean)
+        // Picked again when the card's size, the fonts, the part that shows or (first screen) the fixed controls change, not while it merely moves.
+        const key = `${Math.round(box.width)}x${Math.round(box.height)}:${fonts}:${Math.round(seen.left - box.left)},${Math.round(seen.top - box.top)},${Math.round(box.right - seen.right)},${Math.round(box.bottom - seen.bottom)}:${fixed.length ? restKey : ''}`
         if (key !== s.key) {
           s.key = key
-          s.pick = pickFor(card, box, seen, s)
+          s.pick = pickFor(card, box, seen, s, fixed)
           s.radius = getComputedStyle(card).borderRadius
         }
       }
@@ -277,6 +339,11 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       fonts++
       schedule()
     })
+  // The trail's own word that it is up (its pill shown): the pass finds the pill and watches its size from then on.
+  on(window, 'vg:trail-ready', () => schedule())
+  // The guide has no word of its own that it is up: its host arrives on body, before the chips or after them
+  // (its script is not ours to order), and the pass then finds its mic and watches its size.
+  observe(new MutationObserver(wrap('pocket chips guide', (records) => records.some((r) => [...r.addedNodes].some((node) => node.localName === 'vg-guide')) && schedule()))).observe(document.body, { childList: true })
   // Inner scrollers (Owl's stage outer when focus moves into a hidden slide, horizontal lists).
   on(document, 'scroll', (event) => event.target !== document && schedule(), { capture: true, passive: true })
   const follow = (event) => {
@@ -358,9 +425,16 @@ export const createChips = ({ place, content, cards, hidden = () => false, gate 
       allowed = gate(coverage)
       rekey()
     },
-    /** The Pocket's view changed (album opened or closed). */
+    /**
+     * The Pocket's view changed (album opened or closed). Back on the page, the chips are placed and shown at once,
+     * in the frame the page comes back, not one later (W2-A).
+     */
     view() {
       if (state.view !== 'page' || state.busy) root.hidden = true
+      else {
+        cancelAnimationFrame(frame)
+        pass()
+      }
       schedule()
     },
     debug: () => ({

@@ -2,8 +2,9 @@
  * Pocket: peel a service off the page like a sticker, keep it for later, and turn the
  * page to see everything you kept.
  *
- *   1. "Pocket it" on a card peels it off (Apple Books curl from its top-right corner),
- *      it lifts, and flies into the pocket. A liner stays in its place with "Put back".
+ *   1. "Pocket it" on a card peels it off (Apple Books curl from its top-right corner, its top-left
+ *      in a right-to-left card on Vodafone's pages, where the chip is), it lifts, and flies into the
+ *      pocket. A liner stays in its place with "Put back".
  *   2. While anything is pocketed, the page's bottom-right corner (bottom-left on Vodafone's own
  *      pages, ADR-0064) sits half-turned, peeking at the pocket underneath, with a floating pocket
  *      button in the gap.
@@ -194,12 +195,32 @@ const snapshotCard = (card, width, height) => {
 
 const stickerRadius = (width, height) => clamp(Math.min(width, height) * 0.11, 14, 32)
 
-/**
- * Peel direction for a card: along its diagonal, from the top-right corner (where "Pocket it"
- * sits) toward the bottom-left. A long strip peels from one end along its length, like a
- * label, so the peeled part folds back within the card's own footprint.
+/*
+ * A long card (wider than 2.5 times its height, or than 60% of the screen while 1.5 times as wide as it is tall:
+ * Vodafone Cash's band, 1351x204 at 1366 and about 360x207 at 375; a near-square card on a phone is not) is pocketed
+ * as a sticker-sized piece (W3-B: F10): it peels across its height, tilted just enough for its corner to lead
+ * (the folded part reaches STRIP_LEAD px past its edge at most, and turns at most 2 × STRIP_TILT degrees), it
+ * is held up at most STRIP_LIFT degrees, and as it lifts it shrinks to a sticker's width, STICKER_W, keeping
+ * its aspect, never shorter than the album's sticker frame (its 8 px padding and 16 px corners, top and bottom).
  */
-const stickerPhi = (width, height) => -clamp(Math.atan2(height, width) / RAD, 5, 82) * RAD
+const STRIP_LEAD = 16
+const STRIP_TILT = 3
+const STRIP_LIFT = 6
+const STICKER_W = 360
+const STICKER_MIN_H = 48
+const isStrip = (width, height) => width > 2.5 * height || (width > 0.6 * window.innerWidth && width > 1.5 * height)
+/** How much a long card shrinks while it lifts (1: an ordinary card keeps its size). */
+const stripSize = (width, height) => clamp(STICKER_W / width, STICKER_MIN_H / height, 1)
+
+/**
+ * Peel direction for a card: along its diagonal, from its top-right corner (where "Pocket it" sits) toward
+ * the bottom-left, or mirrored, from its top-left (`left`: a right-to-left card on Vodafone's pages, its chip
+ * at its end, ADR-0052 §12). A long card (`strip`) peels across its height instead, from the same corner.
+ */
+const stickerPhi = (width, height, left = false, strip = false) => {
+  const up = strip ? 90 - Math.min(STRIP_TILT, Math.asin(Math.min(1, STRIP_LEAD / width)) / RAD) : clamp(Math.atan2(height, width) / RAD, 5, 82)
+  return (left ? up - 180 : -up) * RAD
+}
 
 /** Deterministic small tilt per sticker so the album looks hand-placed but stays stable. */
 const tiltFor = (id) => {
@@ -260,6 +281,8 @@ const shellSeams = ({ sourceRoot, outputRoot, viewbar, header, main }) => {
     dated: false,
     groups: false,
     eagerImages: true,
+    // Whether a sticker's picture that its frame would cut too much is shown whole (F14): the clone's are as they were.
+    fitPictures: false,
     pageBack: PAGE_BACK,
   }
 }
@@ -561,6 +584,17 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     }
   }
 
+  /**
+   * The host's header is never covered by the sheet (seams.headerBottom, Vodafone's pages; W2-A): on every frame of a
+   * turn or the peek, its layers are cut where the header ends, read before anything is written.
+   */
+  let clipped = ''
+  const clipToHeader = (sheet) => {
+    if (!seams.headerBottom) return
+    const clip = `inset(${Math.max(0, seams.headerBottom() - sheet.top)}px 0 0 0)`
+    if (clip !== clipped) for (const layer of [planeLayer, liftLayer]) layer.style.clipPath = clipped = clip
+  }
+
   /** What the page-tip curl uncovers: the album's paper, and the mascot living under the page. */
   const albumUnder = (box) => box.append(make('div', { class: 'pocket-album pocket-album--under' }), ...(actors ? [actors.underStage()] : []))
 
@@ -580,7 +614,11 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       },
     })
     const source = seams.snapshotRoot() ?? document.body
+    // What is fixed on the live page now (a pinned navigation, a skip link, a menu) stays where it is: in the copy it
+    // would sit at the sheet's top and show twice, so its copy is hidden (read on the live page first, then written).
+    const fixed = [source, ...source.querySelectorAll('*')].map((node) => getComputedStyle(node).position === 'fixed')
     const shell = source.cloneNode(true)
+    ;[shell, ...shell.querySelectorAll('*')].forEach((node, i) => fixed[i] && (node.style.cssText += ';visibility:hidden!important;opacity:0!important'))
     prepare?.(shell)
     // The clone's own pictures load eagerly in the copy; Vodafone's are never fetched for it.
     if (seams.eagerImages) for (const img of shell.querySelectorAll('img[loading="lazy"]')) img.loading = 'eager'
@@ -627,6 +665,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     planeLayer.replaceChildren(rig.plane)
     liftLayer.replaceChildren(rig.lift)
     state.peek = { rig, sheet, phi: peekPhi, R: peekRadius(), tween: null }
+    clipToHeader(sheet)
     rig.update({ x, phi: peekPhi, R: state.peek.R })
     return state.peek
   }
@@ -637,7 +676,14 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     if (!peek) return Promise.resolve(false)
     peek.tween?.cancel()
     const from = peek.rig.state?.x ?? 0
-    peek.tween = tween(reducedMotion() ? 0 : duration, (e) => peek.rig.update({ x: lerp(from, toX, e), phi: peek.phi, R: peek.R }), easing)
+    peek.tween = tween(
+      reducedMotion() ? 0 : duration,
+      (e) => {
+        clipToHeader(peek.sheet)
+        peek.rig.update({ x: lerp(from, toX, e), phi: peek.phi, R: peek.R })
+      },
+      easing,
+    )
     return peek.tween.promise
   }
 
@@ -670,6 +716,17 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
 
   /* ------------------------------------------------- stickers on the page */
   let hover = null // a corner lifted while the pointer is on "Pocket it"
+
+  /**
+   * Whether a card (or an album sticker) peels from its top-left: its top-end corner, on Vodafone's pages, where the
+   * overlay puts the chip at a card's end (W3-B: F7b). The clone's chips sit at the top-right in both languages.
+   */
+  const peelsLeft = (node) => seams.chips !== true && getComputedStyle(node).direction === 'rtl'
+  /** How card `card` (`width` × `height`) peels: its direction, and whether it goes as a long piece. */
+  const peelOf = (card, width, height) => {
+    const strip = isStrip(width, height)
+    return { strip, phi: stickerPhi(width, height, peelsLeft(card), strip) }
+  }
 
   const stickerRig = (card, width, height, rect, span = width + height) =>
     createCurl({
@@ -708,7 +765,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     entry.host.append(host)
     entry.host.classList.add('is-peeling')
     const R = stickerRadius(width, height)
-    const phi = stickerPhi(width, height)
+    const { phi } = peelOf(card, width, height)
     // Enough lift to clear the chip sitting on the corner, so the curl is visible.
     const lifted = clamp(2 * cornerReach(width, height, phi) * 0.24, 50, 96)
     hover = { card, id, host, rig, R, phi, tween: null }
@@ -739,12 +796,16 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
    *                                pulled up off the page; the last corner lets go
    *   throw  .. + THROW_MS         the freed sticker arcs into the pocket, relaxing a little,
    *                                shrinking and slipping under the turned page
+   *
+   * A long card (isStrip) peels across its height, is held up barely tilted, drawn wholly over its own slot
+   * as it lifts, and shrinks to a sticker's width meanwhile, so it never sweeps across the page (W3-B: F10).
    */
   const stickerJourney = (card, { startX = 0 } = {}) => {
     const rect = card.getBoundingClientRect()
     const { width, height } = rect
     const R = stickerRadius(width, height)
-    const phi = stickerPhi(width, height)
+    const { strip, phi } = peelOf(card, width, height)
+    const size = strip ? stripSize(width, height) : 1
     const span = 2 * cornerReach(width, height, phi)
     const rig = stickerRig(card, width, height, rect, span)
     const host = make('div', {
@@ -759,9 +820,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const halfway = Math.max(startX, span * 0.5)
     const free = span + R * 1.2 // the roll has passed the far corner: nothing is stuck
     const relaxed = span * 0.45
-    const liftedAngle = Math.PI - Math.asin(clamp(LIFT_HEIGHT / span, 0.14, Math.sin(Math.PI - LIFTED_ANGLE)))
+    const liftedAngle = strip ? Math.PI - STRIP_LIFT * RAD : Math.PI - Math.asin(clamp(LIFT_HEIGHT / span, 0.14, Math.sin(Math.PI - LIFTED_ANGLE)))
     const relaxedAngle = Math.max(liftedAngle, 0.82 * Math.PI)
-    const endScale = clamp(40 / Math.max(width, height), 0.05, 0.3)
+    const endScale = clamp(40 / (Math.max(width, height) * size), 0.05, 0.3) * size
     const onPage = PEEL_MS + LIFT_MS
     const duration = onPage + THROW_MS
     const reach = span / 2
@@ -802,13 +863,14 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
           const u = ease.inOutSine((time - PEEL_MS) / LIFT_MS)
           const x = lerp(halfway, free, u)
           const angle = lerp(Math.PI, liftedAngle, u)
-          rig.update({ x, phi, R, angle, ground: 1 - u })
+          // A long card leaves the shadows it cast on the page there before it is drawn up over its slot.
+          rig.update({ x, phi, R, angle, ground: strip ? (1 - u) ** 3 : 1 - u })
           host.dataset.peel = Math.min(1, x / span).toFixed(2)
           // As the last corner lets go, the hand draws the sticker up over its own slot.
-          // Barely anything is still stuck by the time this pull is noticeable.
-          const pull = smoothstep(0.15, 1, u)
+          // Barely anything is still stuck by the time this pull is noticeable. A long card is held over it throughout.
+          const pull = strip ? 1 : smoothstep(0.15, 1, u)
           const point = body(x, angle)
-          place(point, (width / 2 - point.x) * pull, (height / 2 - point.y) * pull, 1 + 0.04 * pull)
+          place(point, (width / 2 - point.x) * pull, (height / 2 - point.y) * pull, lerp(1, size, u) * (1 + 0.04 * pull))
           host.style.filter = shadow(u ** 3)
         }
         return
@@ -831,7 +893,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       const point = body(x, angle)
       const bx = (1 - e) ** 2 * from.x + 2 * (1 - e) * e * via.x + e * e * to.x
       const by = (1 - e) ** 2 * from.y + 2 * (1 - e) * e * via.y + e * e * to.y
-      const scale = lerp(1.04, endScale, ease.inOutCubic(clamp((t - 0.08) / 0.92, 0, 1))) * (1 + 0.05 * Math.sin(Math.min(1, t / 0.3) * Math.PI))
+      const scale = lerp(1.04 * size, endScale, ease.inOutCubic(clamp((t - 0.08) / 0.92, 0, 1))) * (1 + 0.05 * Math.sin(Math.min(1, t / 0.3) * Math.PI))
       // The spin follows the throw: clockwise into a right-hand corner, mirrored into a left-hand one.
       place(point, bx - (left + point.x), by - (top + point.y), scale, spin * (16 * t - 9 * Math.sin(t * Math.PI)))
       host.style.opacity = t > 0.84 ? String(1 - (t - 0.84) / 0.16) : '1'
@@ -1028,6 +1090,37 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     }
   }
 
+  /**
+   * A sticker's picture in its frame. On Vodafone's pages (seams.fitPictures) a picture that cover would cut
+   * by more than 40% is shown whole on the frame's soft ground (is-contain) instead (F14; the lead,
+   * 2026-11-17): of a picture of shape P (width over height) in a frame of shape F, cover hides
+   * 1 - min(P/F, F/P). Vodafone Cash's phone and notes (218x240) lose 45% in the album's columns at 1366x900
+   * (247x150) and 59% in its one column at 375x812 (329x150); a 230x170 photo 18% and 38%, so it fills its
+   * frame. Only a tall or square picture (P under 1.2: an illustration, a portrait) or a strip (P over 3.5)
+   * is shown whole: a landscape photo near 4:3 would lose 41-45% in a phone's wider frame (390-414 px) and
+   * still reads best filling it. Decided once, when both the picture and its frame have a size (the album may still be hidden
+   * when the picture loads), so the records kept before need nothing new; a record that names its fit keeps it.
+   */
+  const fitWatch = seams.fitPictures && observe(new ResizeObserver(wrap('pocket pictures', (entries) => entries.forEach((entry) => fitPicture(entry.target)))))
+  const fitPicture = (frame) => {
+    const img = frame.firstChild
+    const F = frame.clientWidth / frame.clientHeight
+    const P = img.naturalWidth / img.naturalHeight
+    // A frame or a picture without a size yet waits; a frame gone (the album drawn again) is let go.
+    if (frame.isConnected && !(F > 0 && F < Infinity && P > 0 && P < Infinity)) return
+    fitWatch.unobserve(frame)
+    if (frame.isConnected && Math.min(P / F, F / P) < 0.6 && (P < 1.2 || P > 3.5)) img.classList.add('is-contain')
+  }
+  const frameFor = (image) => {
+    const img = make('img', { src: image.src, alt: '', class: image.fit === 'contain' ? 'is-contain' : null })
+    const frame = make('div', { class: 'pocket-sticker__media' }, img)
+    if (fitWatch && !image.fit) {
+      fitWatch.observe(frame)
+      on(img, 'load', () => fitPicture(frame), { once: true })
+    }
+    return frame
+  }
+
   /** A sticker as kept: its copy as published when it was saved, in its own language, with its picture or without one. */
   const stickerFor = (key) => {
     const record = records.get(key)
@@ -1040,7 +1133,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const sticker = make(
       'article',
       { class: `pocket-sticker pocket-sticker--${tone}${image ? '' : ' pocket-sticker--plain'}`, 'aria-labelledby': titleId, style: { '--tilt': `${tiltFor(key)}deg` } },
-      image ? make('div', { class: 'pocket-sticker__media' }, make('img', { src: image.src, alt: '', class: image.fit === 'contain' ? 'is-contain' : null })) : null,
+      image ? frameFor(image) : null,
       make(
         'div',
         { class: 'pocket-sticker__body' },
@@ -1132,7 +1225,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     host.append(rig.plane, rig.lift)
     attach(host)
     sticker.style.visibility = 'hidden'
-    const phi = stickerPhi(width, height)
+    // From its top-end corner, as a card peels on the page (W3-B: F7b).
+    const phi = stickerPhi(width, height, peelsLeft(sticker))
     const end = fullTurn(width, height, phi, R)
     await tween(
       620,
@@ -1253,6 +1347,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       await tween(
         reducedMotion() || instant ? 0 : 1150,
         (e, t) => {
+          clipToHeader(sheet)
           const phi = lerp(from.phi, turnedPhi, ease.inOutSine(t))
           const R = lerp(from.R, toR, ease.inOutSine(t))
           peek.rig.update({ x: lerp(from.x, fullTurn(sheet.width, sheet.height, phi, R) + 80, e), phi, R })
@@ -1305,6 +1400,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
       await tween(
         reducedMotion() ? 0 : 1100,
         (e, t) => {
+          clipToHeader(sheet)
           const phi = lerp(turnedPhi, peekPhi, ease.inOutSine(t))
           const R = lerp(fromR, toR, ease.inOutSine(t))
           const start = fullTurn(sheet.width, sheet.height, phi, R) + 80
@@ -1434,15 +1530,21 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     if (ownStore) store.close?.()
   }
 
-  // The overlay of chips on Vodafone's pages. If its start fails, what it and the Pocket already added is taken
-  // away here: the guard stops the layer, but the Pocket was never handed back to register its destroy.
-  if (seams.chips === 'overlay' && createChips)
+  /**
+   * The overlay of chips on Vodafone's pages, once: from `createChips` now, or from the host when their chunk
+   * arrives (the page's coverage as last read). If its start fails, what it and the Pocket already added is taken
+   * away here: the guard stops the layer, but the Pocket may not have been handed back to register its destroy.
+   */
+  const useChips = (create) => {
+    if (destroyed || chips || seams.chips !== 'overlay') return
     try {
-      chips = createChips({ ...seams.overlay, catalog, decorate, undecorate, state, page: () => seams.page, on, later, observe, wrap, mark, checkpoint, t })
+      chips = create({ ...seams.overlay, coverage, catalog, decorate, undecorate, state, page: () => seams.page, on, later, observe, wrap, mark, checkpoint, t })
     } catch (error) {
       destroy()
       throw error
     }
+  }
+  if (createChips) useChips(createChips)
 
   return {
     state,
@@ -1457,6 +1559,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     portal,
     store,
     setModel,
+    useChips,
     /** Where each chip is on Vodafone's page, by card id (ADR-0052 §12): for `?aixc-debug` and the tests. */
     chips: () => chips?.debug() ?? null,
     destroy,

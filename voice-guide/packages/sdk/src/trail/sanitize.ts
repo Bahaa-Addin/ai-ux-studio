@@ -18,7 +18,7 @@ const NODE = { Document: 0, DocumentType: 1, Element: 2, Text: 3, CDATA: 4, Comm
 
 /** Elements that are removed with their content. */
 const DROP_TAGS = new Set(['script', 'noscript', 'base', 'template', 'portal', 'applet', 'foreignobject', 'animate', 'set', 'animatemotion', 'animatetransform', 'discard', 'handler', 'listener'])
-/** Elements that would load or run something: kept as an empty box of the same size. */
+/** Elements that would load or run something: kept as an empty box of the same size. Every empty box draws nothing in the replay (`data-vg-blocked`). */
 const BOX_TAGS = new Set(['iframe', 'frame', 'frameset', 'object', 'embed', 'video', 'audio', 'canvas', 'source', 'track', 'dialog'])
 /** Attributes that carry a URL that is loaded (resources) or followed (navigation). */
 const RESOURCE_ATTRS = new Set(['src', 'srcset', 'imagesrcset', 'poster', 'background', 'lowsrc', 'dynsrc', 'href', 'xlink:href'])
@@ -146,6 +146,9 @@ function sanitizeNode(n: SNode, r: ResourceRules, parentTag = ''): boolean {
 			return true
 		}
 		sanitizeAttributes(tag, attrs, r)
+		// Blocked by the recorder: rrweb kept only its class and size, so the rules that placed and drew it no longer
+		// match and the browser's own look would show (Vodafone's accessibility button, a grey square at the top; F12).
+		if (attrs.rr_width !== undefined) attrs['data-vg-blocked'] = ''
 		n.attributes = attrs
 	}
 	if (Array.isArray(n.childNodes)) n.childNodes = n.childNodes.filter((c) => sanitizeNode(c, r, String(n.tagName || '').toLowerCase()))

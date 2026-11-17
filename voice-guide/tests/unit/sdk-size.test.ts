@@ -64,9 +64,11 @@ test('the trail adds only a gate to guide.js; rrweb lives in its own on-demand c
  * in coverage, two more recogniser rows, re-reading when the page changes); 7,647 on 2026-11-13
  * (phase 3 S5: the demo loader and ensureCss, which put a demo's CSS on the page). The budget is
  * set a little above and raised on purpose when a phase adds to the core. Demos load on intent
- * (dynamic imports), never in it.
+ * (dynamic imports), never in it. 8,000 bytes on 2026-11-17 (W2-A: PageHost hides #main-content laid out at
+ * its width, no height, transparent and inert, and gives back its style, inert and hidden attributes exactly,
+ * so Owl's AutoRefresh never fades Vodafone's carousels out under the album; 7,886 before), so 7.875 KB.
  */
-const AIXC_CORE_BUDGET = 7.75 * 1024
+const AIXC_CORE_BUDGET = 7.875 * 1024
 
 /**
  * Each demo chunk with what it imports statically, by the source module it is the entry of
@@ -108,17 +110,32 @@ const AIXC_CORE_BUDGET = 7.75 * 1024
  * 17,667 bytes, so 17.5 KB (raised on purpose: the live mode's handoff and wall). The Pocket's chunk
  * with the portal's stand-in 32,102 bytes (the stand-in and the import, about 150 bytes), so 31.5 KB:
  * raised on purpose, over the 32,000 asked for (the lead's call).
+ *
+ * 2026-11-17, the fixes of the live review (handoff 2026-11-17 §5), each measured from 32,155 bytes the same
+ * day: four @font-face aliases for Vodafone's own bold and light files (F1) +139; the turn keeps Vodafone's
+ * header uncovered (its layers cut at the header's bottom on every frame, the copy without what is fixed on
+ * the live page, a pocketed card's liner in the closing copy, the chips shown the frame the page comes back;
+ * F2, F3) +321. The portal's chunk 6,436 bytes (from 6,450: its stacks are now pocket.css's variables).
+ *
+ * 2026-11-17: the chips in their own chunk: Pocket 33,912 -> 30,118 bytes, chips 4,616. The chips' chunk
+ * (./demos/chips.js with the overlay, its placement and chips-overlay.css as minified text) is asked for first
+ * thing in the Pocket's start where chips can show (the website, coverage at least the gate), or when a later
+ * reading lets them show; the Pocket's chunk keeps the chip, the liner and the lift (pocket.js decorate,
+ * pocket.css), which the clone draws in its cards too. Budgets the measures rounded up to the next quarter KB:
+ * the Pocket's 29.5 KB, back under the 32,000 bytes asked for; the chips' 4.75 KB.
  */
 const AIXC_DEMO_BUDGETS: Record<string, number> = {
-	'src/host/demos/pocket.js': 31.5 * 1024,
+	'src/host/demos/pocket.js': 29.5 * 1024,
+	'src/host/demos/chips.js': 4.75 * 1024,
 	'src/host/demos/journey.js': 8.75 * 1024,
-	'src/host/demos/actors.js': 43.25 * 1024,
+	'src/host/demos/actors.js': 44 * 1024, // 2026-11-17 F6b (the actors make room when a fixed control comes or goes mid-album: obstacles.js's watch, the refit, the eased move): 45,004 bytes, 44,277 before; rounded up to a quarter KB
 	'src/host/demos/portal.js': 6.5 * 1024,
 	'src/pocket/portal/controller.js': 17.5 * 1024,
 }
 
 /** Which chunk loads a demo chunk on intent (a dynamic import), by entry; the core unless named here. */
 const AIXC_LOADED_BY: Record<string, string> = {
+	'src/host/demos/chips.js': 'src/host/demos/pocket.js',
 	'src/host/demos/journey.js': 'src/host/demos/pocket.js',
 	'src/host/demos/actors.js': 'src/host/demos/pocket.js',
 	'src/host/demos/portal.js': 'src/host/demos/pocket.js',
@@ -172,7 +189,11 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	assert.match(actors, /pocket-actor-floor/, 'the actors\' stylesheet is in their chunk as text')
 	const pocket = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/pocket.js')?.file ?? ''), 'utf8')
 	assert.doesNotMatch(pocket, /vf-portal|pocket-mascot|pocket-drone|generativelanguage|aixc-composer__/, 'the Pocket on live pages carries no portal, mascot, drone or composer (pocket.css only hides the composer\'s launcher)')
-	assert.match(pocket, /pocket-chips/, 'the Pocket on live pages carries its chips (S6)')
+	// The chips (S6) are a chunk of their own, with their stylesheet as text; the Pocket's chunk only names their region (the page turn's copy).
+	const chips = fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/chips.js')?.file ?? ''), 'utf8')
+	assert.match(chips, /pocket-chips\[data-aixc\]/, 'the chips\' stylesheet is in their chunk as text')
+	assert.match(chips, /pocket-cta--icon/, 'the overlay is in the chips\' chunk')
+	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-chips\[data-aixc\]|pocket-cta--icon/, `no chips overlay or its stylesheet with the Pocket (${f}): they load on their own where chips can show`)
 	assert.doesNotMatch(pocket, /pocket-journey/, 'the journey is not in the Pocket\'s chunk: it loads only where a trail host can be claimed (S10)')
 	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/pocket.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /pocket-mascot|pocket-drone|pocket-actor|data:image\/svg|vf-portal/, `no mascot, drone or portal with the Pocket (${f}): they load on their own (S12, S13)`)
 })

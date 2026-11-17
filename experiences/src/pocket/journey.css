@@ -10,7 +10,8 @@
 
 .pocket-journey-cta {
   gap: 8px;
-  padding: 0 16px 0 14px;
+  padding-block: 0;
+  padding-inline: 14px 16px; /* the icon's side first, in either reading direction */
 }
 
 .pocket-journey-cta__icon {
@@ -378,30 +379,11 @@
   background: #fff;
 }
 
-.pocket-journey-memory__frame .replayer-mouse {
-  position: absolute;
-  z-index: 2;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
-  border-radius: 50%;
-  background: rgba(230, 0, 0, 0.18);
-  box-shadow:
-    0 0 0 2px #fff,
-    0 0 0 4px #e60000;
-  transition:
-    left 0.05s linear,
-    top 0.05s linear;
-}
-
-.pocket-journey-memory__frame .replayer-mouse.active {
-  background: rgba(230, 0, 0, 0.45);
-}
-
+/* The memory is a still preview of the page: no replayer cursor in it, nor its trail (NEW-8). Before the
+   memory's first pointer move the cursor sat half cut at the frame's top corner. */
+.pocket-journey-memory__frame .replayer-mouse,
 .pocket-journey-memory__frame .replayer-mouse-tail {
-  position: absolute;
-  z-index: 1;
-  pointer-events: none;
+  display: none !important;
 }
 
 .pocket-journey-memory__veil {

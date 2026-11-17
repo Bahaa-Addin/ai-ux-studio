@@ -12,11 +12,12 @@
 import actorsCss from '../../pocket/pocket-actors.css'
 import cursorCss from '../../pocket/pocket-cursor.css'
 import { createPocketActors } from '../../pocket/pocket-actors.js'
-import { fixedObstacles } from '../../pocket/obstacles.js'
+import { fixedObstacles, watchFixedObstacles } from '../../pocket/obstacles.js'
 
 /** `options` as initPocket gives them, and the layer's ensureCss. */
 export const createActors = (options, { ensureCss }) => {
   ensureCss('pocket-actors', `${actorsCss}\n${cursorCss}`)
-  // The mascot stands back from Vodafone's accessibility button and the Voice Guide's controls (AGENTS.md 4.6, ADR-0064).
-  return createPocketActors({ ...options, floor: 'fixed', obstacles: () => fixedObstacles() })
+  // The mascot stands back from Vodafone's accessibility button and the Voice Guide's controls (AGENTS.md 4.6, ADR-0064),
+  // and both make room again when one of them comes, goes or changes size while the album shows (F6b).
+  return createPocketActors({ ...options, floor: 'fixed', obstacles: () => fixedObstacles(), watch: watchFixedObstacles })
 }

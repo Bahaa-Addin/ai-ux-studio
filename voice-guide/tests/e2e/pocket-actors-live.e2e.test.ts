@@ -18,9 +18,20 @@
  * - The floor stays at the viewport's bottom and stops above Vodafone's footer at the end of the page.
  * - A failure in the actors drops only the actors: the layer and the Pocket carry on.
  * - Vodafone's accessibility button keeps its box and its styles in every state; the mascot never takes a press.
+ * - With the trail on (the bar carries "Your journey", a sticker's group head under the title), at 1366×900
+ *   and 1280×800 in both languages: the drone shows at the album's inline end, inside the viewport, clear
+ *   of the trail's pill, "Empty pocket", the bar's buttons, the title, the group head, the stickers, the mic
+ *   and Vodafone's button (F6, 2026-11-17).
+ * - A fixed control that comes while the album shows (F6b, 2026-11-17): the trail's consent card opened from
+ *   the pill over the drone's home (1366×900 in both languages, with reduced motion in English, and 1600×900
+ *   where the far gutter is free): within 2 s the drone is off it, hidden or at rest elsewhere clear of
+ *   everything, and within 2 s of the card closing it is back at its home (and, the card open before the
+ *   album, the drone waits hidden and then hovers at its home, ready to play); the guide's keyboard button and
+ *   transcript bar shown mid-album: within 2 s the mascot keeps 16 px from them, and is back on his margin
+ *   within 2 s of them hiding.
  */
 import assert from 'node:assert/strict'
-import { after, before, test } from 'node:test'
+import { after, before, describe, test } from 'node:test'
 
 import type { Page } from 'playwright'
 
@@ -700,3 +711,357 @@ for (const lang of ['en', 'ar'] as const) {
 		}
 	})
 }
+
+/* ---------------------------------------------- 8. with the trail on: the drone (F6) */
+
+/**
+ * The album as the live runs of 2026-11-17 met it: the trail on, so the bar carries "Your journey" and the
+ * trail's pill floats over "Empty pocket"; one sticker, so its group's head ("Services  THIS PAGE") lies
+ * between the title and the card. The gateway of this file is restarted with the trail on for these.
+ */
+describe('with the trail on', () => {
+	before(async () => {
+		await gw?.close()
+		gw = await startLayerGateway(PORT, { trail: true })
+	})
+
+	/** Everything the drone must keep clear of, as boxes (viewport px), and the drone itself. */
+	const droneScene = (page: Page) =>
+		page.evaluate(() => {
+			const box = (n: Element | null | undefined) => {
+				if (!n || !n.getClientRects().length) return null
+				const r = n.getBoundingClientRect()
+				return r.width && r.height ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null
+			}
+			const shown = (n: Element | null | undefined) => {
+				if (!n) return false
+				const s = getComputedStyle(n)
+				return s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) > 0.05
+			}
+			const out = document.getElementById('pocket-output')!
+			const vg = document.querySelector('vg-guide')?.shadowRoot
+			const drone = document.querySelector<HTMLElement>('.pocket-drone')
+			const all = (selector: string, root: ParentNode | null | undefined = out) => [...(root?.querySelectorAll(selector) ?? [])].filter(shown).map(box).filter(Boolean) as { left: number; top: number; right: number; bottom: number }[]
+			const obstacles: [string, { left: number; top: number; right: number; bottom: number }][] = []
+			const add = (name: string, list: { left: number; top: number; right: number; bottom: number }[]) => list.forEach((b, i) => obstacles.push([list.length > 1 ? `${name} ${i + 1}` : name, b]))
+			add("the trail's pill", all('.tr-pill', vg))
+			add("the trail's card", all('.tr-card', vg))
+			add('a button of the bar', all('.pocket-view__bar button'))
+			add('the title block', all('.pocket-view__mark, #pocket-title, .pocket-view__lead'))
+			add("the journey's band", all('.pocket-journey'))
+			add('a group head', all('.pocket-group__head'))
+			add('a sticker', all('.pocket-grid__item'))
+			add("the guide's mic", all('.vg-mic', vg))
+			add("the guide's keyboard button", all('.vg-kbd', vg))
+			add("the guide's transcript bar", all('.vg-bar', vg))
+			add("Vodafone's accessibility button", all('#vodafone-aw-icon', document))
+			add("OneTrust's banner", all('#onetrust-banner-sdk', document))
+			const clear = out.querySelector('.pocket-clear')
+			return {
+				drone: drone && !drone.hidden && shown(drone) ? box(drone) : null,
+				anchor: drone?.dataset.droneAnchor ?? null,
+				droneState: drone?.dataset.droneState ?? null,
+				journey: shown(out.querySelector('.pocket-view__bar .pocket-journey-cta')),
+				heads: out.querySelectorAll('.pocket-group__head').length,
+				clear: shown(clear) ? box(clear) : null,
+				inner: box(out.querySelector('.pocket-view__inner')),
+				obstacles,
+				width: document.documentElement.clientWidth,
+				height: innerHeight,
+			}
+		})
+
+	/** The album opened with one sticker pocketed by a press, the actors at rest, the pointer still in the album. */
+	async function albumAtRest(page: Page, path: string, where: string) {
+		await open(page, path, '?aixc-debug')
+		await pocketReady(page)
+		await pocketByPress(page, (await chippedIds(page))[0], where)
+		await actorsReady(page)
+		await cornerShown(page)
+		await pressPeek(page)
+		await waitView(page, 'pocket')
+		// Then the pointer goes to the open album, away from the stickers and the bar, and stays there.
+		const at = await page.evaluate(() => {
+			const r = document.querySelector('#pocket-output .pocket-view__inner')!.getBoundingClientRect()
+			return { x: r.left + r.width * 0.55, y: Math.min(innerHeight - 120, r.bottom + 420) }
+		})
+		await page.mouse.move(at.x, at.y, { steps: 4 })
+		await mascotIn(page, ['idle', 'tucked'], 10_000)
+		await page.waitForFunction(() => {
+			const d = document.querySelector<HTMLElement>('.pocket-drone')
+			return !d || d.hidden || d.dataset.droneState === 'home-hover'
+		}, null, { timeout: 10_000 })
+		await settle(page, 600)
+	}
+
+	for (const lang of ['en', 'ar'] as const) {
+		for (const vp of [DESKTOP, { width: 1280, height: 800 }]) {
+			const path = `/${lang}/services`
+			const where = `${path} ${vp.width}x${vp.height} trail on`
+			test(`${where}: the drone shows at the album's ${lang === 'en' ? 'right' : 'LEFT'} end, inside the viewport, clear of the pill, "Empty pocket", the bar, the title, the group head, the sticker, the mic and Vodafone's button (F6)`, { timeout: 150_000 }, async () => {
+				const l = await launchLayer(gw, { viewport: vp, owl: true, initScripts: [ACTORS_TEST] })
+				try {
+					const seen = watch(l.page)
+					await albumAtRest(l.page, path, where)
+					const first = await droneScene(l.page)
+					assert.equal(first.journey, true, `${where}: the bar carries "Your journey" (the trail is on)`)
+					assert.ok(first.heads >= 1, `${where}: the sticker's group head shows`)
+					assert.ok(first.drone, `${where}: the drone shows (data-drone-anchor ${first.anchor}, state ${first.droneState})`)
+					// It hovers: read it a few times while it drifts.
+					for (let i = 0; i < 8; i += 1) {
+						const s = i ? await droneScene(l.page) : first
+						assert.ok(s.drone, `${where}: the drone still shows (${i}; ${s.anchor} ${s.droneState}; ${seen.layer.join(' | ')}; ${seen.pageErrors.join(' | ')})`)
+						const d = s.drone!
+						const w = d.right - d.left
+						assert.ok(d.left >= 0 && d.top >= 0 && d.right <= s.width && d.bottom <= s.height, `${where}: the drone is inside the viewport (${fmt(d)}; ${s.width}x${s.height})`)
+						if (lang === 'en') assert.ok(cx(d) > s.width / 2 && d.right >= s.inner!.right - 12, `${where}: the drone is at the album's right end (${fmt(d)} vs ${Math.round(s.inner!.right)}; ${s.anchor})`)
+						else assert.ok(cx(d) < s.width / 2 && d.left <= s.inner!.left + 12, `${where}: the drone is at the album's LEFT end (${fmt(d)} vs ${Math.round(s.inner!.left)}; ${s.anchor})`)
+						assert.ok(w > 20, `${where}: the drone has its size (${fmt(d)})`)
+						for (const [name, b] of s.obstacles) assert.equal(overlaps(d, b), false, `${where}: the drone is clear of ${name} (${fmt(d)} vs ${fmt(b)}; ${s.anchor})`)
+						if (s.clear) assert.ok(gap(d, s.clear) >= 16, `${where}: the drone keeps at least 16 px from "Empty pocket" (${Math.round(gap(d, s.clear))} px)`)
+						await l.page.waitForTimeout(150)
+					}
+					assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+				} finally {
+					await l.close()
+				}
+			})
+		}
+	}
+
+	/* -------------------------------- the trail's consent card over the drone's home (F6b) */
+
+	/** The trail's pill (while it shows, not tucked away) and its consent card (while open), in the guide's shadow root. */
+	const trailParts = (page: Page) =>
+		page.evaluate(() => {
+			const r = document.querySelector('vg-guide')?.shadowRoot
+			const box = (n: HTMLElement | null | undefined) => {
+				if (!n || n.hidden || !n.getClientRects().length) return null
+				const b = n.getBoundingClientRect()
+				return b.width && b.height ? { left: b.left, top: b.top, right: b.right, bottom: b.bottom } : null
+			}
+			const pill = r?.querySelector<HTMLElement>('.tr-pill')
+			return { pill: pill && !pill.classList.contains('tucked') ? box(pill) : null, card: box(r?.querySelector<HTMLElement>('.tr-card')) }
+		})
+
+	/** Presses the trail's pill at its middle, as a person would (floating-walk S4), then puts the pointer back in the open album. */
+	async function pressPill(page: Page, where: string) {
+		let { pill } = await trailParts(page)
+		if (!pill) {
+			// Tucked away after a scroll down: up again, as the walk does.
+			await page.mouse.wheel(0, -8000)
+			await settle(page, 600)
+			pill = (await trailParts(page)).pill
+		}
+		assert.ok(pill, `${where}: the trail's pill shows in the album`)
+		await page.mouse.click((pill.left + pill.right) / 2, (pill.top + pill.bottom) / 2)
+		const at = await page.evaluate(() => {
+			const r = document.querySelector('#pocket-output .pocket-view__inner')!.getBoundingClientRect()
+			return { x: r.left + r.width * 0.55, y: Math.min(innerHeight - 120, r.bottom + 420) }
+		})
+		await page.mouse.move(at.x, at.y, { steps: 4 })
+	}
+
+	/**
+	 * Follows the drone (every 100 ms) until it is hidden or at rest (two reads within 3 px; and within 16 px
+	 * of `home`, when given), within `ms` of `since`, never over `card` when one is given. Moved, it flies
+	 * (its own flight, which may cross the album on the way): returns the time it took and what it crossed.
+	 */
+	async function droneToRest(page: Page, where: string, since: number, ms: number, { card = null, home = null }: { card?: Box | null; home?: Box | null } = {}) {
+		const crossed = new Set<string>()
+		let last: Box | null = null
+		for (;;) {
+			const r = await droneScene(page)
+			if (!r.drone) break
+			if (card) assert.equal(overlaps(r.drone, card), false, `${where}: in flight the drone keeps off the card (${fmt(r.drone)} vs ${fmt(card)})`)
+			for (const [name, b] of r.obstacles) if (overlaps(r.drone, b)) crossed.add(name)
+			const there = !home || (Math.abs(r.drone.left - home.left) <= 16 && Math.abs(r.drone.top - home.top) <= 16)
+			if (there && last && Math.abs(r.drone.left - last.left) < 3 && Math.abs(r.drone.top - last.top) < 3) break
+			assert.ok(Date.now() - since < ms, `${where}: within ${ms} ms the drone is at rest (${fmt(r.drone)}; ${r.anchor})`)
+			last = r.drone
+			await page.waitForTimeout(100)
+		}
+		return { ms: Date.now() - since, crossed: crossed.size ? `, crossing ${[...crossed].join(', ')} on the way` : '' }
+	}
+
+	/** Reads the drone `times` times, 150 ms apart: it is hidden, or shows inside the viewport clear of everything it keeps clear of (the card too). */
+	async function droneClear(page: Page, where: string, times: number) {
+		for (let i = 0; i < times; i += 1) {
+			const s = await droneScene(page)
+			if (s.drone) {
+				const d = s.drone
+				assert.ok(d.left >= 0 && d.top >= 0 && d.right <= s.width && d.bottom <= s.height, `${where}: the drone is inside the viewport (${fmt(d)}; ${s.anchor})`)
+				for (const [name, b] of s.obstacles) assert.equal(overlaps(d, b), false, `${where}: the drone is clear of ${name} (${fmt(d)} vs ${fmt(b)}; ${s.anchor} ${s.droneState}; read ${i})`)
+			}
+			await page.waitForTimeout(150)
+		}
+	}
+
+	// 1366x900 as the finding met it (no gutter wide enough there: the drone hides); 1600x900, where the far gutter is free and it flies there.
+	const CARD_CASES = [
+		{ lang: 'en', vp: DESKTOP, reducedMotion: false },
+		{ lang: 'en', vp: DESKTOP, reducedMotion: true },
+		{ lang: 'ar', vp: DESKTOP, reducedMotion: false },
+		{ lang: 'en', vp: { width: 1600, height: 900 }, reducedMotion: false },
+	] as const
+	for (const { lang, vp, reducedMotion } of CARD_CASES) {
+		const path = `/${lang}/services`
+		const where = `${path} ${vp.width}x${vp.height} trail on${reducedMotion ? ' reduced motion' : ''}`
+		test(`${where}: the trail's consent card opens over the drone's home; within 2 s the drone is off it (elsewhere and clear, or hidden), and within 2 s of the card closing it is back at its home (F6b)`, { timeout: 150_000 }, async (t) => {
+			const l = await launchLayer(gw, { viewport: vp, owl: true, initScripts: [ACTORS_TEST], reducedMotion })
+			try {
+				const seen = watch(l.page)
+				await albumAtRest(l.page, path, where)
+				const before = await droneScene(l.page)
+				assert.ok(before.drone, `${where}: the drone shows before the card (${before.anchor} ${before.droneState})`)
+				assert.equal((await trailParts(l.page)).card, null, `${where}: the trail's consent card is closed at first`)
+
+				// The card opens from the pill; it lies where the drone hovers (the finding: [930,156,1350,560] in English).
+				await pressPill(l.page, where)
+				await l.page.waitForFunction(() => {
+					const c = document.querySelector('vg-guide')?.shadowRoot?.querySelector<HTMLElement>('.tr-card')
+					return !!c && !c.hidden && c.getClientRects().length > 0
+				}, null, { timeout: 5_000 })
+				const opened = Date.now()
+				const card = (await trailParts(l.page)).card!
+				assert.ok(overlaps(before.drone!, card), `${where}: the card lies over the drone's home, as live (${fmt(before.drone)} vs ${fmt(card)})`)
+				let s = await droneScene(l.page)
+				while (s.drone && overlaps(s.drone, card) && Date.now() - opened < 2_000) {
+					await l.page.waitForTimeout(50)
+					s = await droneScene(l.page)
+				}
+				assert.ok(!s.drone || !overlaps(s.drone, card), `${where}: within 2 s of the card opening the drone is off it (the drone ${fmt(s.drone)} vs card ${fmt(card)}; ${s.anchor} ${s.droneState})`)
+				const off = Date.now() - opened
+				// Moved elsewhere it never comes back over the card; at rest, within 4 s of the card opening, it is clear of everything.
+				const away = await droneToRest(l.page, `${where} card open`, opened, 4_000, { card })
+				await droneClear(l.page, `${where} card open`, 6)
+				const during = await droneScene(l.page)
+				t.diagnostic(`${where}: the drone at ${fmt(before.drone)} (${before.anchor}), the card ${fmt(card)}; off it ${off} ms after it showed; then ${during.drone ? `at rest at ${fmt(during.drone)} (${during.anchor}) after ${away.ms} ms${away.crossed}` : `hidden (${during.anchor})`}`)
+
+				// The card closes from the pill: the drone comes back to its home.
+				await pressPill(l.page, where)
+				await l.page.waitForFunction(() => {
+					const c = document.querySelector('vg-guide')?.shadowRoot?.querySelector<HTMLElement>('.tr-card')
+					return !c || c.hidden
+				}, null, { timeout: 5_000 })
+				const closed = Date.now()
+				s = await droneScene(l.page)
+				while (!(s.drone && s.anchor === before.anchor) && Date.now() - closed < 2_000) {
+					await l.page.waitForTimeout(50)
+					s = await droneScene(l.page)
+				}
+				assert.ok(s.drone, `${where}: within 2 s of the card closing the drone shows (${s.anchor} ${s.droneState}; it was ${during.drone ? `at ${fmt(during.drone)} (${during.anchor})` : 'hidden'} while the card showed)`)
+				assert.equal(s.anchor, before.anchor, `${where}: within 2 s of the card closing the drone is back at its home`)
+				const shows = Date.now() - closed
+				// At rest there within 4 s, where it hovered before the card (its drift aside), and clear of everything.
+				const back = await droneToRest(l.page, `${where} card closed`, closed, 4_000, { home: before.drone })
+				const home = (await droneScene(l.page)).drone
+				assert.ok(home && Math.abs(home.left - before.drone!.left) <= 16 && Math.abs(home.top - before.drone!.top) <= 16, `${where}: at rest where it hovered before the card (${fmt(home)} vs ${fmt(before.drone)})`)
+				t.diagnostic(`${where}: shows at its home (${s.anchor}) ${shows} ms after the card closed; at rest at ${fmt(home)} after ${back.ms} ms${back.crossed}`)
+				await droneClear(l.page, `${where} card closed`, 4)
+				assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+				assert.ok(!seen.layer.some((x) => x.includes('the Pocket actors stopped')), `${where}: the actors carried on (${seen.layer.join(' | ')})`)
+			} finally {
+				await l.close()
+			}
+		})
+	}
+
+	test("/en/services 1366x900 trail on: the trail's consent card already open as the album opens, the drone waits hidden; the card closing, within 2 s it hovers at its home and plays (F6b)", { timeout: 150_000 }, async (t) => {
+		const where = '/en/services 1366x900 trail on, card first'
+		const l = await launchLayer(gw, { viewport: DESKTOP, owl: true, initScripts: [ACTORS_TEST] })
+		try {
+			const seen = watch(l.page)
+			await open(l.page, '/en/services', '?aixc-debug')
+			await pocketReady(l.page)
+			await pocketByPress(l.page, (await chippedIds(l.page))[0], where)
+			await actorsReady(l.page)
+			await cornerShown(l.page)
+			// The card opens on the page, then the album opens under it.
+			await pressPill(l.page, where)
+			await l.page.waitForFunction(() => {
+				const c = document.querySelector('vg-guide')?.shadowRoot?.querySelector<HTMLElement>('.tr-card')
+				return !!c && !c.hidden && c.getClientRects().length > 0
+			}, null, { timeout: 5_000 })
+			await pressPeek(l.page)
+			await waitView(l.page, 'pocket')
+			await mascotIn(l.page, ['idle', 'tucked'], 10_000)
+			await settle(l.page, 600)
+			const card = (await trailParts(l.page)).card
+			assert.ok(card, `${where}: the card is still open over the album`)
+			const first = await droneScene(l.page)
+			assert.ok(!first.drone || !overlaps(first.drone, card), `${where}: the drone is not under the card (${fmt(first.drone)} vs ${fmt(card)}; ${first.anchor} ${first.droneState})`)
+			// The card closes: the drone comes, at its home, and is the one that plays (its state machine is running).
+			await pressPill(l.page, where)
+			await l.page.waitForFunction(() => {
+				const c = document.querySelector('vg-guide')?.shadowRoot?.querySelector<HTMLElement>('.tr-card')
+				return !c || c.hidden
+			}, null, { timeout: 5_000 })
+			const closed = Date.now()
+			let s = await droneScene(l.page)
+			while (!(s.drone && s.droneState === 'home-hover') && Date.now() - closed < 2_000) {
+				await l.page.waitForTimeout(50)
+				s = await droneScene(l.page)
+			}
+			assert.ok(s.drone, `${where}: within 2 s of the card closing the drone shows (${s.anchor} ${s.droneState}; before ${first.drone ? fmt(first.drone) : 'hidden'})`)
+			assert.equal(s.droneState, 'home-hover', `${where}: and hovers at its home, ready to play (data-drone-state)`)
+			assert.equal(s.anchor, 'upper-right', `${where}: at its home on the album's right margin`)
+			t.diagnostic(`${where}: ${first.drone ? `at ${fmt(first.drone)} (${first.anchor})` : `hidden (${first.anchor}, ${first.droneState})`} while the card was open; ${s.droneState} at ${fmt(s.drone)} (${s.anchor}) ${Date.now() - closed} ms after it closed`)
+			await droneClear(l.page, `${where} card closed`, 4)
+			assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+		} finally {
+			await l.close()
+		}
+	})
+
+	/* ------------------- the guide's keyboard button and transcript bar appearing mid-album: the mascot (F6b) */
+
+	for (const reducedMotion of [false, true]) {
+		const where = `/en/services 1366x900 guide controls mid-album${reducedMotion ? ' reduced motion' : ''}`
+		test(`${where}: the guide's keyboard button and transcript bar showing while the album is open, within 2 s he keeps 16 px from them; hidden again, within 2 s he is back on his margin (F6b)`, { timeout: 150_000 }, async (t) => {
+			const l = await launchLayer(gw, { viewport: DESKTOP, owl: true, initScripts: [ACTORS_TEST], reducedMotion })
+			try {
+				const seen = watch(l.page)
+				await albumAtRest(l.page, '/en/services', where)
+				const plain = await scene(l.page)
+				assert.equal(plain.kbd, null, `${where}: the keyboard button is not shown at first`)
+				assertStand(plain, 'en', DESKTOP, `${where} before`)
+				assert.ok(plain.drawn!.right >= plain.inner!.right - 12, `${where}: on his margin at first (${fmt(plain.drawn)} vs ${Math.round(plain.inner!.right)})`)
+				const toggle = (on: boolean) =>
+					l.page.evaluate((on) => {
+						// As while the guide listens (launcher.ts): by class, fading in and out.
+						const root = document.querySelector('vg-guide')!.shadowRoot!
+						root.querySelector('.vg-kbd')!.classList.toggle('show', on)
+						root.querySelector('.vg-bar')!.classList.toggle('hidden', !on)
+					}, on)
+				const clearOf = (s: Scene) => !!(s.drawn && s.kbd && s.bar && gap(s.drawn, s.kbd) >= PAD - 0.5 && gap(s.drawn, s.bar) >= PAD - 0.5)
+				await toggle(true)
+				const shownAt = Date.now()
+				let s = await scene(l.page)
+				while (!clearOf(s) && Date.now() - shownAt < 2_000) {
+					await l.page.waitForTimeout(50)
+					s = await scene(l.page)
+				}
+				assert.ok(s.kbd && s.bar, `${where}: the keyboard button and the transcript bar show`)
+				assert.ok(clearOf(s), `${where}: within 2 s he keeps ${PAD} px from them (${fmt(s.drawn)} vs keyboard ${fmt(s.kbd)} and bar ${fmt(s.bar)}; ${s.state})`)
+				t.diagnostic(`${where}: ${fmt(plain.drawn)} before; clear of the keyboard button ${fmt(s.kbd)} and the bar ${fmt(s.bar)} at ${fmt(s.drawn)} ${Date.now() - shownAt} ms after they showed (${s.state})`)
+				await settle(l.page, 400)
+				assertStand(await scene(l.page), 'en', DESKTOP, `${where} shown`)
+
+				await toggle(false)
+				const hiddenAt = Date.now()
+				s = await scene(l.page)
+				while (!(s.kbd === null && s.bar === null && s.drawn && s.drawn.right >= s.inner!.right - 12) && Date.now() - hiddenAt < 2_000) {
+					await l.page.waitForTimeout(50)
+					s = await scene(l.page)
+				}
+				assert.ok(s.drawn && s.drawn.right >= s.inner!.right - 12 && s.drawn.right <= s.inner!.right + 2, `${where}: within 2 s of them hiding he is back on his margin (${fmt(s.drawn)} vs ${Math.round(s.inner!.right)}; ${s.state})`)
+				t.diagnostic(`${where}: back on his margin at ${fmt(s.drawn)} ${Date.now() - hiddenAt} ms after they hid`)
+				assertStand(s, 'en', DESKTOP, `${where} hidden again`)
+				assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+			} finally {
+				await l.close()
+			}
+		})
+	}
+})

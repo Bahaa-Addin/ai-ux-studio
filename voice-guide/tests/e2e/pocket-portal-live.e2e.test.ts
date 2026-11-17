@@ -23,6 +23,10 @@
  *    the click navigate natively, the layer stays up; a guard stop mid-transition gives the page back.
  * 7. Escape cancels on live. 8. Back reopens the album at once at the same scroll; a bfcache pageshow
  *    removes the overlay. 9. Reduced motion: the link just navigates.
+ * 10. Classic scrollbars (F4, 2026-11-17): in a Chromium that shows them, the page's layout width, Vodafone's
+ *    accessibility button and the guide's mic do not move sideways at any sample of the transition.
+ * 11. What the wall shows (F5, 2026-11-17): at 375×812 the falling wall never shows Vodafone's skip link or its
+ *    off-canvas menu, which the page keeps off screen.
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -36,7 +40,7 @@ import { chromium, type Page } from 'playwright'
 import { ROOT } from '#shared/config.ts'
 
 import { loaderExperiences, loaderScript, OFFLINE_ARGS } from '../../tools/demo-browser.ts'
-import { DESKTOP, type Layer, type LayerGateway, launchLayer, open, PHONE, REPLAY, startLayerGateway, V, watch, WIDGET_STAND_IN } from './vodafone-layer.ts'
+import { DESKTOP, type Layer, type LayerGateway, type LayerOptions, launchLayer, open, PHONE, REPLAY, startLayerGateway, V, watch, WIDGET_STAND_IN } from './vodafone-layer.ts'
 
 const PORT = 4497
 /** The real HTTP server of test 3 (any free port: it is the test's own, on 127.0.0.1). */
@@ -271,7 +275,8 @@ const overlayNow = (page: Page) =>
 			for (const n of [root, ...root.querySelectorAll('*')]) {
 				if (marked(n)) continue
 				// Inside a frozen copy of the page (its root is marked and inert): the page's markup, copied.
-				const copy = n.parentElement?.closest('[inert]')
+				// (The nearest marked one: the copy of #main-content is inert too while the album hides it, unmarked.)
+				const copy = n.parentElement?.closest('[inert][data-aixc]')
 				if (copy && copy !== root && root.contains(copy) && marked(copy)) continue
 				unmarked.push(`${n.localName}.${n.getAttribute('class') ?? ''}`)
 			}
@@ -905,9 +910,31 @@ const HOLD_IDLE_ON_BACK = `(() => {
 	window.requestIdleCallback = (fn, o) => (history.state?.vfPortal ? 0 : idle(fn, o))
 })()`
 
+/**
+ * On every page, on animation frames: when the album first shows (window.__albumAt), and when the mascot is first
+ * shown after it (window.__mascotAt): in a state other than hidden, visible, his drawn outline on the screen (W3-B: NEW-2).
+ */
+const MASCOT_SHOWN = `(() => {
+	if (window.top !== window) return
+	window.__albumAt = null
+	window.__mascotAt = null
+	const frame = () => {
+		const out = document.getElementById('pocket-output')
+		if (window.__albumAt === null && out && !out.hidden && document.body && document.body.dataset.pocketView === 'open') window.__albumAt = performance.now()
+		if (window.__albumAt !== null) {
+			const m = document.querySelector('.pocket-mascot')
+			const part = m && (m.querySelector('[data-part="outline"]') || m)
+			const r = part && part.getBoundingClientRect()
+			if (m && m.dataset.mascotState && m.dataset.mascotState !== 'hidden' && getComputedStyle(m).visibility !== 'hidden' && r && r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight) window.__mascotAt = performance.now()
+		}
+		if (window.__mascotAt === null) requestAnimationFrame(frame)
+	}
+	requestAnimationFrame(frame)
+})()`
+
 for (const c of [CASES[0], CASES[3]]) {
-	test(`${c.name}: Back after a sticker's page reopens the album at once, at the same scroll`, { timeout: 150_000 }, async () => {
-		const l = await launchLayer(gw, { viewport: c.viewport, initScripts: [PROBE, HOLD_IDLE_ON_BACK] })
+	test(`${c.name}: Back after a sticker's page reopens the album at once, at the same scroll, the mascot shown within a second`, { timeout: 150_000 }, async () => {
+		const l = await launchLayer(gw, { viewport: c.viewport, initScripts: [PROBE, HOLD_IDLE_ON_BACK, MASCOT_SHOWN] })
 		try {
 			const seen = watch(l.page)
 			// The Pocket's page with no-store, so Back loads it afresh (the bfcache path is the next test).
@@ -948,6 +975,11 @@ for (const c of [CASES[0], CASES[3]]) {
 			assert.ok(Math.abs(back.scrollY - atScroll) <= 2, `the same scroll (${back.scrollY} for ${atScroll})`)
 			assert.deepEqual(back.stickers, [link.href], 'the sticker is still there')
 			assert.equal((await pageNow(l.page)).overlay, 0, 'no overlay')
+			// The mascot comes with the album (NEW-2): its chunk at once, not at idle (held back here).
+			await l.page.waitForFunction(() => (window as any).__mascotAt !== null, null, { timeout: 3_000 }).catch(() => {})
+			const mascot = await l.page.evaluate(() => ({ album: (window as any).__albumAt, mascot: (window as any).__mascotAt, state: document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? null, ready: document.getElementById('pocket-output')?.dataset.pocketActorReady ?? null }))
+			console.log(`${c.name} Back: the album at ${Math.round(mascot.album)} ms, the mascot at ${mascot.mascot === null ? 'never' : `${Math.round(mascot.mascot)} ms (${Math.round(mascot.mascot - mascot.album)} ms after)`}, in state ${mascot.state}`)
+			assert.ok(mascot.album !== null && mascot.mascot !== null && mascot.mascot - mascot.album <= 1_000, `the mascot is shown within 1,000 ms of the album being shown (${JSON.stringify(mascot)}; chunks ${JSON.stringify(chunksBack)})`)
 			assert.deepEqual(seen.pageErrors, [], 'no page errors')
 		} finally {
 			await l.close()
@@ -1004,3 +1036,216 @@ test('en desktop, reduced motion: a sticker\'s press just navigates, in this tab
 		await l.close()
 	}
 })
+
+/* ------------------------------------------------------------------ 10. classic scrollbars (F4) */
+
+/**
+ * The kit's browser with classic scrollbars, as Windows shows them and a Mac set to show them always:
+ * Playwright's headless Chromium hides them (its default --hide-scrollbars), and the kit's launch takes no
+ * option for that, so this one launch is made without the flag.
+ */
+async function launchWithScrollbars(gateway: LayerGateway, o: LayerOptions) {
+	const launch = chromium.launchPersistentContext
+	chromium.launchPersistentContext = ((dir: string, options: Parameters<typeof launch>[1] = {}) =>
+		launch.call(chromium, dir, { ...options, ignoreDefaultArgs: [...(Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : []), '--hide-scrollbars'] })) as typeof launch
+	try {
+		return await launchLayer(gateway, o)
+	} finally {
+		chromium.launchPersistentContext = launch
+	}
+}
+
+/**
+ * Where things are across the page, in the page: the width fixed elements are laid out in (a hidden fixed
+ * probe at inset 0, on <html> so the wall never sees it), the body's width, Vodafone's accessibility button
+ * and the guide's mic. (documentElement.clientWidth is recorded, not compared: with overflow hidden it leaves
+ * a kept gutter out, so it reads the window's width while fixed elements still get the narrower one.)
+ */
+const LAYOUT = `(() => {
+	let probe = document.querySelector('[data-layout-probe]')
+	if (!probe) {
+		probe = document.createElement('div')
+		probe.setAttribute('data-layout-probe', '')
+		probe.style.cssText = 'position:fixed;inset:0;visibility:hidden;pointer-events:none'
+		document.documentElement.append(probe)
+	}
+	const box = (el) => {
+		if (!el) return null
+		const r = el.getBoundingClientRect()
+		return [r.left, r.top, r.width, r.height]
+	}
+	return {
+		at: Math.round(performance.now()),
+		active: document.documentElement.dataset.vfPortal === 'active',
+		innerWidth,
+		clientWidth: document.documentElement.clientWidth,
+		fixed: box(probe),
+		body: box(document.body),
+		button: box(document.getElementById('vodafone-aw-icon')),
+		mic: box(document.querySelector('vg-guide')?.shadowRoot?.querySelector('.vg-mic') ?? null),
+	}
+})()`
+
+type LayoutSample = { at: number; active: boolean; innerWidth: number; clientWidth: number; fixed: number[]; body: number[]; button: number[] | null; mic: number[] | null }
+
+const moved = (a: number[] | null, b: number[] | null) => (a && b ? Math.max(...a.map((v, i) => Math.abs(v - b[i]))) : a === b ? 0 : Infinity)
+
+for (const c of CASES) {
+	test(`${c.name}, classic scrollbars: the page keeps its width while the portal runs; the accessibility button and the guide's mic do not move`, { timeout: 150_000 }, async (t) => {
+		const l = await launchWithScrollbars(gw, { viewport: c.viewport, initScripts: [PROBE] })
+		try {
+			const seen = watch(l.page)
+			const { link } = await toAlbum(l, c.path)
+			const before = (await l.page.evaluate(LAYOUT)) as LayoutSample
+			assert.ok(before.innerWidth - before.clientWidth > 0, `a classic scrollbar takes width on the page (${before.innerWidth} - ${before.clientWidth})`)
+			assert.ok(before.button, "Vodafone's accessibility button stands in")
+			await serveDestination(l.page, link.href)
+			const samples: LayoutSample[] = []
+			await l.page.exposeFunction('__layoutSample', (s: LayoutSample) => samples.push(s))
+			// From the press (capture: before the portal sees it) every 100 ms until the page goes.
+			await l.page.evaluate((js) => {
+				window.addEventListener(
+					'click',
+					() => {
+						const take = () => (window as any).__layoutSample(eval(js))
+						take()
+						const timer = setInterval(take, 100)
+						window.addEventListener('pagehide', () => clearInterval(timer), { once: true })
+					},
+					{ capture: true, once: true },
+				)
+			}, LAYOUT)
+			const nav = mainNavigation(l.page, link.href)
+			await l.page.mouse.click(link.x, link.y)
+			await nav
+			const during = samples.filter((s) => s.active)
+			t.diagnostic(`${c.name}: ${samples.length} samples, ${during.length} while html[data-vf-portal=active]; clientWidth before ${before.clientWidth}, during ${[...new Set(during.map((s) => s.clientWidth))].join('/')}; mic ${before.mic ? 'present' : 'absent'}`)
+			assert.ok(during.length >= 10, `sampled through the transition (${during.length} samples while it ran)`)
+			// Every measure at every sample, against the page before the press: what moved, by how much, from when.
+			const moves: string[] = []
+			for (const key of ['fixed', 'body', 'button', 'mic'] as const) {
+				const off = samples.filter((s) => moved(s[key], before[key]) > 0.5)
+				if (off.length) moves.push(`${key} ${JSON.stringify(before[key])} -> ${JSON.stringify(off[0][key])} at ${off[0].at - samples[0].at} ms (${off.length} of ${samples.length} samples)`)
+			}
+			assert.deepEqual(moves, [], 'the box fixed elements are laid out in, the body, the accessibility button and the mic stay put (0.5 px)')
+			assert.deepEqual(seen.pageErrors, [], 'no page errors')
+		} finally {
+			await l.close()
+		}
+	})
+}
+
+test('en desktop, classic scrollbars: Escape and a guard stop give the page its scrollbar back, with nothing of the portal left on <html>', { timeout: 150_000 }, async () => {
+	const l = await launchWithScrollbars(gw, { viewport: DESKTOP, initScripts: [PROBE] })
+	try {
+		const seen = watch(l.page)
+		const { link } = await toAlbum(l, '/en/services')
+		await serveDestination(l.page, link.href)
+		const root = () => l.page.evaluate(() => ({ attributes: [...document.documentElement.attributes].map((a) => a.name).filter((n) => n.startsWith('data-vf-portal')), scrollbar: innerWidth - document.documentElement.clientWidth, overlay: document.querySelectorAll('.vf-portal').length }))
+		const before = await root()
+		assert.ok(before.scrollbar > 0, `a classic scrollbar takes width (${before.scrollbar} px)`)
+		assert.deepEqual(before.attributes, [], 'nothing of the portal on <html> before the press')
+		await l.page.mouse.click(link.x, link.y)
+		await l.page.waitForTimeout(800)
+		assert.deepEqual((await root()).attributes.sort(), ['data-vf-portal', 'data-vf-portal-gutter'], 'while it runs: the scroll lock and the kept gutter')
+		await l.page.keyboard.press('Escape')
+		await l.page.waitForTimeout(300)
+		assert.deepEqual(await root(), before, 'Escape: the scrollbar is back and nothing of the portal is on <html>')
+		const again = (await stickerLink(l.page))!
+		await l.page.mouse.click(again.x, again.y)
+		await l.page.waitForTimeout(800)
+		assert.equal((await root()).overlay, 1, 'a second press runs')
+		await l.page.evaluate(() => (window as any).__aixc.guard.stop())
+		await l.page.waitForTimeout(300)
+		const stopped = await root()
+		assert.deepEqual({ attributes: stopped.attributes, overlay: stopped.overlay }, { attributes: [], overlay: 0 }, 'a guard stop: nothing of the portal on <html>, no overlay')
+		assert.ok(stopped.scrollbar > 0, `and the scrollbar is back (${stopped.scrollbar} px)`)
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+	} finally {
+		await l.close()
+	}
+})
+
+/* ------------------------------------------------------------------ 11. what the wall shows (F5) */
+
+/**
+ * Vodafone's pieces that its page keeps off screen at 375 px: the skip link (`.skip-link`: fixed, top -100px
+ * until focused) and the mobile menu (`#js-remove-desktop .nav-list-items`: absolute, translated a whole width
+ * off the side), both by the theme's own class rules in the saved page. Each is recorded as the page has it,
+ * then the wall's copy of it is sampled every frame while the wall falls: a copy whose computed visibility is
+ * visible and whose box meets the screen is on show.
+ */
+const OFF_SCREEN = `(() => {
+	const off = (el) => {
+		const r = el.getBoundingClientRect()
+		return r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth
+	}
+	const skip = document.querySelector('a.skip-link')
+	const menu = document.querySelector('#js-remove-desktop .nav-list-items')
+	return {
+		skip: skip ? { text: skip.textContent.trim(), off: off(skip), position: getComputedStyle(skip).position } : null,
+		menu: menu ? { entries: [...menu.querySelectorAll('.nav-item-link')].filter((x) => x.getClientRects().length).map((x) => x.textContent.trim()).filter(Boolean).slice(0, 4), off: off(menu), position: getComputedStyle(menu).position } : null,
+	}
+})()`
+
+const WALL_SHOWS = `(() => {
+	const wall = document.querySelector('.vf-portal__wall')
+	if (!wall) return null
+	const shows = (el) => {
+		const cs = getComputedStyle(el)
+		if (cs.visibility !== 'visible' || cs.display === 'none') return false
+		const r = el.getBoundingClientRect()
+		return r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight
+	}
+	return {
+		at: Math.round(performance.now()),
+		wall: wall.style.transform,
+		skip: [...wall.querySelectorAll('a.skip-link')].filter(shows).map((x) => x.textContent.trim()),
+		menu: [...wall.querySelectorAll('.nav-list-items .nav-item-link')].filter(shows).map((x) => x.textContent.trim()).filter(Boolean),
+	}
+})()`
+
+for (const c of [CASES[1], CASES[3]]) {
+	test(`${c.name}: the falling wall shows only what was on screen: no skip link, no off-canvas menu`, { timeout: 150_000 }, async (t) => {
+		const l = await launchLayer(gw, { viewport: c.viewport, fixedHeader: true, initScripts: [PROBE] })
+		try {
+			const seen = watch(l.page)
+			const { link } = await toAlbum(l, c.path)
+			const live = (await l.page.evaluate(OFF_SCREEN)) as { skip: { text: string; off: boolean; position: string } | null; menu: { entries: string[]; off: boolean; position: string } | null }
+			assert.ok(live.skip?.off, `the page has its skip link, off screen (${JSON.stringify(live.skip)})`)
+			assert.ok(live.menu?.off && live.menu.entries.length, `the page has its mobile menu, off screen (${JSON.stringify(live.menu)})`)
+			await serveDestination(l.page, link.href)
+			const samples: { at: number; wall: string; skip: string[]; menu: string[] }[] = []
+			await l.page.exposeFunction('__wallSample', (s: any) => s && samples.push(s))
+			// Every frame from the press until the wall has had time to land (about 0.7 s at speed 1).
+			await l.page.evaluate((js) => {
+				window.addEventListener(
+					'click',
+					() => {
+						const end = performance.now() + 1_600
+						const take = () => {
+							;(window as any).__wallSample(eval(js))
+							if (performance.now() < end) requestAnimationFrame(take)
+						}
+						requestAnimationFrame(take)
+					},
+					{ capture: true, once: true },
+				)
+			}, WALL_SHOWS)
+			const nav = mainNavigation(l.page, link.href)
+			await l.page.mouse.click(link.x, link.y)
+			await nav
+			const tipped = samples.filter((s) => Number(/rotateX\((-?[\d.]+)rad\)/.exec(s.wall)?.[1] ?? 0) > 0.05)
+			t.diagnostic(`${c.name}: ${samples.length} frames of the wall, ${tipped.length} tipped; skip link "${live.skip!.text}" (${live.skip!.position}), menu (${live.menu!.position}) ${live.menu!.entries.join(' | ')}`)
+			assert.ok(tipped.length >= 10, `the wall was sampled while it fell (${tipped.length} frames)`)
+			const shown = (key: 'skip' | 'menu') => {
+				const on = samples.filter((s) => s[key].length)
+				return on.length ? `${on.length} of ${samples.length} frames, from ${on[0].at - samples[0].at} ms: ${on[0][key].slice(0, 4).join(' | ')}` : 'never'
+			}
+			assert.deepEqual({ skip: shown('skip'), menu: shown('menu') }, { skip: 'never', menu: 'never' }, 'the skip link and the off-canvas menu never show on the falling wall')
+			assert.deepEqual(seen.pageErrors, [], 'no page errors')
+		} finally {
+			await l.close()
+		}
+	})
+}
