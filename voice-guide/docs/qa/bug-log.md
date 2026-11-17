@@ -476,3 +476,167 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Fix:** ADR-0075 §8. Trail host API v2, part 4, an optional method (it amends ADR-0050's host interface): `setCover({ node, covered(), shown() })`. The journey chunk registers `#main-content` with `covered` set to `PageHost.sourceHidden`. While covered the recorder writes any full snapshot with `#main-content`'s shown attributes (in the serialized copy only) and does not record the host's hide and show of `style`, `inert` and `hidden`. (Deferring the first snapshot was the first idea; it would have left no memory while the album is open.) `sanitize.ts` marks blocked nodes `data-vg-blocked` and `replay.ts` keeps their box empty. The memory frame hides `.replayer-mouse` and its tail (`journey.css`). Sizes: `trail.js` 32,096 B (budget 32,256 B), `trail-record.js` 23,784, `trail-replay.js` 68,720, `guide.js` 20,824, journey chunk 8,289 B (8,236 before).
 - **Test:** `tests/e2e/pocket-journey-live.e2e.test.ts` 12 of 12, 3 new (English at 1366, Arabic at 375, the end of the memory), each failed first; 1 new unit test in `trail.test.ts`.
 - **Still open:** if the album opens before the journey chunk registers (for example Back into the album while the trail starts), that first hide is recorded as before.
+
+## B-61 The album's actors at rest overwrote or back-dated a change made between two rest ticks
+
+- **Found:** 2026-11-17, by the review of the rest mode's port (a skeptic per finding, all confirmed). The held patch drew the actors every 750 ms at rest and ran the physics ahead on a saved copy of the state.
+- **Cause:** a change that arrived between two rest ticks was overwritten by the next tick, or back-dated into a visible snap. Seen: the mascot kept facing a card that had lost focus; a pointer move after a rest turned him 20 degrees in one drawing.
+- **Fix:** ADR-0075, "The rest mode (F11), landed" (`edc544d`). Any change of either brain's state ends the rest first: both actors catch up to now and draw every frame again. The brains gained a `beforeChange` hook, and `simKey` (a JSON of the simulation) guards the restore in `restStep`.
+- **Test:** `pocket-actors-live.e2e` cases "focus leaving the cards" and "a pointer move after a long rest", and a unit test of the brains' `beforeChange`; each failed on the port before the review's fixes.
+
+## B-62 Reduced motion turned on during a rest was ignored
+
+- **Found:** 2026-11-17, by the same review.
+- **Cause:** a rest already running did not end when reduced motion was turned on.
+- **Fix:** reduced motion ends the rest at once (the same list as B-61).
+- **Test:** `pocket-actors-live.e2e` "reduced motion mid-rest"; failed first on the port before the fix.
+
+## B-63 Keys, wheel, touch, focus, scroll and the window's blur did not end the rest
+
+- **Found:** 2026-11-17, by the same review.
+- **Cause:** keys, wheel, touch, focus, scroll and the window's blur were not among the things that ended a rest, though they change what the actors read.
+- **Fix:** each of those inputs ends the rest, and no rest starts until 1.5 s after the last of them (so a continuously scrolling element keeps the rest off).
+- **Test:** none of its own. Keys and focus are exercised by the "focus leaving the cards" case (Tab, Shift+Tab); wheel, touch, scroll and blur ending a rest have no test (open: add an e2e case that fails if one of them does not end the rest; O44).
+
+## B-64 The rider's sheet did not fit when his silhouette's point count changed with his pitch
+
+- **Found:** 2026-11-17, by the same review.
+- **Cause:** the rider's sheet is fitted to the silhouette by least squares. His silhouette gains or loses points with his pitch, and the fit failed when the point count changed: 83 of 4,000 pose pairs.
+- **Fix:** the fit uses points matched by name; now 0 of 4,000 fail.
+- **Test:** a unit test, the rider fit across the pitch thresholds (10 yaw/pitch pairs where the silhouette gains or loses points, fitted both ways); by index there is no map. The 83-of-4,000 count was the review's measurement.
+
+## B-65 The rotors' rest check could not fail
+
+- **Found:** 2026-11-17, by the same review.
+- **Cause:** the check could not fail: it passed whatever the rotors did.
+- **Fix:** the check reads the six-page opacity flipbook's own page. Rotors are a flipbook at rest, and a unit test covers its schedule.
+- **Test:** the `pocket-actors-live.e2e` at-rest cost and rotors case; it now fails under two mutations and passes on the real code.
+
+## B-66 WebKit painted no board at rest
+
+- **Found:** 2026-11-17, while checking the port in WebKit (Python Playwright driver, playwright-core 1.58, webkit-2248).
+- **Cause:** the mascot's board was an animated HTML box inside the rig's `foreignObject`, and WebKit did not paint it at rest. The board-red share of the picture was 0.04 at rest against 0.30 awake. A check on boxes said "the same"; the pictures showed the defect.
+- **Fix:** the board is an SVG sheet of its own between the floor's sheet and the rig. `measureMascotInset` now reads the deck from that sheet; the first version of the change moved the mascot's margin by 8 px, which `pocket_e2e` caught.
+- **Test:** `pocket-actors-live.e2e`, the board painted at rest in WebKit and Chromium, by pixels; failed first in WebKit before the sheet.
+- **Still open:** the voice-guide's own Playwright (1.56) wants webkit-2215, which is not installed, so this case runs through the Python driver.
+
+## B-67 Groundwork: a reimagined view's marks were wiped on the first re-read, and the core's size check could not see `content-index` entering the core
+
+- **Found:** 2026-11-17, while preparing phase 4a (design §3.5 and §5 item 1).
+- **Cause:** two separate things. (1) The live adapter's `tag()` and `untag()` cleared `data-aixc-item` and `data-aixc-section` from every element of the document, so a view's cards would have lost theirs on the first re-read (amends ADR-0049 §7). (2) The size check built only the chunks that existed, and none of them imported `content-index.js`, so it passed. A demo chunk that imports it makes esbuild move it into a shared chunk the core loads: the core measured 8,852 B against a budget of 8,064 B, and 8,027 B once `normalizeContentModel` moved out.
+- **Fix:** (1) `tag()` and `untag()` clear marks under `#main-content` only (core 8,003 B). (2) `normalizeContentModel` and its constants moved to `experiences/src/host/model.js`, which imports nothing; `build.ts` exports `aixcBuildOptions` so a test can build a probe.
+- **Test:** `aixc-layer.e2e`, two new cases (the view's four marks wiped; only the `pocket` sheet loaded), failed on the old code; `experiences/tests/core-graph.test.mjs` and a probe build in `sdk-size.test.ts` each fail on the old graph. After: `aixc-layer` 8/8, `sdk-size` 4/4. Commit `3992aa5`.
+
+## B-68 The launcher showed over the trail's pill until the trail announced itself
+
+- **Found:** 2026-11-17, in stage 1's first review round (`2b7ac42`).
+- **Cause:** the launcher overlapped the pill until the trail announced itself.
+- **Fix:** the launcher finds the pill as it mounts (a watch on the guide's arrival on body and in its shadow root), not only on `vg:trail-ready`, so a returning visitor's pill is known before the trail says it is up. The tuck and the no-pill rule (shown only while `scrollY` is under 120) are the lead's decisions in ADR-0076, not this fix.
+- **Test:** `reimagine-launcher.e2e`, the arrival-before-the-trail's-word case; failed first.
+
+## B-69 The launcher stayed over Vodafone's sign-in card
+
+- **Found:** 2026-11-17, in stage 1's review.
+- **Cause:** the sign-in card for signed-out visitors (`#notSignedItem .nav-startup` under `.active`, on maintheme and static-lite pages) covers the launcher's place, and it was not one of the launcher's hide reasons.
+- **Fix:** it is a hide reason now, with Vodafone's menus and dialogs, by CSS `:has()` on `visibility`.
+- **Test:** `reimagine-launcher.e2e`, "hidden while a signed-out visitor's login card is open ... on maintheme, static-lite and static-theme pages"; failed first.
+
+## B-70 The chips lost the launcher's resting place when it hid
+
+- **Found:** 2026-11-17, in stage 1's review.
+- **Cause:** the chips keep clear of the launcher on the first screen; when the launcher hid, they lost the place it kept for them.
+- **Fix:** the chips keep a hidden launcher's scroll-0 rest and check again at the top of the page (lead decision). The Owl audit of `pocket-chips` stays byte-identical to `3992aa5`.
+- **Test:** `reimagine-launcher.e2e`, the chips' rest case; failed first.
+
+## B-71 The seam leaked a clean-up for every listener through `guard.listen`
+
+- **Found:** 2026-11-17, in stage 1's review.
+- **Cause:** `on()` added its listeners through `guard.listen`, which keeps a clean-up per call for the guard's life. A listener added and removed many times left that many clean-ups behind.
+- **Fix:** the seam owns its listeners: `on()` wraps the handler with the guard's `wrap`, adds and removes the listener itself, and keeps its own `off`; `configure()` releases them all and ignores a `listen` passed in (ADR-0076 §6).
+- **Test:** `shared-seam`, "the guard keeps nothing for the seam: its cleanups do not grow across mount, unmount, mount and drags"; failed on the `guard.listen` version.
+
+## B-72 Spotlight from 1180 px wide was taller than the box on short laptops
+
+- **Found:** 2026-11-17, in stage 1's review, with the clone-side box harness.
+- **Cause:** from 1180 px wide, on short laptop windows, spotlight's stage was taller than the box.
+- **Fix:** windows under 850 px tall use a flowing layout; from 1180 px the stage is the room's height; the queue shows only from 1180 px wide and 850 px tall; it is hidden on narrower windows (phones and 720 to 1179 px) and on shorter ones (the flowing layout). 1024x768 and 768x1024 stages equal the room.
+- **Test:** `box_e2e.py` (1,228 checks, eleven sizes (desktop, laptop, tablet and phone), English and Arabic; 464 fail without the box rules).
+- **Still open:** windows under 700 px tall (up to 25 px over); the 850 px switch was measured on the Services copy only (O39).
+
+## B-73 On phones spotlight's controls row sat on the stage, not under the title
+
+- **Found:** 2026-11-17, in stage 1's review.
+- **Cause:** a finding of the review: on phones the controls row was not under the slide's title.
+- **Fix:** on phones the row is under the slide's title, and the centred row is placed per physical zone (each side clear of its own zone).
+- **Test:** `box_e2e.py`, the phone sizes; failed first.
+- **Still open:** the row comes after the CTA in tab order (accessibility, skipped; O40).
+
+## B-74 The Arabic "Jump to a category" label said "services" on pages that are not about services
+
+- **Found:** 2026-11-17, in stage 1's review.
+- **Cause:** the Arabic of "Jump to a category" said services.
+- **Fix:** `words()` gives neutral copy; the Arabic is now "روح لقسم" ("go to a section"). Native review pending (O42).
+- **Test:** `shared-seam-ar` unit test; failed first.
+
+## B-75 The F9 test assumed no launcher on the page
+
+- **Found:** 2026-11-17, in the full `test:e2e` at stage 1 (291 passed, 8 pending, 2 failed).
+- **Cause:** a test issue, not a defect of the page: the F9 case in `pocket-details.e2e` (the hero chip under the pill) assumed no launcher.
+- **Fix:** the case runs with Reimagine off, every assertion kept, beside a new case that runs with the launcher. The kit can turn one demo off. `pocket-chips`' Tab test expects the launcher as the one added stop.
+- **Test:** `pocket-details` 6/6 after.
+
+## B-76 The rest mode's focus case had a setup race
+
+- **Found:** 2026-11-17, in the same full run (the second of the two failures).
+- **Cause:** a test issue, a setup race present since `edc544d`: the case left the pointer resting on a sticker.
+- **Fix:** the case keeps its pointer off the stickers.
+- **Test:** `pocket-actors-live` 33/33 after; the whole run was green on the second pass.
+
+## B-77 A template still loading while the album opened (or Original or Reset was pressed) left Reimagine stuck
+
+- **Found:** 2026-11-17, in stage 2's review (24 findings, 13 real, each confirmed by a skeptic).
+- **Cause:** a template's chunk was loading and nothing owned the pending choice. If the reader opened the album, or pressed Original or Reset, before the chunk arrived, the shell's state and the page disagreed and Reimagine was stuck.
+- **Fix:** a pending template is dropped when the reader moves on (Original, Reset, Escape, the album, another template). It is kept when one of Vodafone's menus closes the composer: its view opens when its chunk arrives (see B-83).
+- **Test:** `reimagine-live.e2e`, three cases: a template still loading is dropped when the reader opens the album; the same for Original; and the one that keeps it when a menu closes the composer. Each failed first on the pre-fix code.
+
+## B-78 Two quick presses on the launcher while the shell loaded
+
+- **Found:** 2026-11-17, in stage 2's review.
+- **Cause:** a second press on the launcher while the shell's chunk was still loading was handled as a new press.
+- **Fix:** the launcher sets `aria-busy` while the shell loads and ignores presses until it has opened the composer.
+- **Test:** `reimagine-live.e2e`, "two quick presses on the launcher while the shell's chunk loads: the composer opens and stays open; the launcher is busy meanwhile"; failed first.
+
+## B-79 The composer opened from "Change experience" stayed open after Original
+
+- **Found:** 2026-11-17, in stage 2's review.
+- **Cause:** Original from the bar or the end band gave the page back but did not close a composer that "Change experience" had opened, so it sat over the page as served and covered the launcher's place.
+- **Fix:** Original closes the composer; the launcher shows again, a press reaches it and opens the composer again.
+- **Test:** `reimagine-live.e2e`, "Original from the bar or the end band closes a composer opened from 'Change experience'"; failed first.
+
+## B-80 A resize left the box where the old header had put it
+
+- **Found:** 2026-11-17, in stage 2's review.
+- **Cause:** the box rests under Vodafone's header when it opens, with its bottom at the screen's. A resize across the phone and desktop header (their heights differ) did not settle it again.
+- **Fix:** a resize re-settles the box, but only when the window has not scrolled since the open (a reader who has scrolled keeps their place).
+- **Test:** `reimagine-live.e2e`, "a resize across Vodafone's phone and desktop header, the window not scrolled since the open: the box rests under the new header, its bottom at the screen's"; failed first.
+
+## B-81 The clone's Gemini and API-key words reached the live shell through `i18n.js`
+
+- **Found:** 2026-11-17, in stage 2's review.
+- **Cause:** the clone's composer copy (Gemini, API key, prompt) lived in `i18n.js`, which the shell imports, so the words (and the Arabic "مفتاح") shipped on live pages, against the owner's decision of 2026-11-10 (templates only; no Gemini, no key field).
+- **Fix:** 51 entries moved to `experiences/src/aixc/composer-words.js`, which only the clone imports (the clone's words are unchanged: all 295 keys compared). "Gemini", "API key" and "مفتاح" are forbidden in Reimagine's chunks. The `i18n` chunk went from 8,314 to 6,171 B gzipped.
+- **Test:** `sdk-size`, the forbidden-words check on the launcher's, the shell's and each experience's chunk (with `generativelanguage`, `aixc-key`, `aixc-model`, `fonts.googleapis`, `x-goog-api-key` and `codepen`); failed first.
+
+## B-82 The composer covered its opener on short screens
+
+- **Found:** 2026-11-17, in stage 2's review and its three follow-up rounds.
+- **Cause:** the composer was always placed below its opener. On a short window (phones in landscape, laptops about 380 to 450 px tall) there was not room between the header and the corner controls, so it covered its opener, the pill, the launcher or a corner control, or it ran under Vodafone's header. The first tests were weak (they did not check its height on short screens).
+- **Fix:** three placements. BELOW (under the header, its opener and the pill, +8 px) when the room down to the corner controls is at least `H_MIN` 216 px (measured: the whole composer in English; Arabic needs 235 px below 320 px wide). Otherwise BESIDE: a column on the inline-start side of the opener (left in English, right in Arabic), from the header +8 px to the screen's bottom -16 px, at most 400 px wide and at least `W_MIN` 240 px (measured), cut clear of the corner zones (16 px) and of the pill, the launcher, the bar's controls and the view's name (8 px). Otherwise BELOW, scrolling in the room that is left. It never covers its opener, the pill, the launcher, a corner control or Vodafone's header. Checked beside its opener at 812x375, 667x375 and 844x390 (phones in landscape), 1366x380 and 1366x450, English and Arabic, from the launcher and from "Change experience"; below at 375x360 (both openers) and 375x420 (launcher), English; at 667x375 in English from "Change" the column is 278x249 and the composer 278x216.
+- **Test:** `reimagine-live.e2e`: "the composer on a short screen, below", "the composer on phones in landscape, en and ar" and "the composer on a short laptop screen, en and ar" (beside its opener, at least `H_MIN` by `W_MIN`, covering nothing, a template pressed in it opens its view), "the composer never sits in Vodafone's header band", and the height check in the Escape case; failed first.
+
+## B-83 A menu closing the composer dropped the template the reader had chosen
+
+- **Found:** 2026-11-17, in the same review.
+- **Cause:** a Vodafone menu or dialog closes the composer, and the close dropped a template the reader had already chosen and that was still loading (the fix for B-77 dropped every pending template when the composer closed).
+- **Fix:** a menu's close keeps the pending template: its view opens when its chunk arrives. Escape, Original, Reset, the album and another template still drop it (B-77).
+- **Test:** `reimagine-live.e2e`, "a template still loading is kept when one of Vodafone's menus closes the composer: its view opens when its chunk arrives; Escape drops one"; failed first.

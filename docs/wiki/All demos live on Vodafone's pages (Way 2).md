@@ -3,7 +3,7 @@ id: 01M731W7552PBJ9G1VADMJWAD5
 order: 3000
 status: current
 owner: bahaa.addin@hotmail.com
-summary: 'Running all five demos on Vodafone''s real pages: what the owner decided on 2026-11-10 and what is still open.'
+summary: 'Running all five demos on Vodafone''s real pages: what the owner decided on 2026-11-10 and 2026-11-17, what is built, and what is still open.'
 tags:
   - way-2
   - live
@@ -52,9 +52,9 @@ On 2026-11-17 the floating-control and motion checks were run again on the real 
 - The journey's memory of a page shows the page even when the trail started recording while the album covered it.
 - The "Pocket it" chips load as a chunk of their own, so the Pocket's chunk is 30,118 bytes gzipped, under the owner's 32,000.
 
-On the same day both live checks passed on the real site with these fixes in (floating: 32 cells, 0 violations; motion: whole-viewport screenshots, the carousels painted the moment the page returns). The fixes are on `feature/live-way2` in 45ee9da, 9e5a369 and 920a0be. A rest mode for the actors (finding F11) was built but is held for the owner's look review (`output/live-verify-2026-11-17/`).
+On the same day both live checks passed on the real site with these fixes in (floating: 32 cells, 0 violations; motion: whole-viewport screenshots, the carousels painted the moment the page returns). The fixes are on `feature/live-way2` in 45ee9da, 9e5a369 and 920a0be. A rest mode for the actors (finding F11) was built and held for the owner's look review (`output/live-verify-2026-11-17/`); he approved it later that day and it landed in `edc544d` (see below).
 
-ADR numbers 0068 to 0074 belong to the revamp branch (`feature/vg-revamp`, not yet merged here), so this branch's next ADR is 0075 (the revamp session, 2026-11-17).
+ADR numbers 0068 to 0074 belong to the revamp branch (`feature/vg-revamp`, not yet merged here), so this branch's next ADR is 0075 (the revamp session, 2026-11-17). Since then 0075 (the live review's fixes) and 0076 (Reimagine on Vodafone's pages) are this branch's, 0077 is the revamp's, and the next free number is 0078.
 
 ## Phase 4 design: the owner's answers (2026-11-17)
 
@@ -74,8 +74,18 @@ The design pass is `voice-guide/docs/reference/live-way2-phase4-design-2026-11-1
 
 [The native review of the Arabic microcopy blocks phase 4c's final live check.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="checking live before the review"} (in a Claude Code session, 2026-11-17). Who reviews it is still to be named.
 
-[The actors' rest mode (F11) lands, after he watched the side-by-side recording.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="keeping it held"} (in a Claude Code session, 2026-11-17). It is ported onto the branch head first, since the drone's F6b fix landed after it was built.
+[The actors' rest mode (F11) lands, after he watched the side-by-side recording.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-17 over="keeping it held"} (in a Claude Code session, 2026-11-17). It is ported onto the branch head first, since the drone's F6b fix landed after it was built. It landed in `edc544d` the same day.
+
+## What landed for phase 4a on 2026-11-17
+
+These are builds and checks, not new owner decisions. The decisions they follow are above; the ADR is ADR-0076 (`voice-guide/docs/adr/0076-reimagine-on-vodafone-pages.md`, Proposed until the live run of phase 4c and the owner's look). Nothing has been run on the real site.
+
+- **Groundwork (`3992aa5`).** The live adapter clears its marks under `#main-content` only, so a reimagined view keeps the marks of its cards. The model's normaliser moved out of `content-index.js`, which keeps that file out of the core. Vodafone's four faces and the Pocket's font stacks became one shared stylesheet, so Reimagine can load the same faces. The licence text and copyright of the pen went into the source of the eleven experiences adapted from others' pens, as the owner decided; streaming (the owner's own pen) and magazine (no pen) carry none.
+- **The actors' rest mode (`edc544d`).** At rest both actors are drawn every 750 ms and move on the compositor between drawings. On `/en/services` at 1366x900 with one sticker, per 3 s: 4 layouts and 0.033 to 0.042 s of script, against 180 layouts and 0.4166 s without it. A review found six defects before it landed, among them a board that WebKit did not paint at rest (bug log B-61 to B-66). The actors chunk is 48,951 B gzipped, under a budget raised to 48.25 KB. Open issue O30 is closed.
+- **Phase 4a, stage 1 (`2b7ac42`).** The experiences' scroll helpers can run on a scrolling element of our own, so magazine and spotlight work in a box with the controls kept out of the two bottom corners. Reimagine's launcher shows on the pages that pass the gate, under the trail's pill and tucking with it (without a pill: only near the top of the page), and hides under Vodafone's menus, dialogs and sign-in card. These layout choices are the agent's (the lead session's), not the owner's. The launcher's shell is a stub in this commit.
+- **Phase 4a, stage 2, the shell (`cfa3192`).** A press on the launcher opens a templates-only composer (magazine and spotlight for now; no Gemini, key or prompt on live pages). Choosing one shows the experience in a box under Vodafone's header with its own scroll, a bar on top and an end band with "Original page" and "Continue to the page"; Original gives the page back as served. The composer sits below its opener or, on short screens, beside it, and never covers its opener, the pill, the launcher, a corner control or Vodafone's header. The Pocket's resting curl hides while a view shows (its button stays). Seven defects found in review were fixed, each with a test that failed first (bug log B-77 to B-83): a template still loading when the album opened or Original was pressed, a double press on the launcher, the composer left open after Original, the box after a resize, the clone's Gemini words reaching the shell, the composer over its opener on short screens, and a menu closing the composer dropping the chosen template. Full suites in a worktree: `test:e2e` 316 passed, 8 pending, 0 failed; experiences 244/244; the clone's suites as before. After it: phase 4b (the other eleven experiences and the dialogs), then 4c (the live run).
+- **Known gaps** (open issues O37 to O42; the Arabic strings of stage 2 are in O42): windows under 700 px tall; spotlight's CTA reaches into the right safe zone in two measured cases; two level-1 headings with a view open and the phone focus order in spotlight (accessibility, skipped per the owner's decision of 2026-11-14); magazine loads a stylesheet it does not use.
 
 ## Still open
 
-The handoff lists the rest (D1 to D4, D6, D7, D9) with the phase each blocks. The page watch decision (D1) depends on two documents that live in the claude.ai project "AIXC", not in this repository.
+The handoff lists the rest (D1 to D4, D6, D7, D9) with the phase each blocks. The page watch decision (D1) depends on two documents that live in the claude.ai project "AIXC", not in this repository. A side session relayed an answer to D1 at 16:14 on 2026-11-17 (browser-only, check on visit, topic watches); it has not been confirmed in the session that builds Reimagine, so it is treated as open (O43). The Arabic strings that wait for the native review are listed in O42; who reviews them is still to be named.
