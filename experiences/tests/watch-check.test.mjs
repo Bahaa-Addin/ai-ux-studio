@@ -707,6 +707,24 @@ test('F7: back-to-back forced runs keep requests spacingMs apart', async () => {
   for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= 1000, `request ${i} is ${at[i] - at[i - 1]} ms after the one before`)
 })
 
+// The e2e (watch-live.e2e.test.ts, 2026-11-18) measured 999 ms between two of the page's fetch calls: the
+// request started only after the meta write that records it, and that write takes longer some times than others.
+test('spacing holds between the requests themselves, however long the meta write that records one takes', async () => {
+  const w = await baselined()
+  const setMeta = w.store.setMeta
+  let n = 0
+  w.store.setMeta = async (key, value) => {
+    // The write recording a request: 7 ms one time, none the next.
+    if (key === 'run' && value?.lastRequestAt != null) w.clock.t += n++ % 2 ? 0 : 7
+    return setMeta(key, value)
+  }
+  await w.checker.run({ force: true })
+  await w.checker.run({ force: true })
+  const at = w.srv.requests.map((r) => r.at)
+  assert.ok(at.length >= 4)
+  for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= 1000, `request ${i} is ${at[i] - at[i - 1]} ms after the one before`)
+})
+
 test('F7: a forced run that finds the lock busy waits its turn and runs; an unforced one is still dropped', async () => {
   const w = await baselined()
   w.locks.hold()

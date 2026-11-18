@@ -203,8 +203,11 @@ export function createChecker({
       }
       if (stopped()) throw STOP
       lastAt = now()
+      // The request starts at lastAt itself, and is recorded after: a slow write never brings the next one closer.
+      const out = fn()
+      out?.catch?.(() => {})
       await store.setMeta('run', { ...((await store.getMeta('run')) || {}), lastRequestAt: lastAt })
-      return fn()
+      return out
     }
 
     // robots.txt, once per run, same origin (the HTTP cache may answer it).
