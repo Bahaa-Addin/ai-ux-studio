@@ -349,6 +349,42 @@ test('the guide\'s bridge: fromGuide on a card pockets and watches it; on someth
 	}
 })
 
+// F6 (critic, phase 6): a card already in the Pocket, kept on this page in the other language, is found by the
+// Pocket's own key (pocket.keyOf) and watched; it is not refused as not-pocketed, nor pocketed twice.
+test('the guide\'s bridge: a card kept on this page in the other language is watched, not refused', { timeout: 120_000 }, async () => {
+	const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true })
+	try {
+		const page = l.page
+		await answerWatch(page)
+		await open(page, '/en/home', '?aixc-debug')
+		await ready(page)
+		await page.evaluate(async () => {
+			const s = (window as any).__aixc.demos.pocket.store
+			await s.ready
+			await s.clear()
+		})
+		const card = await pickCard(page, [...SNAPSHOTS.keys()])
+		assert.ok(card)
+		const key = await pocketCard(page, card.id)
+		// The same sticker as if it had been kept on /ar/home: same page key, the other language's path.
+		await page.evaluate(async (key) => {
+			const s = (window as any).__aixc.demos.pocket.store
+			const r = s.get(key)
+			await s.put({ ...r, source: { ...r.source, path: r.source.path.replace(/^\/en\//, '/ar/') } })
+		}, key)
+		await page.reload({ waitUntil: 'load' })
+		await ready(page)
+		assert.equal(await page.evaluate((key) => (window as any).__aixc.demos.pocket.store.get(key)?.source.path, key), '/ar/home')
+		const r = await page.evaluate((id) => (window as any).__aixcWatch.fromGuide({ target: { css: [`[data-aixc-item="${id}"]`] } }), card.id)
+		assert.deepEqual(r, { ok: true })
+		assert.deepEqual(await watchRows(page), [key])
+		assert.equal(await page.evaluate(() => (window as any).__aixc.demos.pocket.store.all().length), 1, 'not pocketed twice')
+		assert.deepEqual(l.reached, [])
+	} finally {
+		await l.close()
+	}
+})
+
 test('a throw at each checkpoint drops only the watch; the Pocket and the page carry on', { timeout: 240_000 }, async () => {
 	const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true, initScripts: [FAIL_AT] })
 	const warns: string[] = []

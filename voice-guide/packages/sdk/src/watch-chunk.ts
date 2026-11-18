@@ -38,11 +38,14 @@ function layerWatch(ms: number): Promise<LayerWatch | null> {
 /**
  * The layer first (phase 6 design §4.6): it pockets the card the step names and watches it in the browser,
  * so true, and the guide says its `watching` line; its refusal (not a card) is false, so `watchFailed`. No
- * layer on the page (`/spa/`, `?aixc=off`): the server path, which answers 409 for a browser-mode site.
+ * layer on the page (`/spa/`, `?aixc=off`): false at once on a browser-mode site (the session's site.watch.mode),
+ * before any permission prompt; else the server path.
  */
 export async function createWatch(c: WatchContext, step: { url: string; pageId?: string; target: unknown; label: string }, turnId: string, o: { layerWaitMs?: number } = {}): Promise<boolean> {
 	const layer = await layerWatch(o.layerWaitMs ?? 3000)
 	if (layer) return !!(await layer.fromGuide(step))?.ok
+	// A browser-mode site (ADR-0078) has no server watch: never a permission prompt or a push subscription for one.
+	if ((window as any).voiceGuide?.session?.site?.watch?.mode === 'browser') return false
 	let subscriptionId: string | undefined
 	try {
 		subscriptionId = await pushSubscription(c)

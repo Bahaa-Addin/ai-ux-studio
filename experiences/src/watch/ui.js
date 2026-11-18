@@ -24,15 +24,17 @@ const latest = (list) => list.reduce((a, c) => (!a || c.detectedAt > a.detectedA
 
 /**
  * Where "Open the page" goes: the card's own page when the card changed or left it; else the page its card
- * opens now (the watch's page target, re-pointed after a link change), else the link the sticker kept.
+ * opens now (the watch's page target, re-pointed after a link change), else the link the sticker kept. After
+ * a link change the kept link is the old one (F10): the card target's href now (`cardHref`), else the card's page.
  */
-export function openHrefOf(kind, watch, record, origin = globalThis.location?.origin) {
+export function openHrefOf(kind, watch, record, origin = globalThis.location?.origin, cardHref = null) {
   let card = null
   try {
     card = new URL(record.source.path, origin).href
   } catch {}
   if (kind === 'card' || kind === 'missing') return card
   const page = watch?.pageTargetId?.startsWith('page ') ? watch.pageTargetId.slice(5) : null
+  if (kind === 'link') return page ?? cardHref ?? card
   return page ?? record.cta?.href ?? card
 }
 
@@ -43,7 +45,7 @@ export const unseenKeys = (rows, alive = () => true) => [...new Set(rows.filter(
  * What a sticker says: null for none (a shop sticker, or no record); else { tag, lines: [{ text, quiet }],
  * tell, stop, open (href or null), busy }. `w` is words.js's wordsFor(lang).
  */
-export function describe({ record, watch = null, changes = [], refusal = null, busy = false, maxWatched = 20, origin }, w) {
+export function describe({ record, watch = null, changes = [], refusal = null, busy = false, maxWatched = 20, origin, cardHref = null }, w) {
   if (!record?.source?.path || record.source.site === 'shop') return null
   const d = { tag: null, lines: [], tell: false, stop: false, open: null, busy: !!busy }
   if (!watch) {
@@ -56,7 +58,7 @@ export function describe({ record, watch = null, changes = [], refusal = null, b
   if (unseen) {
     d.tag = w('changed')
     d.lines.push({ text: `${w(unseen.kind)} · ${w.date(unseen.detectedAt)}` })
-    d.open = openHrefOf(unseen.kind, watch, record, origin)
+    d.open = openHrefOf(unseen.kind, watch, record, origin, cardHref)
     return d
   }
   const seen = latest(changes)
@@ -75,6 +77,8 @@ export function describe({ record, watch = null, changes = [], refusal = null, b
 export function createWatchUi({ pocket, open, pocketStore, store, checker, w, origin, safe, maxWatched = () => 20, doc = document }) {
   const watches = new Map()
   const changes = new Map()
+  /** key → the href its card target has now (re-pointed after a link change), for "Open the page". */
+  const hrefs = new Map()
   const refusals = new Map()
   const busy = new Set()
   /** While the album shows: key → the ids of the changes it showed unseen (they keep their tag until it closes). */
@@ -100,7 +104,7 @@ export function createWatchUi({ pocket, open, pocketStore, store, checker, w, or
     let list = changes.get(key) ?? []
     const shown = held?.get(key)
     if (shown) list = list.map((c) => (shown.has(c.id) ? { ...c, seenAt: null } : c))
-    return describe({ record, watch: watches.get(key) ?? null, changes: list, refusal: refusals.get(key), busy: busy.has(key), maxWatched: maxWatched(), origin }, w)
+    return describe({ record, watch: watches.get(key) ?? null, changes: list, refusal: refusals.get(key), busy: busy.has(key), maxWatched: maxWatched(), origin, cardHref: hrefs.get(key) ?? null }, w)
   }
 
   /** The block above a sticker's actions row; its clean-up takes it away. */
@@ -149,7 +153,13 @@ export function createWatchUi({ pocket, open, pocketStore, store, checker, w, or
       if (destroyed) return
       const list = await store.listWatches()
       const next = new Map()
-      for (const row of list) next.set(row.key, await store.changesFor(row.key))
+      const nextHrefs = new Map()
+      for (const row of list) {
+        next.set(row.key, await store.changesFor(row.key))
+        nextHrefs.set(row.key, (await store.getTarget(row.cardTargetId))?.href ?? null)
+      }
+      hrefs.clear()
+      for (const [key, href] of nextHrefs) hrefs.set(key, href)
       watches.clear()
       for (const row of list) watches.set(row.key, row)
       changes.clear()

@@ -153,7 +153,7 @@ export function createGateway(opts: GatewayOptions) {
 			agent: session.agent ?? null,
 			agentToken: agentOn ? agentToken(site.id, session.id) : null,
 			page,
-			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { stt: site.speech.stt, tts: site.speech.tts, onDevice: site.speech.onDevice, phrases: (page as { phrases?: string[] }).phrases || [], out: { engine: speechEngine(site), firstAudioMs: site.speech.out.firstAudioMs }, server: whisper.configured }, ui: uiFor(site), agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: watchOn(site) }, trail: trailSettings(site, platform.trailAggregation) },
+			site: { id: site.id, name: site.name, languages: site.languages, defaultLanguage: site.defaultLanguage, speech: { stt: site.speech.stt, tts: site.speech.tts, onDevice: site.speech.onDevice, phrases: (page as { phrases?: string[] }).phrases || [], out: { engine: speechEngine(site), firstAudioMs: site.speech.out.firstAudioMs }, server: whisper.configured }, ui: uiFor(site), agent: { enabled: agentOn, maxSteps: site.agent.maxSteps, timeoutSec: site.agent.timeoutSec }, watch: { enabled: watchOn(site), mode: site.watch.mode }, trail: trailSettings(site, platform.trailAggregation) },
 			push: watchOn(site) ? s.local.watch.publicKey() : null,
 		})
 	})

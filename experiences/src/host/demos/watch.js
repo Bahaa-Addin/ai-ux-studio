@@ -8,7 +8,8 @@
  *   and its lines on the stickers, the liners and the Pocket button (../../watch/ui.js) in the page's language.
  * - window.__aixcWatch = { ready, fromGuide(step), fill(), reset() } for the guide's chip (watch-chunk.ts),
  *   announced by 'aixc:watch-ready' on window. fromGuide resolves the step's target in the live DOM; a card the
- *   adapter read (or one it sits in) is pocketed with the Pocket's own pocket() and its flight, then watched.
+ *   adapter read (or one it sits in) already in the Pocket (pocket.keyOf, its own rule) is watched; else it is
+ *   pocketed with the Pocket's own pocket() and its flight, then watched.
  * - Demo data (design §4.8): fill() loads ../../watch/demo.js (its own small chunk, only then), puts the two
  *   example stickers of the page's language in the Pocket's store (as a pocketed card is; one already there is
  *   kept), watches them (from 'demo', within maxWatched) on their 23 Oct baselines, and checks them at once,
@@ -50,6 +51,9 @@ const locate = (target) => {
 export async function start({ host, adapter, guard, layer, ensureCss, checkpoint, pocket, pocketStore, reconcile, open }) {
   let gone = false
   const cleanups = []
+  // The check's stop (F11): a dropped part, or a stopped layer, ends a run under way before its next request or write.
+  const stopRuns = new AbortController()
+  cleanups.push(() => stopRuns.abort())
   const api = { ready: true, fill: () => fill(), reset: () => reset(), fromGuide: (step) => fromGuide(step) }
   const destroy = () => {
     if (gone) return
@@ -92,7 +96,9 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       const id = locate(step?.target)?.closest?.('[data-aixc-item]')?.dataset.aixcItem
       if (!id) return { ok: false, reason: 'not-a-card' }
       const here = () => pocketStore.all().find((r) => r.id === id && r.source?.path === location.pathname)
-      let record = here()
+      // The Pocket's own key first (F6): a card kept on this page in the other language, or placed under a new id, is found.
+      const known = pocket.keyOf?.(id)
+      let record = (known != null && pocketStore.get(known)) || here()
       if (!record) {
         const before = new Set(pocket.state.ids)
         // The Pocket's own press, with its flight; its errors are the Pocket's (the layer's guard).
@@ -212,6 +218,7 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       mask: maskContent,
       rules,
       recordFor: (key) => pocketStore.get(key),
+      signal: stopRuns.signal,
       log: (...args) => layer.settings?.debug && console.info('[AIXC]', ...args),
     })
     checkpoint('watch-ui')

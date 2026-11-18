@@ -113,3 +113,17 @@ test('unseenKeys: the stickers with an unseen change that are still in the pocke
   assert.deepEqual(unseenKeys(rows, (key) => key !== 'c'), ['a'])
   assert.deepEqual(unseenKeys([]), [])
 })
+
+// ---- the critic's finding F10 on phase 6, first failing on 8e0b957 ----
+
+test('F10: after a link change, "Open the page" goes to where the card opens now, never the link the sticker kept', () => {
+  const r = record()
+  const eshop = 'https://eshop.vodafone.com.eg/en/phones'
+  // Re-pointed to a page that cannot be watched (another site): no page target, so the card target's href.
+  assert.equal(openHrefOf('link', watch({ pageTargetId: null, pageNote: 'other-site' }), r, ORIGIN, eshop), eshop)
+  // The card target's href not known: the card's own page, never record.cta.href.
+  assert.equal(openHrefOf('link', watch({ pageTargetId: null, pageNote: 'other-site' }), r, ORIGIN), `${ORIGIN}/en/home`)
+  // describe() carries it from the card target.
+  const d = describe({ record: r, watch: watch({ pageTargetId: null, pageNote: 'other-site' }), changes: [change({ kind: 'link' })], cardHref: eshop, origin: ORIGIN }, en)
+  assert.equal(d.open, eshop)
+})

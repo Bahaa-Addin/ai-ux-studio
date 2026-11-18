@@ -58,6 +58,16 @@ test('config: watch.mode defaults to server; vodafone-eg is browser with the lay
 	assert.equal(SiteConfig.safeParse({ ...structuredClone(v), watch: { mode: 'cron' } }).success, false, 'an unknown mode is refused')
 })
 
+// F5 (critic, phase 6): the guide's chunk must know a browser-mode site, so it never asks for notifications or push there.
+test('the session answer carries the site\'s watch mode: browser for vodafone-eg, server for the others', async () => {
+	const v = await call('/v1/session', { lang: 'ar', page: { url: `${VODAFONE}/ar/home` } }, VODAFONE, 'pk_vodafone_eg')
+	assert.equal(v.status, 200, JSON.stringify(v.body))
+	assert.deepEqual(v.body.site.watch, { enabled: true, mode: 'browser' })
+	const t = await call('/v1/session', { lang: 'en', page: { url: `${TELCO}/en/offers.html` } }, TELCO, 'pk_demo_telco')
+	assert.equal(t.status, 200, JSON.stringify(t.body))
+	assert.equal(t.body.site.watch.mode, 'server')
+})
+
 test('POST /v1/watch for vodafone-eg answers 409 browser_only, whatever its enabled flag', async () => {
 	const s = await call('/v1/session', { lang: 'ar', page: { url: `${VODAFONE}/ar/home` } }, VODAFONE, 'pk_vodafone_eg')
 	assert.equal(s.status, 200, JSON.stringify(s.body))

@@ -1612,6 +1612,8 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     },
     refreshExtras,
     setChanged,
+    /** This page's sticker key for card `id` (the Pocket's own rule: either language, the id the last read placed it on), or undefined. */
+    keyOf: (id) => keyOf(id),
     /** Where each chip is on Vodafone's page, by card id (ADR-0052 §12): for `?aixc-debug` and the tests. */
     chips: () => chips?.debug() ?? null,
     destroy,

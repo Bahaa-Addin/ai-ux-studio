@@ -71,25 +71,46 @@ const server = (clock, pages) => {
 }
 const answer = (p, url) => {
   const headers = new Map(Object.entries({ 'content-type': 'text/html; charset=utf-8', ...(p.headers || {}) }).map(([k, v]) => [k.toLowerCase(), v]))
-  return { status: p.status ?? 200, ok: (p.status ?? 200) >= 200 && (p.status ?? 200) < 300, url: p.url ?? url, redirected: !!p.url && p.url !== url, headers: { get: (n) => headers.get(n.toLowerCase()) ?? null }, text: async () => p.body ?? '' }
+  // `type: 'opaqueredirect'`: what fetch gives with redirect 'manual' for a 3xx (status 0, the URL asked for).
+  // `bodyThrows`: the body read fails (AbortSignal.timeout also covers the body).
+  const status = p.type === 'opaqueredirect' ? 0 : (p.status ?? 200)
+  return {
+    type: p.type ?? 'basic',
+    status,
+    ok: status >= 200 && status < 300,
+    url: p.url ?? url,
+    redirected: !!p.url && p.url !== url,
+    headers: { get: (n) => headers.get(n.toLowerCase()) ?? null },
+    text: async () => {
+      if (p.bodyThrows) throw new DOMException('The operation timed out.', 'TimeoutError')
+      return p.body ?? ''
+    },
+  }
 }
 
+/** Web Locks, one name: ifAvailable gets null while held; without it the request waits its turn. */
 const fakeLocks = () => {
   let held = false
+  const waiting = []
+  const release = () => {
+    held = false
+    waiting.shift()?.()
+  }
   return {
     get held() {
       return held
     },
     hold: () => (held = true),
+    release,
     async request(name, opts, fn) {
       assert.equal(name, 'aixc-watch-check')
-      assert.equal(opts.ifAvailable, true)
-      if (held) return fn(null)
+      if (held && opts.ifAvailable) return fn(null)
+      if (held) await new Promise((resolve) => waiting.push(resolve))
       held = true
       try {
         return await fn({ name })
       } finally {
-        held = false
+        release()
       }
     },
   }
@@ -102,6 +123,7 @@ const world = (pages = {}, over = {}) => {
   const store = openWatchStore({ win: {} })
   const records = new Map()
   let idles = 0
+  const locks = over.locks ?? fakeLocks()
   const checker = createChecker({
     store,
     read,
@@ -110,7 +132,7 @@ const world = (pages = {}, over = {}) => {
     rules: RULES,
     recordFor: (key) => records.get(key) ?? null,
     fetchImpl: srv.fetchImpl,
-    locks: fakeLocks(),
+    locks,
     now: () => clock.t,
     sleep: async (ms) => {
       clock.t += ms
@@ -130,6 +152,7 @@ const world = (pages = {}, over = {}) => {
     store,
     records,
     checker,
+    locks,
     get idles() {
       return idles
     },
@@ -285,7 +308,7 @@ test('fetches: robots once, then one at a time at least spacingMs apart; omit cr
   }
   for (const r of w.srv.requests.slice(1)) {
     assert.equal(r.init.cache, 'no-store')
-    assert.equal(r.init.redirect, 'follow')
+    assert.equal(r.init.redirect, 'manual', 'a redirect is never followed (F1)')
   }
 })
 
@@ -568,4 +591,173 @@ test('onlyStickers: a person\'s press checks only that sticker\'s pages', async 
   await w.checker.run({ force: true, onlyStickers: ['b'] })
   assert.deepEqual(w.fetched(), ['/robots.txt', '/en/services'])
   assert.equal((await w.store.getWatch('b')).pageNote, 'no-link')
+})
+
+// ---- the critic's findings on phase 6 (F1..F11), each first failing on 8e0b957 ----
+
+test('F1: fetches never follow a redirect (redirect manual), robots.txt included', async () => {
+  const w = await baselined()
+  await w.checker.run()
+  for (const r of w.srv.requests) assert.equal(r.init.redirect, 'manual', r.url)
+})
+
+test('F1: a 3xx (opaqueredirect) is never followed: the page is moved, its targets gone or missing once, no block', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/en/bundles`] = { type: 'opaqueredirect' }
+  const r = await w.checker.run()
+  assert.equal(r.ran, true, r.reason)
+  assert.deepEqual((await w.store.changesFor('a')).map((c) => c.kind), ['gone'])
+  assert.equal((await w.store.getPage(`${ORIGIN}/en/bundles`)).status, 'moved')
+  assert.equal((await w.store.getMeta('run')).blockedUntil ?? null, null, 'nothing reached the redirect target: no block')
+  w.later(31)
+  await w.checker.run()
+  assert.equal((await w.store.changesFor('a')).length, 1, 'said once')
+  const w2 = await baselined()
+  w2.srv.pages[`${ORIGIN}/en/home`] = { type: 'opaqueredirect' }
+  await w2.checker.run()
+  assert.equal((await w2.store.getTarget((await w2.store.getWatch('a')).cardTargetId)).status, 'missing')
+  assert.equal((await w2.store.changesFor('a'))[0].kind, 'missing')
+})
+
+test('F1: a response whose final URL is a challenge path or another origin (followed anyway) blocks for 24 h and stops', async () => {
+  for (const url of [`${ORIGIN}/challenge?ref=x`, `${ORIGIN}/auth/realms/x/login`, 'https://bot.example.com/check']) {
+    const w = await baselined()
+    w.srv.pages[`${ORIGIN}/en/home`] = { ...homeWith([cardA]), url }
+    const r = await w.checker.run()
+    assert.equal(r.reason, 'blocked-by-site', url)
+    assert.equal(w.srv.requests.length, 2, `${url}: robots and the one page`)
+    assert.ok((await w.store.getMeta('run')).blockedUntil > w.clock.t, url)
+    assert.deepEqual(await w.store.changesFor('a'), [], `${url}: not a change`)
+  }
+})
+
+test('F1: a redirected robots.txt stops the run, as a 5xx does', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/robots.txt`] = { type: 'opaqueredirect' }
+  assert.equal((await w.checker.run()).reason, 'robots-error')
+  assert.equal(w.srv.requests.length, 1)
+  w.later(31)
+  w.srv.requests.length = 0
+  w.srv.pages[`${ORIGIN}/robots.txt`] = { status: 200, body: '', url: 'https://elsewhere.example.com/robots.txt' }
+  assert.equal((await w.checker.run()).reason, 'robots-error')
+  assert.equal(w.srv.requests.length, 1)
+})
+
+test('F2: a challenge on the first fetch of a page (200, no #main-content) blocks for 24 h and stops the run', async () => {
+  const w = world({ [`${ORIGIN}/en/home`]: { status: 200, body: html({ noMain: true }) }, [`${ORIGIN}/en/bundles`]: bundles() })
+  await w.watch(record('a'))
+  const r = await w.checker.run({ force: true })
+  assert.equal(r.reason, 'blocked-by-site')
+  assert.equal(w.srv.requests.length, 2)
+  assert.ok((await w.store.getMeta('run')).blockedUntil > w.clock.t)
+})
+
+test('F3: a change found before a 429 later in the run is still recorded', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/en/home`] = homeWith([{ ...cardA, title: 'Super bundle, now 20 GB' }])
+  w.srv.pages[`${ORIGIN}/en/bundles`] = { status: 429 }
+  const r = await w.checker.run()
+  assert.equal(r.reason, 'blocked-by-site')
+  assert.deepEqual((await w.store.changesFor('a')).map((c) => c.kind), ['card'])
+})
+
+test('F3: a body read that fails skips that page only; the run resolves and keeps the change it found', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/en/home`] = homeWith([{ ...cardA, title: 'Super bundle, now 20 GB' }])
+  w.srv.pages[`${ORIGIN}/en/bundles`] = { ...bundles(), bodyThrows: true }
+  const r = await w.checker.run()
+  assert.equal(r.ran, true)
+  assert.deepEqual((await w.store.changesFor('a')).map((c) => c.kind), ['card'])
+})
+
+test('F3: a store error on one page does not reject the run', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/en/bundles`] = bundles(LONG + ' New price.')
+  const orig = w.store.putTarget
+  let n = 0
+  w.store.putTarget = async (row) => {
+    if (row.id.startsWith('card ') && n++ === 0) throw new Error('IDB went away')
+    return orig(row)
+  }
+  const r = await w.checker.run()
+  assert.equal(r.ran, true)
+  assert.deepEqual((await w.store.changesFor('a')).map((c) => c.kind), ['page'])
+})
+
+test('F4: a sticker joining a page target that already has a hash is not told of a change from before it joined', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/en/bundles`] = bundles(LONG + ' Changed three days ago.')
+  w.srv.pages[`${ORIGIN}/en/home`] = homeWith([cardA, { id: 'card-b', title: 'Other', href: `${ORIGIN}/en/bundles` }])
+  w.later(3 * 24 * 60)
+  await w.watch(record('b', { id: 'card-b' }))
+  await w.checker.run({ force: true, onlyStickers: ['b'] })
+  assert.deepEqual(await w.store.changesFor('b'), [], 'b just asked: its first read is its baseline')
+  assert.deepEqual((await w.store.changesFor('a')).map((c) => c.kind), ['page'], 'a was watching: a real change')
+  w.later(31)
+  w.srv.pages[`${ORIGIN}/en/bundles`] = bundles(LONG + ' Changed again, after b joined.')
+  await w.checker.run()
+  assert.deepEqual((await w.store.changesFor('b')).map((c) => c.kind), ['page'], 'after its baseline, b is told')
+})
+
+test('F7: back-to-back forced runs keep requests spacingMs apart', async () => {
+  const w = await baselined()
+  await w.checker.run({ force: true })
+  await w.checker.run({ force: true })
+  const at = w.srv.requests.map((r) => r.at)
+  for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= 1000, `request ${i} is ${at[i] - at[i - 1]} ms after the one before`)
+})
+
+test('F7: a forced run that finds the lock busy waits its turn and runs; an unforced one is still dropped', async () => {
+  const w = await baselined()
+  w.locks.hold()
+  assert.equal((await w.checker.run()).reason, 'locked')
+  const queued = w.checker.run({ force: true })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(w.srv.requests.length, 0, 'nothing while another run holds the lock')
+  w.locks.release()
+  const r = await queued
+  assert.equal(r.ran, true, r.reason)
+  assert.ok(w.srv.requests.length > 0)
+})
+
+test('F8: a sticker removed during a run leaves no targets or pages behind', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/en/home`] = () => {
+    void w.store.removeWatch('a')
+    return homeWith([cardA])
+  }
+  await w.checker.run()
+  assert.deepEqual(await w.store.listTargets(), [])
+  assert.deepEqual(await w.store.listPages(), [])
+})
+
+test('F8: orphan targets and pages (no live watch) are swept at the start of a run', async () => {
+  const w = await baselined()
+  await w.store.linkTarget({ id: `page ${ORIGIN}/en/old`, kind: 'page', url: `${ORIGIN}/en/old`, hash: 'stale', status: 'ok' }, 'gone-key')
+  await w.checker.run()
+  assert.equal(await w.store.getTarget(`page ${ORIGIN}/en/old`), null)
+  assert.equal(await w.store.getPage(`${ORIGIN}/en/old`), null)
+  assert.ok(await w.store.getTarget((await w.store.getWatch('a')).pageTargetId), 'a live target stays')
+})
+
+test('F9: a baselined page whose region drops under minChars is told once as "page", then quiet', async () => {
+  const w = await baselined()
+  w.srv.pages[`${ORIGIN}/en/bundles`] = bundles('Short now.')
+  await w.checker.run()
+  assert.deepEqual((await w.store.changesFor('a')).map((c) => c.kind), ['page'])
+  assert.equal((await w.store.getTarget((await w.store.getWatch('a')).pageTargetId)).status, 'not-static')
+  w.later(31)
+  await w.checker.run()
+  assert.equal((await w.store.changesFor('a')).length, 1, 'said once')
+})
+
+test('F11: a stopped checker (aborted signal) stops its run before the next request and write', async () => {
+  const stop = new AbortController()
+  const w = world({ [`${ORIGIN}/en/home`]: () => (stop.abort(), homeWith([cardA])), [`${ORIGIN}/en/bundles`]: bundles() }, { signal: stop.signal })
+  await w.watch(record('a'))
+  const r = await w.checker.run({ force: true })
+  assert.deepEqual(r, { ran: false, reason: 'stopped' })
+  assert.deepEqual(w.fetched(), ['/robots.txt', '/en/home'], 'nothing fetched after the stop')
+  assert.equal((await w.store.getTarget((await w.store.getWatch('a')).cardTargetId)).hash, null, 'nothing written after the stop')
+  assert.deepEqual(await w.checker.run({ force: true }), { ran: false, reason: 'stopped' })
 })

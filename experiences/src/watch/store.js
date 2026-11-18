@@ -23,7 +23,8 @@ const VERSION = 1
 
 const FIELDS = {
   watches: ['key', 'lang', 'createdAt', 'from', 'cardTargetId', 'pageTargetId', 'pageNote', 'baselineAt'],
-  targets: ['id', 'kind', 'url', 'stickerKeys', 'hash', 'linksHash', 'href', 'status', 'checkedAt', 'changedAt', 'baselineAt', 'readerVersion'],
+  // pendingKeys: stickers that joined after the target had a hash; the next read is their baseline, never news (F4).
+  targets: ['id', 'kind', 'url', 'stickerKeys', 'pendingKeys', 'hash', 'linksHash', 'href', 'status', 'checkedAt', 'changedAt', 'baselineAt', 'readerVersion'],
   pages: ['url', 'etag', 'lastModified', 'lastCheckedAt', 'finalUrl', 'canonicalUrl', 'targetIds', 'status'],
   changes: ['id', 'stickerKey', 'targetId', 'kind', 'detectedAt', 'seenAt'],
   meta: ['key', 'value'],
@@ -245,12 +246,31 @@ export function openWatchStore({ win = globalThis, onError = () => {} } = {}) {
     async linkTarget(target, stickerKey) {
       const t = (await get('targets', target.id)) ?? { status: 'ok', hash: null, ...target, stickerKeys: [] }
       if (!t.stickerKeys.includes(stickerKey)) t.stickerKeys = [...t.stickerKeys, stickerKey]
+      // A target another sticker already read: what changed before this one joined is not its news (F4).
+      if (t.hash && !(t.pendingKeys || []).includes(stickerKey)) t.pendingKeys = [...(t.pendingKeys || []), stickerKey]
       await put('targets', t)
       const p = (await get('pages', t.url)) ?? { url: t.url, targetIds: [], lastCheckedAt: null, status: null }
       if (!p.targetIds.includes(t.id)) await put('pages', { ...p, targetIds: [...p.targetIds, t.id] })
       return t
     },
     unlinkTarget,
+    /**
+     * Drops what no live watch uses (F8): keys not in `liveKeys` leave their targets, targets with no key
+     * left go, and pages with no target on them go. A run calls it first, so orphans never meet a new sticker.
+     */
+    async sweep(liveKeys) {
+      for (const t of await all('targets')) {
+        const keys = (t.stickerKeys || []).filter((k) => liveKeys.has(k))
+        if (!keys.length) await del('targets', t.id)
+        else if (keys.length !== (t.stickerKeys || []).length) await put('targets', { ...t, stickerKeys: keys, pendingKeys: (t.pendingKeys || []).filter((k) => liveKeys.has(k)) })
+      }
+      const ids = new Set((await all('targets')).map((t) => t.id))
+      for (const p of await all('pages')) {
+        const on = (p.targetIds || []).filter((id) => ids.has(id))
+        if (!on.length) await del('pages', p.url)
+        else if (on.length !== (p.targetIds || []).length) await put('pages', { ...p, targetIds: on })
+      }
+    },
     getPage: (url) => get('pages', url),
     listPages: () => all('pages'),
     putPage: (row) => put('pages', row),

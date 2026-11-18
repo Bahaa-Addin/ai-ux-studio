@@ -135,18 +135,32 @@ test('two tabs: one run (Web Locks), and the other tab hears the change on the c
 		s.subscribe((m: unknown) => (window as any).__heard.push(m))
 		;(window as any).__s = s
 	})
-	// Both tabs press at once: A holds the lock while its slow fetch is out, B finds it taken.
+	// Both tabs check at once: A (a press) holds the lock while its slow fetch is out; B's check on visit finds it taken.
 	await a.evaluate(() => (window as any).__w.pages.set('https://web.vodafone.com.eg/en/offers', `<html><body><div id="main-content">${(window as any).__w.LONG} Now with more.</div></body></html>`))
 	await b.evaluate(() => (window as any).__w.pages.set('https://web.vodafone.com.eg/en/offers', `<html><body><div id="main-content">${(window as any).__w.LONG} Now with more.</div></body></html>`))
 	const runA = a.evaluate(() => (window as any).__w.checker((window as any).__s, { delayMs: 400 }).run({ force: true }))
 	await a.waitForTimeout(100)
-	const rb = await b.evaluate(() => (window as any).__w.checker((window as any).__s).run({ force: true }))
+	const rb = await b.evaluate(() => (window as any).__w.checker((window as any).__s).run())
 	const ra = await runA
 	assert.equal(ra.ran, true, JSON.stringify(ra))
 	assert.deepEqual(rb, { ran: false, reason: 'locked' })
 	assert.equal(await b.evaluate(() => (window as any).__fetched || 0), 0, 'tab B fetched nothing')
 	await b.waitForFunction(() => (window as any).__heard.some((m: { type: string }) => m.type === 'changed'))
 	assert.equal(await b.evaluate(() => (window as any).__s.unseenCount()), 1, 'tab B reads the new change')
+	// A press in B while A runs (2026-11-18 review, F7) is not dropped: it waits for A's lock, then runs; never two at once.
+	const runA2 = a.evaluate(async () => {
+		const r = await (window as any).__w.checker((window as any).__s, { delayMs: 400 }).run({ force: true })
+		return { r, end: Date.now() }
+	})
+	await a.waitForTimeout(100)
+	const rb2 = await b.evaluate(async () => {
+		const r = await (window as any).__w.checker((window as any).__s).run({ force: true })
+		return { r, end: Date.now() }
+	})
+	const ra2 = await runA2
+	assert.equal(ra2.r.ran, true, JSON.stringify(ra2.r))
+	assert.equal(rb2.r.ran, true, JSON.stringify(rb2.r))
+	assert.ok(rb2.end >= ra2.end, 'B ran after A let go of the lock')
 	await a.close()
 	await b.close()
 })

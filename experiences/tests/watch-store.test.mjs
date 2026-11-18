@@ -154,3 +154,31 @@ test('reset empties everything', async () => {
   await s.addWatch(watchRow('b'))
   assert.equal((await s.listWatches()).length, 1, 'still usable after a reset')
 })
+
+// ---- the critic's findings on phase 6 (F4, F8), each first failing on 8e0b957 ----
+
+test('F4: a key that joins a target that already has a hash is marked pending (its first read is its baseline)', async () => {
+  const s = openWatchStore({ win: {} })
+  const page = { id: 'page https://x.test/en/b', kind: 'page', url: 'https://x.test/en/b', hash: null, status: 'ok' }
+  await s.linkTarget(page, 'a')
+  assert.deepEqual((await s.getTarget(page.id)).pendingKeys ?? [], [], 'no hash yet: nothing to be pending against')
+  await s.putTarget({ ...(await s.getTarget(page.id)), hash: 'h1' })
+  await s.linkTarget(page, 'b')
+  const t = await s.getTarget(page.id)
+  assert.deepEqual(t.stickerKeys, ['a', 'b'])
+  assert.deepEqual(t.pendingKeys, ['b'])
+})
+
+test('F8: sweep(liveKeys) drops dead keys, the targets no live key holds and the pages no target is on', async () => {
+  const s = openWatchStore({ win: {} })
+  await s.linkTarget({ id: 'page https://x.test/en/b', kind: 'page', url: 'https://x.test/en/b' }, 'a')
+  await s.linkTarget({ id: 'page https://x.test/en/b', kind: 'page', url: 'https://x.test/en/b' }, 'dead')
+  await s.linkTarget({ id: 'page https://x.test/en/old', kind: 'page', url: 'https://x.test/en/old' }, 'dead')
+  await s.putPage({ url: 'https://x.test/en/lonely', targetIds: [], lastCheckedAt: null, status: null })
+  await s.sweep(new Set(['a']))
+  assert.deepEqual((await s.getTarget('page https://x.test/en/b')).stickerKeys, ['a'])
+  assert.equal(await s.getTarget('page https://x.test/en/old'), null)
+  assert.equal(await s.getPage('https://x.test/en/old'), null)
+  assert.equal(await s.getPage('https://x.test/en/lonely'), null)
+  assert.ok(await s.getPage('https://x.test/en/b'))
+})

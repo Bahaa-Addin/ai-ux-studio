@@ -80,3 +80,21 @@ test('the wait is 3 s by default', async () => {
 	const waited = Date.now() - t0
 	assert.ok(waited >= 2900 && waited < 4500, `waited ${waited} ms`)
 })
+
+// F5 (critic, phase 6): a browser-mode site (the session's site.watch.mode, read from window.voiceGuide) never
+// asks for notifications, registers a service worker or posts a push subscription or a watch: no layer, false at once.
+test('no layer on a browser-mode site: false at once, no permission asked, nothing sent', async () => {
+	let asked = 0
+	win.Notification = { permission: 'default', requestPermission: async () => (asked++, 'granted') }
+	win.voiceGuide = { session: { site: { watch: { enabled: true, mode: 'browser' } } } }
+	try {
+		const { c, posts } = context()
+		;(c as any).push = { publicKey: 'BAAA' }
+		assert.equal(await createWatch(c, STEP, 't1', { layerWaitMs: 30 }), false)
+		assert.equal(asked, 0, 'no notification permission asked')
+		assert.deepEqual(posts, [], 'no push subscription, no POST /v1/watch')
+	} finally {
+		delete win.Notification
+		delete win.voiceGuide
+	}
+})
