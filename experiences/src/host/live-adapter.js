@@ -436,6 +436,8 @@ export function createLiveAdapter({ doc = document, origin, path, pageMap = null
       return result().model?.title ?? doc.title
     },
     renderOriginal() {},
+    // readPage itself, for the page watch to read a fetched page as this page is read (ADR-0078 point 9).
+    read: readPage,
     extractContent() {
       const { model, problems, coverage } = result()
       return { model, problems, coverage }
