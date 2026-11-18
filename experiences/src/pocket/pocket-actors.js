@@ -1158,16 +1158,20 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
 
   /**
    * The fixed floor (Vodafone's pages: their html and body do not let a sticky one stick) stops at
-   * the album's end, as the sticky one did: above the footer once it scrolls into view.
+   * the album's end, as the sticky one did: above the footer once it scrolls into view. True when it
+   * moved (his drawn place with it).
    */
   let floorShift = 0
   const boundFloor = () => {
-    if (!fixedFloor) return
+    if (!fixedFloor) return false
     const shift = Math.min(0, Math.round(layerBox().top - window.innerHeight))
-    if (shift === floorShift) return
+    if (shift === floorShift) return false
+    const d = layout.drawn
+    if (d) (d.top += shift - floorShift), (d.bottom += shift - floorShift)
     floorShift = shift
     floor.style.transform = shift ? `translateY(${shift}px)` : ''
     mascotBox = null
+    return true
   }
 
   /**
@@ -2352,12 +2356,17 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
         startDrone()
       }
       respot()
-      if (['riding', 'leaving'].includes(mascotBrain.state)) return
-      const reach = insetForObstacles(layout.drawn, fixedBoxes(), OBSTACLE_PAD)
-      if (!layout.met && !reach.dx && reach.clear) return
-      measureFloor()
-      watchSpot()
+      fitMascot()
     })
+  }
+
+  /** The mascot measures again when a fixed control meets his drawn place, or met it. */
+  const fitMascot = () => {
+    if (!layout.drawn || ['riding', 'leaving'].includes(mascotBrain.state)) return
+    const reach = insetForObstacles(layout.drawn, fixedBoxes(), OBSTACLE_PAD)
+    if (!layout.met && !reach.dx && reach.clear) return
+    measureFloor()
+    watchSpot()
   }
 
   let lastActivity = 0
@@ -2466,6 +2475,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
     dwell = null
     look.card = null
     const v = visit
+    let fit = null // fitMascot's frame once the floor moved
     const activity = () => {
       stir()
       noteActivity()
@@ -2482,7 +2492,7 @@ export const createPocketActors = ({ pocketRoot, peekButton, sheet, reducedMotio
         stir()
         remeasureMascot()
         fly.layerBox = null
-        boundFloor()
+        if (boundFloor()) fit ??= v.frame(() => fitMascot((fit = null)))
         noteActivity()
       },
       // A fixed floor: the page may scroll an element rather than the window (Vodafone's body).

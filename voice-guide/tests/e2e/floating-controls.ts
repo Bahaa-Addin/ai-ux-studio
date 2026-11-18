@@ -27,6 +27,8 @@
  *    title, its Back, a sticker's title and the journey's header (DevTools: CSS.getPlatformFontsForNode); a
  *    font that is not a web font (isCustomFont false) is a violation (rule h).
  */
+import assert from 'node:assert/strict'
+
 import type { CDPSession, Page } from 'playwright'
 
 export interface Box {
@@ -53,7 +55,7 @@ export interface Control {
 }
 
 /** The names the matrix knows. A missing control is null. */
-export const FIXED = ['accessibility', 'banner', 'mic', 'kbd', 'bar', 'pill', 'card', 'pocket', 'reimagine', 'tips'] as const
+export const FIXED = ['accessibility', 'banner', 'mic', 'kbd', 'bar', 'pill', 'card', 'pocket', 'reimagine', 'tips', 'watch'] as const
 export type FixedName = (typeof FIXED)[number]
 
 export interface Measure {
@@ -168,6 +170,9 @@ const READ = `(() => {
 	const peek = q('.pocket-peek')
 	const pocket = read(peek, 'layer')
 	if (pocket && peek.dataset.state === 'hidden') pocket.shown = false
+	// The page watch's changed count (ADR-0078 Decision 8): its own box, which sits off the button's top-left corner.
+	const watch = read(peek && peek.querySelector('.pocket-peek__changed'), 'layer')
+	if (watch && peek.dataset.state === 'hidden') watch.shown = false
 	const pill = read(rq('.tr-pill'), 'trail')
 	if (pill && pill.shown && rq('.tr-pill').classList.contains('tucked')) pill.shown = false
 	const controls = {
@@ -181,6 +186,7 @@ const READ = `(() => {
 		pocket,
 		reimagine: read(q('.aixc-launcher'), 'layer'),
 		tips: read(q('.tips-entry'), 'layer'),
+		watch,
 	}
 	const union = (list) => {
 		const l = list.filter(Boolean)
@@ -527,6 +533,7 @@ export const shownControls = (m: Measure) => (Object.entries(m.controls) as [Fix
  */
 export const OVERLAP_EXCEPTIONS: { pair: [FixedName, FixedName] | [FixedName, '*']; why: string }[] = [
 	{ pair: ['banner', '*'], why: 'On a first visit OneTrust\'s banner floats over the page and its filter over everything (live plan 3.7): our controls sit under it; the hit test proves it is on top (rules c and e).' },
+	{ pair: ['watch', 'pocket'], why: "the watch's changed count sits on the Pocket button by design (ADR-0078 Decision 8)" },
 	{ pair: ['accessibility', 'banner'], why: "Vodafone's own pair: the real widget's host is at the top z-index, above OneTrust's filter (phase 3 map); not ours to change (AGENTS.md 4.6)." },
 ]
 const excepted = (a: FixedName, b: FixedName) => OVERLAP_EXCEPTIONS.some(({ pair: [x, y] }) => (x === a && (y === '*' || y === b)) || (x === b && (y === '*' || y === a)))
@@ -569,6 +576,8 @@ export function cellViolations(m: Measure, ctx: CellContext): string[] {
 		if (c?.shown && c.box)
 			for (const [n, cb] of shown) {
 				if (n === 'banner' || n === 'pocket') continue
+				// The watch's count rides on the Pocket button, in the same corner (ADR-0078 Decision 8): the button's z-index 9 is above the curl's layers (6 and 8).
+				if (n === 'watch') continue
 				if (c.polys.length ? c.polys.some((p) => polyOverlaps(p, cb.box)) : overlaps(c.box, cb.box)) v.push(`${w}: (a) the curl's painted part (${c.what}) ${fmt(c.box)} over ${n} ${fmt(cb.box)}`)
 			}
 	// (b) The mascot and the drone: 16 px from Vodafone's button and the guide's controls; never over the album's content at rest.
@@ -587,6 +596,11 @@ export function cellViolations(m: Measure, ctx: CellContext): string[] {
 	// (c) Vodafone's button is on top at its points; nothing of ours has a z-index at or above OneTrust's.
 	for (const [n, hits] of Object.entries(ctx.hits)) {
 		const ok = (h: Hit) => h.at === n || (banner && n !== 'accessibility' && (h.at === 'banner' || h.at === 'filter'))
+		// The watch's count is part of the Pocket button (ADR-0078 Decision 8): a press at it reaches the button, which opens the Pocket.
+		if (n === 'watch') {
+			for (const h of hits) if (!ok(h) && h.at !== 'pocket') v.push(`${w}: (c) a press at ${n}'s point (${h.x},${h.y}) reaches ${h.at}`)
+			continue
+		}
 		for (const h of hits) if (!ok(h)) v.push(`${w}: (c) a press at ${n}'s point (${h.x},${h.y}) reaches ${h.at}`)
 	}
 	for (const a of m.aboveBanner) v.push(`${w}: (c) ${a.what} has z-index ${a.z}, at or above OneTrust's ${OT_Z}`)
@@ -633,4 +647,120 @@ export async function cellHits(page: Page, m: Measure): Promise<Pick<CellContext
 	if (m.mascot) ours.mascot = await hitsAt(page, points(m.mascot))
 	if (m.drone) ours.drone = await hitsAt(page, points(m.drone))
 	return { hits, bannerHits: { banner: await hitsAt(page, points(m.controls.banner.box)), ours } }
+}
+
+/* The matrix's own steps (moved here as they were from ./floating-controls-live.e2e.test.ts, so the page watch's
+ * cells (./watch-floating.e2e.test.ts) press, pocket and wait as the matrix does). */
+
+/**
+ * The microphone, stood in at the edge (AGENTS.md 5.3; the kit has no fake capture device): getUserMedia
+ * answers with a silent stream from Web Audio, so pressing the guide's mic reaches 'listening' with the
+ * kit's speech stub, as a person's would with a real microphone.
+ */
+export const MIC_STAND_IN = `(() => {
+	if (!navigator.mediaDevices) return
+	navigator.mediaDevices.getUserMedia = async () => {
+		const ctx = new AudioContext()
+		const osc = ctx.createOscillator()
+		const gain = ctx.createGain()
+		gain.gain.value = 0
+		const dest = ctx.createMediaStreamDestination()
+		osc.connect(gain).connect(dest)
+		osc.start()
+		return dest.stream
+	}
+})()`
+
+/** Seeded randomness and no dozing while the matrix looks (pocket-actors.js reads it once at start-up). */
+export const ACTORS_TEST = `window.__POCKET_ACTORS_TEST__ = { seed: 7, timing: { sleepAt: 600000 } }`
+
+export const settle = (page: Page, ms = 60) => page.evaluate((ms) => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, ms)))), ms)
+
+export type Press = 'mouse' | 'click()'
+
+/** A press as a person makes it (the mouse at the element's middle), or element.click() where the banner's filter blocks the mouse. */
+export async function press(page: Page, how: Press, find: string) {
+	if (how === 'mouse') {
+		const at = await page.evaluate((find) => {
+			const el = eval(find) as HTMLElement | null
+			if (!el) return null
+			const r = el.getBoundingClientRect()
+			return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+		}, find)
+		assert.ok(at, `there is something to press (${find})`)
+		await page.mouse.click(at.x, at.y)
+	} else {
+		const ok = await page.evaluate((find) => {
+			const el = eval(find) as HTMLElement | null
+			el?.click()
+			return !!el
+		}, find)
+		assert.ok(ok, `there is something to press (${find})`)
+	}
+}
+
+/** Brings the first chipped card into view and pockets it with a press at its chip. */
+export async function pocketOne(page: Page, how: Press, covered: string[]) {
+	const found = await page.evaluate(async (needHit) => {
+		const skipped: string[] = []
+		for (const chip of document.querySelectorAll<HTMLElement>('.pocket-chips .pocket-cta[data-pocket-for]')) {
+			const id = chip.dataset.pocketFor!
+			const card = [...document.querySelectorAll<HTMLElement>(`#main-content [data-aixc-item="${CSS.escape(id)}"]`)].find((c) => !c.closest('.owl-item.cloned'))
+			if (!card) continue
+			card.scrollIntoView({ block: 'center', inline: 'nearest' })
+			await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 80))))
+			const r = chip.getBoundingClientRect()
+			if (!r.width || !r.height) continue
+			if (!needHit) return { id, skipped }
+			// A press must reach the chip: one under a fixed control (the pill, the mic) is passed over, and said.
+			let hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+			if (hit === chip || chip.contains(hit)) return { id, skipped }
+			while (hit && hit.shadowRoot) {
+				const inner = hit.shadowRoot.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+				if (!inner || inner === hit) break
+				hit = inner
+			}
+			skipped.push(`${id} [${[r.left, r.top, r.right, r.bottom].map(Math.round).join(',')}] under ${hit ? hit.localName + '.' + String(hit.getAttribute('class') || '').split(' ')[0] : 'nothing'}`)
+		}
+		return { id: null, skipped }
+	}, how === 'mouse')
+	covered.push(...found.skipped)
+	const id = found.id
+	assert.ok(id, `a chip on a card a press reaches (${found.skipped.join('; ')})`)
+	const chip = `document.querySelector('.pocket-chips .pocket-cta[data-pocket-for="${CSS_ESCAPE(id)}"]')`
+	const box = await page.evaluate((chip) => {
+		const r = (eval(chip) as HTMLElement).getBoundingClientRect()
+		return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+	}, chip)
+	const reach = await hitsAt(page, points(box).slice(0, 1))
+	await press(page, how, chip)
+	await page.waitForFunction((id) => (window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), id, { timeout: 5_000 }).catch((e) => {
+		throw new Error(`${id} was not pocketed by ${how} at ${JSON.stringify(box)} (a press there reaches ${reach[0].at}): ${(e as Error).message}`)
+	})
+	await page.waitForSelector('.pocket-peek[data-state="shown"]', { timeout: 5_000 })
+	await page.waitForFunction(() => document.querySelectorAll('.curl-host--flying').length === 0, null, { timeout: 8_000 })
+	await page.waitForFunction(() => ['hidden', null, undefined].includes(document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState as any), null, { timeout: 8_000 }).catch(() => {})
+	await settle(page, 900)
+}
+const CSS_ESCAPE = (s: string) => s.replace(/["\\]/g, '\\$&')
+
+const waitView = (page: Page, view: 'page' | 'pocket') =>
+	page.waitForFunction(
+		(view) => {
+			const s = (window as any).__aixc.demos.pocket.state
+			return s.view === view && !s.busy
+		},
+		view,
+		{ timeout: 10_000 },
+	)
+
+/** The album at rest: the mascot standing (or tucked), the drone up (none under 640 px). */
+export async function albumAtRest(page: Page) {
+	await waitView(page, 'pocket')
+	await page.waitForFunction(() => ['idle', 'tucked', 'flinching'].includes(document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? ''), null, { timeout: 10_000 })
+	await page.waitForFunction(() => {
+		const d = document.querySelector<HTMLElement>('.pocket-drone')
+		return !d || d.hidden || ['home-hover', 'curious', 'following'].includes(d.dataset.droneState ?? '')
+	}, null, { timeout: 10_000 })
+	await settle(page, 1200)
 }

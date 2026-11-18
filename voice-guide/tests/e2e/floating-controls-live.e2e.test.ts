@@ -40,7 +40,7 @@ import type { Page } from 'playwright'
 
 import { ROOT } from '#shared/config.ts'
 
-import { cellHits, cellViolations, hitsAt, type Measure, measureControls, points, OVERLAP_EXCEPTIONS, WIDGET_DEFINED } from './floating-controls.ts'
+import { ACTORS_TEST, albumAtRest, cellHits, cellViolations, type Measure, measureControls, MIC_STAND_IN, OVERLAP_EXCEPTIONS, pocketOne, type Press, press, settle, WIDGET_DEFINED } from './floating-controls.ts'
 import { BANNER_STAND_IN, DESKTOP, type LayerGateway, launchLayer, open, PHONE, startLayerGateway, watch } from './vodafone-layer.ts'
 
 const PORT = 4485
@@ -55,30 +55,6 @@ after(async () => {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-/**
- * The microphone, stood in at the edge (AGENTS.md 5.3; the kit has no fake capture device): getUserMedia
- * answers with a silent stream from Web Audio, so pressing the guide's mic reaches 'listening' with the
- * kit's speech stub, as a person's would with a real microphone.
- */
-const MIC_STAND_IN = `(() => {
-	if (!navigator.mediaDevices) return
-	navigator.mediaDevices.getUserMedia = async () => {
-		const ctx = new AudioContext()
-		const osc = ctx.createOscillator()
-		const gain = ctx.createGain()
-		gain.gain.value = 0
-		const dest = ctx.createMediaStreamDestination()
-		osc.connect(gain).connect(dest)
-		osc.start()
-		return dest.stream
-	}
-})()`
-
-/** Seeded randomness and no dozing while the matrix looks (pocket-actors.js reads it once at start-up). */
-const ACTORS_TEST = `window.__POCKET_ACTORS_TEST__ = { seed: 7, timing: { sleepAt: 600000 } }`
-
-const settle = (page: Page, ms = 60) => page.evaluate((ms) => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, ms)))), ms)
-
 /** Where the matrix's measures go (FLOATING_OUT), never inside the repository. */
 const OUT = (() => {
 	const dir = process.env.FLOATING_OUT
@@ -90,28 +66,6 @@ const OUT = (() => {
 	return abs
 })()
 
-type Press = 'mouse' | 'click()'
-
-/** A press as a person makes it (the mouse at the element's middle), or element.click() where the banner's filter blocks the mouse. */
-async function press(page: Page, how: Press, find: string) {
-	if (how === 'mouse') {
-		const at = await page.evaluate((find) => {
-			const el = eval(find) as HTMLElement | null
-			if (!el) return null
-			const r = el.getBoundingClientRect()
-			return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
-		}, find)
-		assert.ok(at, `there is something to press (${find})`)
-		await page.mouse.click(at.x, at.y)
-	} else {
-		const ok = await page.evaluate((find) => {
-			const el = eval(find) as HTMLElement | null
-			el?.click()
-			return !!el
-		}, find)
-		assert.ok(ok, `there is something to press (${find})`)
-	}
-}
 const IN_GUIDE = (sel: string) => `document.querySelector('vg-guide').shadowRoot.querySelector(${JSON.stringify(sel)})`
 
 async function pocketReady(page: Page) {
@@ -124,72 +78,6 @@ async function pocketReady(page: Page) {
 	// A sticker from an earlier page of the walk: the corner goes once the store is empty.
 	await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>('.pocket-peek')].every((p) => p.dataset.state === 'hidden'), null, { timeout: 5_000 })
 	await settle(page, 500)
-}
-
-/** Brings the first chipped card into view and pockets it with a press at its chip. */
-async function pocketOne(page: Page, how: Press, covered: string[]) {
-	const found = await page.evaluate(async (needHit) => {
-		const skipped: string[] = []
-		for (const chip of document.querySelectorAll<HTMLElement>('.pocket-chips .pocket-cta[data-pocket-for]')) {
-			const id = chip.dataset.pocketFor!
-			const card = [...document.querySelectorAll<HTMLElement>(`#main-content [data-aixc-item="${CSS.escape(id)}"]`)].find((c) => !c.closest('.owl-item.cloned'))
-			if (!card) continue
-			card.scrollIntoView({ block: 'center', inline: 'nearest' })
-			await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 80))))
-			const r = chip.getBoundingClientRect()
-			if (!r.width || !r.height) continue
-			if (!needHit) return { id, skipped }
-			// A press must reach the chip: one under a fixed control (the pill, the mic) is passed over, and said.
-			let hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-			if (hit === chip || chip.contains(hit)) return { id, skipped }
-			while (hit && hit.shadowRoot) {
-				const inner = hit.shadowRoot.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-				if (!inner || inner === hit) break
-				hit = inner
-			}
-			skipped.push(`${id} [${[r.left, r.top, r.right, r.bottom].map(Math.round).join(',')}] under ${hit ? hit.localName + '.' + String(hit.getAttribute('class') || '').split(' ')[0] : 'nothing'}`)
-		}
-		return { id: null, skipped }
-	}, how === 'mouse')
-	covered.push(...found.skipped)
-	const id = found.id
-	assert.ok(id, `a chip on a card a press reaches (${found.skipped.join('; ')})`)
-	const chip = `document.querySelector('.pocket-chips .pocket-cta[data-pocket-for="${CSS_ESCAPE(id)}"]')`
-	const box = await page.evaluate((chip) => {
-		const r = (eval(chip) as HTMLElement).getBoundingClientRect()
-		return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
-	}, chip)
-	const reach = await hitsAt(page, points(box).slice(0, 1))
-	await press(page, how, chip)
-	await page.waitForFunction((id) => (window as any).__aixc.demos.pocket.store.all().some((r: any) => r.id === id), id, { timeout: 5_000 }).catch((e) => {
-		throw new Error(`${id} was not pocketed by ${how} at ${JSON.stringify(box)} (a press there reaches ${reach[0].at}): ${(e as Error).message}`)
-	})
-	await page.waitForSelector('.pocket-peek[data-state="shown"]', { timeout: 5_000 })
-	await page.waitForFunction(() => document.querySelectorAll('.curl-host--flying').length === 0, null, { timeout: 8_000 })
-	await page.waitForFunction(() => ['hidden', null, undefined].includes(document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState as any), null, { timeout: 8_000 }).catch(() => {})
-	await settle(page, 900)
-}
-const CSS_ESCAPE = (s: string) => s.replace(/["\\]/g, '\\$&')
-
-const waitView = (page: Page, view: 'page' | 'pocket') =>
-	page.waitForFunction(
-		(view) => {
-			const s = (window as any).__aixc.demos.pocket.state
-			return s.view === view && !s.busy
-		},
-		view,
-		{ timeout: 10_000 },
-	)
-
-/** The album at rest: the mascot standing (or tucked), the drone up (none under 640 px). */
-async function albumAtRest(page: Page) {
-	await waitView(page, 'pocket')
-	await page.waitForFunction(() => ['idle', 'tucked', 'flinching'].includes(document.querySelector<HTMLElement>('.pocket-mascot')?.dataset.mascotState ?? ''), null, { timeout: 10_000 })
-	await page.waitForFunction(() => {
-		const d = document.querySelector<HTMLElement>('.pocket-drone')
-		return !d || d.hidden || ['home-hover', 'curious', 'following'].includes(d.dataset.droneState ?? '')
-	}, null, { timeout: 10_000 })
-	await settle(page, 1200)
 }
 
 interface Cell {
