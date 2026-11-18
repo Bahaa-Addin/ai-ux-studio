@@ -74,7 +74,7 @@ Facts measured on 2026-11-18 (design §2):
    2. The layer resolves `step.target.css` in the live DOM, then finds the adapter's card at or around that element.
    3. The Pocket pockets that card, and the watch starts.
 
-   If the element is not a card, or the page has no layer, the request goes to the server path. The server refuses browser-mode sites (point 10), so the guide says `watchFailed`.
+   If the element is not a card the Pocket can pocket (it needs its chip, so a page read with coverage of at least 0.6), the guide says `watchFailed`. If the page has no layer, `watch-chunk.ts` reads the site's `watch.mode` from the session answer and, for a browser-mode site, says `watchFailed` at once: no notification prompt, no push subscription, no request. A card already pocketed, in either language, is found through the Pocket's own key and watched.
 
    The guide speaks only its existing `watching` / `watchFailed` lines. `guide.js` does not change.
 
@@ -109,9 +109,12 @@ Facts measured on 2026-11-18 (design §2):
    - **Pacing:** one request at a time, at least 1 s apart.
    - **Each request:**
      - uses `credentials: 'omit'`;
-     - uses `cache: 'no-store'` with our own `If-None-Match` / `If-Modified-Since`, so a 304 reaches our code;
+     - uses `cache: 'no-store'` with our own `If-None-Match` / `If-Modified-Since`, so a 304 reaches our code (no validators while a target on that page still needs its baseline, or it would never get one);
+     - uses `redirect: 'manual'`, so a redirect is never followed, `robots.txt` included: a 3xx marks the page moved (its page targets "gone", its card targets "missing");
      - times out after 10 s.
-   - **Stopping:** a `403`, `429` or `503`, or a bot check, ends the run and blocks further runs for 24 h.
+   - **Pacing across runs:** the time of the last request is kept, so two presses in a row still keep requests 1 s apart. A person's press waits for another tab's run to finish instead of being dropped.
+   - **Stopping:** a `403`, `429` or `503`, a 200 without `#main-content` (a bot check, on any fetch, the first included), or an answer from another origin or a path we may not fetch, ends the run and blocks further runs for 24 h. A run that stops keeps the changes it had found; one bad page never fails the run.
+   - **Joining a watched page:** a sticker whose page target another sticker already watches takes its first read as a silent baseline, so it is never told of a change from before it asked.
    - **Parsing:** `DOMParser` on the main thread, one page per idle slot (Q6).
    - **The current page** is checked from fetched HTML too, never from the live DOM.
    - **Never used:** a service worker, periodic sync or a timer.
@@ -133,7 +136,8 @@ Facts measured on 2026-11-18 (design §2):
 9. **Loading and isolation.**
    - The Pocket demo loads the watch chunk at idle when `demos` includes `watch`. The core gets no `DEMOS` entry.
    - The Pocket passes in its instance, its store and `reconcile`.
-   - The adapter object carries `read: readPage`, about 15 B of the core. This amends ADR-0049.
+   - The adapter object carries `read: readPage`, 6 B of the core as built (8,033 of 8,064 B). This amends ADR-0049.
+   - The watch asks the gateway's page-map answer for its rules itself (our own gateway, the page's address only, no referrer, 2 s), so the rules cost the core nothing.
    - The chunk loads inside `guard.wrap('pocket watch', …)`. A watch error drops only the watch's own lines, notes, count and listeners (ADR-0052 part 3).
    - Checkpoints: `watch-start`, `watch-check`, `watch-ui`.
    - New strings live in `watch/words.js`, so the shared `i18n.js` does not grow.
@@ -190,6 +194,7 @@ This ADR amends five earlier ones:
 - A change says what changed and when, not the words.
 - Each run makes at most one conditional request per watched page, 1 s apart. If Vodafone sends no validators, each check downloads the page, about 32 to 54 KB gzipped. The owner's live run will measure this.
 - Wherever the Pocket is off, the watch is off too.
+- The watch's own chunk is 13,608 B gzipped (budget 13.5 KB), more than the design's guess of 4 to 6 KB: it holds the store, the check, the reading, the URL, robots and mask rules, the lines and the words in two languages. It loads only where the watch is on. The demo data is its own chunk (1,742 B), loaded only by fill. The guide's `watch.js` is 1,546 B (budget 1.75 KB).
 - Nothing new leaves the browser, so AGENTS.md §4.3 and §4.4 need no change.
 
 ## Rejected options
@@ -228,4 +233,18 @@ This ADR amends five earlier ones:
 
 ## Verified by
 
-To be filled in when the build's checks pass, from the design's §5 tests and their counts.
+Built on `feature/live-way2-watch` (7e42fa4 to bec48c0) and checked on 2026-11-18, offline, on the saved pages:
+
+- **Unit** (experiences, `node --test`, 369 in the suite): `watch-url`, `watch-robots` (parity with the crawler's rule over 13 robots texts, 3 agents, 21 paths), `watch-mask` (parity with `agent-mask.ts`), `watch-read`, `watch-store`, `watch-check` (51: every rule of point 6, each of the critic's findings F1 to F11 with a test that failed first), `watch-ui`, `watch-words`.
+- **Integration** (Chromium): `watch-read` 4 (the 69 Arabic cards hash the same on 23 Oct and 12 Nov; both demo cards found in both languages; every CMS region at least 200 characters except `/en/promotions`; `/spa/storeLocator` not watchable; at most 5.7 ms to parse, read and hash a page), `watch-store` 3, `watch-server` 5 (409; old rows skipped; the session's `watch.mode`; page-map rules only when the watch is on), `watch-ui` 5, `watch-demo` 4, `watch-baselines` 2 (`demo.js` byte for byte from the capture), `watch-chunk` 6, `sdk-size` 5.
+- **End to end:** `watch-live` 9/9, from its request log:
+  - at most 12 pages plus `robots.txt` per visit, and at least 1,000 ms between request starts;
+  - no cookie on any watch fetch, and a 302 never followed;
+  - a 403 stops the run and blocks for 24 h;
+  - a 304 is never parsed, and two tabs make one run;
+  - no `POST /v1/watch` and no notification prompt from the guide's chip;
+  - nothing left the machine.
+- **Floating controls:** `watch-floating` 8/8 (the count, the liner and the album, desktop and phone, English and Arabic, banner absent and present); the matrix unchanged at 48 cells; `pocket-actors-live` 34/34.
+- An independent Opus critic reviewed steps 2 to 4 and found eleven defects, one high (redirects were followed). All are fixed (4e7447f).
+
+Not yet verified: the owner's one opt-in live run (`VG_LIVE=1`). It measures validators, whether a cookie-less fetch meets a bot check, `robots.txt`'s rules, the parse time on the demo Mac, and what changed since 23 Oct.

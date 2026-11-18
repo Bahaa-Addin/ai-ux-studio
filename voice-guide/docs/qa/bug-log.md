@@ -640,3 +640,34 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
 - **Cause:** a Vodafone menu or dialog closes the composer, and the close dropped a template the reader had already chosen and that was still loading (the fix for B-77 dropped every pending template when the composer closed).
 - **Fix:** a menu's close keeps the pending template: its view opens when its chunk arrives. Escape, Original, Reset, the album and another template still drop it (B-77).
 - **Test:** `reimagine-live.e2e`, "a template still loading is kept when one of Vodafone's menus closes the composer: its view opens when its chunk arrives; Escape drops one"; failed first.
+
+## B-?? (number at merge): The mascot rode up beside the guide's mic when a scroll lifted the album's fixed floor
+
+- **Found:** 2026-11-18, by the page watch's floating cells (en 375x812, album, banner absent: 13 px from the mic, the rule needs 16).
+- **Cause:** pre-existing, not the watch. On Vodafone's pages the album floor is fixed. `boundFloor()` (`experiences/src/pocket/pocket-actors.js`) lifts it with translateY when the album's end scrolls in, but the scroll handler did not run the 16 px room check again (`insetForObstacles`, `measureFloor`), and `layout.drawn` kept the old top. Measured with no watch at all: 12 px. The matrix's album cells never scroll the album.
+- **Fix:** `boundFloor` moves the drawn place with the floor and returns true; the scroll handler then runs `fitMascot()` in the next frame.
+- **Test:** `pocket-actors-live.e2e.test.ts`, "/en/services 375x812 at rest: the album's end scrolled into view, the lifted floor keeps him 16 px from the mic (F11, O44)": 13.4 px before the fix (fails), 17.4 after. It starts from the rest, so it also covers O44's scroll item. Reviewed by the live-demos session. Commit bec48c0.
+
+## B-?? (number at merge): Two watch requests could start 993 ms apart
+
+- **Found:** 2026-11-18, by the watch's e2e.
+- **Cause:** a request waited for the meta write that records its time, so the gap between two request starts could fall under the 1 s rule.
+- **Fix:** the request starts at once and its time is recorded after.
+- **Test:** `watch-check.test.mjs`, "spacing holds between the requests themselves, however long the meta write that records one takes" (993 ms before). Commit 69b883c.
+
+## B-?? (number at merge): The independent critic's findings on the page watch, steps 2 to 4
+
+- **Found:** 2026-11-18, by the independent critic (Opus). Each finding was reproduced on the real checker.
+- **Cause and fix:** eleven findings, all fixed with a failing test first (commit 4e7447f).
+  - F1 (high): requests followed redirects, so a redirect to a sign-in or challenge page was taken as "page gone" and the run went on. Now `redirect: 'manual'` (robots.txt too); a 3xx marks the page moved; an answer from another origin or a path we may not fetch blocks 24 h and stops.
+  - F2: a bot check on a page's first fetch was filed as "not static". Now a 200 without `#main-content` is a challenge on any fetch.
+  - F3: a run stopping part-way lost the changes it had found. Now they are kept; one bad page never rejects the run.
+  - F4: a sticker joining an already-baselined page was told of older changes. Now its first read is a silent baseline.
+  - F5: with no layer on a browser-mode site, the guide's chip could ask for notification permission before the server's 409. Now it fails at once (the session answer carries `watch.mode`).
+  - F6: the chip failed on a card already pocketed in the other language (Pocket exposes `keyOf`).
+  - F7: spacing held only within a run. Now it holds across runs, and a forced run waits for the lock.
+  - F8: removal during a run left orphan rows. Now a sweep each run.
+  - F9: a baselined page dropping under 200 characters went quiet. Now the reader is told once.
+  - F10: "Open the page" after a link change went to the old link.
+  - F11: the checker kept going after the watch was dropped. Now it stops.
+- **Test:** one failing test per finding, each named after it: `experiences/tests/watch-check.test.mjs` cases 'F1: …' to 'F11: …' (F1, F2, F3, F4, F7, F8, F9, F11), `watch-store.test.mjs` 'F4: …' and 'F8: …', `watch-ui.test.mjs` 'F10: …', `voice-guide/tests/unit/watch-chunk.test.ts` 'no layer on a browser-mode site: false at once, no permission asked, nothing sent' and `tests/integration/watch-server.test.ts` 'the session answer carries the site's watch mode…' (F5), `tests/integration/watch-ui.test.ts` 'the guide's bridge: a card kept on this page in the other language is watched, not refused' (F6).

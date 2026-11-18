@@ -28,6 +28,13 @@ Setup, commands and troubleshooting are in the main [runbook](runbook.md). Publi
 - If a request is misheard, press and repeat. Never explain the bug on stage; use the fallback line in the script.
 - Moment 7's notification is shown on the clone (`npm run dev -- --site vodafone-clone` in a second terminal), as the script says.
 
+## The page watch
+
+- Before the demo, open the album on a Vodafone page with nothing pocketed and press "Watch two example cards", or open any Vodafone page with `?aixc-watch=fill`.
+- On the saved pages both stickers say "Watching · No change since 23 Oct".
+- To reset between runs, `window.__aixcWatch.reset()` in the console. Never edit the 23 Oct fixture.
+- Details: runbook section 3f.
+
 ## Fallbacks
 
 | Problem | Do |
