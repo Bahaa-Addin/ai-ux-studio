@@ -641,10 +641,21 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     peekButton.inert = !shown
   }
 
+  // A companion's count of changed stickers (the page watch, ADR-0078): red, apart from the sticker count; its label adds to the button's.
+  let changed = null
+  let changedCount = null
   const updateCount = (n = state.ids.length) => {
     peekCount.textContent = String(n)
     peekCount.hidden = n === 0
-    peekButton.setAttribute('aria-label', t('Open your pocket, {count}', { count: countLabel(n) }))
+    const label = t('Open your pocket, {count}', { count: countLabel(n) })
+    peekButton.setAttribute('aria-label', changed ? changed.label(label) : label)
+  }
+  const setChanged = (n, label) => {
+    changed = n ? { label } : null
+    changedCount ??= peekButton.appendChild(make('span', { class: 'pocket-peek__changed', 'aria-hidden': 'true' }))
+    changedCount.textContent = n
+    changedCount.hidden = !n
+    updateCount()
   }
 
   const destroyPeek = () => {
@@ -1010,6 +1021,25 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     if (!state.ids.length) closePeek()
   }
 
+  /*
+   * A companion's extras (the page watch, ADR-0078): fn(record, el) may add to a sticker's actions row (el)
+   * or a card's liner (el), and returns its clean-up. Drawn again with the stickers, and on refreshExtras().
+   */
+  const extras = {}
+  const extraOff = new WeakMap()
+  const extra = (kind, record, el) => {
+    extraOff.get(el)?.()
+    extraOff.delete(el)
+    try {
+      const off = extras[kind]?.(record, el)
+      if (off) extraOff.set(el, off)
+    } catch {}
+  }
+  const refreshExtras = () => {
+    for (const cell of pocketRoot.querySelectorAll('.pocket-grid__item')) extra('sticker', records.get(cell.dataset.pocketId), cell.querySelector('.pocket-sticker__actions'))
+    for (const [id, entry] of cards) extra('liner', records.get(keyOf(id)), entry.liner)
+  }
+
   /**
    * Draws "Pocket it" and the liner for card `id` on `host`: the card itself in the clone, or a slot of
    * the overlay on Vodafone's pages (ADR-0052 §10), whose buttons stay out of the Tab order (owner,
@@ -1039,8 +1069,9 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     )
     host.append(liner, cta)
     if (isPocketed(id)) host.classList.add('is-pocketed')
-    const entry = { card, host, cta, undo, offs: offs.splice(mine) }
+    const entry = { card, host, cta, undo, liner, offs: offs.splice(mine) }
     cards.set(id, entry)
+    extra('liner', records.get(keyOf(id)), liner)
     return entry
   }
 
@@ -1132,6 +1163,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     const titleId = `pocket-sticker-${key}`
     const link = cta?.href ? { href: cta.href, label: cta.label || t('View more') } : null
     const own = copy.lang === seams.page.lang
+    let actions
     const remove = make('button', { type: 'button', class: 'pocket-sticker__remove', 'aria-label': t('Remove {title} from your pocket', { title: copy.title }) }, icon('remove', 'pocket-sticker__remove-icon'), make('span', null, t('Remove')))
     const sticker = make(
       'article',
@@ -1148,7 +1180,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
         seams.dated && record.savedAt ? make('p', { class: 'pocket-sticker__date' }, t('Saved {date}', { date: dayOf(record.savedAt) })) : null,
         // Its card was not found on its page the last time that page was read well (S7); the link still works.
         missing.has(key) ? make('p', { class: 'pocket-sticker__gone' }, t('No longer on this page')) : null,
-        make(
+        (actions = make(
           'div',
           { class: 'pocket-sticker__actions' },
           link
@@ -1162,11 +1194,12 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
               )
             : make('span'),
           remove,
-        ),
+        )),
       ),
     )
     const cell = make('li', { class: 'pocket-grid__item', 'data-pocket-id': key }, sticker)
     on(remove, 'click', () => removeFromPocket(key, cell))
+    extra('sticker', record, actions)
     return cell
   }
 
@@ -1563,6 +1596,16 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     store,
     setModel,
     useChips,
+    setStickerExtra: (fn) => {
+      extras.sticker = fn
+      refreshExtras()
+    },
+    setLinerExtra: (fn) => {
+      extras.liner = fn
+      refreshExtras()
+    },
+    refreshExtras,
+    setChanged,
     /** Where each chip is on Vodafone's page, by card id (ADR-0052 §12): for `?aixc-debug` and the tests. */
     chips: () => chips?.debug() ?? null,
     destroy,

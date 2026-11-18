@@ -1,0 +1,121 @@
+/* The page watch's lines (voice-guide ADR-0078 point 8; phase 6 design §4.7) in Vodafone's design language:
+   red #e60000 for the "Changed" tag and count only, the palette's greys, Vodafone's faces (--pocket-*,
+   ../host/vodafone-faces.css), 6 px corners. Nothing new floats: the count sits on the Pocket button, the
+   lines in the stickers, the liner note in the Pocket's overlay. Logical properties, so Arabic runs right to left. */
+
+.aixc-watch {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin-top: 10px;
+  font-family: var(--pocket-regular);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #333;
+}
+
+.aixc-watch__tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #e60000;
+  color: #fff;
+  font-family: var(--pocket-bold);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.aixc-watch__line {
+  margin: 0;
+}
+
+.aixc-watch__line.is-quiet {
+  color: #666;
+}
+
+.aixc-watch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+}
+
+.aixc-watch__button,
+.aixc-watch__open {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: #e60000;
+  font-family: var(--pocket-bold);
+  font-size: 0.88rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.aixc-watch__button.is-quiet {
+  color: #666;
+  font-family: var(--pocket-regular);
+}
+
+.aixc-watch__button:hover,
+.aixc-watch__open:hover {
+  color: #990000;
+}
+
+.aixc-watch__button:disabled {
+  color: #999;
+  cursor: default;
+}
+
+.aixc-watch__button:focus-visible,
+.aixc-watch__open:focus-visible,
+.aixc-watch-liner:focus-visible {
+  outline: 3px solid #333;
+  outline-offset: 2px;
+}
+
+/* On the pocketed card's liner: the overlay lets presses through to Vodafone's page except on its own buttons. */
+.aixc-watch-liner {
+  pointer-events: auto;
+  margin-top: 4px;
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: #e60000;
+  color: #fff;
+  font-family: var(--pocket-bold);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.aixc-watch-liner:hover {
+  background: #990000;
+}
+
+/* The count of changed stickers, on the Pocket button apart from its sticker count (top right): top left,
+   red with a white ring, so it reads on the red button. */
+.pocket-peek__changed {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: #e60000;
+  color: #fff;
+  font-family: var(--pocket-bold);
+  font-size: 0.75rem;
+  line-height: 22px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.pocket-peek__changed[hidden] {
+  display: none;
+}

@@ -45,11 +45,15 @@
  * - The portal (S13) is a chunk of its own (./portal.js). initPocket gets a stand-in that is enabled at once
  *   (the album's sticker links open in this tab) and loads the chunk when the album opens, or at once when
  *   this history entry says the album was open (Back). If the chunk fails, a sticker's link is a plain link.
+ *
+ * - The page watch (voice-guide ADR-0078) is a chunk of its own (./watch.js), loaded at idle once the Pocket is
+ *   up, only where the site enables it (data-aixc-demos has `watch`). It gets this Pocket, its store and the
+ *   Pocket's reconcile, so it shares no chunk with the core. If it fails, only the watch goes.
  */
 import faces from '../vodafone-faces.css'
 import css from '../../pocket/pocket.css'
 import { initPocket } from '../../pocket/pocket.js'
-import { recordFrom, siteOf } from '../../pocket/record.js'
+import { reconcile, recordFrom, siteOf } from '../../pocket/record.js'
 import { openPocketStore } from '../../pocket/store.js'
 import { countItems, t } from '../../i18n.js'
 
@@ -328,6 +332,21 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
 
   const open = (options) => guard.run('pocket-open', () => pocket.open(options))
   const close = () => guard.run('pocket-close', () => pocket.close())
+
+  // The page watch, where the site enables it: at idle once the Pocket is up; its errors stay its own (ADR-0078).
+  if (layer.settings?.demos?.includes('watch'))
+    void store.ready.then(() =>
+      atIdle(
+        guard.wrap('pocket watch', async () => {
+          try {
+            const demo = await import('./watch.js')
+            if (!guard.stopped) await demo.start({ host, adapter, guard, layer, ensureCss, checkpoint, pocket, pocketStore: store, reconcile, open })
+          } catch (error) {
+            seams.report(error, 'watch')
+          }
+        }),
+      ),
+    )
 
   // Your journey, in this album, when the trail offers a host to claim: now, or when it starts (S10).
   let journey = null

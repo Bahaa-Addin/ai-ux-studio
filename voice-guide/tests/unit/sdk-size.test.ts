@@ -29,6 +29,18 @@ test('guide.js stays within 21 KB gzipped; on-demand parts are separate files', 
 })
 
 /**
+ * The guide's page-watch chunk (watch.js, from watch-chunk.ts): 1,368 bytes gzipped on 2026-11-18 before phase 6;
+ * 1,511 with the bridge that hands a watch to the experience layer first (ADR-0078 point 7); rounded up to a quarter KB.
+ */
+const GUIDE_WATCH_BUDGET = 1.5 * 1024
+
+test('the guide\'s watch.js chunk stays small', async () => {
+	await buildSdk({ minify: true })
+	const gz = gzipSync(fs.readFileSync(path.join(ROOT, 'packages/sdk/dist/watch.js')), { level: 9 }).length
+	assert.ok(gz <= GUIDE_WATCH_BUDGET, `watch.js is ${gz} bytes gzipped, over its ${GUIDE_WATCH_BUDGET}-byte budget`)
+})
+
+/**
  * Exploration Trail budgets (ADR-0035), measured 2026-11-03 and set a little above. trail.js raised on purpose
  * on 2026-11-15 (S15, ADR-0050 §6): the demo kit's seed() and reset(), with the strict check of a sample
  * journey, took it from 29,743 to 32,061 B; the budget is that rounded up to a quarter KB.
@@ -211,6 +223,9 @@ const AIXC_DEMO_BUDGETS: Record<string, number> = {
 	'src/host/demos/actors.js': 48.25 * 1024,
 	'src/host/demos/portal.js': 6.5 * 1024,
 	'src/pocket/portal/controller.js': 17.5 * 1024,
+	// 2026-11-18 phase 6 step 4 (ADR-0078): the page watch (its store, check on visit, reading, rules, lines and words in both languages, its CSS,
+	// and its own page-map request for the watch rules, which keeps them out of the core) 11,859 bytes; rounded up to a quarter KB.
+	'src/host/demos/watch.js': 11.75 * 1024,
 	...REIMAGINE_BUDGETS,
 }
 
@@ -221,6 +236,8 @@ const AIXC_LOADED_BY: Record<string, string> = {
 	'src/host/demos/actors.js': 'src/host/demos/pocket.js',
 	'src/host/demos/portal.js': 'src/host/demos/pocket.js',
 	'src/pocket/portal/controller.js': 'src/host/demos/portal.js',
+	// The page watch (ADR-0078): the Pocket's chunk loads it at idle where the site enables it, never the core.
+	'src/host/demos/watch.js': 'src/host/demos/pocket.js',
 	// Reimagine (phase 4a, ADR-0076): the core loads the launcher at idle; the launcher loads the shell on its first press.
 	[REIMAGINE_SHELL]: 'src/host/demos/reimagine.js',
 	// The shell loads each experience when its template is chosen (stage 2).
