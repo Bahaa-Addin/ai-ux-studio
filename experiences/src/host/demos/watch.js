@@ -89,6 +89,7 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
   let store = null
   let checker = null
   let rules = () => null
+  let loadRules = async () => {}
   /** The guide's chip (watch-chunk.ts): { ok: true } once the card is pocketed and watched, else { ok: false, reason }. */
   const fromGuide = async (step) => {
     if (gone || !ui) return { ok: false, reason: 'stopped' }
@@ -125,6 +126,8 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
   const fillOnce = async () => {
     if (gone || !ui) return { ok: false, reason: 'stopped' }
     try {
+      await loadRules()
+      if (gone) return { ok: false, reason: 'stopped' }
       const r = rules()
       if (!r?.origin) return { ok: false, reason: 'no-rules' }
       const { DEMO, READER, BASELINE_AT } = await import('../../watch/demo.js')
@@ -199,17 +202,21 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     store = openWatchStore({ onError: (error) => console.warn(`[AIXC] the page watch keeps its watches for this page only: ${error?.message || error}`) })
     cleanups.push(() => store.close())
     // The watch rules come from the page-map answer, asked for here rather than carried through the core
-    // (the core has 32 B left; ADR-0078 point 9). Same request as the core's: our own gateway, the page's
-    // address only, no referrer, 2 s; no answer means no rules, so no check (fail safe).
+    // (the core has 32 B left; ADR-0078 point 9), and only when the watch needs them: before a check when
+    // there are watches, before a person's press, before fill. So a page view with nothing watched sends the
+    // page map once, as before (ADR-0049). Same request as the core's: our own gateway, the page's address
+    // only, no referrer, 2 s, once per page view; no answer means no rules, so no check (fail safe).
     let watchRules = null
+    let asked = null
     const { siteKey, gateway } = layer.settings ?? {}
-    if (siteKey && gateway) {
-      try {
-        const res = await fetch(`${gateway}/v1/page-map?url=${encodeURIComponent(location.origin + location.pathname)}`, { headers: { 'x-vg-site-key': siteKey }, referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(2000) })
-        if (res.ok) watchRules = (await res.json())?.watch ?? null
-      } catch {}
-    }
-    if (gone) return null
+    loadRules = () =>
+      (asked ??= (async () => {
+        if (!siteKey || !gateway) return
+        try {
+          const res = await fetch(`${gateway}/v1/page-map?url=${encodeURIComponent(location.origin + location.pathname)}`, { headers: { 'x-vg-site-key': siteKey }, referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(2000) })
+          if (res.ok) watchRules = (await res.json())?.watch ?? null
+        } catch {}
+      })())
     rules = () => watchRules
     checker = createChecker({
       store,
@@ -222,7 +229,9 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       log: (...args) => layer.settings?.debug && console.info('[AIXC]', ...args),
     })
     checkpoint('watch-ui')
-    ui = createWatchUi({ pocket, open, pocketStore, store, checker, w: wordsFor(host.lang), origin: location.origin, safe, maxWatched: () => rules()?.maxWatched ?? 20 })
+    // A person's press (the sticker, the guide's chip) asks for the rules first.
+    const pressed = { ...checker, watchSticker: async (...a) => (await loadRules(), checker.watchSticker(...a)) }
+    ui = createWatchUi({ pocket, open, pocketStore, store, checker: pressed, w: wordsFor(host.lang), origin: location.origin, safe, maxWatched: () => rules()?.maxWatched ?? 20 })
     cleanups.push(() => ui.destroy())
     await ui.start()
     if (gone) return null
@@ -256,6 +265,10 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     // The check on visit, once per page view, at idle (design §4.4).
     const run = safe(async () => {
       checkpoint('watch-check')
+      // Nothing watched: no request at all, not even for the rules.
+      if (!(await store.listWatches()).length) return
+      await loadRules()
+      if (gone) return
       await checker.run()
     })
     const idle = window.requestIdleCallback ? requestIdleCallback(() => run(), { timeout: 2000 }) : setTimeout(run, 200)

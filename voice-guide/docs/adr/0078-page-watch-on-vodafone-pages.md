@@ -137,7 +137,7 @@ Facts measured on 2026-11-18 (design §2):
    - The Pocket demo loads the watch chunk at idle when `demos` includes `watch`. The core gets no `DEMOS` entry.
    - The Pocket passes in its instance, its store and `reconcile`.
    - The adapter object carries `read: readPage`, 6 B of the core as built (8,033 of 8,064 B). This amends ADR-0049.
-   - The watch asks the gateway's page-map answer for its rules itself (our own gateway, the page's address only, no referrer, 2 s), so the rules cost the core nothing.
+   - The watch asks the gateway's page-map answer for its rules itself (our own gateway, the page's address only, no referrer, 2 s), so the rules cost the core nothing. It asks only when it needs them, once per page view: before the check on visit when the person has watches, before a press, before fill. A page view with nothing watched sends the page map once, as before (ADR-0049; `aixc-layer.e2e` "only the page's address is sent… one request").
    - The chunk loads inside `guard.wrap('pocket watch', …)`. A watch error drops only the watch's own lines, notes, count and listeners (ADR-0052 part 3).
    - Checkpoints: `watch-start`, `watch-check`, `watch-ui`.
    - New strings live in `watch/words.js`, so the shared `i18n.js` does not grow.
