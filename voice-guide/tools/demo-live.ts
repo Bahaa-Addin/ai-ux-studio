@@ -101,6 +101,7 @@ if (values.trail) {
 
 const gateway = createGateway({ services, adminToken: process.env.VG_ADMIN_TOKEN })
 await gateway.listen(port)
+// vodafone-eg is a browser-mode site (ADR-0078): the scheduler never checks its rows, so this is harmless.
 const stopWatches = startScheduler(services.local.watch, 5000)
 console.log(`Gateway: http://127.0.0.1:${port} (store: ${services.store.kind}, agent: ${services.local.agent.status().available ? 'on' : 'no model configured'})`)
 const preset = llmPreset(platform.llm.preset)

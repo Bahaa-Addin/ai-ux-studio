@@ -10,6 +10,16 @@ import { type KbCache, variantKey } from '#shared/kb-index.ts'
 import type { Store } from '#shared/store/index.ts'
 import { hasValue, valueFree } from '#text'
 
+/**
+ * The page watch's rules for the layer (ADR-0078 point 6, phase 6 design §4.4 step 5), on the page-map
+ * answer only when the site's experiences.demos.watch is on: the paths it may fetch, the site's crawl
+ * excludes, its first origin and the knobs. Empty otherwise, so the answer is as before.
+ */
+function watchRules(site: SiteConfig | undefined): { watch?: Record<string, unknown> } {
+	if (!site?.experiences.demos.watch || !site.origins.length) return {}
+	return { watch: { include: ['^/(en|ar)/'], exclude: site.crawl.exclude.map(String), origin: new URL(site.origins[0].url).origin, ...site.experiences.watch } }
+}
+
 export interface KnowledgeDeps {
 	store: Store
 	kb: KbCache
@@ -125,15 +135,16 @@ export function createKnowledge(deps: KnowledgeDeps) {
 		 * on the site's `experiences`, not on the trail.
 		 */
 		async pageMap(input: { siteId: string; url: string }) {
+			const watch = watchRules(deps.sites.get(input.siteId))
 			const kb = await deps.kb.get(input.siteId)
 			const hit = kb?.pageFor(input.url)
-			if (!kb || !hit) return { kbVersionId: kb?.versionId ?? null, pageId: null, sections: [] }
+			if (!kb || !hit) return { kbVersionId: kb?.versionId ?? null, pageId: null, sections: [], ...watch }
 			const page = kb.pages.get(hit.pageId)
 			const pageName: I18nText = page ? Object.fromEntries(Object.entries(page.variants).map(([l, v]) => [l, valueFree(v.title) || ''])) : {}
 			const sections = kb.manifest.destinations
 				.filter((d) => d.pageId === hit.pageId && ['section', 'collection', 'faq'].includes(d.kind) && !d.commit && d.target)
 				.map((d) => ({ id: d.id, kind: d.kind, css: d.target!.css, title: titles(d.labels, pageName) }))
-			return { kbVersionId: kb.versionId, pageId: hit.pageId, sections: sections.slice(0, 100) }
+			return { kbVersionId: kb.versionId, pageId: hit.pageId, sections: sections.slice(0, 100), ...watch }
 		},
 
 		async versions(input: { siteId: string }) {

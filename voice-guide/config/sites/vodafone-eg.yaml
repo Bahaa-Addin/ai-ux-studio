@@ -161,8 +161,12 @@ agent:
   maxSteps: 12
   timeoutSec: 60
 
+# Page watch (ADR-0078): watches live in the visitor's browser (experiences.watch below), never on our
+# server: POST /v1/watch answers 409 browser_only and the scheduler never checks this site's rows.
 watch:
   enabled: true
+  mode: browser
+  # Server mode only.
   intervalSec: 900
 
 # Exploration Trail (SPEC-06). Off for the live site until D2 (data protection) approves the consent
@@ -183,3 +187,6 @@ experiences:
   enabled: true
   paths: ['^/(en|ar)/']
   demos: { pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true }
+  # The page watch's check on visit (ADR-0078 point 6): sent to the layer on the page-map answer once
+  # demos.watch is on. One run per 30 min, 12 pages a run, 1 s apart, 20 stickers, a 200-character region.
+  watch: { minIntervalMin: 30, perVisitMax: 12, spacingMs: 1000, maxWatched: 20, minChars: 200 }

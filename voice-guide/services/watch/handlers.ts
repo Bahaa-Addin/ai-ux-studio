@@ -2,6 +2,9 @@
  * Page watch on the platform (ADR-0023, follows ADR-0001/0004 of the page watch
  * prototype): server-side checks of a rendered section on a schedule, one
  * change record per change, delivered by Web Push or live to an open session.
+ * A site whose `watch.mode` is `browser` (ADR-0078) keeps its watches in the visitor's browser: create
+ * refuses with 409 browser_only, and tick() and checkNow() never check its rows, rows made before the
+ * change included (no request ever reaches the site from the server for them).
  */
 import type { Target } from '#kb'
 import type { PlatformConfig, SiteConfig } from '#shared/config.ts'
@@ -17,6 +20,8 @@ import { loadVapidKeys, sendPush, type VapidKeys } from './webpush.ts'
 const MAX_ERRORS = 5
 const MAX_MISSING = 3
 const MAX_WATCHES_PER_SESSION = 20
+/** How far a browser-mode site's row is put off when a tick claims it (ADR-0078). */
+const SKIP_SEC = 24 * 3600
 
 export interface WatchDeps {
 	platform: PlatformConfig
@@ -40,6 +45,8 @@ export function createWatchService(deps: WatchDeps) {
 		if (!s?.watch.enabled) throw new HttpError(403, 'page watch is off for this site', 'watch_disabled')
 		return s
 	}
+	/** True when the site's watches live in the visitor's browser (ADR-0078): the server never checks them. */
+	const browserOnly = (id: string) => deps.sites.get(id)?.watch.mode === 'browser'
 	const traceFor = (w: Watch) => ({ traceId: '0'.repeat(32), spanId: '0'.repeat(16), siteId: w.siteId, sessionId: w.sessionId || `watch:${w.id}` })
 
 	async function notify(w: Watch, before: string, after: string, kind: 'changed' | 'removed') {
@@ -61,6 +68,12 @@ export function createWatchService(deps: WatchDeps) {
 
 	async function check(w: Watch): Promise<{ changed: boolean; status: Watch['status'] }> {
 		const now = new Date()
+		if (browserOnly(w.siteId)) {
+			// Left as it is (not paused, so a site moved back to server mode picks it up), and out of the
+			// way of the claim for a day, so it never takes another site's place in a tick.
+			await store.updateWatch(w.id, { nextCheckAt: new Date(now.getTime() + SKIP_SEC * 1000).toISOString() })
+			return { changed: false, status: w.status }
+		}
 		const next = new Date(now.getTime() + w.intervalSec * 1000).toISOString()
 		try {
 			const snap = await checker.read(w.url, w.target)
@@ -109,6 +122,7 @@ export function createWatchService(deps: WatchDeps) {
 			input: { siteId: string; sessionId: string; subscriptionId?: string; url: string; pageId?: string; target: Target; label: string; lang: string },
 			ctx: RpcContext,
 		): Promise<{ watch: Watch; baseline: string }> {
+			if (browserOnly(input.siteId)) throw new HttpError(409, "this site's watches live in the visitor's browser", 'browser_only')
 			const s = site(input.siteId)
 			const origins = new Set(s.origins.map((o) => new URL(o.url).origin))
 			if (!origins.has(new URL(input.url).origin)) throw new HttpError(400, 'url outside the site', 'bad_url')
@@ -162,8 +176,12 @@ export function createWatchService(deps: WatchDeps) {
 		async tick(input: { limit?: number } = {}) {
 			const due = await store.claimDueWatches(new Date(), input.limit ?? 20, 120)
 			let changed = 0
-			for (const w of due) if ((await check(w)).changed) changed++
-			return { checked: due.length, changed }
+			let skipped = 0
+			for (const w of due) {
+				if (browserOnly(w.siteId)) skipped++
+				if ((await check(w)).changed) changed++
+			}
+			return { checked: due.length - skipped, changed, skipped }
 		},
 
 		async checkNow(input: { watchId: string }) {

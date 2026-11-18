@@ -263,9 +263,14 @@ export const SiteConfig = z.object({
 	agent: z
 		.object({ enabled: z.boolean().default(true), maxSteps: z.number().int().positive().default(12), timeoutSec: z.number().positive().default(60) })
 		.default({ enabled: true, maxSteps: 12, timeoutSec: 60 }),
+	/**
+	 * Page watch. `mode: server` (ADR-0023): the server checks a section on a schedule. `mode: browser`
+	 * (ADR-0078): watches live in the visitor's browser (the experience layer's check on visit); the
+	 * server refuses to create one (409 browser_only) and its scheduler never checks the site's rows.
+	 */
 	watch: z
-		.object({ enabled: z.boolean().default(true), intervalSec: z.number().int().min(5).default(900) })
-		.default({ enabled: true, intervalSec: 900 }),
+		.object({ enabled: z.boolean().default(true), mode: z.enum(['browser', 'server']).default('server'), intervalSec: z.number().int().min(5).default(900) })
+		.default({ enabled: true, mode: 'server', intervalSec: 900 }),
 	/**
 	 * Exploration Trail (SPEC-06, ADR-0035 to ADR-0039). Off unless enabled; recording still needs
 	 * each person's consent. Aggregation is a separate, approved channel and stays off (ADR-0037 §6).
@@ -312,8 +317,28 @@ export const SiteConfig = z.object({
 					demoKit: z.boolean().default(true),
 				})
 				.default({ pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true }),
+			/**
+			 * The page watch in the visitor's browser (ADR-0078 points 6 and 10): at most one run per
+			 * minIntervalMin, perVisitMax pages a run, spacingMs between requests, maxWatched stickers, and
+			 * a linked page's #main-content of at least minChars characters. Sent on the page-map answer
+			 * when `demos.watch` is on.
+			 */
+			watch: z
+				.object({
+					minIntervalMin: z.number().min(1).default(30),
+					perVisitMax: z.number().int().min(1).max(50).default(12),
+					spacingMs: z.number().int().min(1000).default(1000),
+					maxWatched: z.number().int().min(1).max(100).default(20),
+					minChars: z.number().int().min(1).default(200),
+				})
+				.default({ minIntervalMin: 30, perVisitMax: 12, spacingMs: 1000, maxWatched: 20, minChars: 200 }),
 		})
-		.default({ enabled: false, paths: ['^/(en|ar)/'], demos: { pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true } }),
+		.default({
+			enabled: false,
+			paths: ['^/(en|ar)/'],
+			demos: { pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true },
+			watch: { minIntervalMin: 30, perVisitMax: 12, spacingMs: 1000, maxWatched: 20, minChars: 200 },
+		}),
 })
 export type SiteConfig = z.infer<typeof SiteConfig>
 
