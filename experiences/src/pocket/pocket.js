@@ -1024,6 +1024,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   /*
    * A companion's extras (the page watch, ADR-0078): fn(record, el) may add to a sticker's actions row (el)
    * or a card's liner (el), and returns its clean-up. Drawn again with the stickers, and on refreshExtras().
+   * The empty state's extra is fn(null, el), el the empty state's box (its demo entry); none when unset.
    */
   const extras = {}
   const extraOff = new WeakMap()
@@ -1038,6 +1039,7 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
   const refreshExtras = () => {
     for (const cell of pocketRoot.querySelectorAll('.pocket-grid__item')) extra('sticker', records.get(cell.dataset.pocketId), cell.querySelector('.pocket-sticker__actions'))
     for (const [id, entry] of cards) extra('liner', records.get(keyOf(id)), entry.liner)
+    extra('empty', null, empty)
   }
 
   /**
@@ -1602,6 +1604,10 @@ export const initPocket = ({ adapter, regions, composer = null, portal: portalOp
     },
     setLinerExtra: (fn) => {
       extras.liner = fn
+      refreshExtras()
+    },
+    setEmptyExtra: (fn) => {
+      extras.empty = fn
       refreshExtras()
     },
     refreshExtras,

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 
 import { WORDS, dayOf, wordsFor } from '../src/watch/words.js'
 
-const KEYS = ['tell', 'tellLabel', 'watching', 'stop', 'stopLabel', 'noChange', 'changed', 'changedOn', 'card', 'page', 'link', 'missing', 'gone', 'back', 'open', 'script', 'other-site', 'not-allowed', 'no-link', 'maxWatched', 'unavailable', 'button', 'linerLabel']
+const KEYS = ['tell', 'tellLabel', 'watching', 'stop', 'stopLabel', 'noChange', 'changed', 'changedOn', 'card', 'page', 'link', 'missing', 'gone', 'back', 'open', 'script', 'other-site', 'not-allowed', 'no-link', 'maxWatched', 'unavailable', 'button', 'linerLabel', 'demoFill']
 // 18 Nov 2026, noon in Cairo.
 const NOV18 = Date.UTC(2026, 10, 18, 10)
 
@@ -34,6 +34,7 @@ test('the English words the design names', () => {
   assert.equal(w('missing'), 'No longer on its page')
   assert.equal(w('gone'), 'Its page is gone')
   assert.equal(w('open'), 'Open the page')
+  assert.equal(w('demoFill'), 'Watch two example cards')
 })
 
 test('dates: day and short month in the page language', () => {

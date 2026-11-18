@@ -27,6 +27,8 @@
  *   unavailable المتابعة مش متاحة دلوقتي
  *   button      {base}، {count} اتغيّرت
  *   linerLabel  «{title}» اتغيّرت. شوفها في جيبك
+ * Added 2026-11-18, phase 6 step 5 (the album's empty state in demo mode):
+ *   demoFill    تابع كارتين كمثال
  */
 export const WORDS = {
   en: {
@@ -53,6 +55,7 @@ export const WORDS = {
     unavailable: 'Watching isn’t available right now',
     button: '{base}, {count} changed',
     linerLabel: '{title} changed. See it in your pocket',
+    demoFill: 'Watch two example cards',
   },
   ar: {
     tell: 'قولّي لما تتغيّر',
@@ -78,6 +81,7 @@ export const WORDS = {
     unavailable: 'المتابعة مش متاحة دلوقتي',
     button: '{base}، {count} اتغيّرت',
     linerLabel: '«{title}» اتغيّرت. شوفها في جيبك',
+    demoFill: 'تابع كارتين كمثال',
   },
 }
 

@@ -18,3 +18,10 @@ Private repository only: the content, stylesheets and fonts belong to Vodafone E
 - https://web.vodafone.com.eg/ar/vodafone-cash
 - https://web.vodafone.com.eg/en/vodafone-cash
 - https://web.vodafone.com.eg/spa/storeLocator
+
+## The page watch's baseline (ADR-0078)
+
+This capture of 2026-10-23 is the page watch's demo baseline.
+The two demo cards (Home > Other services > Internet Bundles, and Services > Vodafone Cash > Vodafone Cash) and the pages they open are hashed from it by `npm run watch:baselines` into `experiences/src/watch/demo.js`.
+Never overwrite or re-capture this folder. Add a new dated capture folder instead, as `vodafone-eg-2026-11-12` was.
+The name `vodafone-eg` is kept on the owner's decision of 2026-11-18 (Q8).

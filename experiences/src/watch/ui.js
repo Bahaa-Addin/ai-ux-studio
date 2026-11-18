@@ -70,7 +70,7 @@ export function describe({ record, watch = null, changes = [], refusal = null, b
  * Draws the watch through the Pocket's seams. `pocket`: initPocket's instance (setStickerExtra, setLinerExtra,
  * refreshExtras, setChanged, dock.root); `open()`: the Pocket's open, through the layer's guard; `pocketStore`:
  * the Pocket's records; `store`, `checker`: the watch's; `w`: its words; `safe(fn)`: fn whose errors drop the watch.
- * Returns { start, watch(key, from), stop(key), openAt(key), destroy }.
+ * Returns { start, watch(key, from), stop(key), openAt(key), load(), destroy }; load() reads the store again and draws.
  */
 export function createWatchUi({ pocket, open, pocketStore, store, checker, w, origin, safe, maxWatched = () => 20, doc = document }) {
   const watches = new Map()
@@ -231,6 +231,7 @@ export function createWatchUi({ pocket, open, pocketStore, store, checker, w, or
     watch,
     stop,
     openAt,
+    load,
     destroy() {
       if (destroyed) return
       destroyed = true

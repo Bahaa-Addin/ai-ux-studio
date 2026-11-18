@@ -6,18 +6,25 @@
  *   readPage (adapter.read); it asks the gateway's page-map answer for its watch rules itself (none, no check).
  * - Its store (../../watch/store.js), its check on visit (../../watch/check.js) at idle once per page view,
  *   and its lines on the stickers, the liners and the Pocket button (../../watch/ui.js) in the page's language.
- * - window.__aixcWatch = { ready, fromGuide(step), fill } for the guide's chip (watch-chunk.ts), announced
- *   by 'aixc:watch-ready' on window. fromGuide resolves the step's target in the live DOM; a card the adapter
- *   read (or one it sits in) is pocketed with the Pocket's own pocket() and its flight, then watched.
- *   fill() comes with the demo data (step 5).
+ * - window.__aixcWatch = { ready, fromGuide(step), fill(), reset() } for the guide's chip (watch-chunk.ts),
+ *   announced by 'aixc:watch-ready' on window. fromGuide resolves the step's target in the live DOM; a card the
+ *   adapter read (or one it sits in) is pocketed with the Pocket's own pocket() and its flight, then watched.
+ * - Demo data (design §4.8): fill() loads ../../watch/demo.js (its own small chunk, only then), puts the two
+ *   example stickers of the page's language in the Pocket's store (as a pocketed card is; one already there is
+ *   kept), watches them (from 'demo', within maxWatched) on their 23 Oct baselines, and checks them at once,
+ *   pacing kept. reset() deletes the watch's database and tells other tabs; it never touches the Pocket's own
+ *   store, Vodafone's cookies or the cookie answer (phase 7's Reset demo clears the Pocket itself). In demo mode
+ *   (layer.settings.demo) the album's empty state offers "Watch two example cards", and ?aixc-watch=fill runs
+ *   fill() once after start (the switch then leaves the address, so a reload does not fill again).
  * - Isolation (ADR-0052 part 3): every handler runs through `safe`; any error, a checkpoint's included
  *   ('watch-start', 'watch-ui', 'watch-check'), drops only the watch: its lines, liner notes, count,
  *   listeners, stylesheet and window.__aixcWatch. The Pocket and the page carry on. A stop of the layer
  *   takes it away too.
  */
 import css from '../../watch/watch.css'
-import { createChecker } from '../../watch/check.js'
+import { LOCK, createChecker } from '../../watch/check.js'
 import { maskContent } from '../../watch/mask.js'
+import { READER_VERSION } from '../../watch/read.js'
 import { openWatchStore } from '../../watch/store.js'
 import { createWatchUi } from '../../watch/ui.js'
 import { wordsFor } from '../../watch/words.js'
@@ -43,7 +50,7 @@ const locate = (target) => {
 export async function start({ host, adapter, guard, layer, ensureCss, checkpoint, pocket, pocketStore, reconcile, open }) {
   let gone = false
   const cleanups = []
-  const api = { ready: true, fill: undefined, fromGuide: (step) => fromGuide(step) }
+  const api = { ready: true, fill: () => fill(), reset: () => reset(), fromGuide: (step) => fromGuide(step) }
   const destroy = () => {
     if (gone) return
     gone = true
@@ -75,6 +82,9 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
   guard.onStop(destroy)
 
   let ui = null
+  let store = null
+  let checker = null
+  let rules = () => null
   /** The guide's chip (watch-chunk.ts): { ok: true } once the card is pocketed and watched, else { ok: false, reason }. */
   const fromGuide = async (step) => {
     if (gone || !ui) return { ok: false, reason: 'stopped' }
@@ -97,11 +107,90 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     }
   }
 
+  /** Runs fn holding the check's lock (waiting for a run in another tab or this one), so no run sees a half-made watch. */
+  const holding = (fn) => (navigator.locks?.request ? navigator.locks.request(LOCK, fn) : fn())
+
+  /**
+   * The demo data (design §4.8): { ok: true, keys, added } or { ok: false, reason, keys? } ('stopped', 'no-rules',
+   * 'max-watched', 'error'). Idempotent: stickers and watches already there are kept as they are.
+   */
+  let filling = null
+  const fill = () => (filling ??= fillOnce().finally(() => (filling = null)))
+  const fillOnce = async () => {
+    if (gone || !ui) return { ok: false, reason: 'stopped' }
+    try {
+      const r = rules()
+      if (!r?.origin) return { ok: false, reason: 'no-rules' }
+      const { DEMO, READER, BASELINE_AT } = await import('../../watch/demo.js')
+      if (gone) return { ok: false, reason: 'stopped' }
+      // Read by another reader than today's: the dates and hashes of 23 Oct do not hold, so a baseline of today.
+      const same = READER === READER_VERSION
+      const max = r.maxWatched ?? 20
+      const list = DEMO[host.lang === 'ar' ? 'ar' : 'en']
+      const keys = []
+      const added = []
+      await holding(async () => {
+        let count = (await store.listWatches()).length
+        for (const d of list) {
+          const s = d.sticker
+          // This sticker, or the same card the visitor kept on its page.
+          let record = pocketStore.get(s.key) ?? pocketStore.all().find((x) => x.id === s.id && x.source?.path === s.source.path)
+          if (record && (await store.getWatch(record.key))) {
+            keys.push(record.key)
+            continue
+          }
+          if (count >= max) break
+          if (!record) {
+            await pocketStore.put(s)
+            record = s
+          }
+          keys.push(record.key)
+          const res = await checker.watchSticker(record, { from: 'demo', baselineAt: same ? BASELINE_AT : null })
+          if (!res.ok || res.already) continue
+          count++
+          added.push(record.key)
+          // The 23 Oct baselines, on the targets made just now (one another watch holds keeps its own).
+          const seed = async (id, url, fields) => {
+            const t = id && (await store.getTarget(id))
+            if (!t || t.hash || t.url !== url) return false
+            await store.putTarget({ ...t, ...fields, status: 'ok', checkedAt: BASELINE_AT, baselineAt: BASELINE_AT, readerVersion: READER })
+            return true
+          }
+          const seeded = same && (await seed(res.watch.cardTargetId, d.card.url, { hash: d.card.hash, href: d.card.href })) && (!res.watch.pageTargetId || (await seed(res.watch.pageTargetId, d.page.url, { hash: d.page.hash, linksHash: d.page.linksHash })))
+          if (same && !seeded) await store.putWatch({ ...res.watch, baselineAt: null })
+        }
+      })
+      if (added.length) {
+        // Checked at once (a person's press), pacing kept; a run already under way is waited for, then this one.
+        const check = () => checker.run({ force: true, onlyStickers: added })
+        if ((await check())?.reason === 'locked') await holding(() => null).then(check)
+        await ui?.load()
+      }
+      return keys.length < list.length ? { ok: false, reason: 'max-watched', keys } : { ok: true, keys, added: added.length }
+    } catch (error) {
+      drop(error)
+      return { ok: false, reason: 'error' }
+    }
+  }
+
+  /** The watch's database deleted (other tabs told) and its lines cleared; the Pocket's stickers stay. */
+  const reset = async () => {
+    if (gone || !store) return { ok: false, reason: 'stopped' }
+    try {
+      await store.reset()
+      await ui?.load()
+      return { ok: true }
+    } catch (error) {
+      drop(error)
+      return { ok: false, reason: 'error' }
+    }
+  }
+
   try {
     checkpoint('watch-start')
     ensureCss('watch', css)
     cleanups.push(() => document.head.querySelector('style[data-aixc-css="watch"]')?.remove())
-    const store = openWatchStore({ onError: (error) => console.warn(`[AIXC] the page watch keeps its watches for this page only: ${error?.message || error}`) })
+    store = openWatchStore({ onError: (error) => console.warn(`[AIXC] the page watch keeps its watches for this page only: ${error?.message || error}`) })
     cleanups.push(() => store.close())
     // The watch rules come from the page-map answer, asked for here rather than carried through the core
     // (the core has 32 B left; ADR-0078 point 9). Same request as the core's: our own gateway, the page's
@@ -115,8 +204,8 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
       } catch {}
     }
     if (gone) return null
-    const rules = () => watchRules
-    const checker = createChecker({
+    rules = () => watchRules
+    checker = createChecker({
       store,
       read: adapter.read,
       reconcile,
@@ -130,8 +219,33 @@ export async function start({ host, adapter, guard, layer, ensureCss, checkpoint
     cleanups.push(() => ui.destroy())
     await ui.start()
     if (gone) return null
+    const demo = !!layer.settings?.demo
+    // The album's empty state in demo mode: "Watch two example cards" (the Pocket's empty-state seam).
+    if (demo && pocket.setEmptyExtra) {
+      pocket.setEmptyExtra(
+        safe((_, box) => {
+          const b = document.createElement('button')
+          b.type = 'button'
+          b.className = 'aixc-watch__button'
+          b.textContent = wordsFor(host.lang)('demoFill')
+          b.addEventListener('click', safe(fill))
+          const back = box.querySelector('.pocket-back')
+          back ? back.before(b) : box.append(b)
+          return () => b.remove()
+        }),
+      )
+      cleanups.push(() => pocket.setEmptyExtra(null))
+    }
     window.__aixcWatch = api
     window.dispatchEvent(new CustomEvent('aixc:watch-ready'))
+    // A presenter's ?aixc-watch=fill: once; the switch leaves the address first, so a reload does not fill again.
+    const params = new URLSearchParams(location.search)
+    if (demo && params.get('aixc-watch') === 'fill') {
+      params.delete('aixc-watch')
+      const q = params.toString()
+      history.replaceState(history.state, '', `${location.pathname}${q ? `?${q}` : ''}${location.hash}`)
+      void fill()
+    }
     // The check on visit, once per page view, at idle (design §4.4).
     const run = safe(async () => {
       checkpoint('watch-check')
