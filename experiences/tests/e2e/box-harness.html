@@ -54,6 +54,19 @@
   const page = document.documentElement.lang === 'ar' ? vodafoneServicesPageAr : vodafoneServicesPage
   const index = buildContentIndex(normalizeContentModel(page).model)
   const renderers = { spotlight: renderSpotlight, magazine: renderMagazine }
+  // Every experience Reimagine has; load(name) brings in the ones not imported above (box_e2e.py's rows).
+  const NAMES = ['magazine', 'spotlight', 'journey', 'gallery', 'flipbook', 'cube', 'streaming', 'split', 'fan', 'coverflow', 'canvas', 'tunnel', 'ring']
+  const sheet = (href) => {
+    const have = [...document.querySelectorAll('link[rel="stylesheet"]')].find((l) => l.getAttribute('href') === href)
+    if (have) return have.sheet ? Promise.resolve() : new Promise((resolve, reject) => { have.addEventListener('load', resolve, { once: true }); have.addEventListener('error', () => reject(new Error(`${href} did not load`)), { once: true }) })
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = href
+    const loaded = new Promise((resolve, reject) => { link.onload = resolve; link.onerror = () => reject(new Error(`${href} did not load`)) })
+    document.head.append(link)
+    return loaded
+  }
+  let schema = null
   // The safe zones the shell would measure (px): set per test.
   const measure = (zones) => {
     box.style.setProperty('--aixc-box-h', `${innerHeight - 100}px`)
@@ -66,10 +79,25 @@
     seam,
     box,
     measure,
+    names: NAMES,
+    // Imports /src/aixc/experiences/<name>.js (its render<Name>) and adds its stylesheet once; resolves when both are in.
+    async load(name) {
+      if (!NAMES.includes(name)) throw new Error(`no experience called ${name}`)
+      const href = `/src/aixc/experiences/${name}.css`
+      if (!renderers[name]) {
+        const module = await import(`/src/aixc/experiences/${name}.js`)
+        const render = module[`render${name[0].toUpperCase()}${name.slice(1)}`]
+        if (typeof render !== 'function') throw new Error(`${name}.js has no render${name[0].toUpperCase()}${name.slice(1)}`)
+        renderers[name] = render
+      }
+      await sheet(href)
+      return name
+    },
     open(name, { copy = 'services' } = {}) {
+      if (!renderers[name]) throw new Error(`${name} is not loaded: await __h.load('${name}') first`)
       current?.unmount()
       seam.configure({ scroller: box, copy })
-      const schema = validateSchema(buildTemplateSchema({ experience: name }, index), index).schema
+      schema = validateSchema(buildTemplateSchema({ experience: name }, index), index).schema
       current = wrapExperience(renderers[name](schema, index))
       stage.replaceChildren(current.element)
       current.mount()
@@ -77,6 +105,10 @@
     },
     get current() {
       return current
+    },
+    // The last opened schema's item ids, in order (each should be in the box once).
+    get itemIds() {
+      return schema ? schema.sections.flatMap((section) => section.itemIds) : []
     },
     close() {
       current?.unmount()

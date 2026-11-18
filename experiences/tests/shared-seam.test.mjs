@@ -2,7 +2,7 @@
  * The experiences' scroller seam (voice-guide ADR-0076, phase 4a spec A): with no scroller every number is
  * the clone's as before; with a stand-in scroller the stepper reads and writes the box and never the window;
  * listeners, frames and timers go through the guard's wrap (never its listen) and are all undone by configure();
- * words() per copy; svgIcon's choice of symbol; the mount wrapper; the template data without its references.
+ * words() per copy, every neutral word and the canvas sign's {page}; pageHeading with a blank title; svgIcon's choice of symbol; the mount wrapper; the template data without its references.
  * The English page (the Arabic words are in shared-seam-ar.test.mjs, a process of its own).
  */
 import test from 'node:test'
@@ -380,6 +380,103 @@ test('words(): the clone\'s words by default, neutral ones for pages that are no
   configure({ copy: 'nonsense' })
   assert.equal(shared.words('More services'), 'More services', 'an unknown copy is the clone\'s')
   configure()
+})
+
+// The neutral words Reimagine's other eleven experiences use on pages not about services (ADR-0076, phase 1), by the
+// experience whose t('...') call says the key today (words('...') once phases 2-4 switch it); each neutral word is the
+// composer's card name where that is neutral.
+const ELEVEN = [
+  ['fan', 'Vodafone services, card fan', 'Card fan'],
+  ['gallery', 'Gallery of Vodafone services', 'Gallery wall'],
+  ['flipbook', 'Vodafone services flipbook', 'Flipbook'],
+  ['ring', 'Vodafone services, ring', 'Ring'],
+  ['coverflow', 'Vodafone services, cover flow', 'Cover flow'],
+  ['split', 'Vodafone services, split slideshow', 'Split slideshow'],
+  ['tunnel', 'Vodafone services, hyper tunnel', 'Hyper tunnel'],
+  ['canvas', 'Vodafone services, infinite canvas', 'Infinite canvas'],
+  ['canvas', 'Services canvas. Use the arrow keys to pan, Tab to move between services.', 'Canvas. Use the arrow keys to pan, Tab to move between items.'],
+  ['canvas', 'Vodafone Egypt · Services', 'Vodafone Egypt · {page}'],
+]
+
+test('NEUTRAL_WORDS: every entry neutral with copy \'items\', the clone\'s own word otherwise; the eleven\'s keys are their t() or words() calls', async () => {
+  setup()
+  const entries = Object.entries(shared.NEUTRAL_WORDS)
+  for (const [, key, neutral] of ELEVEN) assert.equal(shared.NEUTRAL_WORDS[key], neutral, key)
+  assert.equal(entries.length, 7 + ELEVEN.length, 'stage 1\'s seven and the eleven\'s ten')
+  for (const [key, neutral] of entries) {
+    configure()
+    assert.equal(shared.words(key), key, `${key}: the clone's word with copy 'services'`)
+    configure({ copy: 'items' })
+    assert.equal(shared.words(key), neutral, `${key}: neutral with copy 'items'`)
+    assert.doesNotMatch(neutral, /service/i, `${neutral}: not about services`)
+  }
+  configure()
+  // The keys exactly as the experiences say them: t('key') until phases 2-4 switch the call, words('key' after (the
+  // open call, so words('key', { page }) counts too).
+  for (const [experience, key] of ELEVEN) {
+    const source = read(`../src/aixc/experiences/${experience}.js`)
+    assert.ok(source.includes(`t('${key}')`) || source.includes(`words('${key}'`), `${experience}.js says t('${key}') or words('${key}'`)
+  }
+  // The experience's own label is its card's name in the composer, where that name is neutral.
+  const { TEMPLATE_CARDS } = await import('../src/aixc/template-schema.js')
+  let named = 0
+  for (const [experience, key, neutral] of ELEVEN) {
+    const card = TEMPLATE_CARDS.find((c) => c.experience === experience)
+    assert.ok(card, experience)
+    if (!/^Vodafone services/.test(key) && key !== 'Gallery of Vodafone services') continue
+    if (/service/i.test(card.name)) assert.notEqual(neutral, card.name, `${experience}: its card name says services`)
+    else assert.equal(neutral, card.name, `${experience}: the label is the composer's card name`)
+    named += 1
+  }
+  assert.equal(named, 8, 'one label per experience the eleven name this way')
+})
+
+test('words() fills the page\'s name into the canvas sign: the neutral one takes {page}, the clone\'s keeps its own', () => {
+  setup()
+  configure({ copy: 'items' })
+  assert.equal(shared.words('Vodafone Egypt · Services', { page: 'Roaming' }), 'Vodafone Egypt · Roaming')
+  assert.equal(shared.words('Vodafone Egypt · Services'), 'Vodafone Egypt · {page}', 'no name given: the placeholder stays, as t() leaves any')
+  configure()
+  assert.equal(shared.words('Vodafone Egypt · Services', { page: 'Roaming' }), 'Vodafone Egypt · Services', 'the clone\'s sign is unchanged')
+})
+
+test('countWords(): the clone\'s countServices by default, "1 item" and "N items" with copy \'items\'', async () => {
+  setup()
+  const { countServices } = await import('../src/i18n.js')
+  const counts = [0, 1, 2, 3, 10, 11, 12, 100]
+  configure()
+  assert.deepEqual(counts.map((n) => shared.countWords(n)), counts.map((n) => countServices(n)), 'copy \'services\': the clone\'s count')
+  configure({ copy: 'nonsense' })
+  assert.deepEqual(counts.map((n) => shared.countWords(n)), counts.map((n) => countServices(n)), 'an unknown copy is the clone\'s')
+  configure({ copy: 'items' })
+  const neutral = counts.map((n) => shared.countWords(n))
+  assert.deepEqual(neutral, ['0 items', '1 item', '2 items', '3 items', '10 items', '11 items', '12 items', '100 items'])
+  for (const word of neutral) assert.doesNotMatch(word, /service/i, `${word}: not about services`)
+  configure()
+})
+
+/* ----------------------------------------------------------- page heading */
+
+test('pageHeading: no h1 for an empty or blank title; any other title the same h1 as before', () => {
+  setup()
+  installDom()
+  for (const title of ['', ' ', ' \n\t ', null, undefined]) {
+    assert.equal(shared.pageHeading({ model: { title } }), null, `${JSON.stringify(title)}: no heading`)
+    assert.equal(shared.pageHeading({ model: { title } }, { visible: true, className: 'x' }), null, `${JSON.stringify(title)}: no visible heading`)
+  }
+  // h() skips the absent heading: the root holds only the rest.
+  const root = shared.experienceRoot('fan', { density: 'comfortable' }, shared.pageHeading({ model: { title: '  ' } }), 'track')
+  assert.deepEqual(root.walk().map((el) => el.localName), ['div'])
+  assert.equal(root.textContent, 'track')
+  for (const [options, cls] of [[undefined, 'vx-sr-only'], [{ visible: true, className: 'tn-title' }, 'tn-title'], [{ visible: false, className: 'tn-title' }, 'vx-sr-only'], [{ visible: true }, '']]) {
+    for (const title of ['Services', ' Roaming offers ', 'خدمات']) {
+      const heading = shared.pageHeading({ model: { title } }, options)
+      assert.equal(heading.localName, 'h1')
+      assert.deepEqual([...heading.attributes], [['class', cls], ['id', 'aixc-cover-title'], ['tabindex', '-1'], ['data-aixc-focus', '']])
+      assert.equal(heading.children.length, 1)
+      assert.equal(heading.textContent, title, 'the title as given, not trimmed')
+    }
+  }
 })
 
 /* ------------------------------------------------------------------- icons */

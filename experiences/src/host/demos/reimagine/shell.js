@@ -106,7 +106,7 @@ const createShell = ({ host, guard, layer, ensureCss, checkpoint, launcher }) =>
   /* ------------------------------------------------------------- the model */
   let index = null
   const reindex = (model) => {
-    index = model?.sections?.some((section) => section.items?.length) ? buildContentIndex({ ...model, title: model.title ?? titleOf(document) }) : null
+    index = model?.sections?.some((section) => section.items?.length) ? buildContentIndex({ ...model, title: model.title?.trim() || titleOf(document) }) : null
   }
   reindex(layer.model)
 
@@ -374,8 +374,9 @@ const createShell = ({ host, guard, layer, ensureCss, checkpoint, launcher }) =>
     align()
     if (fresh) kept = 0
     active.mount()
-    // A new view: its heading; the same one again: the bar's Reimagined, where the press was.
-    if (fresh) box.querySelector('#aixc-cover-title, [data-aixc-focus]')?.focus({ preventScroll: true })
+    // A new view: its heading (a page with no title has none: the bar's Reimagined, so the focus does not stay on the
+    // template button the composer just hid); the same one again: the bar's Reimagined, where the press was.
+    if (fresh) (box.querySelector('#aixc-cover-title, [data-aixc-focus]') ?? barSegs[1])?.focus({ preventScroll: true })
     else barSegs[1].focus({ preventScroll: true })
   }
 

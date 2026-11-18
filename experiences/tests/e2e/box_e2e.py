@@ -12,10 +12,42 @@ queue and the contents links scroll the box and never the window. Run at desktop
 phone sizes, in English and Arabic. The page is tests/e2e/box-harness.html, served through Playwright's
 routing on the clone server's own origin (no port or dependency of its own). No network, no Gemini key.
 Each check prints PASS/FAIL; the script exits non-zero if any check fails.
+
+The checks are table-driven (ADR-0076, Reimagine on Vodafone's pages): EXPERIENCES has one row per experience,
+in the order they run. Spotlight and magazine are rows whose `run` is their own checks (above, unchanged); every
+other row is checked by box_generic(): it renders in the box; every schema item is in the box once; one h1 is
+exposed; the box never overflows sideways; scrolling the box to its end and back never scrolls the window; when
+the row pins, the stage's top sits at the bar (57) and its bottom at the box's bottom, within 1 px, at 10, 50 and
+90 % of its track; each of the row's controls, and anything pressable in the experience, clear of the safe zones
+(the same zone maths as IN_ZONES and CONTROLS_CLEAR) at those places and, for a row that pins, at the box's end
+(the closing band, whatever follows the track); at each of those places nothing of the experience (a pressable,
+an item, a heading) cut by the box's left or right side, which the box's own overflow cannot show as .aixc-vx
+clips (CUT_BY_SIDES); closing keeps nothing; no page errors. A generic row runs with motion allowed
+(prefers-reduced-motion: no-preference, as most readers have it; spotlight's and magazine's own checks run with
+it reduced, as open_harness does by default), so what moves only with motion (a pin a static mode drops) is
+checked; a row passes motion="reduce" to check its reduced mode instead. The tag says which. The harness's
+__h.load(name) imports src/aixc/experiences/<name>.js (its render<Name>) and links <name>.css once.
+
+To add an experience (phases 2-4), edit its row:
+    "fan": row(pins=(".fn-stage", ".fn-track"), controls=[".fn-controls"]),
+  - drop `todo` (a todo row prints one "TODO <name>: <reason>" line and adds no check);
+  - pins: (stage selector, track selector) when its stage is sticky in a taller track, else None;
+  - controls: selectors of the parts that must stay clear of both zones (each must show in the box), or a
+    function (width, height) -> list when they differ by size;
+  - sizes: (width, height) pairs, each a key of ZONES (default GENERIC_SIZES); every size runs in en and ar;
+  - motion: "no-preference" (default) or "reduce", the reader's prefers-reduced-motion for the row;
+  - checks of its own (its reveal, its stepper): an async extra(page, tag, zones, layout) on the row, called
+    after the generic checks with the experience open and the box at its top.
+
+Trying a row that is still todo (its real gaps, without the 1,228 spotlight and magazine checks):
+    BOX_TRY=fan,split python tests/e2e/box_e2e.py http://127.0.0.1:5200/ 1366x900,en
+runs box_generic() for just those rows as if they were done; the optional second argument keeps only the
+sizes ("1366x900") and, for generic rows only, the languages ("en", "ar") it lists.
 """
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -205,8 +237,10 @@ def row_expected(zones, width, layout):
     return {"lifted": False, "centre": (left + width - right) / 2, "bottom": base, "reserve": max(96, taller), "inside": (left, right)}
 
 
-async def open_harness(browser, width, height, lang="en", zones=None):
-    context = await browser.new_context(viewport={"width": width, "height": height}, reduced_motion="reduce")
+async def open_harness(browser, width, height, lang="en", zones=None, motion="reduce"):
+    """The harness at a size and language, the zones measured; `motion` is the reader's prefers-reduced-motion
+    ("reduce", as spotlight's and magazine's checks run, or "no-preference")."""
+    context = await browser.new_context(viewport={"width": width, "height": height}, reduced_motion=motion)
     page = await context.new_page()
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e)))
@@ -494,27 +528,335 @@ async def magazine(browser, width, height, lang):
     await context.close()
 
 
+# The zones as rectangles in the window, as IN_ZONES and CONTROLS_CLEAR draw them (a JS expression of `zones`).
+ZONE_RECTS = """[
+  ['right', { left: innerWidth - zones['right-w'], top: innerHeight - zones['right-h'], right: innerWidth, bottom: innerHeight }],
+  ['left', { left: 0, top: innerHeight - zones['left-h'], right: zones['left-w'], bottom: innerHeight }],
+]"""
+
+# The generic checks' state: the experience's root, the stage when it pins, the window and the box.
+GENERIC_STATE = """({ name, stage }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const root = box.querySelector(`.aixc-vx--${name}`)
+  const s = stage ? box.querySelector(stage)?.getBoundingClientRect() : null
+  return {
+    rendered: !!root && root.offsetHeight > 0,
+    rootHeight: root ? root.offsetHeight : 0,
+    stageTop: s ? Math.round((s.top - b.top) * 10) / 10 : null,
+    stageBottomGap: s ? Math.round((b.top + box.clientTop + box.clientHeight - s.bottom) * 10) / 10 : null,
+    stageHeight: s ? Math.round(s.height) : null,
+    view: box.clientHeight,
+    boxScroll: Math.round(box.scrollTop),
+    windowScroll: scrollY,
+  }
+}"""
+
+# Each schema item's count in the box (data-aixc-item), and the ids in the box that are not in the schema.
+ITEMS_ONCE = """() => {
+  const nodes = [...__h.box.querySelectorAll('[data-aixc-item]')].map((n) => n.dataset.aixcItem)
+  const want = __h.itemIds
+  const count = (id) => nodes.filter((n) => n === id).length
+  return { items: want.length, off: want.map((id) => [id, count(id)]).filter(([, n]) => n !== 1), extra: [...new Set(nodes.filter((n) => !want.includes(n)))] }
+}"""
+
+# The h1s a screen reader would reach (not hidden from the accessibility tree).
+H1S = """() => [...__h.box.querySelectorAll('h1')].filter((el) => !el.closest('[aria-hidden="true"], [hidden], [inert]') && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden').map((el) => el.textContent.trim().slice(0, 40))"""
+
+# How far the box's content reaches past its sides.
+OVERFLOW_X = """() => {
+  const box = __h.box
+  return { scrollWidth: box.scrollWidth, clientWidth: box.clientWidth, over: box.scrollWidth - box.clientWidth }
+}"""
+
+# Scroll the box to its end in view-height steps, then back to the top, a frame or two each; the window's
+# largest scrollY on the way.
+SCROLL_THROUGH = """async () => {
+  const box = __h.box
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  let most = scrollY
+  const step = Math.max(200, Math.floor(box.clientHeight * 0.75))
+  for (let y = 0; y < box.scrollHeight; y += step) {
+    box.scrollTo({ top: y, behavior: 'instant' })
+    await frames()
+    most = Math.max(most, scrollY)
+  }
+  box.scrollTo({ top: box.scrollHeight, behavior: 'instant' })
+  await frames()
+  const end = { boxScroll: Math.round(box.scrollTop), max: box.scrollHeight - box.clientHeight }
+  most = Math.max(most, scrollY)
+  for (let y = box.scrollTop; y > 0; y -= step) {
+    box.scrollTo({ top: y, behavior: 'instant' })
+    await frames()
+    most = Math.max(most, scrollY)
+  }
+  box.scrollTo({ top: 0, behavior: 'instant' })
+  await frames()
+  return { most, after: scrollY, end, back: Math.round(box.scrollTop) }
+}"""
+
+# Where to scroll the box so the stage is k of the way along its track (the track's top at the bar at 0).
+TRACK_AT = """({ track, stage, k }) => {
+  const box = __h.box
+  const t = box.querySelector(track)
+  const s = box.querySelector(stage)
+  if (!t || !s) return null
+  const top = t.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientTop + box.scrollTop
+  const run = t.offsetHeight - (box.clientHeight - 57)
+  return { y: Math.round(top - 57 + Math.max(0, run) * k), run, track: t.offsetHeight }
+}"""
+
+# Each control (a selector of the row) shown in the box, and the zones it meets; and everything pressable in the
+# experience that shows in the box, as IN_ZONES counts it for spotlight.
+CONTROLS_IN_ZONES = """({ zones, controls, name }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const rect = (r) => [r.left, r.top, r.right, r.bottom].map(Math.round)
+  const shown = (el) => {
+    const r = el.getBoundingClientRect()
+    const style = getComputedStyle(el)
+    if (!r.width || !r.height || el.inert || el.closest('[inert]') || style.visibility === 'hidden' || Number(style.opacity) === 0) return null
+    if (r.bottom <= b.top || r.top >= b.bottom) return null
+    return r
+  }
+  const each = controls.map((sel) => {
+    const found = [...box.querySelectorAll(sel)].map((el) => shown(el)).filter(Boolean)
+    return { sel, shown: found.length, zones: found.flatMap((r) => zoneRects.filter(([, z]) => meets(r, z)).map(([zone]) => ({ zone, rect: rect(r) }))) }
+  })
+  const out = []
+  let seen = 0
+  for (const el of box.querySelectorAll(`.aixc-vx--${name} :is(button, a[href], [tabindex="0"])`)) {
+    const r = shown(el)
+    if (!r || getComputedStyle(el).pointerEvents === 'none') continue
+    seen += 1
+    for (const [zone, z] of zoneRects) if (meets(r, z)) out.push({ zone, label: el.getAttribute('aria-label') || el.textContent.trim().slice(0, 30), rect: rect(r) })
+  }
+  return { each, seen, out }
+}"""
+
+# What the experience shows in the box that the box's left or right side cuts: the box's own sideways overflow
+# (OVERFLOW_X) cannot see it, as .aixc-vx clips its content. Each pressable, item and heading of the experience
+# that shows: some of it left after the clipping of its ancestors inside the experience's root (a stage's own
+# window, a wrapper with overflow hidden), within the box's height and sides. It is cut when it reaches past the
+# box's inner left or right side by more than 1 px and what shows of it runs to that side: the cut line is the
+# box's side, whichever of its ancestors draws it (one that is as wide as the box clips it there as .aixc-vx
+# does). Not counted: something inside a row that scrolls sideways (the reader scrolls to the rest, as under
+# streaming's arrows), something its own ancestors clip inside the box, something wholly clipped or wholly beside
+# the box (a card the carousel has moved off), visually hidden text (1 px).
+CUT_BY_SIDES = """({ name }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const inner = { left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth, top: b.top + box.clientTop, bottom: b.top + box.clientTop + box.clientHeight }
+  const root = box.querySelector(`.aixc-vx--${name}`)
+  if (!root) return { seen: 0, cut: [] }
+  const clips = (style) => style.overflowX !== 'visible' || style.overflowY !== 'visible' || style.clipPath !== 'none' || /paint|strict|content/.test(style.contain)
+  const cut = []
+  let seen = 0
+  for (const el of root.querySelectorAll(':is(button, a[href], [tabindex="0"], [data-aixc-item], h1, h2, h3, h4, h5, h6)')) {
+    const style = getComputedStyle(el)
+    const r = el.getBoundingClientRect()
+    if (r.width <= 1 || r.height <= 1 || el.closest('[inert], [hidden], [aria-hidden="true"]') || style.visibility === 'hidden' || Number(style.opacity) === 0) continue
+    let v = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+    let scrolls = false
+    for (let a = el.parentElement; a && a !== root; a = a.parentElement) {
+      const as = getComputedStyle(a)
+      if (!clips(as)) continue
+      if (/auto|scroll/.test(as.overflowX) && a.scrollWidth > a.clientWidth + 1) scrolls = true
+      const c = a.getBoundingClientRect()
+      v = { left: Math.max(v.left, c.left), top: Math.max(v.top, c.top), right: Math.min(v.right, c.right), bottom: Math.min(v.bottom, c.bottom) }
+    }
+    if (v.right - v.left < 1 || v.bottom - v.top < 1) continue
+    if (v.bottom <= inner.top || v.top >= inner.bottom) continue
+    if (v.right <= inner.left || v.left >= inner.right) continue
+    seen += 1
+    if (scrolls) continue
+    const left = inner.left - r.left > 1 && v.left <= inner.left + 1
+    const right = r.right - inner.right > 1 && v.right >= inner.right - 1
+    if (left || right) cut.push({ what: el.localName + (el.classList.length ? '.' + el.classList[0] : ''), label: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30), side: left ? 'left' : 'right', past: Math.round(left ? inner.left - r.left : r.right - inner.right), rect: [r.left, r.top, r.right, r.bottom].map(Math.round), box: [inner.left, inner.right].map(Math.round) })
+  }
+  return { seen, cut }
+}"""
+
+# The sizes a generic row runs at (the plan's 16 cells: these four, en and ar).
+GENERIC_SIZES = [(1366, 900), (1366, 768), (1024, 768), (375, 812)]
+# Where along the track the pinned stage is measured (0 = the track's top at the bar, 1 = the stage's last stop).
+TRACK_POINTS = (0.1, 0.5, 0.9)
+
+
+async def box_generic(browser, name, width, height, lang):
+    """The checks every experience gets in the box (its row in EXPERIENCES gives pins, controls and sizes)."""
+    row = EXPERIENCES[name]
+    motion = row["motion"]
+    tag = f"{name} {lang} {width}x{height} ({'reduced motion' if motion == 'reduce' else 'motion allowed'})"
+    zones = ZONES[(width, height)]
+    pins = row["pins"]
+    controls = row["controls"](width, height) if callable(row["controls"]) else list(row["controls"])
+    context, page = await open_harness(browser, width, height, lang, zones, motion)
+    try:
+        await page.evaluate("(name) => __h.load(name)", name)
+        await page.evaluate("(name) => { __h.open(name) }", name)
+    except Exception as error:  # noqa: BLE001 -- a render that throws is the finding
+        check(f"{tag}: renders in the box", False, str(error).splitlines()[0])
+        await context.close()
+        return
+    await page.evaluate("document.fonts.ready")
+    await page.evaluate(FRAMES)
+    stage = pins[0] if pins else None
+    state = await page.evaluate(GENERIC_STATE, {"name": name, "stage": stage})
+    measures[tag] = {"zones": zones, "open": state}
+    check(f"{tag}: renders in the box (.aixc-vx--{name}, {state['rootHeight']} px tall)", state["rendered"], state)
+    items = await page.evaluate(ITEMS_ONCE)
+    check(f"{tag}: every one of the schema's {items['items']} items is in the box once (data-aixc-item)", items["items"] > 0 and not items["off"] and not items["extra"], items)
+    h1s = await page.evaluate(H1S)
+    check(f"{tag}: one h1 exposed", len(h1s) == 1, h1s)
+    over = await page.evaluate(OVERFLOW_X)
+    check(f"{tag}: nothing reaches past the box's sides ({over['scrollWidth']} / {over['clientWidth']} px)", over["over"] <= 0, over)
+    through = await page.evaluate(SCROLL_THROUGH)
+    measures[tag]["scroll"] = through
+    check(f"{tag}: scrolling the box to its end ({through['end']['max']} px) and back never scrolls the window", through["most"] == 0 and through["after"] == 0 and through["end"]["boxScroll"] >= through["end"]["max"] - 1 and through["back"] == 0, through)
+    # Where to look: along the track when it pins, else the box's top, middle and end.
+    if pins:
+        points = []
+        for k in TRACK_POINTS:
+            at = await page.evaluate(TRACK_AT, {"track": pins[1], "stage": pins[0], "k": k})
+            points.append((f"{int(k * 100)}% along the track", at))
+        # The box's end too (the closing band and whatever follows the track), for the zones and the sides only:
+        # the stage has left its pin there.
+        most = await page.evaluate("() => __h.box.scrollHeight - __h.box.clientHeight")
+        points.append(("box at its end", {"y": most, "unpinned": True}))
+    else:
+        most = await page.evaluate("() => __h.box.scrollHeight - __h.box.clientHeight")
+        points = [(f"box at {int(k * 100)}%", {"y": round(most * k)}) for k in (0, 0.5, 1)]
+    off, seen_by_control, control_hits, pressable_hits, seen = [], {sel: 0 for sel in controls}, [], [], 0
+    cut, seen_cut = [], 0
+    for label, at in points:
+        if at is None:
+            off.append((label, "no stage or track"))
+            continue
+        await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+        await page.evaluate(FRAMES)
+        st = await page.evaluate(GENERIC_STATE, {"name": name, "stage": stage})
+        if pins and not at.get("unpinned"):
+            ok = st["stageTop"] is not None and abs(st["stageTop"] - 57) <= 1 and abs(st["stageBottomGap"]) <= 1
+            if not ok:
+                off.append((label, {**st, **at}))
+        zone = await page.evaluate(CONTROLS_IN_ZONES, {"zones": zones, "controls": controls, "name": name})
+        measures[tag][label] = {"state": st, "zones": zone}
+        seen += zone["seen"]
+        for c in zone["each"]:
+            seen_by_control[c["sel"]] += c["shown"]
+            if c["zones"]:
+                control_hits.append((label, c["sel"], c["zones"][:2]))
+        if zone["out"]:
+            pressable_hits.append((label, zone["out"][:3]))
+        sides = await page.evaluate(CUT_BY_SIDES, {"name": name})
+        measures[tag][label]["sides"] = sides
+        seen_cut += sides["seen"]
+        if sides["cut"]:
+            cut.append((label, sides["cut"][:3]))
+    if pins:
+        pinned = [p[0] for p in points if not (p[1] or {}).get("unpinned")]
+        check(f"{tag}: pinned in its track ({', '.join(pinned)}): the stage's top at the bar (57) and its bottom at the box's, within 1 px", not off, off[:3])
+    for sel in controls:
+        hits = [h for h in control_hits if h[1] == sel]
+        check(f"{tag}: {sel} shown in the box and clear of both zones", seen_by_control[sel] > 0 and not hits, {"shown": seen_by_control[sel], "hits": hits[:3]})
+    check(f"{tag}: nothing pressable in either safe zone ({seen} pressables in view over {len(points)} places)", seen > 0 and not pressable_hits, pressable_hits[:3])
+    check(f"{tag}: nothing in the experience cut by the box's sides ({seen_cut} pressables, items and headings in view over {len(points)} places)", seen_cut > 0 and not cut, cut[:3])
+    if row.get("extra"):
+        await page.evaluate("() => __h.box.scrollTo({ top: 0, behavior: 'instant' })")
+        await page.evaluate(FRAMES)
+        await row["extra"](page, tag, zones, layout_of(width, height))
+    window_scroll = await page.evaluate("() => scrollY")
+    check(f"{tag}: the window never scrolled", window_scroll == 0, window_scroll)
+    left = await page.evaluate("() => { __h.close(); return __h.seam.keptCount() }")
+    check(f"{tag}: closed: nothing kept", left == 0, left)
+    check(f"{tag}: no page errors", page.errors == [], page.errors)
+    await context.close()
+
+
+# The sizes spotlight's and magazine's checks run at.
+SIZES = [(1366, 900), (1440, 900), (1600, 850), (1600, 849), (1366, 800), (1366, 768), (1536, 740), (1024, 768), (768, 1024), (375, 812), (360, 780)]
+
+
+async def run_spotlight(browser, sizes, only):
+    for width, height in sizes:
+        for lang in ("en", "ar"):
+            await spotlight(browser, width, height, lang)
+    # The guide listening (its transcript bar widens the right zone) on the tablet sizes.
+    for width, height in [s for s in sizes if s in ((1024, 768), (768, 1024))]:
+        for lang in ("en", "ar"):
+            await spotlight(browser, width, height, lang, listening=True)
+    if not only:
+        await spotlight_items(browser)
+    for width, height in sizes:
+        await spotlight_grow(browser, width, height)
+
+
+async def run_magazine(browser, sizes, only):
+    for width, height in sizes:
+        for lang in ("en", "ar"):
+            await magazine(browser, width, height, lang)
+
+
+def row(todo=None, pins=None, controls=(), sizes=None, run=None, extra=None, motion="no-preference"):
+    """One experience: `todo` (the reason it is not checked yet) or its checks: `run` (its own, as spotlight's and
+    magazine's) or box_generic() with `pins` (stage, track) or None, `controls`, `sizes` and `motion` (the reader's
+    prefers-reduced-motion the row runs under: "no-preference" by default, "reduce" for a row whose static mode is
+    what it checks)."""
+    return {"todo": todo, "pins": pins, "controls": controls, "sizes": sizes or GENERIC_SIZES, "run": run, "extra": extra, "motion": motion}
+
+
+PHASE_4B = "phase 4b"
+# In the order they run. The selectors of the todo rows are today's markup (what box_generic() would check once
+# the row is done); a phase that converts one adjusts its row as it drops `todo`.
+EXPERIENCES = {
+    "spotlight": row(run=run_spotlight),
+    "magazine": row(run=run_magazine),
+    "fan": row(todo=PHASE_4B, pins=(".fn-stage", ".fn-track"), controls=[".fn-controls"]),
+    "split": row(todo=PHASE_4B, pins=(".ss-stage", ".ss-track"), controls=[".ss-controls"]),
+    "coverflow": row(todo=PHASE_4B, pins=(".cf-stage", ".cf-track"), controls=[".cf-controls"]),
+    "ring": row(todo=PHASE_4B, pins=(".rg-stage", ".rg-track"), controls=[".rg-nav"]),
+    "gallery": row(todo=PHASE_4B, pins=(".gl-stage", ".gl-track"), controls=[".gl-controls"]),
+    "cube": row(todo=PHASE_4B, pins=(".cb-stage", ".cb-layout"), controls=[".cb-dots"]),
+    "journey": row(todo=PHASE_4B, pins=(".jr-scene", ".aixc-vx--journey"), controls=[]),
+    "tunnel": row(todo=PHASE_4B, pins=(".tn-stage", ".tn-track"), controls=[".tn-hud__nav"]),
+    "flipbook": row(todo=PHASE_4B, controls=[".fb-controls"]),
+    "canvas": row(todo=PHASE_4B, controls=[]),
+    "streaming": row(todo=PHASE_4B, controls=[".st-nav"]),
+}
+
+
 async def main():
+    tried = [n for n in os.environ.get("BOX_TRY", "").split(",") if n]
+    unknown = [n for n in tried if n not in EXPERIENCES or EXPERIENCES[n]["run"]]
+    if unknown:
+        sys.exit(f"BOX_TRY: no generic row called {', '.join(unknown)}")
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         only = sys.argv[2].split(",") if len(sys.argv) > 2 else None
-        sizes = [(1366, 900), (1440, 900), (1600, 850), (1600, 849), (1366, 800), (1366, 768), (1536, 740), (1024, 768), (768, 1024), (375, 812), (360, 780)]
+        sizes = SIZES
         if only:
             sizes = [s for s in sizes if f"{s[0]}x{s[1]}" in only]
-        for width, height in sizes:
-            for lang in ("en", "ar"):
-                await spotlight(browser, width, height, lang)
-        # The guide listening (its transcript bar widens the right zone) on the tablet sizes.
-        for width, height in [s for s in sizes if s in ((1024, 768), (768, 1024))]:
-            for lang in ("en", "ar"):
-                await spotlight(browser, width, height, lang, listening=True)
-        if not only:
-            await spotlight_items(browser)
-        for width, height in sizes:
-            await spotlight_grow(browser, width, height)
-        for width, height in sizes:
-            for lang in ("en", "ar"):
-                await magazine(browser, width, height, lang)
+        # Generic rows: the sizes and languages the second argument names (all of either when it names none).
+        only_sizes = [t for t in only or [] if "x" in t]
+        langs = [lang for lang in ("en", "ar") if lang in (only or [])] or ["en", "ar"]
+        for name, spec in EXPERIENCES.items():
+            if tried:
+                if name not in tried:
+                    continue
+            elif spec["todo"]:
+                print(f"TODO {name}: {spec['todo']}")
+                continue
+            if spec["run"]:
+                await spec["run"](browser, sizes, only)
+                continue
+            for width, height in spec["sizes"]:
+                if only_sizes and f"{width}x{height}" not in only_sizes:
+                    continue
+                for lang in langs:
+                    await box_generic(browser, name, width, height, lang)
         await browser.close()
     failed = [name for name, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")

@@ -168,12 +168,30 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  * the shell (a template still loading dropped when the reader moves on, the composer closed on the album and on
  * Original and never in Vodafone's header band, the box's rest read again on a resize) 22,980. The launcher 3,151 ->
  * 3,192 (one press at a time, busy meanwhile). Magazine 10,505 and spotlight 7,731 bytes. Every budget unchanged.
+ *
+ * 2026-11-18, phase 1 for the other eleven experiences: shared.js's neutral words for them and pageHeading's skip of a
+ * blank title (its chunk, shared with the experiences, 4,930 -> 5,140 bytes), i18n.js's three new Arabic lines (6,171 ->
+ * 6,227): the shell 23,704 -> 23,971 bytes, the Pocket 28,249 -> 28,306; magazine 10,509 and spotlight 7,733. Every
+ * budget unchanged. Each experience is now one row of REIMAGINE_EXPERIENCES.
  */
+/**
+ * Reimagine's experiences on Vodafone's pages, one row each (ADR-0076, phase 1): the key is the experience's name in
+ * experiences/src/host/demos/reimagine/registry.js (its chunk is ./reimagine/<name>.js, which the shell loads), the
+ * value its budget. The row gives both its REIMAGINE_BUDGETS line and its AIXC_LOADED_BY entry, and the registry's
+ * keys must be exactly these, so an experience in the registry without a budget fails.
+ */
+const REIMAGINE_EXPERIENCES: Record<string, number> = {
+	magazine: 10.5 * 1024,
+	spotlight: 7.75 * 1024,
+}
+const REIMAGINE_SHELL = 'src/host/demos/reimagine/shell.js'
+const reimagineEntry = (name: string) => `src/host/demos/reimagine/${name}.js`
+const REIMAGINE_REGISTRY = path.join(EXPERIENCES, 'src/host/demos/reimagine/registry.js')
+
 const REIMAGINE_BUDGETS: Record<string, number> = {
 	'src/host/demos/reimagine.js': 3.125 * 1024,
-	'src/host/demos/reimagine/shell.js': 24.5 * 1024,
-	'src/host/demos/reimagine/magazine.js': 10.5 * 1024,
-	'src/host/demos/reimagine/spotlight.js': 7.75 * 1024,
+	[REIMAGINE_SHELL]: 24.5 * 1024,
+	...Object.fromEntries(Object.entries(REIMAGINE_EXPERIENCES).map(([name, max]) => [reimagineEntry(name), max])),
 }
 /**
  * Never in a Reimagine chunk on live pages (templates only, owner 2026-11-10; the credits as comments, 2026-11-17):
@@ -204,10 +222,9 @@ const AIXC_LOADED_BY: Record<string, string> = {
 	'src/host/demos/portal.js': 'src/host/demos/pocket.js',
 	'src/pocket/portal/controller.js': 'src/host/demos/portal.js',
 	// Reimagine (phase 4a, ADR-0076): the core loads the launcher at idle; the launcher loads the shell on its first press.
-	'src/host/demos/reimagine/shell.js': 'src/host/demos/reimagine.js',
+	[REIMAGINE_SHELL]: 'src/host/demos/reimagine.js',
 	// The shell loads each experience when its template is chosen (stage 2).
-	'src/host/demos/reimagine/magazine.js': 'src/host/demos/reimagine/shell.js',
-	'src/host/demos/reimagine/spotlight.js': 'src/host/demos/reimagine/shell.js',
+	...Object.fromEntries(Object.keys(REIMAGINE_EXPERIENCES).map((name) => [reimagineEntry(name), REIMAGINE_SHELL])),
 }
 
 test('the experience layer is its own small script; guide.js carries none of it', async () => {
@@ -264,6 +281,13 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	const indexChunks = Object.keys(outputs).filter((f) => f.endsWith('.js') && probe.outputFiles?.find((o) => o.path === path.resolve(f))?.text.match(/serviceIds|promotionIds|sourceOrder/))
 	assert.ok(indexChunks.length > 0, 'the probe build carries content-index.js somewhere (else this proves nothing)')
 	for (const f of indexChunks) assert.ok(!probeCore.has(f), `content-index.js is in ${f}, which the core loads statically: a chunk that imports the index must not move it into the core`)
+	// Every experience in Reimagine's registry has its row above (a budget, and the shell as its loader), and every row is in the registry.
+	const registryBlock = fs.readFileSync(REIMAGINE_REGISTRY, 'utf8').match(/export const EXPERIENCES = \{([^}]*)\}/)?.[1]
+	assert.ok(registryBlock !== undefined, 'registry.js exports EXPERIENCES as an object literal')
+	const registryLines = registryBlock.split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('//'))
+	const registryRows = registryLines.map((line) => line.match(/^['"]?([\w-]+)['"]?\s*:\s*\(\)\s*=>\s*import\(\s*['"]\.\/([\w-]+)\.js['"]\s*\),?$/))
+	registryRows.forEach((row, i) => assert.ok(row && row[1] === row[2], `registry.js: "${registryLines[i]}" is a row name: () => import('./name.js')`))
+	assert.deepEqual(registryRows.map((row) => row?.[1]).sort(), Object.keys(REIMAGINE_EXPERIENCES).sort(), 'the registry\'s experiences are the rows of REIMAGINE_EXPERIENCES: each needs its budget here')
 	// Each demo chunk within its budget; a file next to a module (new URL('./x', import.meta.url)) would 404 on the gateway, which serves only .js.
 	const closure = (file: string) => {
 		const files = new Set([file])

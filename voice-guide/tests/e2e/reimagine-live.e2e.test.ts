@@ -4,6 +4,9 @@
  * pinning on scroll as its own script does (one run with it always pinned), in English and Arabic, at 1366x900 and
  * 375x812 (spotlight also at 1366x768 and 1024x768).
  *
+ * - One row per experience (EXPERIENCE_CASES, checkInBox; magazine and spotlight now, the eleven others listed as todo
+ *   until phases 2 to 4 bring them): the checks below, prev and next moving the box and not the window, reveal(), and
+ *   the experience's own unmount giving back all the seam held for it (state.debug().kept).
  * - The view in its box: #main-content hidden laid out (ADR-0075 §2), the box from the header's pinned bottom to the
  *   screen's bottom after the open scroll, its own scroll (the window's does not move), every item once, one exposed
  *   h1, no sideways overflow, each section's destination on one element of the view (ADR-0049 §4).
@@ -33,6 +36,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
+import { pathToFileURL } from 'node:url'
 
 import type { Page } from 'playwright'
 
@@ -41,7 +45,9 @@ import { ROOT } from '#shared/config.ts'
 import { cellHits, cellViolations, measureControls } from './floating-controls.ts'
 import { DESKTOP, geometry, type LayerGateway, type LayerOptions, launchLayer, layerState, open, PHONE, REPLAY, startLayerGateway, watch } from './vodafone-layer.ts'
 
-const PORT = 4482
+// 4482 by default; VG_REIMAGINE_LIVE_PORT lets builders in parallel worktrees run their rows at once (4484, 4490,
+// 4492, 4494). tests/live/aixc-layer.live.test.ts keeps 4482 for itself (VG_LIVE=1 only): not both at once.
+const PORT = Number(process.env.VG_REIMAGINE_LIVE_PORT ?? 4482)
 let gw: LayerGateway
 /** Our chunks as the build named them (packages/sdk/dist/aixc/manifest.json): the shell's, the experiences' and what they import. */
 let ours: string[] = []
@@ -53,8 +59,14 @@ before(async () => {
 	const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/sdk/dist/aixc/manifest.json'), 'utf8')) as { files: { file: string; entry: string | null; imports: { file: string; kind: string }[] }[] }
 	const core = new Set(['aixc.js'])
 	for (const f of core) for (const i of manifest.files.find((x) => x.file === f)?.imports ?? []) if (i.kind === 'import-statement') core.add(i.file)
+	// The composer's order, and every experience of it a row of EXPERIENCE_CASES.
+	const schema = (await import(pathToFileURL(path.join(ROOT, '../experiences/src/aixc/template-schema.js')).href)) as { TEMPLATE_CARDS: { id: string }[] }
+	templateOrder = schema.TEMPLATE_CARDS.map((c) => c.id)
+	assert.deepEqual([...templateOrder].sort(), Object.keys(EXPERIENCE_CASES).sort(), 'a row of EXPERIENCE_CASES for each of the composer\'s templates')
 	const files = new Set<string>()
-	for (const entry of ['src/host/demos/reimagine.js', 'src/host/demos/reimagine/shell.js', 'src/host/demos/reimagine/magazine.js', 'src/host/demos/reimagine/spotlight.js']) {
+	// The shell's entries and each registered experience's (the rows that are not todo).
+	const registered = Object.keys(EXPERIENCE_CASES).filter((name) => !EXPERIENCE_CASES[name].todo)
+	for (const entry of ['src/host/demos/reimagine.js', 'src/host/demos/reimagine/shell.js', ...registered.map((name) => `src/host/demos/reimagine/${name}.js`)]) {
 		const chunk = manifest.files.find((f) => f.entry === entry)
 		if (chunk) {
 			files.add(chunk.file)
@@ -374,73 +386,82 @@ const headerBottomOf = (page: Page) =>
 
 /* -------------------------------------------------------------------------------------------------- the box */
 
-test('magazine in the box: #main-content hidden laid out, the box under the header to the screen\'s bottom, its own scroll, every item once, one h1, nothing sideways, each destination once', { timeout: 900_000 }, async () => {
-	const runs: { p: string; viewport: { width: number; height: number }; fixedHeader: LayerOptions['fixedHeader'] }[] = []
-	for (const viewport of [DESKTOP, PHONE]) for (const p of ['/en/services', '/ar/services', '/en/home', '/ar/home']) runs.push({ p, viewport, fixedHeader: 'scroll' })
-	for (const viewport of [LAPTOP, TABLET]) for (const p of ['/en/services', '/ar/services']) runs.push({ p, viewport, fixedHeader: 'scroll' })
-	for (const viewport of [DESKTOP, PHONE]) runs.push({ p: '/en/services', viewport, fixedHeader: true })
-	for (const { p, viewport, fixedHeader } of runs) {
-		const where = `${p} ${sizeOf(viewport)} fixedHeader ${fixedHeader}`
-		const l = await launchLayer(gw, { viewport, reducedMotion: true, ...LIVE, fixedHeader })
-		try {
-			const seen = watch(l.page)
-			await open(l.page, p, '?aixc-debug')
-			await ready(l.page)
-			const served = await mainNow(l.page)
-			const servedHeadings = (await exposedH1(l.page)).filter((x) => x.tag !== 'h1')
-			await openComposer(l.page)
-			const composer = await l.page.evaluate(() => {
+/**
+ * One run of a box check: a page at a size. `fixedHeader` left out is LIVE's ('scroll': the navigation pins on scroll),
+ * and the run's name gives it only when it is set.
+ */
+type Cell = { p: string; viewport: { width: number; height: number }; fixedHeader?: LayerOptions['fixedHeader'] }
+
+/**
+ * One experience in the box (ADR-0076; the phase 4b plan's Phase 1): what checkInBox applies to it beyond the checks
+ * every view gets, and the row's own checks. Phases 2 to 4 add an experience by taking its `todo` off and confirming
+ * its selectors.
+ */
+type ExperienceCase = {
+	/** While set, the experience is not in the live registry yet: the run lists it (test.todo) and checks nothing. */
+	todo?: string
+	/** The test's title; else `<name> in the box: the N-cell matrix`. */
+	title?: string
+	timeout?: number
+	cells: Cell[]
+	/** Phones in landscape (812x375) too, on the four pages: for experiences whose controls sit low. */
+	landscape?: boolean
+	/** Something pocketed before the view opens: the Pocket's button shows at the bottom-left, so both corners have a zone. */
+	pocketed: boolean
+	/** A stage that pins at the bar while the box scrolls through its track (selectors inside the box). */
+	pins: false | { stage: string; track: string }
+	/** What pressablesInZones reads; else the pinned stage, or the whole view when nothing pins. */
+	zoneScope?: string
+	/** The controls (inside the box) kept clear of both corners' zones; one not shown is skipped. Needs `pocketed`. */
+	controlSelectors: string[]
+	/** Prev and next, and the counter they move (selectors inside the box); `distance` the box's scroll per step. */
+	step?: { next: string; prev: string; counter: string; distance?: number }
+	/** In place of the generic reveal check (`itemId` a middle item of the page's model). */
+	revealAssert?: (page: Page, itemId: string, where: string) => Promise<void>
+	/** While the composer shows, before the template is pressed. */
+	composer?: (page: Page, cell: Cell, where: string) => Promise<void>
+	/** The row's own checks: after the generic ones, the pin, the zones and the step, before the reveal and Original. */
+	specifics?: (page: Page, cell: Cell, where: string) => Promise<void>
+	/** Once, after every cell, in the same test. */
+	andThen?: () => Promise<void>
+	/** An experience that adds no listener, frame, timer or observer through the seam: the seam holds none while it shows. */
+	keepsNone?: boolean
+}
+
+const PAGES = ['/en/services', '/ar/services', '/en/home', '/ar/home']
+const LANDSCAPE = { width: 812, height: 375 }
+/** 1366x900, 1366x768, 1024x768 and 375x812, in English and Arabic, on Services and Home: 16 cells. */
+const DEFAULT_CELLS: Cell[] = [DESKTOP, LAPTOP, TABLET, PHONE].flatMap((viewport) => PAGES.map((p) => ({ p, viewport })))
+const LANDSCAPE_CELLS: Cell[] = PAGES.map((p) => ({ p, viewport: LANDSCAPE }))
+const PHASE_4B = 'phase 4b: not in the registry yet'
+
+/** The composer's order of templates (experiences/src/aixc/template-schema.js TEMPLATE_CARDS), read in before(). */
+let templateOrder: string[] = []
+
+const EXPERIENCE_CASES: Record<string, ExperienceCase> = {
+	magazine: {
+		title: 'magazine in the box: #main-content hidden laid out, the box under the header to the screen\'s bottom, its own scroll, every item once, one h1, nothing sideways, each destination once',
+		timeout: 900_000,
+		cells: [
+			...[DESKTOP, PHONE].flatMap((viewport) => PAGES.map((p): Cell => ({ p, viewport, fixedHeader: 'scroll' }))),
+			...[LAPTOP, TABLET].flatMap((viewport) => ['/en/services', '/ar/services'].map((p): Cell => ({ p, viewport, fixedHeader: 'scroll' }))),
+			...[DESKTOP, PHONE].map((viewport): Cell => ({ p: '/en/services', viewport, fixedHeader: true })),
+		],
+		pocketed: false,
+		pins: false,
+		controlSelectors: [],
+		composer: async (page, _cell, where) => {
+			const composer = await page.evaluate(() => {
 				const c = document.getElementById('aixc-composer')!
 				return { marked: c.hasAttribute('data-aixc') && c.hasAttribute('data-vg'), templates: [...c.querySelectorAll<HTMLElement>('.aixc-template')].map((b) => b.dataset.template), fields: c.querySelectorAll('input, textarea, select, #aixc-key').length, expanded: document.querySelector('.aixc-launcher')!.getAttribute('aria-expanded'), reimagined: c.querySelector<HTMLButtonElement>('.aixc-seg[data-view="reimagined"]')!.disabled }
 			})
-			assert.deepEqual(composer, { marked: true, templates: ['spotlight', 'magazine'], fields: 0, expanded: 'true', reimagined: true }, `${where}: the composer: ours, templates only (the registry's two), no field, Reimagined not yet`)
-			await choose(l.page, 'magazine')
-
-			// #main-content hidden as ADR-0075 §2: laid out at its width, no height, transparent, inert and hidden.
-			const main = await mainNow(l.page)
-			assert.equal(main.style, `${served.style ?? ''};display:${served.display}!important;height:0!important;overflow:hidden!important;opacity:0!important`, `${where}: #main-content's style while hidden`)
-			assert.deepEqual([main.inert, main.hidden, main.height, main.opacity], ['', '', 0, '0'], `${where}: inert, hidden, no height, transparent`)
-			assert.ok(main.width > 300, `${where}: laid out at its width (${main.width})`)
-
-			// The box: from the header's pinned bottom to the screen's bottom, after the open scroll.
-			const b = await boxNow(l.page)
-			assert.equal(b.view, 'reimagined', `${where}: body[data-aixc-view]`)
-			assert.ok(b.barFirst && b.barSticky === 'sticky' && b.barSizing === 'border-box', `${where}: PageHost's view bar is the box's first, sticky row (${JSON.stringify(b)})`)
-			assert.ok(Math.abs(b.bottom - b.inner) <= 1, `${where}: the box's bottom ${b.bottom} is the screen's ${b.inner}`)
-			// Its top meets the header's bottom, or rests as close as the page lets it: below it, at the top of the page.
-			assert.ok(b.top >= b.header - 1, `${where}: the box's top ${b.top} is not under the header (${b.header})`)
-			assert.ok(Math.abs(b.top - b.header) <= 1 || b.scrollY === 0, `${where}: the box's top ${b.top} meets the header's bottom ${b.header}, or the page is at its top (${b.scrollY})`)
-			assert.deepEqual([b.overflowY, b.overscroll], ['auto', 'contain'], `${where}: its own scroll, which does not chain into the page's`)
-
-			// Its own scroll moves, the window's does not.
-			await l.page.mouse.move(viewport.width / 2, (b.top + b.bottom) / 2)
-			await l.page.mouse.wheel(0, 600)
-			await settle(l.page, 300)
-			const scrolled = await boxNow(l.page)
-			assert.ok(scrolled.scrollTop > 100, `${where}: a wheel over the box scrolls it (${scrolled.scrollTop})`)
-			assert.ok(Math.abs(scrolled.scrollY - b.scrollY) <= 0.5, `${where}: the window stays (${b.scrollY} -> ${scrolled.scrollY})`)
-
-			// Every item once; one exposed h1; nothing sideways.
-			const items = await l.page.evaluate(() => {
-				const model = (window as any).__aixc.model
-				const ids = [...model.sections.flatMap((s: any) => s.items.map((i: any) => i.id)), ...(model.closingPromotion ? [model.closingPromotion.id] : [])]
-				const shown = [...document.querySelectorAll<HTMLElement>('.aixc-box [data-aixc-item]')].map((n) => n.dataset.aixcItem!)
-				const count = (id: string) => shown.filter((x) => x === id).length
-				return { missing: ids.filter((id: string) => count(id) === 0), twice: ids.filter((id: string) => count(id) > 1), extra: shown.filter((id) => !ids.includes(id)), total: ids.length }
-			})
-			assert.ok(items.total > 0, `${where}: the page has items`)
-			assert.deepEqual([items.missing, items.twice, items.extra], [[], [], []], `${where}: every item once`)
-			// One exposed h1, the view's, with a name; Vodafone's own level-1 heading in its header (not an h1) is as without the layer.
-			const h1 = await exposedH1(l.page)
-			const own = h1.filter((x) => x.tag === 'h1')
-			assert.equal(own.length, 1, `${where}: one exposed h1 (${JSON.stringify(h1)})`)
-			assert.ok(own[0].name.trim().length > 0, `${where}: the h1 has a name`)
-			assert.deepEqual(h1.filter((x) => x.tag !== 'h1'), servedHeadings, `${where}: Vodafone's other level-1 headings as served`)
-			const wide = await l.page.evaluate(() => ({ doc: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, box: document.querySelector('.aixc-box')!.scrollWidth, boxClient: document.querySelector('.aixc-box')!.clientWidth }))
-			assert.ok(wide.doc <= wide.client && wide.box <= wide.boxClient + 1, `${where}: no sideways overflow (${JSON.stringify(wide)})`)
-
+			// The registry's experiences, in the composer's order: the rows that are not todo.
+			const registered = templateOrder.filter((name) => EXPERIENCE_CASES[name] && !EXPERIENCE_CASES[name].todo)
+			assert.deepEqual(composer, { marked: true, templates: registered, fields: 0, expanded: 'true', reimagined: true }, `${where}: the composer: ours, templates only (the registry's ${registered.length}), no field, Reimagined not yet`)
+		},
+		specifics: async (page, cell, where) => {
 			// Each section's destination on one element of the view, which holds that section's items.
-			const dest = await l.page.evaluate(() => {
+			const dest = await page.evaluate(() => {
 				const out: string[] = []
 				const sections = (window as any).__aixc.model.sections.filter((s: any) => s.destinationId)
 				for (const s of sections) {
@@ -452,17 +473,381 @@ test('magazine in the box: #main-content hidden laid out, the box under the head
 				return { named: sections.length, out, outside: document.querySelectorAll('[data-vg-destination]:not(.aixc-box [data-vg-destination])').length }
 			})
 			// The Services pages have their sections named by the knowledge base (6, as aixc-layer.e2e checks): never an empty set here.
-			if (/\/services$/.test(p)) assert.ok(dest.named > 0, `${where}: the page's sections are named (${dest.named})`)
+			if (/\/services$/.test(cell.p)) assert.ok(dest.named > 0, `${where}: the page's sections are named (${dest.named})`)
 			assert.deepEqual(dest.out, [], `${where}: each destination on one element of the view (${dest.named} named)`)
 			assert.equal(dest.outside, 0, `${where}: none on Vodafone's page`)
-			assert.deepEqual(l.refused.filter((r) => /google|generativelanguage|codepen/i.test(r.url)), [], `${where}: nothing asked of Google or CodePen`)
-			assert.deepEqual(seen.pageErrors.filter((e) => !/navUserToggling|navToggling/.test(e)), [], `${where}: no page errors`)
-			assert.deepEqual(seen.layer.filter((x) => x.startsWith('error')), [], `${where}: the layer logged no error`)
-		} finally {
-			await l.close()
+		},
+	},
+	spotlight: {
+		title: 'spotlight in the box: pinned at the bar with its bottom at the box\'s, prev and next, controls and queue out of both corners, the row under the title on phones, card 5 back after Original',
+		timeout: 900_000,
+		cells: [DESKTOP, LAPTOP, TABLET, PHONE].flatMap((viewport) => ['/en/services', '/ar/services'].map((p) => ({ p, viewport }))),
+		pocketed: true,
+		pins: { stage: '.sp-stage', track: '.sp-track' },
+		controlSelectors: ['.sp-controls', '.sp-queue'],
+		// STEP_PX in spotlight.js: the box's scroll per service.
+		step: { next: '.sp-controls .vx-round:nth-of-type(2)', prev: '.sp-controls .vx-round:nth-of-type(1)', counter: '.sp-counter__now', distance: 200 },
+		specifics: async (page, cell, where) => {
+			const s = await stageNow(page)
+			// Its words about services on Services.
+			assert.equal(s.prev, cell.p.startsWith('/ar') ? 'الخدمة اللي قبلها' : 'Previous service', `${where}: the clone's words on Services`)
+			// On phones the row under the title, clear of the copy.
+			if (cell.viewport === PHONE) {
+				assert.ok(s.controls && s.title && s.controls.top >= s.title.bottom, `${where}: the row ${fmt(s.controls)} under the title ${fmt(s.title)}`)
+				const over = s.parts.filter((x) => x.box.bottom > x.box.top && meets(x.box, s.controls!))
+				assert.deepEqual(over.map((x) => x.what), [], `${where}: the copy clear of the row`)
+			}
+			// Card 5, Original, Reimagined: card 5.
+			await stepTo(page, 5, where)
+			await pressIn(page, '.aixc-viewbar .aixc-seg[data-view="original"]')
+			await page.waitForFunction(() => (window as any).__aixc.demos.reimagine.state.view === 'original', null, { timeout: 5_000 })
+			await settle(page, 300)
+			await openComposer(page)
+			await page.locator('#aixc-composer .aixc-seg[data-view="reimagined"]').click()
+			await page.waitForFunction(() => (window as any).__aixc.demos.reimagine.state.view === 'reimagined', null, { timeout: 5_000 })
+			await settle(page, 600)
+			assert.equal((await stageNow(page)).counter, '05', `${where}: back on card 5`)
+		},
+		// Elsewhere, neutral words.
+		andThen: async () => {
+			for (const p of ['/en/home', '/ar/home']) {
+				const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true, ...LIVE })
+				try {
+					await open(l.page, p, '?aixc-debug')
+					await ready(l.page)
+					await choose(l.page, 'spotlight')
+					assert.equal((await stageNow(l.page)).prev, p.startsWith('/ar') ? 'السابق' : 'Previous', `${p}: neutral words where the page is not about services`)
+				} finally {
+					await l.close()
+				}
+			}
+		},
+	},
+	/*
+	 * The eleven still to come (phases 2 to 4). Their selectors, pins, steps and `landscape` are best guesses from
+	 * experiences/src/aixc/experiences/<name>.{js,css} (the sticky stage, its track, the prev and next buttons, the
+	 * counter, STEP_PX): the phase that brings each one confirms them when it takes the row's todo off. `landscape`
+	 * marks the experiences whose controls sit low (split, coverflow, ring, tunnel, gallery, cube, streaming).
+	 */
+	fan: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		pocketed: true,
+		pins: { stage: '.fn-stage', track: '.fn-track' },
+		controlSelectors: ['.fn-controls', '.fn-detail'],
+		step: { next: '.fn-controls .vx-round:nth-of-type(2)', prev: '.fn-controls .vx-round:nth-of-type(1)', counter: '.fn-counter__now', distance: 210 },
+	},
+	split: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		landscape: true,
+		pocketed: true,
+		pins: { stage: '.ss-stage', track: '.ss-track' },
+		controlSelectors: ['.ss-controls', '.ss-rail'],
+		step: { next: '.ss-controls .vx-round:nth-of-type(2)', prev: '.ss-controls .vx-round:nth-of-type(1)', counter: '.ss-counter__now', distance: 380 },
+	},
+	coverflow: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		landscape: true,
+		pocketed: true,
+		pins: { stage: '.cf-stage', track: '.cf-track' },
+		controlSelectors: ['.cf-controls', '.cf-panel'],
+		step: { next: '.cf-controls .cf-button:nth-of-type(2)', prev: '.cf-controls .cf-button:nth-of-type(1)', counter: '.cf-counter__now', distance: 190 },
+	},
+	ring: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		landscape: true,
+		pocketed: true,
+		pins: { stage: '.rg-stage', track: '.rg-track' },
+		controlSelectors: ['.rg-nav', '.rg-panels'],
+		step: { next: '.rg-nav .vx-round:nth-of-type(2)', prev: '.rg-nav .vx-round:nth-of-type(1)', counter: '.rg-counter__now', distance: 300 },
+	},
+	gallery: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		landscape: true,
+		pocketed: true,
+		pins: { stage: '.gl-stage', track: '.gl-track' },
+		controlSelectors: ['.gl-controls'],
+		step: { next: '.gl-controls .vx-round:nth-of-type(2)', prev: '.gl-controls .vx-round:nth-of-type(1)', counter: '.gl-counter', distance: 240 },
+	},
+	cube: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		landscape: true,
+		pocketed: true,
+		// The stage is sticky in .cb-layout, beside the story that scrolls past it.
+		pins: { stage: '.cb-stage', track: '.cb-layout' },
+		controlSelectors: ['.cb-dots', '.cb-hud'],
+	},
+	journey: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		pocketed: true,
+		// The scene is sticky while the story scrolls over it.
+		pins: { stage: '.jr-scene', track: '.jr-story' },
+		controlSelectors: [],
+	},
+	tunnel: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		landscape: true,
+		pocketed: true,
+		pins: { stage: '.tn-stage', track: '.tn-track' },
+		// Prev and next in .tn-hud__nav; no counter element yet (the phase adds the step when it has one).
+		controlSelectors: ['.tn-hud'],
+	},
+	flipbook: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		pocketed: true,
+		// Not sticky: the book turns its pages in place (the phase decides whether its turns scroll the box).
+		pins: false,
+		zoneScope: '.aixc-box .fb-stage',
+		controlSelectors: ['.fb-controls'],
+	},
+	canvas: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		pocketed: true,
+		// A surface dragged in place; its keys' hint and zoom are the phase's to place.
+		pins: false,
+		controlSelectors: [],
+	},
+	streaming: {
+		todo: PHASE_4B,
+		cells: DEFAULT_CELLS,
+		landscape: true,
+		pocketed: true,
+		// Its sticky navigation at the top; the rows scroll sideways under their own arrows.
+		pins: false,
+		controlSelectors: ['.st-nav'],
+	},
+}
+
+/** A stage's place in the box: its top under the box's border, the gap under it, its height, the room and the bar. */
+const pinNow = (page: Page, stage: string) =>
+	page.evaluate((stage) => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const b = box.getBoundingClientRect()
+		const r = box.querySelector<HTMLElement>(stage)!.getBoundingClientRect()
+		return { top: r.top - (b.top + box.clientTop), bottomGap: b.top + box.clientTop + box.clientHeight - r.bottom, height: r.height, room: box.clientHeight, barH: (box.firstElementChild as HTMLElement).offsetHeight }
+	}, stage)
+
+/** The box's rect of the element `selector` finds inside the box, while it shows; else null. */
+const shownRect = (page: Page, selector: string) =>
+	page.evaluate((selector) => {
+		const n = document.querySelector<HTMLElement>(`.aixc-box ${selector}`)
+		if (!n || !n.getClientRects().length || getComputedStyle(n).display === 'none') return null
+		const x = n.getBoundingClientRect()
+		return { left: x.left, top: x.top, right: x.right, bottom: x.bottom }
+	}, selector)
+
+/** One press on prev or next: the counter moves by one, the box's scroll moves and the window's does not; the distance. */
+async function stepOnce(page: Page, step: NonNullable<ExperienceCase['step']>, dir: 'next' | 'prev', where: string) {
+	const read = () => page.evaluate((counter) => ({ text: document.querySelector(`.aixc-box ${counter}`)!.textContent ?? '', box: document.querySelector('.aixc-box')!.scrollTop, y: scrollY }), step.counter)
+	const was = await read()
+	await pressIn(page, `.aixc-box ${dir === 'next' ? step.next : step.prev}`)
+	await page.waitForFunction(({ counter, was }) => document.querySelector(`.aixc-box ${counter}`)!.textContent !== was, { counter: step.counter, was: was.text }, { timeout: 3_000 }).catch(() => {})
+	await settle(page, 250)
+	const now = await read()
+	const [from, to] = [Number.parseInt(was.text, 10), Number.parseInt(now.text, 10)]
+	assert.equal(to, from + (dir === 'next' ? 1 : -1), `${where}: ${dir} steps it (${from} -> ${to})`)
+	assert.ok(Math.abs(now.y - was.y) <= 0.5, `${where}: ${dir}: the window stays (${was.y} -> ${now.y})`)
+	const moved = now.box - was.box
+	assert.ok(dir === 'next' ? moved > 0 : moved < 0, `${where}: ${dir}: the box's scroll moves (${was.box} -> ${now.box})`)
+	if (step.distance) assert.ok(Math.abs(Math.abs(moved) - step.distance) <= 2, `${where}: ${dir}: one step is ${step.distance} px of the box's scroll (${moved})`)
+	return moved
+}
+
+/** A middle item of the page's model (its sections' items). */
+const middleItem = (page: Page) =>
+	page.evaluate(() => {
+		const ids = (window as any).__aixc.model.sections.flatMap((s: any) => s.items.map((i: any) => i.id as string)) as string[]
+		return ids[Math.floor(ids.length / 2)]
+	})
+
+/** reveal(itemId) brings the item into the box's view, under the bar, and the window does not move. */
+async function revealInBox(page: Page, itemId: string, where: string) {
+	const y = await page.evaluate(() => scrollY)
+	assert.equal(await page.evaluate((id) => (window as any).__aixc.demos.reimagine.state.activeExperience.reveal(id), itemId), true, `${where}: reveal(${itemId}) says the view has it`)
+	await settle(page, 400)
+	const at = await page.evaluate((id) => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const b = box.getBoundingClientRect()
+		const shown = [...box.querySelectorAll<HTMLElement>('[data-aixc-item]')].filter((n) => n.dataset.aixcItem === id && n.getClientRects().length && !n.closest('[hidden], [inert]') && getComputedStyle(n).visibility !== 'hidden')
+		const r = shown[0]?.getBoundingClientRect()
+		const top = b.top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight
+		return { count: shown.length, item: r ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null, view: { left: b.left + box.clientLeft, top, right: b.left + box.clientLeft + box.clientWidth, bottom: b.top + box.clientTop + box.clientHeight }, y: scrollY }
+	}, itemId)
+	assert.ok(at.item, `${where}: the item ${itemId} shows in the box after reveal (${at.count})`)
+	const { item, view } = at
+	assert.ok(item.top >= view.top - 1 && item.top < view.bottom, `${where}: the item's top ${Math.round(item.top)} in the box's view under the bar ${fmt(view)}`)
+	if (item.bottom - item.top <= view.bottom - view.top + 1) assert.ok(item.bottom <= view.bottom + 1, `${where}: the item ${fmt(item)} whole in the box's view ${fmt(view)}`)
+	if (item.right - item.left <= view.right - view.left + 1) assert.ok(item.left >= view.left - 1 && item.right <= view.right + 1, `${where}: the item ${fmt(item)} not beside the box's view ${fmt(view)}`)
+	assert.ok(Math.abs(at.y - y) <= 0.5, `${where}: reveal leaves the window (${y} -> ${at.y})`)
+}
+
+type Layer = Awaited<ReturnType<typeof launchLayer>>
+
+/**
+ * The checks every experience gets in the box, then the row's: #main-content hidden laid out (ADR-0075 §2), the box
+ * from the header's pinned bottom to the screen's bottom, its own scroll, every item once, one exposed h1, nothing
+ * sideways; the stage pinned at the bar, nothing pressable in a corner's zone and the controls clear of both, prev and
+ * next moving the box and not the window; the row's specifics; reveal(); the experience's unmount gives back all the
+ * seam held for it, and it mounts again; Original; no request to Google or CodePen, no page error, no layer error.
+ */
+async function checkInBox(page: Page, { experience, cell, where, served, servedHeadings, l, seen }: { experience: string; cell: Cell; where: string; served: Awaited<ReturnType<typeof mainNow>>; servedHeadings: { name: string; tag: string }[]; l: Layer; seen: ReturnType<typeof watch> }) {
+	const row = EXPERIENCE_CASES[experience]
+	const { viewport } = cell
+
+	// #main-content hidden as ADR-0075 §2: laid out at its width, no height, transparent, inert and hidden.
+	const main = await mainNow(page)
+	assert.equal(main.style, `${served.style ?? ''};display:${served.display}!important;height:0!important;overflow:hidden!important;opacity:0!important`, `${where}: #main-content's style while hidden`)
+	assert.deepEqual([main.inert, main.hidden, main.height, main.opacity], ['', '', 0, '0'], `${where}: inert, hidden, no height, transparent`)
+	assert.ok(main.width > 300, `${where}: laid out at its width (${main.width})`)
+
+	// The box: from the header's pinned bottom to the screen's bottom, after the open scroll.
+	const b = await boxNow(page)
+	assert.equal(b.view, 'reimagined', `${where}: body[data-aixc-view]`)
+	assert.ok(b.barFirst && b.barSticky === 'sticky' && b.barSizing === 'border-box', `${where}: PageHost's view bar is the box's first, sticky row (${JSON.stringify(b)})`)
+	assert.ok(Math.abs(b.bottom - b.inner) <= 1, `${where}: the box's bottom ${b.bottom} is the screen's ${b.inner}`)
+	// Its top meets the header's bottom, or rests as close as the page lets it: below it, at the top of the page.
+	assert.ok(b.top >= b.header - 1, `${where}: the box's top ${b.top} is not under the header (${b.header})`)
+	assert.ok(Math.abs(b.top - b.header) <= 1 || b.scrollY === 0, `${where}: the box's top ${b.top} meets the header's bottom ${b.header}, or the page is at its top (${b.scrollY})`)
+	assert.deepEqual([b.overflowY, b.overscroll], ['auto', 'contain'], `${where}: its own scroll, which does not chain into the page's`)
+
+	// Its own scroll moves, the window's does not.
+	await page.mouse.move(viewport.width / 2, (b.top + b.bottom) / 2)
+	await page.mouse.wheel(0, 600)
+	await settle(page, 300)
+	const scrolled = await boxNow(page)
+	assert.ok(scrolled.scrollTop > 100, `${where}: a wheel over the box scrolls it (${scrolled.scrollTop})`)
+	assert.ok(Math.abs(scrolled.scrollY - b.scrollY) <= 0.5, `${where}: the window stays (${b.scrollY} -> ${scrolled.scrollY})`)
+
+	// Every item once; one exposed h1; nothing sideways.
+	const items = await page.evaluate(() => {
+		const model = (window as any).__aixc.model
+		const ids = [...model.sections.flatMap((s: any) => s.items.map((i: any) => i.id)), ...(model.closingPromotion ? [model.closingPromotion.id] : [])]
+		const shown = [...document.querySelectorAll<HTMLElement>('.aixc-box [data-aixc-item]')].map((n) => n.dataset.aixcItem!)
+		const count = (id: string) => shown.filter((x) => x === id).length
+		return { missing: ids.filter((id: string) => count(id) === 0), twice: ids.filter((id: string) => count(id) > 1), extra: shown.filter((id) => !ids.includes(id)), total: ids.length }
+	})
+	assert.ok(items.total > 0, `${where}: the page has items`)
+	assert.deepEqual([items.missing, items.twice, items.extra], [[], [], []], `${where}: every item once`)
+	// One exposed h1, the view's, with a name; Vodafone's own level-1 heading in its header (not an h1) is as without the layer.
+	const h1 = await exposedH1(page)
+	const own = h1.filter((x) => x.tag === 'h1')
+	assert.equal(own.length, 1, `${where}: one exposed h1 (${JSON.stringify(h1)})`)
+	assert.ok(own[0].name.trim().length > 0, `${where}: the h1 has a name`)
+	assert.deepEqual(h1.filter((x) => x.tag !== 'h1'), servedHeadings, `${where}: Vodafone's other level-1 headings as served`)
+	const wide = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, box: document.querySelector('.aixc-box')!.scrollWidth, boxClient: document.querySelector('.aixc-box')!.clientWidth }))
+	assert.ok(wide.doc <= wide.client && wide.box <= wide.boxClient + 1, `${where}: no sideways overflow (${JSON.stringify(wide)})`)
+
+	// Into the track: the stage pins at the bar, its bottom at the box's (higher when it is taller than the room).
+	if (row.pins) {
+		await page.evaluate(({ track }) => {
+			const box = document.querySelector('.aixc-box')!
+			box.scrollTop += box.querySelector(track)!.getBoundingClientRect().top - box.getBoundingClientRect().top - (box.firstElementChild as HTMLElement).offsetHeight + 1
+		}, row.pins)
+		await settle(page, 500)
+		const s = await pinNow(page, row.pins.stage)
+		const roomUnderBar = s.room - s.barH
+		assert.ok(Math.abs(s.bottomGap) <= 1, `${where}: the stage's bottom at the box's (gap ${s.bottomGap})`)
+		if (s.height <= roomUnderBar + 1) assert.ok(Math.abs(s.top - s.barH) <= 1, `${where}: the stage's top ${s.top} at the bar's height ${s.barH}`)
+		else assert.ok(s.top < s.barH, `${where}: a stage taller than the room (${s.height} > ${roomUnderBar}) pins higher, its bottom at the box's`)
+	}
+
+	// Prev and next step it: the box's scroll moves, the window's does not.
+	if (row.step) {
+		const next = await stepOnce(page, row.step, 'next', where)
+		const prev = await stepOnce(page, row.step, 'prev', where)
+		console.log(`[step] ${experience} ${where}: next ${next} px, prev ${prev} px of the box's scroll`)
+	}
+
+	// Nothing pressable in a corner's safe zone, and each control clear of both.
+	if (row.controlSelectors.length && row.pocketed) {
+		const zones = await zonesNow(page)
+		assert.ok(zones.right && zones.left, `${where}: both corners' zones measured (${fmt(zones.right)} ${fmt(zones.left)})`)
+		const hits = await pressablesInZones(page, row.zoneScope ?? (row.pins ? `.aixc-box ${row.pins.stage}` : '.aixc-box .aixc-stage'), zones)
+		assert.ok(hits.seen >= 3, `${where}: the stage's controls were read (${hits.seen})`)
+		assert.deepEqual(hits.out, [], `${where}: nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)}`)
+		for (const what of row.controlSelectors) {
+			const c = await shownRect(page, what)
+			if (c) for (const [name, z] of Object.entries(zones)) if (z) assert.ok(!meets(c, z), `${where}: ${what} ${fmt(c)} clear of the ${name} zone ${fmt(z)}`)
 		}
 	}
-})
+
+	await row.specifics?.(page, cell, where)
+
+	// reveal(itemId): a middle item into the box's view under the bar, the window still; an item it lacks, false.
+	const itemId = await middleItem(page)
+	await (row.revealAssert ?? revealInBox)(page, itemId, where)
+	assert.equal(await page.evaluate(() => (window as any).__aixc.demos.reimagine.state.activeExperience.reveal('no-such-item')), false, `${where}: reveal('no-such-item') says the view lacks it`)
+
+	// The experience's own unmount gives back everything it took through the seam: while the view shows the seam holds
+	// its listeners (state.debug().kept, unless the row keeps none), and after activeExperience.unmount() none (the
+	// shell's configure() is not part of this: it clears the seam by itself). Then mounted again, as the album does.
+	const unmounted = await page.evaluate(() => {
+		const s = (window as any).__aixc.demos.reimagine.state
+		const before = s.debug().kept as number
+		s.activeExperience.unmount()
+		return { before, after: s.debug().kept as number, mounted: s.activeExperience.mounted as boolean }
+	})
+	if (row.keepsNone) assert.equal(unmounted.before, 0, `${where}: a row marked keepsNone keeps nothing through the seam while it shows`)
+	else assert.ok(unmounted.before > 0, `${where}: the seam holds the experience's listeners while it shows (state.debug().kept ${unmounted.before})`)
+	assert.deepEqual([unmounted.after, unmounted.mounted], [0, false], `${where}: the experience's unmount gives back all it kept (${unmounted.before} -> ${unmounted.after})`)
+	await page.evaluate(() => (window as any).__aixc.demos.reimagine.state.activeExperience.mount())
+	await settle(page, 300)
+	assert.equal(await page.evaluate(() => (window as any).__aixc.demos.reimagine.state.activeExperience.mounted), true, `${where}: mounted again`)
+
+	// Original, from the bar. The seam keeping nothing then only confirms the shell's configure(), which clears it.
+	await pressIn(page, '.aixc-viewbar .aixc-seg[data-view="original"]')
+	await page.waitForFunction(() => (window as any).__aixc.demos.reimagine.state.view === 'original', null, { timeout: 5_000 })
+	await settle(page, 300)
+	assert.equal((await state(page))?.debug?.kept, 0, `${where}: Original: nothing kept (state.debug().kept; configure() clears it)`)
+
+	assert.deepEqual(l.refused.filter((r) => /google|generativelanguage|codepen/i.test(r.url)), [], `${where}: nothing asked of Google or CodePen`)
+	assert.deepEqual(seen.pageErrors.filter((e) => !/navUserToggling|navToggling/.test(e)), [], `${where}: no page errors`)
+	assert.deepEqual(seen.layer.filter((x) => x.startsWith('error')), [], `${where}: the layer logged no error`)
+}
+
+/** One cell of a row: the page opened, the served page read, something pocketed if the row asks, the view chosen; checkInBox. */
+async function boxCell(experience: string, cell: Cell) {
+	const row = EXPERIENCE_CASES[experience]
+	const where = `${cell.p} ${sizeOf(cell.viewport)}${cell.fixedHeader === undefined ? '' : ` fixedHeader ${cell.fixedHeader}`}`
+	const l = await launchLayer(gw, { viewport: cell.viewport, reducedMotion: true, ...LIVE, ...(cell.fixedHeader === undefined ? {} : { fixedHeader: cell.fixedHeader }) })
+	try {
+		const seen = watch(l.page)
+		await open(l.page, cell.p, '?aixc-debug')
+		await ready(l.page)
+		const served = await mainNow(l.page)
+		const servedHeadings = (await exposedH1(l.page)).filter((x) => x.tag !== 'h1')
+		// Something pocketed: the Pocket's button shows in the bottom-left corner, so both corners have a zone.
+		if (row.pocketed) await pocketOne(l.page)
+		await openComposer(l.page)
+		await row.composer?.(l.page, cell, where)
+		await choose(l.page, experience)
+		await checkInBox(l.page, { experience, cell, where, served, servedHeadings, l, seen })
+	} finally {
+		await l.close()
+	}
+}
+
+// One test per row, in the table's order: the rows still todo listed as such, the others over their cells.
+for (const [experience, row] of Object.entries(EXPERIENCE_CASES)) {
+	if (row.todo) {
+		test.todo(`${experience} in the box: the 16-cell matrix (phase 4b)`)
+		continue
+	}
+	const cells = [...row.cells, ...(row.landscape ? LANDSCAPE_CELLS : [])]
+	test(row.title ?? `${experience} in the box: the ${cells.length}-cell matrix`, { timeout: row.timeout ?? 1_800_000 }, async () => {
+		for (const cell of cells) await boxCell(experience, cell)
+		await row.andThen?.()
+	})
+}
 
 test('Vodafone\'s accessibility button and cookie banner, and the guide\'s microphone, as with ?aixc=off while a view shows', { timeout: 600_000 }, async () => {
 	for (const banner of [false, true])
@@ -1320,76 +1705,6 @@ async function stepTo(page: Page, n: number, where: string) {
 	}
 	assert.equal(Number((await stageNow(page)).counter), n, `${where}: stepped to card ${n}`)
 }
-
-test('spotlight in the box: pinned at the bar with its bottom at the box\'s, prev and next, controls and queue out of both corners, the row under the title on phones, card 5 back after Original', { timeout: 900_000 }, async () => {
-	for (const viewport of [DESKTOP, LAPTOP, TABLET, PHONE])
-		for (const p of ['/en/services', '/ar/services']) {
-			const where = `${p} ${sizeOf(viewport)}`
-			const l = await launchLayer(gw, { viewport, reducedMotion: true, ...LIVE })
-			try {
-				const seen = watch(l.page)
-				await open(l.page, p, '?aixc-debug')
-				await ready(l.page)
-				// Something pocketed: the Pocket's button shows in the bottom-left corner, so both corners have a zone.
-				await pocketOne(l.page)
-				await choose(l.page, 'spotlight')
-				// Into the track: the stage pins.
-				await l.page.evaluate(() => {
-					const box = document.querySelector('.aixc-box')!
-					const track = box.querySelector('.sp-track')!
-					box.scrollTop += track.getBoundingClientRect().top - box.getBoundingClientRect().top - (box.firstElementChild as HTMLElement).offsetHeight + 1
-				})
-				await settle(l.page, 500)
-				const s = await stageNow(l.page)
-				const roomUnderBar = s.room - s.barH
-				assert.ok(Math.abs(s.bottomGap) <= 1, `${where}: the stage's bottom at the box's (gap ${s.bottomGap})`)
-				if (s.height <= roomUnderBar + 1) assert.ok(Math.abs(s.top - s.barH) <= 1, `${where}: the stage's top ${s.top} at the bar's height ${s.barH}`)
-				else assert.ok(s.top < s.barH, `${where}: a stage taller than the room (${s.height} > ${roomUnderBar}) pins higher, its bottom at the box's`)
-				// Its words about services on Services.
-				assert.equal(s.prev, p.startsWith('/ar') ? 'الخدمة اللي قبلها' : 'Previous service', `${where}: the clone's words on Services`)
-				// Prev and next step it.
-				await stepTo(l.page, 2, where)
-				await stepTo(l.page, 1, where)
-				// Controls and queue out of both corners' safe zones; on phones the row under the title, clear of the copy.
-				const zones = await zonesNow(l.page)
-				assert.ok(zones.right && zones.left, `${where}: both corners' zones measured (${fmt(zones.right)} ${fmt(zones.left)})`)
-				const hits = await pressablesInZones(l.page, '.aixc-box .sp-stage', zones)
-				assert.ok(hits.seen >= 3, `${where}: the stage's controls were read (${hits.seen})`)
-				assert.deepEqual(hits.out, [], `${where}: nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)}`)
-				for (const [what, b] of [['controls', s.controls], ['queue', s.queue]] as const) if (b) for (const [name, z] of Object.entries(zones)) if (z) assert.ok(!meets(b, z), `${where}: the ${what} ${fmt(b)} clear of the ${name} zone ${fmt(z)}`)
-				if (viewport === PHONE) {
-					assert.ok(s.controls && s.title && s.controls.top >= s.title.bottom, `${where}: the row ${fmt(s.controls)} under the title ${fmt(s.title)}`)
-					const over = s.parts.filter((x) => x.box.bottom > x.box.top && meets(x.box, s.controls!))
-					assert.deepEqual(over.map((x) => x.what), [], `${where}: the copy clear of the row`)
-				}
-				// Card 5, Original, Reimagined: card 5.
-				await stepTo(l.page, 5, where)
-				await pressIn(l.page, '.aixc-viewbar .aixc-seg[data-view="original"]')
-				await l.page.waitForFunction(() => (window as any).__aixc.demos.reimagine.state.view === 'original', null, { timeout: 5_000 })
-				await settle(l.page, 300)
-				await openComposer(l.page)
-				await l.page.locator('#aixc-composer .aixc-seg[data-view="reimagined"]').click()
-				await l.page.waitForFunction(() => (window as any).__aixc.demos.reimagine.state.view === 'reimagined', null, { timeout: 5_000 })
-				await settle(l.page, 600)
-				assert.equal((await stageNow(l.page)).counter, '05', `${where}: back on card 5`)
-				assert.deepEqual(seen.pageErrors.filter((e) => !/navUserToggling|navToggling/.test(e)), [], `${where}: no page errors`)
-			} finally {
-				await l.close()
-			}
-		}
-	// Elsewhere, neutral words.
-	for (const p of ['/en/home', '/ar/home']) {
-		const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true, ...LIVE })
-		try {
-			await open(l.page, p, '?aixc-debug')
-			await ready(l.page)
-			await choose(l.page, 'spotlight')
-			assert.equal((await stageNow(l.page)).prev, p.startsWith('/ar') ? 'السابق' : 'Previous', `${p}: neutral words where the page is not about services`)
-		} finally {
-			await l.close()
-		}
-	}
-})
 
 /** The microphone, stood in at the edge (as floating-controls-live does): pressing the guide's mic reaches 'listening'. */
 const MIC_STAND_IN = `(() => {

@@ -11,7 +11,7 @@
 
 import { h, pathIcon, svgIcon, visuallyHidden } from '../dom.js'
 import { describeImageShape, PROMOTION_KIND } from '../content-index.js'
-import { t } from '../../i18n.js'
+import { countServices, lang, t } from '../../i18n.js'
 
 export { t }
 
@@ -201,8 +201,12 @@ export const onViewResize = (callback) => {
   return keep(() => offs.forEach((off) => off()))
 }
 
-// The words the clone says about its services, and what pages that are not about services say instead.
-const NEUTRAL_WORDS = {
+/**
+ * The words the clone says about its services, and what pages that are not about services say instead. Each key is
+ * an experience's own t('...') string; each experience's label is its card's name in the composer where that name
+ * is neutral (Ring: the card says "Service ring"). Exported for the checks only.
+ */
+export const NEUTRAL_WORDS = Object.freeze({
   'Previous service': 'Previous',
   'Next service': 'Next',
   'Vodafone services spotlight': 'Spotlight',
@@ -211,10 +215,37 @@ const NEUTRAL_WORDS = {
   Services: 'Items',
   // Neutral in English, but the clone's Arabic for it says services.
   'Jump to a category': 'Jump to a section',
-}
+  // The other eleven experiences (ADR-0076, phases 2-4), as their stages' labels.
+  'Vodafone services, card fan': 'Card fan',
+  'Gallery of Vodafone services': 'Gallery wall',
+  'Vodafone services flipbook': 'Flipbook',
+  'Vodafone services, ring': 'Ring',
+  'Vodafone services, cover flow': 'Cover flow',
+  'Vodafone services, split slideshow': 'Split slideshow',
+  'Vodafone services, hyper tunnel': 'Hyper tunnel',
+  'Vodafone services, infinite canvas': 'Infinite canvas',
+  'Services canvas. Use the arrow keys to pan, Tab to move between services.': 'Canvas. Use the arrow keys to pan, Tab to move between items.',
+  // The canvas's sign: "Services" was the clone page's name, so the page's own name takes its place. Canvas passes it
+  // (phase 4): words('Vodafone Egypt · Services', { page }); the clone's sign has no placeholder and ignores it.
+  'Vodafone Egypt · Services': 'Vodafone Egypt · {page}',
+})
 
 /** UI copy about the page's items, in the page's language: the clone's words, or neutral ones (copy 'items'). */
 export const words = (key, values) => t(settings.copy === 'items' ? (NEUTRAL_WORDS[key] ?? key) : key, values)
+
+/**
+ * A count of the page's items, in the page's language: the clone's countServices(n) ("12 services" / "12 خدمة"), or
+ * with copy 'items' "1 item" / "12 items", and in Arabic عنصر counted as countServices and countCategories count:
+ * one, two, 3 to 10 the plural (عناصر), 11 and up the singular (عنصر). Zero takes the singular too ("0 عنصر"), as
+ * theirs does.
+ */
+export const countWords = (n) => {
+  if (settings.copy !== 'items') return countServices(n)
+  if (lang !== 'ar') return `${n} ${n === 1 ? 'item' : 'items'}`
+  if (n === 1) return 'عنصر واحد'
+  if (n === 2) return 'عنصرين'
+  return n >= 3 && n <= 10 ? `${n} عناصر` : `${n} عنصر`
+}
 
 /* ------------------------------------------------------------------ content */
 
@@ -418,13 +449,20 @@ export const closingBand = (promo) => {
 export const experienceRoot = (name, schema, ...children) =>
   h('div', { class: `aixc-vx aixc-vx--${name}`, 'data-experience': name, 'data-density': schema.density }, ...children)
 
-/** Visually hidden page heading so every experience has one h1 for screen readers. */
+/**
+ * Visually hidden page heading so every experience has one h1 for screen readers. A page with no title (empty or
+ * blank) gets none, never an empty h1: h() skips the null, and whoever focuses the heading on a new view
+ * (#aixc-cover-title, [data-aixc-focus]) finds nothing and focuses something else that shows (Reimagine's shell: its
+ * view bar's Reimagined button), never leaving the focus on what the view's opening hid.
+ */
 export const pageHeading = (index, { visible = false, className = '' } = {}) =>
-  h(
-    'h1',
-    { class: visible ? className : 'vx-sr-only', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' },
-    index.model.title,
-  )
+  String(index.model.title ?? '').trim()
+    ? h(
+        'h1',
+        { class: visible ? className : 'vx-sr-only', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' },
+        index.model.title,
+      )
+    : null
 
 /* ----------------------------------------------------------------- behaviour */
 

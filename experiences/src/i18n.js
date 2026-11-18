@@ -97,6 +97,10 @@ const AR = {
   'More on this page': 'كمان في الصفحة دي',
   Items: 'العناصر',
   'Jump to a section': 'روح لقسم',
+  // ... and the other eleven's (their labels are the composer's card names below, where those are neutral)
+  Ring: 'حلقة',
+  'Canvas. Use the arrow keys to pan, Tab to move between items.': 'اللوحة. اتحرّك بالأسهم، وTab عشان تنقل بين العناصر.',
+  'Vodafone Egypt · {page}': 'ڤودافون مصر · {page}',
   "{title}, piece {n} of {total}": "{title}، برواز {n} من {total}",
   "Previous piece": "البرواز اللي قبله",
   "Next piece": "البرواز اللي بعده",
