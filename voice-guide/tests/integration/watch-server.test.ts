@@ -48,13 +48,13 @@ async function call(urlPath: string, body: unknown, origin: string, key: string)
 	return { status: res.status, body: (await res.json().catch(() => ({}))) as any }
 }
 
-test('config: watch.mode defaults to server; vodafone-eg is browser with the layer knobs, and demos.watch still off', () => {
+test('config: watch.mode defaults to server; vodafone-eg is browser with the layer knobs, and demos.watch on (the phase\'s last commit)', () => {
 	const telco = sites.get('demo-telco')!
 	assert.equal(telco.watch.mode, 'server', 'other sites are unchanged')
 	const v = sites.get('vodafone-eg')!
 	assert.deepEqual(v.watch, { enabled: true, mode: 'browser', intervalSec: 900 })
 	assert.deepEqual(v.experiences.watch, { minIntervalMin: 30, perVisitMax: 12, spacingMs: 1000, maxWatched: 20, minChars: 200 })
-	assert.equal(v.experiences.demos.watch, false, 'switched on in the phase\'s last commit')
+	assert.equal(v.experiences.demos.watch, true, 'switched on in the phase\'s last commit (ADR-0078)')
 	assert.equal(SiteConfig.safeParse({ ...structuredClone(v), watch: { mode: 'cron' } }).success, false, 'an unknown mode is refused')
 })
 
@@ -126,7 +126,9 @@ test('tick() never checks a browser-mode row, one made before the change or afte
 })
 
 test('the page-map answer carries the browser\'s rules only when experiences.demos.watch is on', async () => {
-	const off = createKnowledge({ store: null as never, kb: { get: async () => null } as never, sites })
+	const offSite = structuredClone(sites.get('vodafone-eg')!)
+	offSite.experiences.demos.watch = false
+	const off = createKnowledge({ store: null as never, kb: { get: async () => null } as never, sites: new Map([['vodafone-eg', offSite]]) })
 	const m0 = (await off.pageMap({ siteId: 'vodafone-eg', url: `${VODAFONE}/ar/home` })) as Record<string, unknown>
 	assert.equal('watch' in m0, false)
 	const on = structuredClone(sites.get('vodafone-eg')!)

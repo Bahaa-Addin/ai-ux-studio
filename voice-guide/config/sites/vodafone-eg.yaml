@@ -186,7 +186,7 @@ trail:
 experiences:
   enabled: true
   paths: ['^/(en|ar)/']
-  demos: { pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: false, demoKit: true }
+  demos: { pocket: true, reimagine: true, journey: true, world: true, tips: true, watch: true, demoKit: true }
   # The page watch's check on visit (ADR-0078 point 6): sent to the layer on the page-map answer once
   # demos.watch is on. One run per 30 min, 12 pages a run, 1 s apart, 20 stickers, a 200-character region.
   watch: { minIntervalMin: 30, perVisitMax: 12, spacingMs: 1000, maxWatched: 20, minChars: 200 }
