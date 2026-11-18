@@ -246,4 +246,6 @@ Exploration Trail (2026-11-03, this Mac): typecheck ok; `npm test` 146/146 (108 
   - **O46:** the guide's chip needs a card that has a chip (coverage 0.6 or more); otherwise it says `watchFailed`. **O47:** "Open the page" is a plain link, not routed through the portal's history.
   - **O43 (D1)** can close: the owner confirmed D1 on 2026-11-18; the live-demos session closes it in its docs pass. O44's scroll item is now covered by the new actors case; wheel, touch and blur still have no test.
   - **Phase 7:** the Tips hub calls `fill()`, Reset demo calls `reset()`.
+  - Full suites with the watch on (98f339a, 2026-11-18, the Mac): `npm test` 406/406; `test:e2e` 353 tests, 333 pass, 8 skipped (S6/S7 pending), 11 todo (phase 4b), 1 fail: `aixc-layer.e2e` 'the page map (ADR-0049) … one request', because the watch asked for its rules on every page view. Fixed in 6d9e642 (the watch asks only when it needs them); that file and the watch's own files then passed 39/39. The full `test:e2e` was not re-run after the fix.
+  - The owner's opt-in live run (`tests/live/watch.live.test.ts`, `VG_LIVE=1`, port 4738) is written and skips without it; it has not been run (O45).
   - Not pushed, not merged. The merge into `feature/live-way2` waits for the owner; the bug log's three `B-??` entries take their numbers then, after phase 4b's (which also adds entries after B-83).
