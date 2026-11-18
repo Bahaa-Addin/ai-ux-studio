@@ -93,11 +93,23 @@
       await sheet(href)
       return name
     },
-    open(name, { copy = 'services' } = {}) {
+    // `limit`: only the schema's first that many items (a short page: an experience that loops from so many items
+    // does not loop below it).
+    open(name, { copy = 'services', limit = 0 } = {}) {
       if (!renderers[name]) throw new Error(`${name} is not loaded: await __h.load('${name}') first`)
       current?.unmount()
       seam.configure({ scroller: box, copy })
       schema = validateSchema(buildTemplateSchema({ experience: name }, index), index).schema
+      if (limit > 0) {
+        let left = limit
+        const sections = schema.sections.map((section) => {
+          if (section.type === 'closing-promotion') return section
+          const itemIds = section.itemIds.slice(0, Math.max(0, left))
+          left -= itemIds.length
+          return { ...section, itemIds }
+        }).filter((section) => section.type === 'closing-promotion' || section.itemIds.length)
+        schema = { ...schema, sections }
+      }
       current = wrapExperience(renderers[name](schema, index))
       stage.replaceChildren(current.element)
       current.mount()

@@ -37,7 +37,10 @@ To add an experience (phases 2-4), edit its row:
   - sizes: (width, height) pairs, each a key of ZONES (default GENERIC_SIZES); every size runs in en and ar;
   - motion: "no-preference" (default) or "reduce", the reader's prefers-reduced-motion for the row;
   - checks of its own (its reveal, its stepper): an async extra(page, tag, zones, layout) on the row, called
-    after the generic checks with the experience open and the box at its top.
+    after the generic checks with the experience open and the box at its top;
+  - listening: sizes (keys of ZONES) at which every check runs again under the guide's listening zone (LISTENING
+    merged into the size's zones: its transcript bar widens the right zone), en and ar;
+  - after: an async after(browser, langs), checks of its own at sizes of its own, run once after its cells.
 
 Trying a row that is still todo (its real gaps, without the 1,228 spotlight and magazine checks):
     BOX_TRY=fan,split python tests/e2e/box_e2e.py http://127.0.0.1:5200/ 1366x900,en
@@ -74,9 +77,23 @@ ZONES = {
     (768, 1024): {"right-w": 111, "right-h": 175, "left-w": 96, "left-h": 96},
     (375, 812): {"right-w": 111, "right-h": 173, "left-w": 84, "left-h": 84},
     (360, 780): {"right-w": 111, "right-h": 173, "left-w": 84, "left-h": 84},
+    # Shorter phones (an iPhone SE's 375x667, a 360x640): the phone's zones (2026-11-18, ring's review).
+    (375, 667): {"right-w": 111, "right-h": 173, "left-w": 84, "left-h": 84},
+    (360, 640): {"right-w": 111, "right-h": 173, "left-w": 84, "left-h": 84},
+    # A short laptop window (2026-11-18, ring's review): the 1024 px window's zones.
+    (1024, 600): {"right-w": 95, "right-h": 171, "left-w": 96, "left-h": 96},
+    # Phones in landscape, for the rows whose controls sit low (split's, ring's, coverflow's), 2026-11-18. Measured
+    # twice on the live kit at 812x375 with something pocketed; each corner is the larger of the two, and they agree:
+    # split's lane: reimagine-live's zonesNow right [716.5,204,812.5,371] (the accessibility button and the mic, 16 px
+    # around) and left [6,279,96,369] (the Pocket's button), so right 96 x 171 and left 96 x 96 from the window's
+    # bottom corners, en and ar alike, the shell's own --aixc-safe-* the same; coverflow's lane: right 96 x 171, left
+    # 96 x 96. The live box there is 295 px under an 80 px header with a 61 px bar (234 px of room); here 275 with
+    # 57 (218), the harsher.
+    (812, 375): {"right-w": 96, "right-h": 171, "left-w": 96, "left-h": 96},
     # Laptop windows (the review, 2026-11-17): the desktop's zones.
     (1366, 768): DESKTOP_ZONES,
     (1366, 800): DESKTOP_ZONES,
+    (1366, 700): DESKTOP_ZONES,
     (1536, 740): DESKTOP_ZONES,
     (1440, 900): DESKTOP_ZONES,
     # Either side of the switch.
@@ -685,12 +702,14 @@ GENERIC_SIZES = [(1366, 900), (1366, 768), (1024, 768), (375, 812)]
 TRACK_POINTS = (0.1, 0.5, 0.9)
 
 
-async def box_generic(browser, name, width, height, lang):
-    """The checks every experience gets in the box (its row in EXPERIENCES gives pins, controls and sizes)."""
+async def box_generic(browser, name, width, height, lang, listening=False):
+    """The checks every experience gets in the box (its row in EXPERIENCES gives pins, controls and sizes); with
+    `listening`, under the guide's listening zone (LISTENING merged into the size's zones: its transcript bar in
+    the right zone, as spotlight's runs)."""
     row = EXPERIENCES[name]
     motion = row["motion"]
-    tag = f"{name} {lang} {width}x{height} ({'reduced motion' if motion == 'reduce' else 'motion allowed'})"
-    zones = ZONES[(width, height)]
+    tag = f"{name} {lang} {width}x{height}{' listening' if listening else ''} ({'reduced motion' if motion == 'reduce' else 'motion allowed'})"
+    zones = {**ZONES[(width, height)], **(LISTENING if listening else {})}
     pins = row["pins"]
     controls = row["controls"](width, height) if callable(row["controls"]) else list(row["controls"])
     context, page = await open_harness(browser, width, height, lang, zones, motion)
@@ -800,24 +819,508 @@ async def run_magazine(browser, sizes, only):
             await magazine(browser, width, height, lang)
 
 
-def row(todo=None, pins=None, controls=(), sizes=None, run=None, extra=None, motion="no-preference"):
+def row(todo=None, pins=None, controls=(), sizes=None, run=None, extra=None, motion="no-preference", listening=(), after=None):
     """One experience: `todo` (the reason it is not checked yet) or its checks: `run` (its own, as spotlight's and
-    magazine's) or box_generic() with `pins` (stage, track) or None, `controls`, `sizes` and `motion` (the reader's
+    magazine's) or box_generic() with `pins` (stage, track) or None, `controls`, `sizes`, `motion` (the reader's
     prefers-reduced-motion the row runs under: "no-preference" by default, "reduce" for a row whose static mode is
-    what it checks)."""
-    return {"todo": todo, "pins": pins, "controls": controls, "sizes": sizes or GENERIC_SIZES, "run": run, "extra": extra, "motion": motion}
+    what it checks), `listening` (sizes, keys of ZONES, it runs at again under the guide's listening zone, en
+    and ar) and `after` (an async after(browser, langs) of the row's own, run once after its cells)."""
+    return {"todo": todo, "pins": pins, "controls": controls, "sizes": sizes or GENERIC_SIZES, "run": run, "extra": extra, "motion": motion, "listening": list(listening), "after": after}
+
+
+# The fan's cards: each card's item id, whether it is the current one, inert, and its rect.
+FAN_CARDS = """() => [...__h.box.querySelectorAll('.fn-card')].map((c) => ({ id: c.dataset.aixcItem, active: c.classList.contains('is-active'), inert: c.inert }))"""
+
+# reveal(id) on the fan with motion allowed: what it returns, and the card's state at once (before its 0.8 s settle).
+# A card in a zone (the guide listening) is inert by design: inZone says so.
+FAN_REVEAL = """({ id, zones }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  const card = [...box.querySelectorAll('.fn-card')].find((c) => c.dataset.aixcItem === id)
+  const r = card ? card.getBoundingClientRect() : null
+  const zoneRects = """ + ZONE_RECTS + """
+  const inZone = !!r && zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top)
+  return { back, active: !!card && card.classList.contains('is-active'), inert: !card || card.inert, inZone, counter: box.querySelector('.fn-counter__now').textContent, boxScroll: Math.round(box.scrollTop), windowScroll: scrollY }
+}"""
+
+# The fan at rest: a second, then until no card is on its way (at most 3 s more), then fan.js's check where they rest.
+FAN_SETTLE = """async () => {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  await wait(1000)
+  const moving = () => [...__h.box.querySelectorAll('.fn-card')].some((c) => c.getAnimations().some((a) => a.transitionProperty === 'transform' && a.playState === 'running'))
+  for (let i = 0; i < 60 && moving(); i++) await wait(50)
+  await wait(150)
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+}"""
+
+
+async def fan_extra(page, tag, zones, layout):
+    """The fan's own checks, with motion allowed: reveal(itemId) steps to its card, which is current and pressable at
+    once (not only once it rests), and false for an id it has not; and with the stage pinned, zones that change on
+    their own (the Pocket's button showing, the guide starting to listen, without the box changing size) make the
+    cards that rest in them inert and give the others back when they go."""
+    ids = [c["id"] for c in await page.evaluate(FAN_CARDS)]
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    picks = sorted({0, len(ids) // 2, len(ids) - 1})
+    bad = []
+    for at in picks:
+        got = await page.evaluate(FAN_REVEAL, {"id": ids[at], "zones": zones})
+        if not (got["back"] is True and got["active"] and (not got["inert"] or got["inZone"]) and got["counter"] == f"{at + 1:02d}" and got["windowScroll"] == 0):
+            bad.append((at + 1, got))
+    check(f"{tag}: reveal() of cards {', '.join(f'{a + 1:02d}' for a in picks)} returns true, the card current and pressable at once (motion allowed; inert only in a zone), the window still", not bad, bad[:3])
+    if zones.get("right-w") == LISTENING["right-w"]:
+        return
+    # Mid-track, at rest; the Pocket's button not shown yet (no left zone).
+    at = await page.evaluate(TRACK_AT, {"track": ".fn-track", "stage": ".fn-stage", "k": 0.5})
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.evaluate("(zones) => __h.measure(zones)", {**zones, "left-w": 0, "left-h": 0})
+    await page.evaluate(FAN_SETTLE)
+    before = [c["id"] for c in await page.evaluate(FAN_CARDS) if not c["inert"]]
+    # Then the Pocket's button shows and the guide starts to listen: only the box's style changes.
+    heard = {**zones, **LISTENING}
+    await page.evaluate("(zones) => __h.measure(zones)", heard)
+    await page.evaluate(FAN_SETTLE)
+    zone = await page.evaluate(CONTROLS_IN_ZONES, {"zones": heard, "controls": [], "name": "fan"})
+    check(f"{tag}: the zones growing while it rests (the Pocket's button, the guide listening): nothing pressable in either ({zone['seen']} pressables in view)", zone["seen"] > 0 and not zone["out"], zone["out"][:3])
+    # And back: the cards clear again are pressable again.
+    await page.evaluate("(zones) => __h.measure(zones)", {**zones, "left-w": 0, "left-h": 0})
+    await page.evaluate(FAN_SETTLE)
+    after = [c["id"] for c in await page.evaluate(FAN_CARDS) if not c["inert"]]
+    check(f"{tag}: the zones going back: the same {len(before)} cards pressable again", after == before and before, {"before": before, "after": after})
+    await page.evaluate("(zones) => __h.measure(zones)", zones)
+    await page.evaluate(FAN_SETTLE)
+
+
+# reveal(id) on the cover flow: what it returns, and at once (before a frame) the cover in front, pressable, the counter.
+# A cover in a zone (the guide listening on a short box) is inert by design: inZone says so.
+CF_REVEAL = """({ id, zones }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  const cover = [...box.querySelectorAll('.cf-cover')].find((c) => c.dataset.aixcItem === id)
+  const r = cover ? cover.getBoundingClientRect() : null
+  const zoneRects = """ + ZONE_RECTS + """
+  const inZone = !!r && zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top)
+  return { back, front: !!cover && cover.classList.contains('is-front'), inert: !cover || cover.inert, inZone, counter: box.querySelector('.cf-counter__now').textContent, windowScroll: scrollY }
+}"""
+
+# The covers that show: each one's place against the box's sides and the zones, and whether it is inert.
+CF_COVERS = """({ zones }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const [left, right] = [b.left + box.clientLeft, b.left + box.clientLeft + box.clientWidth]
+  const zoneRects = """ + ZONE_RECTS + """
+  return [...box.querySelectorAll('.cf-cover')].filter((c) => !c.classList.contains('is-off')).map((c) => {
+    const r = c.getBoundingClientRect()
+    const inZone = zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top)
+    return { id: c.dataset.aixcItem, front: c.classList.contains('is-front'), inert: c.inert, cut: r.left < left - 1 || r.right > right + 1, inZone }
+  })
+}"""
+
+# Each cover brought to the front (lifted and grown) against what shows of the panel (the controls, the group's name,
+# the title, the description, the actions) and of the head: the rects that overlap it, by how much.
+CF_ROOM = """async () => {
+  const box = __h.box
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const parts = ['.cf-controls', '.cf-detail__group', '.cf-detail__title', '.cf-detail__desc', '.cf-detail__actions', '.cf-brand', '.cf-scroll']
+  const out = []
+  for (const id of [...box.querySelectorAll('.cf-cover')].map((c) => c.dataset.aixcItem)) {
+    __h.current.reveal(id)
+    await frames()
+    const r = box.querySelector('.cf-cover.is-front').getBoundingClientRect()
+    const hits = []
+    for (const sel of parts) {
+      const el = box.querySelector(sel)
+      if (!el) continue
+      const p = el.getBoundingClientRect()
+      if (!p.width || !p.height || getComputedStyle(el).display === 'none' || el.closest('[hidden]') || getComputedStyle(el.closest('.cf-head') || el).display === 'none') continue
+      const x = Math.min(r.right, p.right) - Math.max(r.left, p.left)
+      const y = Math.min(r.bottom, p.bottom) - Math.max(r.top, p.top)
+      if (x > 0.5 && y > 0.5) hits.push({ sel, by: Math.round(y), cover: [r.left, r.top, r.right, r.bottom].map(Math.round), part: [p.left, p.top, p.right, p.bottom].map(Math.round) })
+    }
+    out.push({ id, size: Math.round(r.width), head: getComputedStyle(box.querySelector('.cf-head')).display !== 'none', hits })
+  }
+  return out
+}"""
+
+
+# A cover that has focus and leaves the stage's clear room (cut by the box's side, or past the flow's end) hands focus
+# to a control of the stage that can take it; where focus lands, and where the cover went.
+CF_FOCUS = """async ({ at }) => {
+  const box = __h.box
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  const covers = [...box.querySelectorAll('.cf-cover')]
+  const inertBefore = covers[at].inert
+  covers[at].focus({ preventScroll: true })
+  const had = document.activeElement === covers[at]
+  covers[at].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }))
+  await wait(1500)
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const el = document.activeElement
+  return {
+    had,
+    inertBefore,
+    total: covers.length,
+    cover: { inert: covers[at].inert, off: covers[at].classList.contains('is-off') },
+    focus: el === document.body ? 'body' : (el.getAttribute('aria-label') || el.className),
+    stillCover: el === covers[at],
+    inStage: !!el.closest?.('.cf-stage'),
+    disabled: !!el.disabled,
+    windowScroll: scrollY,
+  }
+}"""
+
+
+async def coverflow_extra(page, tag, zones, layout):
+    """The cover flow's own checks, with motion allowed: reveal(itemId) brings its cover to the front at once, pressable
+    (inert only in a zone), and false for an id it has not; pinned mid-track, the covers the box's sides cut are inert,
+    the front one never (but in a zone), and the front cover clear of the panel's content and the head; zones that
+    change on their own (the Pocket's button, the guide starting to listen) leave nothing pressable in them and the
+    covers' inert state follows them there and back; and a focused cover that leaves the clear room (a flow that does
+    not loop: its last control disabled) hands focus to a control that can take it."""
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    ids = await page.evaluate("() => [...__h.box.querySelectorAll('.cf-cover')].map((c) => c.dataset.aixcItem)")
+    picks = sorted({0, len(ids) // 2, len(ids) - 1})
+    at = await page.evaluate(TRACK_AT, {"track": ".cf-track", "stage": ".cf-stage", "k": 0.5})
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.evaluate(FRAMES)
+    bad = []
+    for n in picks:
+        got = await page.evaluate(CF_REVEAL, {"id": ids[n], "zones": zones})
+        if not (got["back"] is True and got["front"] and (not got["inert"] or got["inZone"]) and got["counter"] == f"{n + 1:02d}" and got["windowScroll"] == 0):
+            bad.append((n + 1, got))
+    check(f"{tag}: reveal() of covers {', '.join(f'{n + 1:02d}' for n in picks)} returns true, the cover in front and pressable at once (inert only in a zone), the window still", not bad, bad[:3])
+    await page.evaluate(FRAMES)
+    covers = await page.evaluate(CF_COVERS, {"zones": zones})
+    wrong = [c for c in covers if (c["cut"] or c["inZone"]) and not c["inert"]]
+    front = [c for c in covers if c["front"]]
+    check(f"{tag}: pinned, the covers cut by the box's sides or in a zone inert ({sum(c['cut'] or c['inZone'] for c in covers)} of {len(covers)} shown), the front one pressable (but in a zone)", not wrong and front and (not front[0]["inert"] or front[0]["inZone"]), {"wrong": wrong[:3], "front": front})
+    # Each cover in front, lifted: clear of the panel's content and of the head when it shows.
+    room = await page.evaluate(CF_ROOM)
+    hit = [r for r in room if r["hits"]]
+    sizes = sorted({r["size"] for r in room})
+    check(f"{tag}: pinned, each of the {len(room)} covers in front (lifted, {sizes[0]}..{sizes[-1]} px) clear of the panel's controls and details and of the head", room and not hit, hit[:2])
+    if zones.get("right-w") != LISTENING["right-w"]:
+        # Mid-track, at rest; the Pocket's button not shown yet (no left zone). Then the Pocket's button shows and the
+        # guide starts to listen: only the box's style changes.
+        await page.evaluate("(zones) => __h.measure(zones)", {**zones, "left-w": 0, "left-h": 0})
+        await page.evaluate(FRAMES)
+        before = [c["id"] for c in await page.evaluate(CF_COVERS, {"zones": {**zones, "left-w": 0, "left-h": 0}}) if not c["inert"]]
+        heard = {**zones, **LISTENING}
+        await page.evaluate("(zones) => __h.measure(zones)", heard)
+        await page.evaluate(FRAMES)
+        zone = await page.evaluate(CONTROLS_IN_ZONES, {"zones": heard, "controls": [".cf-controls", ".cf-panel"], "name": "coverflow"})
+        hits = [c for c in zone["each"] if c["zones"]]
+        check(f"{tag}: the zones growing while it rests (the Pocket's button, the guide listening): the panel clear and nothing pressable in either ({zone['seen']} pressables in view)", zone["seen"] > 0 and not zone["out"] and not hits, {"out": zone["out"][:3], "panel": hits[:2]})
+        grown = await page.evaluate(CF_COVERS, {"zones": heard})
+        wrong = [c for c in grown if (c["cut"] or c["inZone"]) and not c["inert"]]
+        check(f"{tag}: the zones grown: the covers in them or cut inert ({sum(c['cut'] or c['inZone'] for c in grown)} of {len(grown)} shown)", not wrong, wrong[:3])
+        # And back: the covers clear again are pressable again.
+        await page.evaluate("(zones) => __h.measure(zones)", {**zones, "left-w": 0, "left-h": 0})
+        await page.evaluate(FRAMES)
+        after = [c["id"] for c in await page.evaluate(CF_COVERS, {"zones": {**zones, "left-w": 0, "left-h": 0}}) if not c["inert"]]
+        check(f"{tag}: the zones going back: the same {len(before)} covers pressable again", after == before and before, {"before": before, "after": after})
+        await page.evaluate("(zones) => __h.measure(zones)", zones)
+        await page.evaluate(FRAMES)
+    # A short page (six services: the flow does not loop, so Next is disabled at the last): a focused cover sent past
+    # the clear room by End hands focus to Previous, not to the disabled Next (nor the page's body).
+    await page.evaluate("() => { __h.open('coverflow', { limit: 6 }) }")
+    await page.evaluate(FRAMES)
+    at = await page.evaluate(TRACK_AT, {"track": ".cf-track", "stage": ".cf-stage", "k": 0.1})
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.evaluate(FRAMES)
+    lost, gone, tried = [], 0, 0
+    for n in (0, 1):
+        await page.evaluate("() => __h.current.reveal(__h.itemIds[0])")
+        await page.evaluate(FRAMES)
+        got = await page.evaluate(CF_FOCUS, {"at": n})
+        if got["inertBefore"]:
+            continue  # a cover in a zone from the start (the guide listening on a short box) cannot take focus
+        tried += 1
+        left = got["cover"]["inert"] or got["cover"]["off"]
+        gone += bool(left)
+        handed = got["inStage"] and not got["stillCover"] and not got["disabled"] and got["focus"] != "body"
+        if not (got["had"] and got["windowScroll"] == 0 and (handed if left else got["stillCover"])):
+            lost.append((n + 1, got))
+    check(f"{tag}: a short page (6 covers, no loop): a focused cover End sends out of the clear room ({gone} of {tried} that could take focus) hands focus to an enabled control of the stage", (gone or not tried) and not lost, lost[:2])
+    await page.evaluate("() => { __h.open('coverflow') }")
+    await page.evaluate(FRAMES)
 
 
 PHASE_4B = "phase 4b"
+
+
+def split_controls(width, height):
+    """Split's controls: the counter / previous / next row, and the rail where split.css shows it."""
+    short = (width >= 720 and height < 700) or height < 500
+    return [".ss-controls"] + ([] if short else [".ss-rail"])
+
+
+# Split's layers that jumped across the stage (.is-jump: no transition) must slide again two frames later: after a
+# jump over every slide and back (reveal(), as the rail, Home/End or a fast scroll do), and after an unmount that
+# came mid-jump and a mount again. A pane left with .is-jump snaps instead of sliding from then on.
+SPLIT_JUMPS = """async () => {
+  const v = __h.current
+  // The slides' items (the closing band's promotion is not a slide: reveal() gives false for it, as spotlight's).
+  const ids = [...__h.box.querySelectorAll('.ss-text[data-aixc-item]')].map((n) => n.dataset.aixcItem)
+  const frames = (n) => new Promise((r) => { const go = (k) => (k ? requestAnimationFrame(() => go(k - 1)) : r()); go(n) })
+  const stuck = () => __h.box.querySelectorAll('.aixc-vx--split .is-jump').length
+  const out = {}
+  // From the first slide (the generic checks may have left the stage on the last, its scroll frame still due).
+  v.reveal(ids[0])
+  await frames(4)
+  v.reveal(ids[ids.length - 1])
+  out.during = stuck()
+  v.reveal(ids[0])
+  await frames(4)
+  out.afterJumps = stuck()
+  v.reveal(ids[ids.length - 1])
+  v.unmount()
+  v.mount()
+  await frames(4)
+  out.afterRemount = stuck()
+  v.reveal(ids[0])
+  await frames(4)
+  __h.box.scrollTo({ top: 0, behavior: 'instant' })
+  await frames(2)
+  return out
+}"""
+
+# On phones: the controls row's top 16 px under the shown slide's title (placeRow()), and nothing pressable between.
+SPLIT_ROW_UNDER_TITLE = """() => {
+  const box = __h.box
+  const row = box.querySelector('.ss-controls').getBoundingClientRect()
+  const title = box.querySelector('.ss-text[data-pos="0"] .ss-title').getBoundingClientRect()
+  return { gap: Math.round((row.top - title.bottom) * 10) / 10, title: [title.top, title.bottom].map(Math.round), row: [row.top, row.bottom].map(Math.round) }
+}"""
+
+
+# Every slide in turn (pinned at 10 % of the track, transitions off while measuring): no pressable of the shown copy
+# under a button of the rail (it is drawn over the copy, so it would take the press).
+SPLIT_RAIL_CLEAR = """async (y) => {
+  const box = __h.box
+  const ids = [...box.querySelectorAll('.ss-text[data-aixc-item]')].map((n) => n.dataset.aixcItem)
+  const off = document.createElement('style')
+  off.textContent = '.aixc-vx--split, .aixc-vx--split * { transition: none !important }'
+  document.head.append(off)
+  box.scrollTo({ top: y, behavior: 'instant' })
+  const meets = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+  const rect = (r) => [r.left, r.top, r.right, r.bottom].map(Math.round)
+  const hits = []
+  let seen = 0
+  for (const id of ids) {
+    __h.current.reveal(id)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const rails = [...box.querySelectorAll('.ss-rail__group')].filter((b) => b.getClientRects().length).map((b) => b.getBoundingClientRect())
+    for (const el of box.querySelectorAll('.ss-text[data-pos="0"] :is(button, a[href])')) {
+      const r = el.getBoundingClientRect()
+      if (!r.width || !r.height) continue
+      seen += 1
+      const under = rails.find((b) => meets(r, b))
+      if (under) hits.push({ id, label: (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30), rect: rect(r), rail: rect(under) })
+    }
+  }
+  __h.current.reveal(ids[0])
+  off.remove()
+  box.scrollTo({ top: 0, behavior: 'instant' })
+  return { seen, hits }
+}"""
+
+
+async def split_extra(page, tag, zones, layout):
+    """Split's own checks in the box: its jumps clear; where the rail shows, no action of the copy under it; on
+    phones its row stays under the title while the zones change under it (the guide starting and stopping
+    listening moves the copy's bottom, not the stage)."""
+    jumps = await page.evaluate(SPLIT_JUMPS)
+    check(f"{tag}: layers that jumped across the stage slide again (no .is-jump two frames after a long jump and back, or after an unmount mid-jump)", jumps["during"] > 0 and jumps["afterJumps"] == 0 and jumps["afterRemount"] == 0, jumps)
+    width, height = await page.evaluate("() => [innerWidth, innerHeight]")
+    if ".ss-rail" in split_controls(width, height):
+        at = await page.evaluate(TRACK_AT, {"track": ".ss-track", "stage": ".ss-stage", "k": 0.1})
+        clear = await page.evaluate(SPLIT_RAIL_CLEAR, at["y"])
+        await page.evaluate(FRAMES)
+        check(f"{tag}: no action of any slide's copy under the rail ({clear['seen']} over every slide)", clear["seen"] > 0 and not clear["hits"], clear["hits"][:3])
+    if not (width < 720 and height >= 500):
+        return
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", (await page.evaluate(TRACK_AT, {"track": ".ss-track", "stage": ".ss-stage", "k": 0.1}))["y"])
+    await page.evaluate(FRAMES)
+    seen = {"quiet": await page.evaluate(SPLIT_ROW_UNDER_TITLE)}
+    await page.evaluate("(z) => __h.measure(z)", {**zones, **LISTENING})
+    await page.evaluate(FRAMES)
+    await page.evaluate(FRAMES)
+    seen["listening"] = await page.evaluate(SPLIT_ROW_UNDER_TITLE)
+    # The next slide while listening, then the guide stops.
+    await page.evaluate("() => __h.current.reveal(__h.box.querySelectorAll('.ss-text[data-aixc-item]')[1].dataset.aixcItem)")
+    await page.wait_for_timeout(1500)
+    seen["next, listening"] = await page.evaluate(SPLIT_ROW_UNDER_TITLE)
+    await page.evaluate("(z) => __h.measure(z)", zones)
+    await page.evaluate(FRAMES)
+    await page.evaluate(FRAMES)
+    seen["stopped"] = await page.evaluate(SPLIT_ROW_UNDER_TITLE)
+    check(f"{tag}: the row stays 16 px under the title as the guide starts and stops listening", all(abs(s["gap"] - 16) <= 1 for s in seen.values()), seen)
+    await page.evaluate("() => { __h.current.reveal(__h.itemIds[0]); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }")
+    await page.wait_for_timeout(1200)
+
+
+# Split's rail in a 700 px tall window (the shortest that shows it from 720 px): its top never above the stage's,
+# quiet or with the guide listening (its 305 px no longer fits above the listening zone there); quiet, it ends above
+# both zones (16 px).
+SPLIT_RAIL = """() => {
+  const box = __h.box
+  const s = box.querySelector('.ss-stage').getBoundingClientRect()
+  const u = box.querySelector('.ss-rail ul').getBoundingClientRect()
+  const style = getComputedStyle(box)
+  const safe = Math.max(parseFloat(style.getPropertyValue('--aixc-safe-right-h')), parseFloat(style.getPropertyValue('--aixc-safe-left-h')))
+  return { top: Math.round(u.top - s.top), bottom: Math.round(u.bottom - s.top), height: Math.round(u.height), room: Math.round(s.height), aboveZones: Math.round(s.bottom - safe - 16 - u.bottom) }
+}"""
+
+
+async def split_after(browser, langs):
+    for lang in langs:
+        for listening in (False, True):
+            width, height = 1366, 700
+            zones = {**ZONES[(width, height)], **(LISTENING if listening else {})}
+            tag = f"split {lang} {width}x{height}{' listening' if listening else ''}"
+            context, page = await open_harness(browser, width, height, lang, zones, "no-preference")
+            await page.evaluate("async () => { await __h.load('split'); __h.open('split') }")
+            await page.evaluate("document.fonts.ready")
+            at = await page.evaluate(TRACK_AT, {"track": ".ss-track", "stage": ".ss-stage", "k": 0.5})
+            await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+            await page.wait_for_timeout(1200)
+            rail = await page.evaluate(SPLIT_RAIL)
+            check(f"{tag}: the rail's top inside the stage ({rail['top']} px down)", rail["top"] >= -1, rail)
+            if not listening:
+                check(f"{tag}: the rail ends above both zones, 16 px clear ({rail['aboveZones']} px)", rail["aboveZones"] >= -1, rail)
+            check(f"{tag}: no page errors", page.errors == [], page.errors)
+            await context.close()
+
+
+# The ring's room (pinned, settled on a service): its unit (--u, 1 % of the front service's 50-unit box); the front
+# service's box against the head's and the foot's shown parts and the stage's top; and the services fence() made
+# inert though they are inside the stage's sides and clear of both zones (the zones as the box's --aixc-safe-*
+# give them, as the generic checks draw them).
+RING_ROOM = """(zones) => {
+  const box = __h.box
+  const stage = box.querySelector('.rg-stage')
+  const s = stage.getBoundingClientRect()
+  const u = parseFloat(getComputedStyle(stage).getPropertyValue('--u'))
+  const front = box.querySelector('.rg-item.is-front').getBoundingClientRect()
+  const meets = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1
+  const rect = (r) => [r.left, r.top, r.right, r.bottom].map(Math.round)
+  const parts = ['.rg-head__brand', '.rg-head__group', '.rg-counter', '.rg-nav', '.rg-detail__desc', '.rg-detail__actions']
+  const hits = parts.flatMap((sel) => [...box.querySelectorAll(`.rg-stage ${sel}`)].filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden').map((el) => [sel, el.getBoundingClientRect()]).filter(([, r]) => r.width && r.height && meets(front, r)).map(([sel, r]) => ({ part: sel, rect: rect(r) })))
+  const zoneRects = """ + ZONE_RECTS + """
+  const wrongly = [...box.querySelectorAll('.rg-item')].filter((el) => el.inert && !el.classList.contains('is-off')).map((el) => [el, el.getBoundingClientRect()]).filter(([, r]) => r.left >= s.left - 1 && r.right <= s.right + 1 && !zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.bottom > z.top && r.top < z.bottom)).map(([el, r]) => ({ item: el.dataset.aixcItem, rect: rect(r) }))
+  return { u, front: rect(front), stageTop: Math.round(s.top), hits, wrongly }
+}"""
+
+# A fast turn (the box scrolled from 10 % of the track to 90 % at once), frame by frame for 40 frames: the ring's own
+# box (where it clips its services in a short box) against its place untransformed, and the largest stretch drawn
+# on the ring or its wheel.
+RING_FAST_TURN = """async ({ from, to }) => {
+  const box = __h.box
+  const ring = box.querySelector('.rg-ring')
+  const wheel = box.querySelector('.rg-wheel')
+  const frame = () => new Promise((r) => requestAnimationFrame(r))
+  const scaleOf = (el) => { const m = getComputedStyle(el).transform; return m === 'none' ? 1 : new DOMMatrixReadOnly(m).a }
+  box.scrollTo({ top: from, behavior: 'instant' })
+  for (let k = 0; k < 60; k += 1) await frame()
+  box.scrollTo({ top: to, behavior: 'instant' })
+  let wider = 0
+  let stretch = 1
+  for (let k = 0; k < 40; k += 1) {
+    await frame()
+    wider = Math.max(wider, ring.getBoundingClientRect().width - ring.offsetWidth)
+    stretch = Math.max(stretch, scaleOf(ring), scaleOf(wheel))
+  }
+  return { clips: getComputedStyle(ring).overflowX === 'clip', wider: Math.round(wider * 10) / 10, stretch: Math.round(stretch * 1000) / 1000 }
+}"""
+
+# Every service in turn (pinned, its copy's entrance animations off while measuring): the foot's pressables (the row
+# and the service's actions) against both zones and the stage's bottom, and the front service against the foot's
+# shown parts. The copy differs by service (a longer link, a group's extra links), so one settled service is not
+# enough.
+RING_EVERY_FOOT = """async (zones) => {
+  const box = __h.box
+  const stage = box.querySelector('.rg-stage')
+  const off = document.createElement('style')
+  off.textContent = '.aixc-vx--ring, .aixc-vx--ring * { animation: none !important; transition: none !important }'
+  document.head.append(off)
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1
+  const rect = (r) => [r.left, r.top, r.right, r.bottom].map(Math.round)
+  const ids = [...box.querySelectorAll('.rg-item')].map((n) => n.dataset.aixcItem)
+  const hits = []
+  let seen = 0
+  for (const id of ids) {
+    __h.current.reveal(id)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const s = stage.getBoundingClientRect()
+    const front = box.querySelector('.rg-item.is-front').getBoundingClientRect()
+    for (const el of box.querySelectorAll('.rg-foot :is(button, a[href]), .rg-foot .rg-detail__desc, .rg-foot .rg-counter')) {
+      const r = el.getBoundingClientRect()
+      if (!r.width || !r.height || getComputedStyle(el).display === 'none') continue
+      seen += 1
+      const label = (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30)
+      const pressable = el.matches('button, a[href]')
+      if (pressable) for (const [zone, z] of zoneRects) if (meets(r, z)) hits.push({ id, label, zone, rect: rect(r) })
+      if (r.bottom > s.bottom + 1) hits.push({ id, label, past: 'the stage\\'s bottom', rect: rect(r) })
+      if (meets(front, r)) hits.push({ id, label, under: 'the front service', rect: rect(r), front: rect(front) })
+    }
+  }
+  __h.current.reveal(ids[0])
+  off.remove()
+  return { services: ids.length, seen, hits }
+}"""
+
+# The ring's unit at least this (px): its front service 100 px across, its titles legible.
+RING_MIN_U = 2
+
+
+async def ring_extra(page, tag, zones, layout):
+    """Ring's own checks in the box: settled mid-track, the ring keeps a room of its own (its unit at least
+    RING_MIN_U, the front service clear of the head, the foot and the stage's top) and fence() leaves pressable every
+    service inside the stage's sides and clear of both zones; where the ring clips its column (a short box), a fast
+    turn's stretch stays inside the column."""
+    at = await page.evaluate(TRACK_AT, {"track": ".rg-track", "stage": ".rg-stage", "k": 0.5})
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.wait_for_timeout(1500)
+    room = await page.evaluate(RING_ROOM, zones)
+    check(f"{tag}: the ring keeps its room: unit {room['u']} px (at least {RING_MIN_U}), the front service clear of the head, the foot and the stage's top", room["u"] >= RING_MIN_U and not room["hits"] and room["front"][1] >= room["stageTop"] - 1, room)
+    check(f"{tag}: no service inside the stage's sides and clear of both zones is inert", not room["wrongly"], room["wrongly"][:3])
+    every = await page.evaluate(RING_EVERY_FOOT, zones)
+    check(f"{tag}: every service's foot ({every['services']} services, {every['seen']} parts): its pressables clear of both zones, inside the stage, none under the front service", every["seen"] > 0 and not every["hits"], every["hits"][:4])
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.wait_for_timeout(600)
+    far = await page.evaluate(TRACK_AT, {"track": ".rg-track", "stage": ".rg-stage", "k": 0.9})
+    near = await page.evaluate(TRACK_AT, {"track": ".rg-track", "stage": ".rg-stage", "k": 0.1})
+    turn = await page.evaluate(RING_FAST_TURN, {"from": near["y"], "to": far["y"]})
+    if turn["clips"]:
+        check(f"{tag}: a fast turn (stretch {turn['stretch']}) never widens the ring's clipped column ({turn['wider']} px)", turn["stretch"] > 1.05 and turn["wider"] <= 0.5, turn)
+    await page.evaluate("() => __h.box.scrollTo({ top: 0, behavior: 'instant' })")
+    await page.wait_for_timeout(1200)
+
 # In the order they run. The selectors of the todo rows are today's markup (what box_generic() would check once
 # the row is done); a phase that converts one adjusts its row as it drops `todo`.
 EXPERIENCES = {
     "spotlight": row(run=run_spotlight),
     "magazine": row(run=run_magazine),
-    "fan": row(todo=PHASE_4B, pins=(".fn-stage", ".fn-track"), controls=[".fn-controls"]),
-    "split": row(todo=PHASE_4B, pins=(".ss-stage", ".ss-track"), controls=[".ss-controls"]),
-    "coverflow": row(todo=PHASE_4B, pins=(".cf-stage", ".cf-track"), controls=[".cf-controls"]),
-    "ring": row(todo=PHASE_4B, pins=(".rg-stage", ".rg-track"), controls=[".rg-nav"]),
+    "fan": row(pins=(".fn-stage", ".fn-track"), controls=[".fn-controls", ".fn-detail"], extra=fan_extra, listening=[(1366, 900), (1024, 768), (768, 1024)]),
+    # Phase 2 (2026-11-18): its row and rail out of both zones; phones in landscape too, as its row sits low. In a
+    # short box (from 720 px wide under 700 px tall, or any under 500) split.css does not show the rail. The tablet
+    # sizes again with the guide listening (its transcript bar widens the right zone), as spotlight's; its jumps, its
+    # row under the title on phones, and its rail at 700 px tall (split_extra, split_after).
+    "split": row(pins=(".ss-stage", ".ss-track"), controls=split_controls, sizes=GENERIC_SIZES + [(812, 375)], listening=[(1024, 768), (768, 1024)], extra=split_extra, after=split_after),
+    "coverflow": row(pins=(".cf-stage", ".cf-track"), controls=[".cf-controls", ".cf-panel"], sizes=[*GENERIC_SIZES, (812, 375)], extra=coverflow_extra, listening=[(1366, 900), (1024, 768), (812, 375), (375, 812)]),
+    # Phase 2 (2026-11-18): its prev / next and the shown service's actions out of both zones (the foot one column
+    # at the bottom centre; beside the ring in a short box); phones in landscape too, as its row sits low; the tablet
+    # sizes again with the guide listening (its transcript bar widens the right zone), as split's. The
+    # services the ring turns past the stage's sides or into a zone are inert while there (ring.js fence()), which
+    # the generic pressable, zone and sides checks see with motion allowed, mid-turn.
+    # The review (2026-11-18) added shorter phones (375x667, 360x640) and a short laptop window (1024x600), the guide
+    # listening in the short box (812x375, 1024x600) and on a phone, and ring_extra: the ring's room, fence()'s
+    # zones and the short box's clipped column during a fast turn.
+    "ring": row(pins=(".rg-stage", ".rg-track"), controls=[".rg-nav", ".rg-detail__actions"], sizes=GENERIC_SIZES + [(812, 375), (375, 667), (360, 640), (1024, 600)], listening=[(1024, 768), (768, 1024), (812, 375), (1024, 600), (375, 812)], extra=ring_extra),
     "gallery": row(todo=PHASE_4B, pins=(".gl-stage", ".gl-track"), controls=[".gl-controls"]),
     "cube": row(todo=PHASE_4B, pins=(".cb-stage", ".cb-layout"), controls=[".cb-dots"]),
     "journey": row(todo=PHASE_4B, pins=(".jr-scene", ".aixc-vx--journey"), controls=[]),
@@ -857,6 +1360,15 @@ async def main():
                     continue
                 for lang in langs:
                     await box_generic(browser, name, width, height, lang)
+            # Under the guide's listening zone too, at the sizes the row names.
+            for width, height in spec["listening"]:
+                if only_sizes and f"{width}x{height}" not in only_sizes:
+                    continue
+                for lang in langs:
+                    await box_generic(browser, name, width, height, lang, listening=True)
+            # The row's own checks at sizes of its own, once.
+            if spec["after"] and not only_sizes:
+                await spec["after"](browser, langs)
         await browser.close()
     failed = [name for name, ok in results if not ok]
     print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")

@@ -510,3 +510,147 @@
     transition: none;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the stage pins inside the view's own box, and the box's bottom
+   corners belong to Vodafone's accessibility button and the guide's microphone, with its transcript bar while
+   it listens (right), and the Pocket's button (left). The shell measures how far each reaches into the box
+   from its bottom edge and side (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits
+   in either. The controls keep the clone's place at the top end (clear of both corners at every size); the
+   details keep their bottom start corner, moved in from the zone there (above the taller zone where they do
+   not fit between both: the guide listening below about 1000 px); the fan points at the bottom end corner by
+   design, so fan.js makes a card that rests in a zone or past the box's side inert (keepClear(), also when the
+   zones change; the current card only while a zone covers it, the guide listening).
+   On phones the details sit above both zones over a dark band, the fan above them. No short-height layout:
+   the details reach at most 328 px up from the stage's bottom (Arabic at 1366 px; 296 at 1024; measured
+   2026-11-18 on the Services copy), and the controls 108 px down from its top, at opposite sides, so the stage
+   fits a room from 344 px tall (a window about 525 px tall under the live header and the bar). Phones in
+   landscape (812x375, a 234 px room) are below that and not laid out for. */
+.aixc-box .aixc-vx--fan {
+  --fn-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  /* The zone at the details' and the turned caption's (start) corner: the left in English, the right in Arabic;
+     and the one at the end corner. */
+  --fn-safe-start-w: var(--aixc-safe-left-w, 0px);
+  --fn-safe-start-h: var(--aixc-safe-left-h, 0px);
+  --fn-safe-end-w: var(--aixc-safe-right-w, 0px);
+  /* The details' width, as the clone's .fn-detail (below 1024 px: min(380px, 44vw)). */
+  --fn-detail-w: min(420px, 34vw);
+}
+
+[dir='rtl'] .aixc-box .aixc-vx--fan {
+  --fn-safe-start-w: var(--aixc-safe-right-w, 0px);
+  --fn-safe-start-h: var(--aixc-safe-right-h, 0px);
+  --fn-safe-end-w: var(--aixc-safe-left-w, 0px);
+}
+
+@media (max-width: 1023px) {
+  .aixc-box .aixc-vx--fan {
+    --fn-detail-w: min(380px, 44vw);
+  }
+}
+
+/* reveal() places the cards without their move (fan.js, for a frame). */
+.aixc-box .aixc-vx--fan .fn-deck.is-instant .fn-card,
+.aixc-box .aixc-vx--fan .fn-deck.is-instant .fn-card__box,
+.aixc-box .aixc-vx--fan .fn-deck.is-instant .fn-card::after {
+  transition: none;
+}
+
+/* The stage is the room under the bar, never more (the clone's 520 px floor would push its bottom out of a
+   shorter box). */
+.aixc-box .aixc-vx--fan .fn-stage {
+  min-height: 0;
+}
+
+/* The turned caption (words only) starts above the zone at its corner, not under its control. */
+.aixc-box .aixc-vx--fan .fn-turned {
+  bottom: var(--fn-safe-start-h);
+}
+
+/* From 720 px the details keep their bottom start corner, moved in from the zone there, where they fit between
+   both zones (16 px from each); where they do not (the guide listening: its transcript bar widens the end zone to
+   472 px, so below about 1000 px), they go back to the clone's 130 px, stand 16 px above the taller zone on a dark
+   panel (the previous cards run under them there), and the current card moves toward the end, 16 px past them
+   (and 16 px in from the box's end side at most), so they do not cover it.
+   --fn-fit is at least +1000 px when they fit, at most -1000 px when they do not (the stage's width, 100cqw, less
+   their inset, their width, the end zone and 16 px, times 1000), so each min()/max() picks one placement; it is
+   resolved where it is used, in the stage (its container). */
+@media (min-width: 720px) {
+  .aixc-box .aixc-vx--fan {
+    --fn-in: max(130px, calc(var(--fn-safe-start-w) + 16px));
+    --fn-fit: calc((100cqw - var(--fn-in) - var(--fn-detail-w) - var(--fn-safe-end-w) - 16px) * 1000);
+  }
+
+  .aixc-box .aixc-vx--fan .fn-stage {
+    container-type: inline-size;
+  }
+
+  .aixc-box .aixc-vx--fan .fn-detail {
+    inset-inline-start: min(var(--fn-in), max(130px, var(--fn-fit)));
+    bottom: max(clamp(20px, 5vh, 44px), min(calc(var(--fn-safe-h) + 16px), calc(-1 * var(--fn-fit))));
+  }
+
+  /* The panel: as wide as the details and 16 px around them where they are lifted, none where they fit. */
+  .aixc-box .aixc-vx--fan .fn-detail::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    top: -16px;
+    bottom: -16px;
+    inset-inline-start: -16px;
+    width: clamp(0px, calc(-1 * var(--fn-fit)), calc(100% + 32px));
+    border-radius: 16px;
+    background: rgba(10, 10, 15, 0.92);
+  }
+
+  .aixc-box .aixc-vx--fan .fn-card {
+    inset-inline-start: min(
+      calc(100cqw - var(--fn-w) * 0.5 - 16px),
+      max(var(--fn-x), min(calc(130px + var(--fn-detail-w) + 16px + var(--fn-w) * 0.5), calc(-1 * var(--fn-fit))))
+    );
+  }
+}
+
+/* The app band at the box's end, in two columns from 768 px: its stores (at the start) kept in from both corners'
+   zones, centred as the clone's 1140 px where the box is wider. Where that leaves its two columns less than 560 px
+   (the guide listening, below 1160 px), the clone's margins instead and the band's content stands 16 px above
+   the taller zone (--fn-cl-fit: the same switch as the details'). On phones the code follows the stores in one
+   column, so they stand above the zones there. */
+@media (min-width: 768px) {
+  .aixc-box .aixc-vx--fan .vx-closing {
+    --fn-cl-fit: calc((100% - var(--aixc-safe-right-w, 0px) - var(--aixc-safe-left-w, 0px) - 32px - 560px) * 1000);
+    padding-bottom: max(clamp(2.5rem, 6vw, 4rem), min(calc(var(--fn-safe-h) + 16px), calc(-1 * var(--fn-cl-fit))));
+  }
+
+  .aixc-box .aixc-vx--fan .vx-closing__inner {
+    width: auto;
+    margin-right: max(var(--vx-gutter), calc((100% - 1140px) / 2), min(calc(var(--aixc-safe-right-w, 0px) + 16px), max(var(--vx-gutter), var(--fn-cl-fit))));
+    margin-left: max(var(--vx-gutter), calc((100% - 1140px) / 2), min(calc(var(--aixc-safe-left-w, 0px) + 16px), max(var(--vx-gutter), var(--fn-cl-fit))));
+  }
+}
+
+/* Phones: the details over a dark band as tall as the taller zone; the current card under the controls row,
+   half as tall as the room above the band (its foot under the details' fading top). */
+@media (max-width: 719px) {
+  .aixc-box .aixc-vx--fan {
+    --fn-h: min(300px, calc((var(--vx-vh) - var(--fn-safe-h)) * 0.5));
+    --fn-y: calc(72px + var(--fn-h) * 0.5);
+  }
+
+  /* 16 px under the copy: its entrance (fn-in) starts 14 px lower. */
+  .aixc-box .aixc-vx--fan .fn-detail {
+    bottom: var(--fn-safe-h);
+    padding-bottom: 16px;
+  }
+
+  .aixc-box .aixc-vx--fan .fn-detail::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    height: var(--fn-safe-h);
+    background: rgba(10, 10, 15, 0.96);
+  }
+}

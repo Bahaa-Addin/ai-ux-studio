@@ -202,6 +202,20 @@ export const onViewResize = (callback) => {
 }
 
 /**
+ * With a scroller: a change of its inline style, where the shell writes the bottom corners' safe zones
+ * (--aixc-safe-*) and writes each only when it changes (the Pocket's button showing, the guide listening, without
+ * the box changing size); returns an off. Without one, nothing.
+ */
+export const onViewZones = (callback) => {
+  const box = settings.scroller
+  if (!box || typeof MutationObserver !== 'function') return () => {}
+  const run = guarded('zones observer', callback)
+  const observer = new MutationObserver(() => run())
+  observer.observe(box, { attributes: true, attributeFilter: ['style'] })
+  return keep(() => observer.disconnect())
+}
+
+/**
  * The words the clone says about its services, and what pages that are not about services say instead. Each key is
  * an experience's own t('...') string; each experience's label is its card's name in the composer where that name
  * is neutral (Ring: the card says "Service ring"). Exported for the checks only.

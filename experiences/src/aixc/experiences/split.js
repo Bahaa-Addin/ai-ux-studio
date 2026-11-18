@@ -29,12 +29,18 @@
  * which keeps the reference's line-per-slide look, grouped by category.
  * Photography is darkened under the type; illustrations (fit: contain) become a
  * white mark on Vodafone red.
+ *
+ * On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box instead of the page: every
+ * scroll read and write goes through shared.js's seam, every handler and frame through on() and frame()
+ * while mounted, and split.css keeps the controls and the rail out of the bottom corners' safe zones (on
+ * phones the controls row sits under the slide's title, placed by placeRow()). reveal(itemId) steps the
+ * stage to an item's slide.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
-  arrowKeys, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras, groupsOf, liveStatus, longestLine,
-  onScrollFrame, pad2, pageHeading, promotionOf, scrollStepper, t,
+  arrowKeys, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, frame, groupExtras, groupsOf, guarded, liveStatus, longestLine,
+  observeResize, on, onScrollFrame, onViewResize, onViewScroll, pad2, pageHeading, promotionOf, scrollStepper, t, viewScroller, words,
 } from './shared.js'
 
 const STEP_PX = 380
@@ -45,7 +51,7 @@ const paneFor = (item) => {
   const art = h('div', { class: 'ss-art' })
   if (item.image?.src) {
     const img = h('img', { src: item.image.src, alt: '', decoding: 'async' })
-    img.addEventListener('error', () => img.remove(), { once: true })
+    img.addEventListener('error', guarded('image error', () => img.remove()), { once: true })
     art.append(img)
     if (item.image.width) art.style.setProperty('--src-w', `${item.image.width}px`)
   }
@@ -124,18 +130,13 @@ export const renderSplit = (schema, index) => {
       h('span', { class: 'ss-rail__label', 'aria-hidden': 'true' }, group.title),
       h('span', { class: 'ss-rail__ticks', 'aria-hidden': 'true' }, lines),
     )
-    // A long jump is one clean split transition rather than a scroll through every slide.
-    button.addEventListener('click', () => {
-      const target = firstIndexOf.get(group.id)
-      stepper.goTo(target, { instant: Math.abs(target - active) > 2 })
-    })
     return button
   })
   const rail = h('nav', { class: 'ss-rail', 'aria-label': t('Categories') }, h('ul', null, railButtons.map((button) => h('li', null, button))))
 
   /* -------------------------------------------------------------- controls */
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_UP, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_DOWN, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': words('Previous service') }, pathIcon(ICON_UP, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': words('Next service') }, pathIcon(ICON_DOWN, ''))
   const counterNow = h('span', { class: 'ss-counter__now' }, '01')
   const controls = h(
     'div',
@@ -148,7 +149,7 @@ export const renderSplit = (schema, index) => {
 
   const stage = h(
     'section',
-    { class: 'ss-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services, split slideshow') },
+    { class: 'ss-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': words('Vodafone services, split slideshow') },
     halves,
     h(
       'header',
@@ -171,20 +172,37 @@ export const renderSplit = (schema, index) => {
   const stepper = scrollStepper({ track, count: total, step: () => STEP_PX })
   let active = 0
 
+  // Layers that jumped across the stage, and the frames that let them move again: one clear for all of them, put off
+  // by every new jump so the latest gets its two frames too (cancelled on unmount, which clears at once).
+  const jumping = new Set()
+  let unjump = null
+  const unjumpAll = () => {
+    jumping.forEach((node) => node.classList.remove('is-jump'))
+    jumping.clear()
+  }
+
   /** Moves every layer to its place for `next`; layers that would cross the stage jump. */
   const place = (nodes, next) => {
-    const crossing = []
+    let jumped = false
     nodes.forEach((node, at) => {
       const from = Number(node.dataset.pos)
       const to = Math.max(-1, Math.min(1, at - next))
       if (from === to) return
       if (from !== 0 && to !== 0) {
         node.classList.add('is-jump')
-        crossing.push(node)
+        jumping.add(node)
+        jumped = true
       }
       node.dataset.pos = String(to)
     })
-    if (crossing.length) window.requestAnimationFrame(() => window.requestAnimationFrame(() => crossing.forEach((node) => node.classList.remove('is-jump'))))
+    if (!jumped) return
+    unjump?.()
+    unjump = frame(() => {
+      unjump = frame(() => {
+        unjump = null
+        unjumpAll()
+      })
+    })
   }
 
   const show = (next, { announce = true } = {}) => {
@@ -206,6 +224,20 @@ export const renderSplit = (schema, index) => {
     stage.dataset.tone = item.image?.fit === 'contain' ? 'mark' : 'photo'
     if (announce) status.textContent = t('{n} of {total}: {title}, {group}', { n: next + 1, total, title: item.title, group: group.title })
     active = next
+    placeRow()
+  }
+
+  /**
+   * On phones in a box the controls row sits right under the shown slide's title (split.css keeps the room for it
+   * there), so a heading, not a link, is above it: the title's bottom in the stage, from offsets (its entrance is a
+   * transform and does not move it). Unused from 720 px and on the clone.
+   */
+  const placeRow = () => {
+    if (!viewScroller()) return
+    const title = texts[active].querySelector('.ss-title')
+    let bottom = title.offsetHeight
+    for (let at = title; at && at !== stage; at = at.offsetParent) bottom += at.offsetTop
+    stage.style.setProperty('--ss-row-top', `${bottom}px`)
   }
 
   const render = () => {
@@ -213,13 +245,34 @@ export const renderSplit = (schema, index) => {
     if (next !== active) show(next)
   }
 
-  prevButton.addEventListener('click', () => stepper.goTo(active - 1))
-  nextButton.addEventListener('click', () => stepper.goTo(active + 1))
-  arrowKeys(stage, { step: (direction) => stepper.goTo(active + direction), first: () => stepper.goTo(0), last: () => stepper.goTo(total - 1) })
-
-  let stopFrames = null
-  let stopDrag = null
-  const onScroll = () => stepper.settle()
+  // Everything the stage listens to while it shows, added on mount through the seam and undone on unmount
+  // (or by the seam's reset), so a kept view mounted again listens again.
+  const listen = () => [
+    onScrollFrame(render),
+    dragToScroll(stage, { axis: 'y', factor: STEP_PX / 150 }),
+    onViewScroll(() => stepper.settle()),
+    on(prevButton, 'click', () => stepper.goTo(active - 1)),
+    on(nextButton, 'click', () => stepper.goTo(active + 1)),
+    arrowKeys(stage, { step: (direction) => stepper.goTo(active + direction), first: () => stepper.goTo(0), last: () => stepper.goTo(total - 1) }),
+    // A long jump is one clean split transition rather than a scroll through every slide.
+    ...railButtons.map((button) =>
+      on(button, 'click', () => {
+        const target = firstIndexOf.get(button.dataset.group)
+        stepper.goTo(target, { instant: Math.abs(target - active) > 2 })
+      }),
+    ),
+    // In a box, on phones, keep the row under the title when the copy moves or reflows: a resize; the safe zones
+    // changing (the copy's bottom inset follows them, as when the guide starts listening); a font arriving. Neither
+    // of the last two resizes the stage, so each slide's copy and title are watched too.
+    ...(viewScroller()
+      ? [
+          onViewResize(placeRow),
+          observeResize(stage, placeRow),
+          ...texts.flatMap((text) => [observeResize(text, placeRow), observeResize(text.querySelector('.ss-title'), placeRow)]),
+        ]
+      : []),
+  ]
+  let offs = []
 
   // Initial placement: the first service in view, everything else waiting below.
   place(startPanes, 0)
@@ -229,16 +282,23 @@ export const renderSplit = (schema, index) => {
   return {
     element: root,
     mount() {
-      stopFrames = onScrollFrame(render)
-      stopDrag = dragToScroll(stage, { axis: 'y', factor: STEP_PX / 150 })
-      window.addEventListener('scroll', onScroll, { passive: true })
+      placeRow()
+      offs = listen()
     },
     unmount() {
-      stopFrames?.()
-      stopDrag?.()
-      stopFrames = stopDrag = null
+      for (const off of offs.splice(0)) off()
       stepper.stop()
-      window.removeEventListener('scroll', onScroll)
+      unjump?.()
+      unjump = null
+      unjumpAll()
+    },
+    /** Steps the stage to the slide of `itemId` at once (the guide's spotlight comes next); false if it has none. */
+    reveal(itemId) {
+      const at = entries.findIndex((entry) => entry.item.id === itemId)
+      if (at < 0) return false
+      stepper.goTo(at, { instant: true })
+      if (at !== active) show(at)
+      return true
     },
   }
 }

@@ -451,3 +451,419 @@
     transition: none;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the stage pins inside the view's own box, and the box's bottom
+   corners belong to Vodafone's accessibility button and the guide's microphone (right) and the Pocket's button
+   (left). The shell measures how far each reaches into the box from its bottom edge and side
+   (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits in either. The stage is the room
+   under the bar. The clone's three-column foot (the counter in one corner, prev / next in the other) becomes one
+   column at the bottom centre: the service's copy, then the counter and prev / next in a row, between the zones.
+   The ring has a room of its own between the head and the foot (--rg-head-room, --rg-foot-room), and ring.js sizes
+   the services from it, so the front one never runs under the foot. On phones the row sits right under the front
+   service and the copy under it, above both zones (shorter phones cut the copy); in a short box (from 720 px wide
+   under 700 px tall, and any under 500 px) the ring takes the inline-start side and the foot the rest, beside the
+   zones, or, where the zones leave too little room between them for both (.is-tight), the three one above the
+   other between the zones. The services the ring turns past the stage's sides or into a zone are not pressable
+   while there (ring.js fence()). */
+.aixc-box .aixc-vx--ring {
+  --rg-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  /* Each side kept clear of its own zone (physical sides, as the zones are) plus 16 px, never nearer the edge
+     than the gutter. */
+  --rg-safe-l: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px));
+  --rg-safe-r: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px));
+  /* The row from 720 px: when the gap between the zones is narrower than the row's own width (228 px measured:
+     the counter, a 20 px gap, two 48 px buttons and their 12 px gap), the foot is lifted above the taller zone and
+     spans the stage instead (the guide listening in a tablet's portrait window: its transcript bar reaches 472 px
+     in). --rg-row-fit is the gap less that width, times 1000: at least +1000 px when the row fits, at most -1000 px
+     when it does not, so min() and max() below pick one placement or the other. 100cqw is the stage's width. */
+  --rg-row-min: 250px;
+  --rg-row-fit: calc((100cqw - var(--rg-safe-l) - var(--rg-safe-r) - var(--rg-row-min)) * 1000);
+  /* The foot's bottom: 28 px, or 16 px above the taller zone when lifted. */
+  --rg-foot-y: max(28px, min(calc(var(--rg-safe-h) + 16px), calc(-1 * var(--rg-row-fit))));
+  /* The head's room (its top, the brand, the group's line) and the foot's (its bottom, the row's 52 px, a 16 px
+     gap, the copy: three lines of description, a 12 px gap and the 44 px link). */
+  --rg-head-room: 104px;
+  --rg-foot-room: calc(var(--rg-foot-y) + 224px);
+}
+
+/* The stage is the room under the bar, never more: the clone's 520 px floor would push its bottom, and its
+   controls, out of a shorter box. Its width is what 100cqw measures. */
+.aixc-box .aixc-vx--ring .rg-stage {
+  min-height: 0;
+  container-type: inline-size;
+}
+
+/* The ring's room: its centre (where the front service faces you, the perspective's eye) in the middle of it. */
+.aixc-box .aixc-vx--ring .rg-ring {
+  top: var(--rg-head-room);
+  bottom: var(--rg-foot-room);
+  left: 0;
+  width: 100%;
+  height: auto;
+}
+
+.aixc-box .aixc-vx--ring .rg-item {
+  top: calc(50% - var(--u) * 25);
+  left: calc(50% - var(--u) * 25);
+}
+
+/* The service's link keeps its place while the copy comes in: it slides with the description but never fades, so
+   it is never pressable unseen. */
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-box .aixc-vx--ring .rg-detail.is-changing > .rg-detail__actions {
+    animation-name: rg-rise;
+  }
+}
+
+@keyframes rg-rise {
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* The foot: the copy, then the counter and prev / next in a row under it, centred between the zones (or lifted
+   above the taller zone and centred in the stage, where the row does not fit between them). */
+.aixc-box .aixc-vx--ring .rg-foot {
+  left: max(var(--vx-gutter), min(var(--rg-safe-l), var(--rg-row-fit)));
+  right: max(var(--vx-gutter), min(var(--rg-safe-r), var(--rg-row-fit)));
+  bottom: var(--rg-foot-y);
+  grid-template-columns: 1fr auto auto 1fr;
+  grid-template-areas:
+    'detail detail detail detail'
+    '. counter nav .';
+  align-items: center;
+  gap: 16px 20px;
+}
+
+.aixc-box .aixc-vx--ring .rg-detail {
+  grid-area: detail;
+  justify-self: center;
+  width: min(100%, 34rem);
+}
+
+.aixc-box .aixc-vx--ring .rg-counter {
+  grid-area: counter;
+  white-space: nowrap;
+}
+
+.aixc-box .aixc-vx--ring .rg-nav {
+  grid-area: nav;
+}
+
+.aixc-box .aixc-vx--ring .rg-nav .vx-round {
+  flex: none;
+}
+
+/* A service that shows its group's own link beside its own (the first of a group that has one; ring.js: .has-extras):
+   its description gives its room to that link, which wraps under the service's own where they do not fit side by
+   side (a long one, a narrow foot), 6 px apart. */
+.aixc-box .aixc-vx--ring .rg-stage.has-extras .rg-detail__desc {
+  display: none;
+}
+
+.aixc-box .aixc-vx--ring .rg-stage.has-extras .rg-detail__actions {
+  row-gap: 6px;
+}
+
+@media (min-width: 720px) {
+  /* The closing band's stores kept beside the zones when the box is scrolled to its end. */
+  .aixc-box .aixc-vx--ring .vx-closing__inner {
+    width: auto;
+    max-width: 1140px;
+    margin-left: max(var(--rg-safe-l), calc((100% - 1140px) / 2));
+    margin-right: max(var(--rg-safe-r), calc((100% - 1140px) / 2));
+  }
+}
+
+/* A short box from 720 px wide (a phone in landscape, a short laptop window), under 700 px tall, and any box in a
+   window under 500 px tall: the head, the ring and the foot no longer fit one above the other. The ring and the
+   head take the inline-start side, from the zone on that side (the Pocket's in English, the microphone's in
+   Arabic), up to --rg-mid: half the stage, or less where the zone on the other side is wide (the guide listening),
+   so the foot keeps the row's 250 px. The ring is clipped at its sides with the blurred edges there, so no service
+   it turns passes under the foot or a corner's button (a fast turn's stretch is the wheel's, inside that clip:
+   ring.js); the foot takes the rest, beside the zones (it ends at the right zone's side in English and starts at
+   the left zone's in Arabic), the row on top, the copy under it with two lines of description, centred in the
+   stage's height. The hint is not shown. */
+@media (min-width: 720px) and (height < 700px), (height < 500px) {
+  .aixc-box .aixc-vx--ring {
+    --rg-head-room: 64px;
+    --rg-mid: min(50%, calc(100% - var(--rg-safe-r) - 258px));
+    /* Tight (below): between the zones as the shell gives them (they keep 16 px around the corners' controls). */
+    --rg-tight-l: max(var(--vx-gutter), var(--aixc-safe-left-w, 0px));
+    --rg-tight-r: max(var(--vx-gutter), var(--aixc-safe-right-w, 0px));
+    /* The ring's bottom when tight: the foot's 8 px, the row's 44, an 8 px gap, a line of description (20) and a
+       10 px gap, the 46 px link, then 6 px. */
+    --rg-tight-foot: 142px;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--ring {
+    --rg-mid: min(50%, calc(100% - var(--rg-safe-l) - 258px));
+  }
+
+  .aixc-box .aixc-vx--ring .rg-head {
+    top: 12px;
+    left: var(--rg-safe-l);
+    right: calc(100% - var(--rg-mid));
+    gap: 2px;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--ring .rg-head {
+    left: calc(100% - var(--rg-mid));
+    right: var(--rg-safe-r);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-head__group {
+    font-size: 1.25rem;
+  }
+
+  /* Clipped at its sides only: the services' badges keep their room above and below. */
+  .aixc-box .aixc-vx--ring .rg-ring {
+    bottom: 8px;
+    left: var(--rg-safe-l);
+    width: calc(var(--rg-mid) - var(--rg-safe-l));
+    overflow-x: clip;
+    overflow-y: visible;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--ring .rg-ring {
+    left: calc(100% - var(--rg-mid));
+    width: calc(var(--rg-mid) - var(--rg-safe-r));
+  }
+
+  .aixc-box .aixc-vx--ring .rg-edge {
+    width: calc(var(--u) * 40);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-edge--left {
+    left: var(--rg-safe-l);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-edge--right {
+    right: calc(100% - var(--rg-mid));
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--ring .rg-edge--left {
+    left: calc(100% - var(--rg-mid));
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--ring .rg-edge--right {
+    right: var(--rg-safe-r);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-foot {
+    top: 8px;
+    bottom: 8px;
+    left: calc(var(--rg-mid) + 8px);
+    right: var(--rg-safe-r);
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas:
+      'counter nav .'
+      'detail detail detail';
+    align-content: center;
+    gap: 10px 16px;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--ring .rg-foot {
+    left: var(--rg-safe-l);
+    right: calc(var(--rg-mid) + 8px);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-detail {
+    justify-self: stretch;
+    width: auto;
+    justify-items: start;
+    gap: 10px;
+    text-align: start;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-detail__actions {
+    justify-content: flex-start;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-detail__desc {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-counter__now {
+    font-size: 1.75rem;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-nav .vx-round {
+    width: 44px;
+    height: 44px;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-hint {
+    display: none;
+  }
+
+  /* Tight (.is-tight, set by ring.js measure()): the room between the zones cannot hold the ring's column (200 px),
+     an 8 px gap and the row (250 px) side by side, as when the guide listens in a phone's landscape window (its
+     transcript bar reaches 472 px in) or in a 1024 px window. The head, the ring and the foot one above the other
+     again, each between the zones; the copy cut to one line of description. */
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-head {
+    left: var(--rg-tight-l);
+    right: var(--rg-tight-r);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-ring {
+    bottom: var(--rg-tight-foot);
+    left: var(--rg-tight-l);
+    right: var(--rg-tight-r);
+    width: auto;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-edge--left {
+    left: var(--rg-tight-l);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-edge--right {
+    right: var(--rg-tight-r);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-foot {
+    top: auto;
+    bottom: 8px;
+    left: var(--rg-tight-l);
+    right: var(--rg-tight-r);
+    grid-template-columns: 1fr auto auto 1fr;
+    grid-template-areas:
+      '. counter nav .'
+      'detail detail detail detail';
+    gap: 8px 16px;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-detail {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-detail__actions {
+    justify-content: center;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-detail__desc {
+    -webkit-line-clamp: 1;
+  }
+
+  /* A service that shows its group's own link too (.has-extras): when tight, the ring ends above both links
+     (8 + 44 + 8 + 46 + 6 + 46 + 4 px). */
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight.has-extras {
+    --rg-tight-foot: 162px;
+  }
+}
+
+/* Tight in a window under 500 px tall (a phone in landscape, the guide listening): the head is not shown and the
+   copy is the link alone (8 px under the foot, the row's 44, an 8 px gap, the link's 46, then 2 px), so the ring
+   keeps a room of its own: 104 px in box_e2e's 218 px stage (812 x 375), 120 px live (234 px). */
+@media (height < 500px) {
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight {
+    --rg-tight-foot: 108px;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-head,
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-detail__desc {
+    display: none;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-ring {
+    top: 6px;
+  }
+
+  /* The links a little smaller, so a long one keeps to one line in the room between the zones (244 px at 812 x 375
+     with the guide listening). */
+  .aixc-box .aixc-vx--ring .rg-stage.is-tight .rg-detail__actions .vx-btn {
+    padding-inline: 1rem;
+    font-size: 0.875rem;
+  }
+}
+
+/* Phones: the counter and prev / next in a row right under the front service (8 px under its box: its title and
+   its badge), the copy under the row, ending above both zones: the description keeps three lines. */
+@media (max-width: 719px) and (height >= 500px) {
+  .aixc-box .aixc-vx--ring {
+    --rg-head-room: 88px;
+    /* 8 px, the row's 44, a 14 px gap, three lines of description (68), a 12 px gap, the 44 px link, then 16 px
+       above the taller zone. */
+    --rg-foot-room: calc(var(--rg-safe-h) + 16px + 190px);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-foot {
+    top: calc(var(--rg-head-room) + (100% - var(--rg-head-room) - var(--rg-foot-room)) / 2 + var(--u) * 25 + 8px);
+    bottom: auto;
+    left: 16px;
+    right: 16px;
+    grid-template-columns: 1fr auto auto 1fr;
+    grid-template-areas:
+      '. counter nav .'
+      'detail detail detail detail';
+    gap: 14px 16px;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-detail__desc {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  /* A service that shows its group's own link too (.has-extras): the row's 44 px, an 8 px gap, the two links 46 px
+     each 6 px apart: 158 px with the 8 above, within the 190 kept here. */
+  .aixc-box .aixc-vx--ring .rg-stage.has-extras .rg-foot {
+    row-gap: 8px;
+  }
+}
+
+/* Shorter phones, under 800 px tall (2026-11-18: at 375 x 667 the three lines above left the ring 10 px of room, and
+   none at 360 x 640): the head lifted and the description cut to one line; under 700 px tall the description is not
+   shown (the service's title on the ring and its link are). The ring's room then, in box_e2e's stage (the window
+   less 157 px; measured) and live (less about 190 px; worked out): 375 x 667, 143 and 110 px (unit 2.86 and 2.2);
+   360 x 640, 116 and 83 px (2.32 and 1.66); 375 x 740 (one line), 181 and 148 px. */
+@media (max-width: 719px) and (500px <= height < 800px) {
+  .aixc-box .aixc-vx--ring {
+    --rg-head-room: 68px;
+    /* 8 px, the row's 44, a 12 px gap, one line of description (23), a 12 px gap, the 46 px link, then 16 px above
+       the taller zone. */
+    --rg-foot-room: calc(var(--rg-safe-h) + 16px + 145px);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-head {
+    top: 12px;
+    gap: 2px;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-foot {
+    gap: 12px 16px;
+  }
+
+  .aixc-box .aixc-vx--ring .rg-detail__desc {
+    -webkit-line-clamp: 1;
+  }
+
+  /* Its group's link too (.has-extras): the 158 px it takes is more than the copy's room here, so the ring's room is
+     that much less while the service shows (ring.js sizes the ring from it). */
+  .aixc-box .aixc-vx--ring .rg-stage.has-extras {
+    --rg-foot-room: calc(var(--rg-safe-h) + 16px + 158px);
+  }
+}
+
+@media (max-width: 719px) and (500px <= height < 700px) {
+  .aixc-box .aixc-vx--ring {
+    /* 8 px, the row's 44, a 12 px gap, the 46 px link. */
+    --rg-foot-room: calc(var(--rg-safe-h) + 16px + 110px);
+  }
+
+  .aixc-box .aixc-vx--ring .rg-detail__desc {
+    display: none;
+  }
+}

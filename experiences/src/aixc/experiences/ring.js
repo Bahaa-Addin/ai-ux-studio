@@ -37,12 +37,23 @@
  * service always waits on the side the line reads towards (the left), and
  * dragging right turns it forward. Arabic titles are never stroked (outlines
  * show seams where the joined letters overlap); they are filled faintly instead.
+ *
+ * On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box instead of the page: every
+ * scroll read and write goes through shared.js's seam, every handler and frame through on() and frame()
+ * while mounted, and ring.css lays the stage out in the box: the ring in the room between the head and
+ * the foot (measure() sizes it from that room), the counter and prev/next in a row at the bottom centre,
+ * clear of the bottom corners' safe zones (on phones right under the front service; in a short box beside
+ * the ring, or under it where the zones leave too little room between them: measure()'s .is-tight). The
+ * services the ring turns past the stage's sides or into a corner's zone are not pressable while there
+ * (fence(): inert), every one still reached by prev/next, the keys and scrolling. reveal(itemId) turns the
+ * ring to an item.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PREV, arrowKeys, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupExtras,
-  groupsOf, inlineSign, liveStatus, pad2, pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t,
+  ICON_NEXT, ICON_PREV, arrowKeys, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, frame,
+  groupExtras, groupsOf, guarded, inlineSign, liveStatus, observeResize, on, onViewResize, onViewScroll, pad2,
+  pageHeading, promotionOf, reducedMotion, scrollStepper, sidewaysWheel, t, viewBottom, viewHeight, viewScroller, words,
 } from './shared.js'
 
 const STEP_PX = 300
@@ -81,7 +92,6 @@ export const renderRing = (schema, index) => {
       h('span', { class: 'rg-item__title', 'aria-hidden': 'true' }, item.title),
     )
     node.style.setProperty('--fs', titleSize(item.title))
-    node.addEventListener('click', () => stepper.goTo(at))
     return node
   })
   const wheel = h('div', { class: 'rg-wheel' }, items)
@@ -92,7 +102,7 @@ export const renderRing = (schema, index) => {
     const panel = h('div', { class: `rg-panel${at % 2 ? ' is-flip' : ''}${item.image?.fit === 'contain' ? ' is-mark' : ''}`, 'data-src-w': item.image?.width ?? null })
     if (item.image?.src) {
       const img = h('img', { src: item.image.src, alt: '', decoding: 'async' })
-      img.addEventListener('error', () => img.remove(), { once: true })
+      img.addEventListener('error', guarded('image error', () => img.remove()), { once: true })
       panel.append(img)
     }
     return panel
@@ -109,8 +119,8 @@ export const renderRing = (schema, index) => {
   const detail = h('div', { class: 'rg-detail' }, detailTitle, detailDesc, detailActions)
 
   const counterNow = h('span', { class: 'rg-counter__now' }, '01')
-  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Previous service') }, pathIcon(ICON_PREV, ''))
-  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': t('Next service') }, pathIcon(ICON_NEXT, ''))
+  const prevButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': words('Previous service') }, pathIcon(ICON_PREV, ''))
+  const nextButton = h('button', { type: 'button', class: 'vx-round vx-on-dark', 'aria-label': words('Next service') }, pathIcon(ICON_NEXT, ''))
   const foot = h(
     'div',
     { class: 'rg-foot' },
@@ -122,7 +132,7 @@ export const renderRing = (schema, index) => {
 
   const stage = h(
     'section',
-    { class: 'rg-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': t('Vodafone services, ring') },
+    { class: 'rg-stage vx-dark', 'aria-roledescription': t('carousel'), 'aria-label': words('Vodafone services, ring') },
     backdrop,
     ring,
     h('span', { class: 'rg-edge rg-edge--left', 'aria-hidden': 'true' }),
@@ -146,13 +156,35 @@ export const renderRing = (schema, index) => {
   let front = -1
   let drawn = ''
   let last = 0
-  let frame = 0
+  let cancelLoop = null
   let mounted = false
+  let offs = []
+
+  /** The box's corner zones (--aixc-safe-*, px), as the shell measures them; '' in the clone. */
+  const zonesKey = () => {
+    if (!viewScroller()) return ''
+    const style = getComputedStyle(stage)
+    return ['left-w', 'left-h', 'right-w', 'right-h'].map((side) => style.getPropertyValue(`--aixc-safe-${side}`)).join(',')
+  }
+  let measuredZones = ''
 
   const measure = () => {
     const width = stage.clientWidth || window.innerWidth
-    const height = stage.clientHeight || window.innerHeight
-    unit = Math.min(width * 1.25, height) / 100
+    const height = stage.clientHeight || viewHeight()
+    // In a box the ring has a room of its own between the head and the foot (ring.css): the services never taller
+    // than it, nor wider than its column allows (never sized from less than 160 px across); the clone's ring is a
+    // point, sized from the stage.
+    const boxed = !!viewScroller()
+    if (boxed) {
+      // Tight: the room between the zones (each 16 px further, as ring.css keeps them) cannot hold the ring's column
+      // (200 px), an 8 px gap and the foot's row (250 px) side by side; ring.css's short box then stacks them in it.
+      measuredZones = zonesKey()
+      const [leftW, , rightW] = measuredZones.split(',').map((value) => Number.parseFloat(value) || 0)
+      stage.classList.toggle('is-tight', width - (leftW + 16) - (rightW + 16) < 458)
+      stage.classList.toggle('has-extras', front >= 0 && groupLink(front))
+    }
+    const room = boxed ? ring.clientHeight : 0
+    unit = Math.min(boxed ? Math.max(ring.clientWidth, 160) * 1.25 : width * 1.25, height, boxed ? room * 2 : height) / 100
     stage.style.setProperty('--u', `${unit.toFixed(3)}px`)
     // Small photos are softened in proportion to how far the panel enlarges them.
     panels.forEach((panel) => {
@@ -160,6 +192,16 @@ export const renderRing = (schema, index) => {
       panel.style.setProperty('--blur', `${clamp((width / source - 1.8) * 1.1, 0.8, 4).toFixed(2)}px`)
     })
     drawn = ''
+  }
+
+  /**
+   * Whether the service at `at` shows its group's own link beside its own (the first of a group that has one): in a
+   * box its foot then has a second row of links (ring.css: .has-extras, the description not shown, the ring's room
+   * less where the foot has no description to give up).
+   */
+  const groupLink = (at) => {
+    const { item, group } = entries[at]
+    return group.items[0] === item && Boolean(group.cta)
   }
 
   const showFront = (next) => {
@@ -171,6 +213,7 @@ export const renderRing = (schema, index) => {
     detailDesc.hidden = !item.description
     const extras = group.items[0] === item ? groupExtras(group, { onDark: true }) : null
     detailActions.replaceChildren(...[ctaFor(item, { variant: 'primary', standalone: true, onDark: true }), extras].filter(Boolean))
+    if (viewScroller()) stage.classList.toggle('has-extras', groupLink(next))
     detail.classList.remove('is-changing')
     void detail.offsetWidth
     detail.classList.add('is-changing')
@@ -181,8 +224,39 @@ export const renderRing = (schema, index) => {
     front = next
   }
 
+  /**
+   * In a box, the services shown that reach past the stage's sides or into a bottom corner's safe zone (the box's
+   * --aixc-safe-* measures, which already keep 16 px around the corner's controls) are not pressable while there:
+   * the ring turns its neighbours past its edges by design. Each is reached again as it turns in (prev/next, the
+   * keys, scrolling). The clone's are untouched.
+   */
+  const fence = () => {
+    const s = stage.getBoundingClientRect()
+    const style = getComputedStyle(stage)
+    const px = (name) => Number.parseFloat(style.getPropertyValue(name)) || 0
+    const bottom = viewBottom()
+    const zones = [
+      { left: s.left, right: s.left + px('--aixc-safe-left-w'), top: bottom - px('--aixc-safe-left-h') },
+      { left: s.right - px('--aixc-safe-right-w'), right: s.right, top: bottom - px('--aixc-safe-right-h') },
+    ]
+    items.forEach((node) => {
+      let out = false
+      if (!node.classList.contains('is-off')) {
+        const r = node.getBoundingClientRect()
+        out = r.left < s.left - 1 || r.right > s.right + 1 || zones.some((z) => z.right > z.left && r.left < z.right && r.right > z.left && r.bottom > z.top && r.top < bottom)
+      }
+      if (node.inert !== out) node.inert = out
+    })
+  }
+
+  /** What fence() depends on besides the ring's turn: the zones and the stage's place in the box (it leaves its pin). */
+  const placeKey = (zones) => (viewScroller() ? `|${zones}|${Math.round(stage.getBoundingClientRect().top)}` : '')
+
   const draw = () => {
-    const key = `${position.toFixed(4)}|${velocity.toFixed(3)}|${unit}`
+    // The zones changed (the guide started or stopped listening): the short box may stack its parts or not.
+    const zones = zonesKey()
+    if (zones !== measuredZones) measure()
+    const key = `${position.toFixed(4)}|${velocity.toFixed(3)}|${unit}${placeKey(zones)}`
     if (key === drawn) return
     drawn = key
     const radius = RADIUS * unit
@@ -205,15 +279,18 @@ export const renderRing = (schema, index) => {
       panel.classList.toggle('is-off', !visible)
       if (visible) panel.style.transform = `translateY(${(d * 100).toFixed(3)}%)`
     })
-    // The reference's velocity: stretch and blur the ring, dim and blur the panels.
+    // The reference's velocity: stretch and blur the ring, dim and blur the panels. In a box the stretch is the
+    // wheel's (the same about the same centre), so a short box's clipped column keeps its width while it turns.
     const stretch = clamp(velocity, 1, 2.2)
     const blur = Math.max(0, velocity * 2 - 1)
-    ring.style.transform = stretch > 1.001 ? `scaleX(${stretch.toFixed(3)})` : ''
+    const stretched = viewScroller() ? wheel : ring
+    stretched.style.transform = stretch > 1.001 ? `scaleX(${stretch.toFixed(3)})` : ''
     ring.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : ''
     backdrop.style.opacity = String(clamp(1 - velocity / 5, 0.15, 1).toFixed(3))
     backdrop.style.filter = blur > 0.05 ? `blur(${blur.toFixed(2)}px)` : ''
     const next = clamp(Math.round(position), 0, total - 1)
     if (next !== front) showFront(next)
+    if (viewScroller()) fence()
   }
 
   const loop = (now) => {
@@ -234,17 +311,23 @@ export const renderRing = (schema, index) => {
       if (!Number.isFinite(velocity) || velocity < 0.001) velocity = 0
     }
     draw()
-    frame = window.requestAnimationFrame(loop)
+    cancelLoop = frame(loop)
   }
 
-  prevButton.addEventListener('click', () => stepper.goTo(front - 1))
-  nextButton.addEventListener('click', () => stepper.goTo(front + 1))
-  arrowKeys(stage, { step: (direction) => stepper.goTo(front + direction), first: () => stepper.goTo(0), last: () => stepper.goTo(total - 1) })
-
-  let stopDrag = null
-  let stopWheel = null
-  const onScroll = () => stepper.settle()
-  const onResize = () => measure()
+  // Everything the stage listens to while it shows, added on mount through the seam and undone on unmount (or by the
+  // seam's reset), so a kept view mounted again listens again.
+  const listen = () => [
+    on(prevButton, 'click', () => stepper.goTo(front - 1)),
+    on(nextButton, 'click', () => stepper.goTo(front + 1)),
+    ...items.map((node, at) => on(node, 'click', () => stepper.goTo(at))),
+    arrowKeys(stage, { step: (direction) => stepper.goTo(front + direction), first: () => stepper.goTo(0), last: () => stepper.goTo(total - 1) }),
+    dragToScroll(stage, { axis: 'x', factor: STEP_PX / 140, touch: true }),
+    sidewaysWheel(stage), // sideways swipes walk it too, along the reading line
+    onViewScroll(() => stepper.settle()),
+    onViewResize(measure),
+    // In a box the ring's room also changes with the safe zones (the foot lifted while the guide listens).
+    ...(viewScroller() ? [observeResize(ring, measure)] : []),
+  ]
 
   showFront(0)
 
@@ -256,22 +339,25 @@ export const renderRing = (schema, index) => {
       last = 0
       measure()
       position = stepper.position()
-      stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / 140, touch: true })
-      stopWheel = sidewaysWheel(stage) // sideways swipes walk it too, along the reading line
-      window.addEventListener('scroll', onScroll, { passive: true })
-      window.addEventListener('resize', onResize)
-      frame = window.requestAnimationFrame(loop)
+      offs = listen()
+      cancelLoop = frame(loop)
     },
     unmount() {
       mounted = false
-      window.cancelAnimationFrame(frame)
-      stopDrag?.()
-      stopWheel?.()
-      stopWheel = null
-      stopDrag = null
+      cancelLoop?.()
+      cancelLoop = null
+      for (const off of offs.splice(0)) off()
       stepper.stop()
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onResize)
+    },
+    /** Turns the ring to `itemId` at once (the guide's spotlight comes next); false if it has none. */
+    reveal(itemId) {
+      const at = entries.findIndex((entry) => entry.item.id === itemId)
+      if (at < 0) return false
+      stepper.goTo(at, { instant: true })
+      position = at
+      velocity = 0
+      draw()
+      return true
     },
   }
 }

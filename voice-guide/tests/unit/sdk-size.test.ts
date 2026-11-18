@@ -173,6 +173,36 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  * blank title (its chunk, shared with the experiences, 4,930 -> 5,140 bytes), i18n.js's three new Arabic lines (6,171 ->
  * 6,227): the shell 23,704 -> 23,971 bytes, the Pocket 28,249 -> 28,306; magazine 10,509 and spotlight 7,733. Every
  * budget unchanged. Each experience is now one row of REIMAGINE_EXPERIENCES.
+ *
+ * 2026-11-18, phase 2, the card fan in the box (fan.js through the seam, its box block in fan.css, its live wrapper):
+ * its chunk 6,996 bytes. The shell 23,976 -> 24,292 bytes (the registry's third experience: esbuild splits what the
+ * three chunks share anew), within its 24.5 KB; the Pocket unchanged (28,306); magazine 10,510 and spotlight 7,733.
+ * The review's fixes the same day (the seam's onViewZones, the fan's instant reveal and its zones re-read): the fan
+ * 7,500 bytes, so 7.5 KB; the shell 24,357, the Pocket 28,306, magazine 10,511, spotlight 7,732.
+ *
+ * 2026-11-18, phase 2, the cover flow in the box (coverflow.js through the seam with its covers' keepClear(), its box
+ * block in coverflow.css, its live wrapper): its chunk 7,399 bytes, so 7.5 KB. The shell 24,357 -> 24,376 bytes (the
+ * registry's fourth line), within its 24.5 KB; the Pocket unchanged (28,306); magazine 10,508, spotlight 7,733, the
+ * fan 7,499. The review's fixes the same day (the panel's tallest measured on a hidden copy and the head giving way
+ * where the covers' room is tight, the panel and the covers swapping sides on a short box, focus kept in the stage
+ * when a focused cover leaves or a focused button turns disabled): its chunk 8,052 bytes, so 8 KB; the shell 24,376,
+ * the Pocket 28,306, magazine 10,508, spotlight 7,733, the fan 7,499.
+ * 2026-11-18, phase 2: split in the registry (its chunk: split.js through the seam, split.css with its box rules,
+ * experience-wrap.js and vodafone.css shared with the other experiences) 7,830 bytes gzipped after its review's fixes
+ * (7,687 before them), so 7.75 KB. The shell 23,976 -> 24,302 bytes: shared.js is one module in the chunk the shell
+ * shares with the experiences, and the helpers only split uses (longestLine, liveStatus, groupExtras' QR aside and the
+ * like) are no longer shaken out of it. The Pocket unchanged (28,306); magazine 10,506 and spotlight 7,733. Every
+ * other budget unchanged.
+ *
+ * 2026-11-18, phase 2: ring in the registry (its chunk: ring.js through the seam with its fence of the services it
+ * turns past the stage's sides, ring.css with its box rules, experience-wrap.js and vodafone.css shared) 7,896 bytes
+ * gzipped (40 under), so 7.75 KB. The shell 24,302 -> 24,327 bytes (shared.js's sidewaysWheel and the reading-line helpers it
+ * uses are no longer shaken out of the chunk the shell shares with the experiences). The Pocket unchanged (28,306);
+ * magazine 10,509, spotlight 7,733, split 7,827. Every other budget unchanged.
+ *
+ * 2026-11-18, phase 2, ring's review: its short phones' tiers, the short box's tight stack (.is-tight) and the group's
+ * link (.has-extras) in ring.css, measure()'s zones and floor in ring.js: 7,896 -> 8,360 bytes, so 8.25 KB (88 under).
+ * The shell 24,328, the Pocket 28,306, magazine 10,509, spotlight 7,733, split 7,827: every other budget unchanged.
  */
 /**
  * Reimagine's experiences on Vodafone's pages, one row each (ADR-0076, phase 1): the key is the experience's name in
@@ -183,6 +213,10 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
 const REIMAGINE_EXPERIENCES: Record<string, number> = {
 	magazine: 10.5 * 1024,
 	spotlight: 7.75 * 1024,
+	fan: 7.5 * 1024,
+	coverflow: 8 * 1024,
+	split: 7.75 * 1024,
+	ring: 8.25 * 1024,
 }
 const REIMAGINE_SHELL = 'src/host/demos/reimagine/shell.js'
 const reimagineEntry = (name: string) => `src/host/demos/reimagine/${name}.js`

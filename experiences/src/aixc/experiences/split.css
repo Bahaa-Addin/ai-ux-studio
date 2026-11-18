@@ -581,3 +581,286 @@
     transition: none !important;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the stage pins inside the view's own box, and the box's bottom
+   corners belong to Vodafone's accessibility button and the guide's microphone (right) and the Pocket's button
+   (left). The shell measures how far each reaches into the box from its bottom edge and side
+   (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits in either. The stage is the room
+   under the bar, and the title is sized to it too. From 720 px the counter / previous / next row runs along the
+   bottom between the zones and the rail is centred in the room above the taller zone; in a short box (under
+   700 px tall) the row moves to the top-left corner and the rail is not shown; on phones the row sits under the
+   slide's title (placeRow()). Every service stays reachable by the row, the arrow keys and scrolling. */
+.aixc-box .aixc-vx--split {
+  --ss-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  /* Each side kept clear of its own zone (physical sides, as the zones are) plus 16 px, never nearer the edge
+     than the gutter. */
+  --ss-safe-l: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px));
+  --ss-safe-r: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px));
+  /* The row from 720 px: when the gap between the zones is narrower than the row's own width (234 px measured:
+     the counter, two 48 px buttons, two gaps), it is lifted above the taller zone and spans the stage instead.
+     --ss-row-fit is the gap less that width, times 1000: at least +1000 px when the row fits, at most -1000 px
+     when it does not, so min() and max() below pick one placement or the other. 100cqw is the stage's width. */
+  --ss-row-min: 250px;
+  --ss-row-fit: calc((100cqw - var(--ss-safe-l) - var(--ss-safe-r) - var(--ss-row-min)) * 1000);
+  /* The copy's inline insets from 720 px: the gutter and the rail's 40 px ticks, 16 px clear, on both sides. */
+  --ss-text-x: calc(var(--vx-gutter) + 56px);
+}
+
+/* The stage is the room under the bar, never more: the clone's 520 px floor would push its bottom, and its
+   controls, out of a shorter box. */
+.aixc-box .aixc-vx--split .ss-stage {
+  min-height: 0;
+}
+
+/* The bottom row of the copy (description and actions) is never shorter than what it holds: the free room above
+   the title gives way first, so the actions do not slide under the controls or into a zone. */
+.aixc-box .aixc-vx--split .ss-text {
+  grid-template-rows: minmax(0, 1fr) auto minmax(min-content, 1fr);
+}
+
+/* A logo slide's mark smaller (5% down, 18% tall, not 7% and 25%), and the room kept for it from the room's own
+   height, not the clone's 520 px floor. */
+.aixc-box .aixc-vx--split .ss-pane.is-mark .ss-art img {
+  top: 5%;
+  height: 18%;
+}
+
+.aixc-box .aixc-vx--split .ss-stage[data-tone='mark'] .ss-text {
+  grid-template-rows: minmax(calc(var(--vx-vh) * 0.23 - 64px + 3.25rem), 1fr) auto minmax(min-content, 1fr);
+}
+
+/* The title sized from its longest line over the copy's own width (the clone's 108 % of the stage's), and kept to
+   the room's height, so a short box still has room for the copy under it. */
+.aixc-box .aixc-vx--split .ss-title {
+  font-size: clamp(1.75rem, min(calc((100cqi - 2 * var(--ss-text-x)) * 1.08 / var(--cpl)), calc(var(--vx-vh) * 0.12)), 6rem);
+}
+
+.aixc-box .aixc-vx--split .ss-title:lang(ar) {
+  font-size: clamp(1.75rem, min(calc((100cqi - 2 * var(--ss-text-x)) * 0.8 / var(--cpl)), calc(var(--vx-vh) * 0.1)), 4.25rem);
+}
+
+/* The rail, at the inline end, centred in the room above the taller zone instead of the stage's middle; never above
+   the stage's top: where it is taller than that room (305 px for Services, while the guide listens in a 700 px
+   window) it starts at the top. The column it is centred in takes no presses; only the rail itself does. */
+.aixc-box .aixc-vx--split .ss-rail {
+  top: 0;
+  bottom: calc(var(--ss-safe-h) + 16px);
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  transform: none;
+  pointer-events: none;
+}
+
+.aixc-box .aixc-vx--split .ss-rail ul {
+  pointer-events: auto;
+}
+
+/* Each category's button is its ticks (and their padding), not its label too: the label, unseen until the button is
+   hovered or focused, is drawn where it was (14 px before the ticks) but out of the button's box, so the rail takes
+   no presses over the copy (its actions, moved aside while the guide listens, pass under it in Arabic). */
+.aixc-box .aixc-vx--split .ss-rail__group {
+  position: relative;
+}
+
+.aixc-box .aixc-vx--split .ss-rail__label {
+  position: absolute;
+  inset-inline-end: calc(100% + 2px);
+  pointer-events: none;
+}
+
+@media (min-width: 720px) {
+  /* The copy clear of the rail's ticks on its side, and as far in on the other; it ends above the row (the
+     clone's 104 px), or above the row lifted over the taller zone. */
+  .aixc-box .aixc-vx--split .ss-text {
+    left: var(--ss-text-x);
+    right: var(--ss-text-x);
+    bottom: max(104px, min(calc(var(--ss-safe-h) + 16px + 64px + 12px), calc(-1 * var(--ss-row-fit))));
+  }
+
+  /* While the guide listens its transcript bar widens the right zone (472 px, not the 110 px of the corner's
+     controls: anything over 200 px is that), and the copy's centred actions could fall in it: they move left of it,
+     16 px clear, the title and the description staying where they are. A margin on the physical right, as the zones
+     are physical; none when the zone is the corner's controls alone (clamp()'s floor wins over its negative middle). */
+  .aixc-box .aixc-vx--split .ss-actions {
+    margin-right: clamp(0px, calc((var(--aixc-safe-right-w, 0px) - 200px) * 1000), calc(var(--aixc-safe-right-w, 0px) + 16px - var(--ss-text-x)));
+  }
+
+  .aixc-box .aixc-vx--split .ss-controls {
+    left: max(var(--vx-gutter), min(var(--ss-safe-l), var(--ss-row-fit)));
+    right: max(var(--vx-gutter), min(var(--ss-safe-r), var(--ss-row-fit)));
+    bottom: max(28px, min(calc(var(--ss-safe-h) + 16px), calc(-1 * var(--ss-row-fit))));
+    justify-content: center;
+  }
+
+  .aixc-box .aixc-vx--split .ss-controls > .vx-round {
+    flex: none;
+  }
+
+  .aixc-box .aixc-vx--split .ss-counter {
+    white-space: nowrap;
+  }
+
+  /* The closing band's stores kept beside the zones when the box is scrolled to its end. */
+  .aixc-box .aixc-vx--split .vx-closing__inner {
+    width: auto;
+    max-width: 1140px;
+    margin-left: max(var(--ss-safe-l), calc((100% - 1140px) / 2));
+    margin-right: max(var(--ss-safe-r), calc((100% - 1140px) / 2));
+  }
+}
+
+/* A short box from 720 px wide (a phone in landscape, a short laptop window), under 700 px tall, and any box in a
+   window under 500 px tall (a narrower phone in landscape, 667x375): the rail no longer
+   fits above the taller zone (Services' rail is 305 px: with a 171 px zone it needs a 508 px stage, which a 700 px
+   window gives under the live page's header and bar, 181 px at most), and with the row along the bottom the copy
+   would have 142 px of a 218 px stage (812x375). The rail and the head are not shown; the row goes to the stage's
+   top-left corner, the counter over the two buttons (no zone reaches it: the left one starts 96 px up, under it),
+   and the copy takes the stage's height beside it, clear of the zones on the right; its description keeps two
+   lines; a logo slide's mark goes to the top-right corner, above the right zone. */
+@media (min-width: 720px) and (height < 700px), (height < 500px) {
+  .aixc-box .aixc-vx--split {
+    /* The row's width: two 44 px buttons and their 8 px gap. */
+    --ss-row-w: 96px;
+  }
+
+  .aixc-box .aixc-vx--split .ss-head,
+  .aixc-box .aixc-vx--split .ss-rail {
+    display: none;
+  }
+
+  .aixc-box .aixc-vx--split .ss-controls {
+    top: 8px;
+    bottom: auto;
+    left: var(--vx-gutter);
+    right: auto;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    width: var(--ss-row-w);
+    gap: 4px 8px;
+  }
+
+  .aixc-box .aixc-vx--split .ss-counter {
+    flex-basis: 100%;
+    margin: 0;
+    gap: 4px;
+  }
+
+  .aixc-box .aixc-vx--split .ss-counter__now {
+    font-size: 1.5rem;
+  }
+
+  .aixc-box .aixc-vx--split .ss-counter__total {
+    font-size: 0.875rem;
+  }
+
+  .aixc-box .aixc-vx--split .ss-controls .vx-round {
+    width: 44px;
+    height: 44px;
+  }
+
+  .aixc-box .aixc-vx--split .ss-text,
+  .aixc-box .aixc-vx--split .ss-stage[data-tone='mark'] .ss-text {
+    --ss-text-x: calc((var(--vx-gutter) + var(--ss-row-w) + 16px + var(--ss-safe-r)) / 2);
+    top: 8px;
+    bottom: 8px;
+    left: calc(var(--vx-gutter) + var(--ss-row-w) + 16px);
+    right: var(--ss-safe-r);
+    grid-template-rows: auto auto auto;
+    align-content: safe center;
+  }
+
+  .aixc-box .aixc-vx--split .ss-text__top {
+    padding-bottom: 4px;
+  }
+
+  /* The copy itself already ends left of the right zone here, the listening one too. */
+  .aixc-box .aixc-vx--split .ss-actions {
+    margin-right: 0;
+  }
+
+  .aixc-box .aixc-vx--split .ss-text__bottom {
+    gap: 8px;
+    padding-top: 6px;
+  }
+
+  .aixc-box .aixc-vx--split .ss-title {
+    font-size: clamp(1.25rem, min(calc((100cqi - 2 * var(--ss-text-x)) * 1.08 / var(--cpl)), calc(var(--vx-vh) * 0.15)), 6rem);
+  }
+
+  .aixc-box .aixc-vx--split .ss-title:lang(ar) {
+    font-size: clamp(1.25rem, min(calc((100cqi - 2 * var(--ss-text-x)) * 0.8 / var(--cpl)), calc(var(--vx-vh) * 0.13)), 4.25rem);
+  }
+
+  .aixc-box .aixc-vx--split .ss-desc {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 0.875rem;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .aixc-box .aixc-vx--split .ss-pane.is-mark .ss-art img {
+    top: 8px;
+    left: auto;
+    right: var(--vx-gutter);
+    max-width: calc(var(--ss-safe-r) - var(--vx-gutter) - 8px);
+    height: 28px;
+    transform: none;
+  }
+}
+
+/* A phone in landscape (under 500 px tall): as on phones, a QR code to scan with the same phone is no help, and
+   without it the category's button fits beside the service's on one line. */
+@media (height < 500px) {
+  .aixc-box .aixc-vx--split .ss-actions .vx-aside {
+    display: none;
+  }
+}
+
+/* Phones: the controls row right under the shown slide's title, in room the title keeps for it (48 px and 16 px
+   under it); the copy starts nearer the top (the head is not shown on phones) and ends above both zones. A phone
+   in landscape narrower than 720 px (under 500 px tall) takes the short box's layout above instead. */
+@media (max-width: 719px) and (height >= 500px) {
+  .aixc-box .aixc-vx--split .ss-text {
+    top: 24px;
+    bottom: calc(var(--ss-safe-h) + 16px);
+    grid-template-rows: minmax(0, 0.72fr) auto minmax(min-content, 1.28fr);
+  }
+
+  /* A logo slide's mark small at the top (16 px down, 44 px tall), and the room kept for it: its bottom, 12 px,
+     less the copy's 24 px inset, and the label row's own 40 px. */
+  .aixc-box .aixc-vx--split .ss-pane.is-mark .ss-art img {
+    top: 16px;
+    height: 44px;
+  }
+
+  .aixc-box .aixc-vx--split .ss-stage[data-tone='mark'] .ss-text {
+    grid-template-rows: minmax(88px, 0.72fr) auto minmax(min-content, 1.28fr);
+  }
+
+  .aixc-box .aixc-vx--split .ss-title {
+    margin-bottom: 64px;
+    font-size: clamp(1.5rem, min(calc(118cqi / var(--cpl)), calc(var(--vx-vh) * 0.07)), 3rem);
+  }
+
+  .aixc-box .aixc-vx--split .ss-title:lang(ar) {
+    font-size: clamp(1.5rem, min(calc(80cqi / var(--cpl)), calc(var(--vx-vh) * 0.07)), 3rem);
+  }
+
+  .aixc-box .aixc-vx--split .ss-controls {
+    top: calc(var(--ss-row-top, 0px) + 16px);
+    bottom: auto;
+    left: 16px;
+    right: 48px;
+    justify-content: center;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--split .ss-controls {
+    left: 48px;
+    right: 16px;
+  }
+}

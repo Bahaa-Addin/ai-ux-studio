@@ -383,3 +383,233 @@
     transition: none;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the stage pins inside the view's own box, and the box's bottom
+   corners belong to Vodafone's accessibility button and the guide's microphone, with its transcript bar while
+   it listens (right), and the Pocket's button (left). The shell measures how far each reaches into the box
+   from its bottom edge and side (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits
+   in either. The stage is the room under the bar, never more (the clone's 560 px floor would push its bottom
+   out of a shorter box). The panel (the controls and the front service's details) runs along the bottom between
+   the zones, each side kept clear of its own zone plus 16 px; where that leaves it less than --cf-panel-min (phones,
+   the guide listening on a narrow box), it spans the stage above the taller zone instead. The covers take the room
+   between the head and the panel: coverflow.js measures the panel's tallest over every service at its width
+   (--cf-panel-h, on the stage; 280 px until it has) and the front cover, lifted and grown 1.43 times, fits what is
+   left, so it is clear of the panel whichever service is in front. Where that room would hold covers under 96 px
+   (a phone, the guide listening) the stage is tight (coverflow.js): the head gives way and the covers take the
+   room from 12 px under the stage's top, down to 48 px. The far covers run past the stage's sides by design:
+   coverflow.js makes a cover cut by the box's side or in a zone inert (keepClear()).
+   --cf-fit is the gap less --cf-panel-min, times 1000: at least +1000 px when the panel fits, at most -1000 px when
+   it does not, so min() and max() pick one placement or the other; 100cqw is the stage's width (its container). */
+.aixc-box .aixc-vx--coverflow {
+  --cf-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  --cf-pl: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px));
+  --cf-pr: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px));
+  --cf-panel-min: 400px;
+  --cf-fit: calc((100cqw - var(--cf-pl) - var(--cf-pr) - var(--cf-panel-min)) * 1000);
+  --cf-panel-bottom: max(clamp(16px, 3.6vh, 34px), min(calc(var(--cf-safe-h) + 16px), calc(-1 * var(--cf-fit))));
+  --cf-panel-h: 280px;
+  --cf-head-h: 56px;
+  --cf-size-min: 96px;
+  --cf-size-cap: 24vw;
+  --cf-size-max: 280px;
+  /* The zone at the end side (the right in English, the left in Arabic). */
+  --cf-end-w: var(--aixc-safe-right-w, 0px);
+  /* A short box (below): where the panel stands beside the covers. --cf-sfit is the room on its own side (the end
+     side's 48 %, less that side's zone) less 220 px (the controls' 204, measured on the live kit, and some), times
+     1000; --cf-rfit is the same signed for the right: positive puts the panel on the right, negative on the left. */
+  --cf-sfit: calc((48cqw - max(var(--vx-gutter), calc(var(--cf-end-w) + 16px)) - 220px) * 1000);
+  --cf-rfit: var(--cf-sfit);
+}
+
+[dir='rtl'] .aixc-box .aixc-vx--coverflow {
+  --cf-end-w: var(--aixc-safe-left-w, 0px);
+  --cf-rfit: calc(-1 * var(--cf-sfit));
+}
+
+.aixc-box .aixc-vx--coverflow .cf-stage {
+  min-height: 0;
+  container: cf-stage / size;
+}
+
+/* The covers' room: the stage (100cqh) less the head, the panel and its place above the bottom. Declared on the flow
+   and the floor, so the stage's measures (--cf-panel-h) and its regimes reach it. */
+.aixc-box .aixc-vx--coverflow .cf-flow,
+.aixc-box .aixc-vx--coverflow .cf-floor {
+  --cf-area: calc(100cqh - var(--cf-head-h) - var(--cf-panel-bottom) - var(--cf-panel-h) - 8px);
+  --cf-size: clamp(var(--cf-size-min), min(var(--cf-size-cap), calc(var(--cf-area) / 1.45)), var(--cf-size-max));
+  --cf-top: calc(var(--cf-head-h) + var(--cf-area) / 2);
+}
+
+/* Tight: the head gives way, the covers follow the room down to 48 px. */
+.aixc-box .aixc-vx--coverflow .cf-stage.is-tight .cf-flow,
+.aixc-box .aixc-vx--coverflow .cf-stage.is-tight .cf-floor {
+  --cf-head-h: 12px;
+  --cf-size-min: 48px;
+}
+
+.aixc-box .aixc-vx--coverflow .cf-stage.is-tight .cf-head {
+  display: none;
+}
+
+/* The scene's eye on the covers' line, so the front cover, lifted toward it, grows about its own centre and stays in
+   its room (the clone's eye, at the stage's middle, would lift it up into the head on a phone). */
+.aixc-box .aixc-vx--coverflow .cf-flow {
+  perspective-origin: 50% var(--cf-top);
+}
+
+.aixc-box .aixc-vx--coverflow .cf-panel {
+  right: max(var(--vx-gutter), min(var(--cf-pr), var(--cf-fit)));
+  bottom: var(--cf-panel-bottom);
+  left: max(var(--vx-gutter), min(var(--cf-pl), var(--cf-fit)));
+  padding: 0;
+}
+
+/* The description at most three lines, so the panel's height stays near its usual. */
+.aixc-box .aixc-vx--coverflow .cf-detail__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.aixc-box .aixc-vx--coverflow .cf-detail__desc[hidden] {
+  display: none;
+}
+
+/* A short room in a wide box (under 520 px: a phone in landscape, 234 px under the bar at 812x375; a 1366 px window
+   under about 700 px tall, where the covers above the panel would fall under 96 px): the covers on one side, the
+   panel on the other between the top and the bottom, without the head or the description (the room cannot hold the
+   panel under the covers). The panel stands on the end side (the right in English), kept clear of that side's zone;
+   where that leaves it under 220 px (the guide listening: its zone 472 px wide), on the start side instead, kept
+   clear of the other zone and of the end side's zone, and the covers take the end side (in a zone there they are
+   inert). The flow is clipped at its own side and fades toward the panel, so a cover on its way does not run under
+   it: two masks, the one fading toward the panel's side full size, the other none. --cf-beside tells coverflow.js. */
+@container cf-stage (height < 520px) and (width >= 600px) {
+  .aixc-box .aixc-vx--coverflow .cf-flow,
+  .aixc-box .aixc-vx--coverflow .cf-floor {
+    --cf-size: clamp(64px, calc((100cqh - 56px) / 1.5), 200px);
+    --cf-top: calc(16px + (100cqh - 16px) / 2);
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-flow {
+    right: min(48cqw, max(0px, var(--cf-rfit)));
+    left: min(48cqw, max(0px, calc(-1 * var(--cf-rfit))));
+    overflow: hidden;
+    overflow: clip;
+    -webkit-mask-image: linear-gradient(to right, #000 82%, transparent), linear-gradient(to left, #000 82%, transparent);
+    mask-image: linear-gradient(to right, #000 82%, transparent), linear-gradient(to left, #000 82%, transparent);
+    -webkit-mask-size: min(100%, max(0px, var(--cf-rfit))) 100%, min(100%, max(0px, calc(-1 * var(--cf-rfit)))) 100%;
+    mask-size: min(100%, max(0px, var(--cf-rfit))) 100%, min(100%, max(0px, calc(-1 * var(--cf-rfit)))) 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-head,
+  .aixc-box .aixc-vx--coverflow .cf-detail__desc {
+    display: none;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-panel {
+    --cf-beside: 1;
+    top: 12px;
+    right: max(var(--cf-pr), min(52cqw, calc(-1 * var(--cf-rfit))));
+    bottom: 12px;
+    left: max(var(--cf-pl), min(52cqw, var(--cf-rfit)));
+    align-content: center;
+    gap: 10px;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail {
+    gap: 6px;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail__title {
+    font-size: 1.25rem;
+  }
+}
+
+/* The app band at the box's end, in two columns from 768 px: its stores (at the start) kept in from both corners'
+   zones, centred as the clone's 1140 px where the box is wider. Where that leaves its two columns less than 560 px
+   (the guide listening, below 1160 px), the clone's margins instead and the band's content stands 16 px above
+   the taller zone. On phones the code follows the stores in one column, so they stand above the zones there. */
+@media (min-width: 768px) {
+  .aixc-box .aixc-vx--coverflow .vx-closing {
+    --cf-cl-fit: calc((100% - var(--aixc-safe-right-w, 0px) - var(--aixc-safe-left-w, 0px) - 32px - 560px) * 1000);
+    padding-bottom: max(clamp(2.5rem, 6vw, 4rem), min(calc(var(--cf-safe-h) + 16px), calc(-1 * var(--cf-cl-fit))));
+  }
+
+  .aixc-box .aixc-vx--coverflow .vx-closing__inner {
+    width: auto;
+    margin-right: max(var(--vx-gutter), calc((100% - 1140px) / 2), min(calc(var(--aixc-safe-right-w, 0px) + 16px), max(var(--vx-gutter), var(--cf-cl-fit))));
+    margin-left: max(var(--vx-gutter), calc((100% - 1140px) / 2), min(calc(var(--aixc-safe-left-w, 0px) + 16px), max(var(--vx-gutter), var(--cf-cl-fit))));
+  }
+}
+
+/* Phones: the panel above both zones (it never fits between them), its controls in a row under the front service's
+   title, the description at most two lines, and none beside the group's own actions (they take two rows), so the
+   panel stays near 230 px and the covers keep their room. */
+@media (max-width: 719px) {
+  .aixc-box .aixc-vx--coverflow {
+    --cf-panel-h: 225px;
+    --cf-head-h: 48px;
+    --cf-size-cap: 40vw;
+    --cf-size-max: 200px;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-panel {
+    gap: 10px;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail {
+    display: contents;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail__group {
+    order: 1;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail__title {
+    order: 2;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-controls {
+    order: 3;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail__desc {
+    order: 4;
+    -webkit-line-clamp: 2;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail:has(.vx-extras) .cf-detail__desc {
+    display: none;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-detail__actions {
+    order: 5;
+  }
+}
+
+/* Phones with less room (under 610 px under the bar: 590 at 360x780) give up the head, and under 520 px (477 at
+   375x667) the group's name and the description too, so the covers keep a room of their own over the panel. */
+@container cf-stage (height < 610px) and (width < 600px) {
+  .aixc-box .aixc-vx--coverflow .cf-head {
+    display: none;
+  }
+
+  .aixc-box .aixc-vx--coverflow .cf-flow,
+  .aixc-box .aixc-vx--coverflow .cf-floor {
+    --cf-head-h: 12px;
+    --cf-size-min: 80px;
+    --cf-size-cap: 40cqw;
+  }
+}
+
+@container cf-stage (height < 520px) and (width < 600px) {
+  .aixc-box .aixc-vx--coverflow .cf-detail__group,
+  .aixc-box .aixc-vx--coverflow .cf-detail__desc {
+    display: none;
+  }
+}

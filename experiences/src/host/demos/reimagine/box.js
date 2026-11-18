@@ -51,12 +51,15 @@ const LEFT = '.pocket-peek'
 const GAP = 8
 const EDGE = 16
 /**
- * The composer's least room (px), measured on it in Vodafone's faces: H_MIN is its whole height in English (its heading,
- * the Original / Reimagined row, "Ready-made experiences" and the row of template buttons, with its padding) at any
- * width from 240 px up (in Arabic under 320 px one template's name takes a third line: 19 px more, which it scrolls);
+ * The composer's least room (px), measured on it in Vodafone's faces: H_MIN is its height down to its first row of
+ * template buttons (its heading, the Original / Reimagined row, "Ready-made experiences" and that row, with its
+ * padding), the most it is at any width from W_MIN to WIDE in English and Arabic: 215, a row whose names take two lines
+ * (one line: 199). The rest scrolls inside it (live.css: as many columns as fit, 2 to 4; six templates are 277 to 371 px
+ * in all, thirteen 449 to 684), so short screens keep it beside its opener: the shortest column it is given there is
+ * 219 px (812x375, opened from "Change experience"; 844x390 from it 234, 667x375 249, 1366x380 260).
  * W_MIN the narrowest width at which its heading stays on one line, in both languages. WIDE: its own width.
  */
-const H_MIN = 216
+const H_MIN = 215
 const W_MIN = 240
 const WIDE = 400
 

@@ -4,12 +4,13 @@
  * pinning on scroll as its own script does (one run with it always pinned), in English and Arabic, at 1366x900 and
  * 375x812 (spotlight also at 1366x768 and 1024x768).
  *
- * - One row per experience (EXPERIENCE_CASES, checkInBox; magazine and spotlight now, the eleven others listed as todo
- *   until phases 2 to 4 bring them): the checks below, prev and next moving the box and not the window, reveal(), and
+ * - One row per experience (EXPERIENCE_CASES, checkInBox; magazine, spotlight, fan, coverflow, split and ring now, the
+ *   seven others listed as todo until phases 2 to 4 bring them): the checks below, prev and next moving the box and not the window, reveal(), and
  *   the experience's own unmount giving back all the seam held for it (state.debug().kept).
  * - The view in its box: #main-content hidden laid out (ADR-0075 §2), the box from the header's pinned bottom to the
  *   screen's bottom after the open scroll, its own scroll (the window's does not move), every item once, one exposed
- *   h1, no sideways overflow, each section's destination on one element of the view (ADR-0049 §4).
+ *   h1, no sideways overflow, nothing of the view cut by the box's sides at its end (the closing band's store links),
+ *   each section's destination on one element of the view (ADR-0049 §4).
  * - Vodafone's accessibility button and cookie banner, and the guide's microphone, as with ?aixc=off while a view
  *   shows (rules c, d and e of ./floating-controls.ts).
  * - The Pocket over a view: its resting curl not drawn and its button shown; during the album's turn the curl draws,
@@ -530,39 +531,177 @@ const EXPERIENCE_CASES: Record<string, ExperienceCase> = {
 	 * marks the experiences whose controls sit low (split, coverflow, ring, tunnel, gallery, cube, streaming).
 	 */
 	fan: {
-		todo: PHASE_4B,
 		cells: DEFAULT_CELLS,
 		pocketed: true,
 		pins: { stage: '.fn-stage', track: '.fn-track' },
 		controlSelectors: ['.fn-controls', '.fn-detail'],
+		// STEP_PX in fan.js: the box's scroll per card.
 		step: { next: '.fn-controls .vx-round:nth-of-type(2)', prev: '.fn-controls .vx-round:nth-of-type(1)', counter: '.fn-counter__now', distance: 210 },
+		specifics: async (page, cell, where) => {
+			const s = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const b = box.getBoundingClientRect()
+				const [left, right] = [b.left + box.clientLeft, b.left + box.clientLeft + box.clientWidth]
+				const cards = [...box.querySelectorAll<HTMLElement>('.fn-card')]
+				const pressable = cards.filter((c) => !c.inert && getComputedStyle(c).visibility !== 'hidden')
+				return {
+					label: box.querySelector('.fn-stage')!.getAttribute('aria-label'),
+					turned: box.querySelector('.fn-turned')!.textContent ?? '',
+					pressable: pressable.length,
+					cut: pressable.map((c) => c.getBoundingClientRect()).filter((r) => r.left < left - 1 || r.right > right + 1).map((r) => [r.left, r.right].map(Math.round)),
+					current: !box.querySelector<HTMLElement>('.fn-card.is-active')!.inert,
+				}
+			})
+			// The clone's words on Services, neutral ones elsewhere (the stage's name, the turned caption's count).
+			const [ar, services] = [cell.p.startsWith('/ar'), cell.p.endsWith('/services')]
+			assert.equal(s.label, services ? (ar ? 'خدمات ڤودافون، كروت مفرودة' : 'Vodafone services, card fan') : (ar ? 'مروحة كروت' : 'Card fan'), `${where}: the stage's name`)
+			assert.match(s.turned, services ? (ar ? /خدم/ : /\d+ services/) : (ar ? /عنص|عناص/ : /\d+ items?\b/), `${where}: the turned caption counts ${services ? 'services' : 'items'} (${s.turned})`)
+			// The far cards rest past the box's sides by design: inert there, and the current card never.
+			assert.ok(s.current && s.pressable >= 1, `${where}: the current card can be pressed (${s.pressable} cards can)`)
+			assert.deepEqual(s.cut, [], `${where}: no card a press reaches is cut by the box's sides`)
+		},
 	},
 	split: {
-		todo: PHASE_4B,
+		title: 'split in the box: pinned at the bar with its bottom at the box\'s, prev and next, its controls and rail out of both corners (at the box\'s end too), nothing cut by the box\'s sides, the row under the title on phones, the clone\'s words on Services only',
 		cells: DEFAULT_CELLS,
 		landscape: true,
 		pocketed: true,
 		pins: { stage: '.ss-stage', track: '.ss-track' },
 		controlSelectors: ['.ss-controls', '.ss-rail'],
+		// STEP_PX in split.js: the box's scroll per service.
 		step: { next: '.ss-controls .vx-round:nth-of-type(2)', prev: '.ss-controls .vx-round:nth-of-type(1)', counter: '.ss-counter__now', distance: 380 },
+		specifics: async (page, cell, where) => {
+			// Its words about services on Services, neutral ones elsewhere (shared.js words()).
+			const ar = cell.p.startsWith('/ar')
+			const services = /\/services$/.test(cell.p)
+			const named = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				return { prev: box.querySelector('.ss-controls .vx-round')!.getAttribute('aria-label'), stage: box.querySelector('.ss-stage')!.getAttribute('aria-label') }
+			})
+			const want = services
+				? { prev: ar ? 'الخدمة اللي قبلها' : 'Previous service', stage: ar ? 'خدمات ڤودافون، شرايح مقسومة' : 'Vodafone services, split slideshow' }
+				: { prev: ar ? 'السابق' : 'Previous', stage: ar ? 'شرائح مقسومة' : 'Split slideshow' }
+			assert.deepEqual(named, want, `${where}: ${services ? 'the clone\'s words on Services' : 'neutral words where the page is not about services'}`)
+			// On phones the row under the shown slide's title, clear of its copy.
+			if (cell.viewport === PHONE) {
+				const row = await page.evaluate(() => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					const rect = (n: Element | null) => (n && n.getClientRects().length ? (({ left, top, right, bottom }) => ({ left, top, right, bottom }))(n.getBoundingClientRect()) : null)
+					const text = box.querySelector('.ss-text[data-pos="0"]')!
+					return { controls: rect(box.querySelector('.ss-controls')), title: rect(text.querySelector('.ss-title')), parts: [...text.querySelectorAll('.ss-place, .ss-desc, .ss-actions > *')].map((n) => ({ what: n.className, box: rect(n)! })) }
+				})
+				assert.ok(row.controls && row.title && row.controls.top >= row.title.bottom, `${where}: the row ${fmt(row.controls)} under the title ${fmt(row.title)}`)
+				const over = row.parts.filter((x) => x.box && x.box.bottom > x.box.top && meets(x.box, row.controls!))
+				assert.deepEqual(over.map((x) => x.what), [], `${where}: the copy clear of the row`)
+			}
+			// At the box's end (the closing band after the track, the stage gone by): nothing pressable of the view in a
+			// corner's zone (nothing of it cut by the box's sides there: checkInBox's, for every row).
+			await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				box.scrollTop = box.scrollHeight
+			})
+			await settle(page, 300)
+			const zones = await zonesNow(page)
+			const end = await pressablesInZones(page, '.aixc-box .aixc-vx--split', zones)
+			assert.deepEqual(end.out, [], `${where}: at the box's end nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${end.seen} read)`)
+		},
 	},
 	coverflow: {
-		todo: PHASE_4B,
 		cells: DEFAULT_CELLS,
 		landscape: true,
 		pocketed: true,
 		pins: { stage: '.cf-stage', track: '.cf-track' },
 		controlSelectors: ['.cf-controls', '.cf-panel'],
+		// STEP_PX in coverflow.js: the box's scroll per cover.
 		step: { next: '.cf-controls .cf-button:nth-of-type(2)', prev: '.cf-controls .cf-button:nth-of-type(1)', counter: '.cf-counter__now', distance: 190 },
+		specifics: async (page, cell, where) => {
+			const s = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const b = box.getBoundingClientRect()
+				const [left, right] = [b.left + box.clientLeft, b.left + box.clientLeft + box.clientWidth]
+				const rect = (n: Element | null) => {
+					if (!n || !n.getClientRects().length) return null
+					const r = n.getBoundingClientRect()
+					return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+				}
+				const covers = [...box.querySelectorAll<HTMLElement>('.cf-cover')]
+				const pressable = covers.filter((c) => !c.inert && getComputedStyle(c).visibility !== 'hidden')
+				return {
+					label: box.querySelector('.cf-stage')!.getAttribute('aria-label'),
+					prev: box.querySelector('.cf-controls .cf-button')!.getAttribute('aria-label'),
+					pressable: pressable.length,
+					cut: pressable.map((c) => c.getBoundingClientRect()).filter((r) => r.left < left - 1 || r.right > right + 1).map((r) => [r.left, r.right].map(Math.round)),
+					front: !box.querySelector<HTMLElement>('.cf-cover.is-front')!.inert,
+					controls: rect(box.querySelector('.cf-controls')),
+					title: rect(box.querySelector('.cf-detail__title')),
+				}
+			})
+			// The clone's words on Services, neutral ones elsewhere (the stage's name, prev's).
+			const [ar, services] = [cell.p.startsWith('/ar'), cell.p.endsWith('/services')]
+			assert.equal(s.label, services ? (ar ? 'خدمات ڤودافون، تقليب الأغلفة' : 'Vodafone services, cover flow') : (ar ? 'تقليب الأغلفة' : 'Cover flow'), `${where}: the stage's name`)
+			assert.equal(s.prev, services ? (ar ? 'الخدمة اللي قبلها' : 'Previous service') : (ar ? 'السابق' : 'Previous'), `${where}: prev's name`)
+			// The far covers run past the box's sides by design: inert there, and the front cover never.
+			assert.ok(s.front && s.pressable >= 1, `${where}: the front cover can be pressed (${s.pressable} covers can)`)
+			assert.deepEqual(s.cut, [], `${where}: no cover a press reaches is cut by the box's sides`)
+			// On phones the controls row under the front service's title.
+			if (cell.viewport === PHONE) assert.ok(s.controls && s.title && s.controls.top >= s.title.bottom - 1, `${where}: the row ${fmt(s.controls)} under the title ${fmt(s.title)}`)
+		},
 	},
 	ring: {
-		todo: PHASE_4B,
+		title: 'ring in the box: pinned at the bar with its bottom at the box\'s, prev and next, its controls and the service\'s actions out of both corners (at the box\'s end too), nothing cut by the box\'s sides (the ring\'s side services not pressable while there), the row under the front title on phones, the clone\'s words on Services only',
 		cells: DEFAULT_CELLS,
 		landscape: true,
 		pocketed: true,
 		pins: { stage: '.rg-stage', track: '.rg-track' },
-		controlSelectors: ['.rg-nav', '.rg-panels'],
+		// The prev / next pair and the shown service's actions (its link): the counter beside them takes no press.
+		controlSelectors: ['.rg-nav', '.rg-detail__actions'],
+		// STEP_PX in ring.js: the box's scroll per service.
 		step: { next: '.rg-nav .vx-round:nth-of-type(2)', prev: '.rg-nav .vx-round:nth-of-type(1)', counter: '.rg-counter__now', distance: 300 },
+		specifics: async (page, cell, where) => {
+			// Its words about services on Services, neutral ones elsewhere (shared.js words()).
+			const ar = cell.p.startsWith('/ar')
+			const services = /\/services$/.test(cell.p)
+			const named = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				return { prev: box.querySelector('.rg-nav .vx-round')!.getAttribute('aria-label'), stage: box.querySelector('.rg-stage')!.getAttribute('aria-label') }
+			})
+			const want = services
+				? { prev: ar ? 'الخدمة اللي قبلها' : 'Previous service', stage: ar ? 'خدمات ڤودافون، حلقة' : 'Vodafone services, ring' }
+				: { prev: ar ? 'السابق' : 'Previous', stage: ar ? 'حلقة' : 'Ring' }
+			assert.deepEqual(named, want, `${where}: ${services ? 'the clone\'s words on Services' : 'neutral words where the page is not about services'}`)
+			// Pinned in its track: nothing of the view cut by the box's sides (the services the ring turns past its edges
+			// are not pressable while there), and the front service pressable.
+			const pinned = await cutBySides(page, '.aixc-vx--ring')
+			assert.deepEqual(pinned.cut, [], `${where}: pinned, nothing of the view cut by the box's sides (${pinned.seen} read)`)
+			const front = await page.evaluate(() => {
+				const n = document.querySelector<HTMLElement>('.aixc-box .rg-item.is-front')!
+				return { inert: n.inert, visible: getComputedStyle(n).visibility }
+			})
+			assert.deepEqual(front, { inert: false, visible: 'visible' }, `${where}: the front service pressable`)
+			// On phones the row right under the front service's title, clear of the service's copy.
+			if (cell.viewport === PHONE) {
+				const row = await page.evaluate(() => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					const rect = (n: Element | null) => (n && n.getClientRects().length ? (({ left, top, right, bottom }) => ({ left, top, right, bottom }))(n.getBoundingClientRect()) : null)
+					return { nav: rect(box.querySelector('.rg-nav')), counter: rect(box.querySelector('.rg-counter')), title: rect(box.querySelector('.rg-item.is-front .rg-item__title')), parts: [...box.querySelectorAll('.rg-detail__desc, .rg-detail__actions > *')].map((n) => ({ what: n.className, box: rect(n)! })) }
+				})
+				for (const [what, r] of [['prev and next', row.nav], ['the counter', row.counter]] as const) {
+					assert.ok(r && row.title && r.top >= row.title.bottom, `${where}: ${what} ${fmt(r)} under the front title ${fmt(row.title)}`)
+					const over = row.parts.filter((x) => x.box && x.box.bottom > x.box.top && meets(x.box, r!))
+					assert.deepEqual(over.map((x) => x.what), [], `${where}: the service's copy clear of ${what}`)
+				}
+			}
+			// At the box's end (the closing band after the track, the stage gone by): nothing pressable of the view in a
+			// corner's zone (nothing of it cut by the box's sides there: checkInBox's, for every row).
+			await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				box.scrollTop = box.scrollHeight
+			})
+			await settle(page, 300)
+			const zones = await zonesNow(page)
+			const end = await pressablesInZones(page, '.aixc-box .aixc-vx--ring', zones)
+			assert.deepEqual(end.out, [], `${where}: at the box's end nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${end.seen} read)`)
+		},
 	},
 	gallery: {
 		todo: PHASE_4B,
@@ -645,6 +784,29 @@ const shownRect = (page: Page, selector: string) =>
 		return { left: x.left, top: x.top, right: x.right, bottom: x.bottom }
 	}, selector)
 
+/**
+ * What of the view inside `scope` the box's left or right side cuts: each pressable, item and heading that shows (not
+ * inert, hidden, aria-hidden, invisible or 1 px) within the box's height and reaching past its inner sides by more
+ * than 1 px.
+ */
+const cutBySides = (page: Page, scope: string) =>
+	page.evaluate((scope) => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const b = box.getBoundingClientRect()
+		const inner = { left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth, top: b.top + box.clientTop, bottom: b.top + box.clientTop + box.clientHeight }
+		const cut: string[] = []
+		let seen = 0
+		for (const el of box.querySelectorAll<HTMLElement>(`${scope} :is(button, a[href], [data-aixc-item], h1, h2, h3)`)) {
+			const r = el.getBoundingClientRect()
+			const s = getComputedStyle(el)
+			if (r.width <= 1 || r.height <= 1 || el.closest('[inert], [hidden], [aria-hidden="true"]') || s.visibility === 'hidden' || Number(s.opacity) === 0) continue
+			if (r.bottom <= inner.top || r.top >= inner.bottom) continue
+			seen++
+			if (r.left < inner.left - 1 || r.right > inner.right + 1) cut.push(`${el.localName}.${el.classList[0] ?? ''} [${Math.round(r.left)},${Math.round(r.right)}]`)
+		}
+		return { seen, cut }
+	}, scope)
+
 /** One press on prev or next: the counter moves by one, the box's scroll moves and the window's does not; the distance. */
 async function stepOnce(page: Page, step: NonNullable<ExperienceCase['step']>, dir: 'next' | 'prev', where: string) {
 	const read = () => page.evaluate((counter) => ({ text: document.querySelector(`.aixc-box ${counter}`)!.textContent ?? '', box: document.querySelector('.aixc-box')!.scrollTop, y: scrollY }), step.counter)
@@ -696,8 +858,9 @@ type Layer = Awaited<ReturnType<typeof launchLayer>>
  * The checks every experience gets in the box, then the row's: #main-content hidden laid out (ADR-0075 §2), the box
  * from the header's pinned bottom to the screen's bottom, its own scroll, every item once, one exposed h1, nothing
  * sideways; the stage pinned at the bar, nothing pressable in a corner's zone and the controls clear of both, prev and
- * next moving the box and not the window; the row's specifics; reveal(); the experience's unmount gives back all the
- * seam held for it, and it mounts again; Original; no request to Google or CodePen, no page error, no layer error.
+ * next moving the box and not the window; the row's specifics; at the box's end nothing of the view cut by its sides;
+ * reveal(); the experience's unmount gives back all the seam held for it, and it mounts again; Original; no request to
+ * Google or CodePen, no page error, no layer error.
  */
 async function checkInBox(page: Page, { experience, cell, where, served, servedHeadings, l, seen }: { experience: string; cell: Cell; where: string; served: Awaited<ReturnType<typeof mainNow>>; servedHeadings: { name: string; tag: string }[]; l: Layer; seen: ReturnType<typeof watch> }) {
 	const row = EXPERIENCE_CASES[experience]
@@ -781,6 +944,25 @@ async function checkInBox(page: Page, { experience, cell, where, served, servedH
 	}
 
 	await row.specifics?.(page, cell, where)
+
+	// At the box's end (the closing band after the track, the stage gone by): nothing of the view (the shell's
+	// .aixc-stage, every experience's) cut by the box's sides: its pressables, items and headings (the closing band's
+	// store links on Vodafone's pages are text buttons, wider than the clone's badges). The box's scroll then back where
+	// it was.
+	const was = await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const top = box.scrollTop
+		box.scrollTop = box.scrollHeight
+		return top
+	})
+	await settle(page, 300)
+	const atEnd = await cutBySides(page, '.aixc-stage')
+	assert.ok(atEnd.seen > 0, `${where}: at the box's end the view's parts were read (${atEnd.seen})`)
+	assert.deepEqual(atEnd.cut, [], `${where}: at the box's end nothing of the view cut by the box's sides (${atEnd.seen} read)`)
+	await page.evaluate((top) => {
+		document.querySelector<HTMLElement>('.aixc-box')!.scrollTop = top
+	}, was)
+	await settle(page, 300)
 
 	// reveal(itemId): a middle item into the box's view under the bar, the window still; an item it lacks, false.
 	const itemId = await middleItem(page)
@@ -1155,14 +1337,19 @@ test('the composer: Escape closes it and gives the focus back, the launcher open
 				const left = [document.querySelector('.pocket-peek')].map(shown).filter(Boolean) as DOMRect[]
 				const header = Math.max((window as any).__aixc.host.chromeBottom(), ...[document.getElementById('header'), document.getElementById('nav-header')].map((n) => n?.getBoundingClientRect()).filter((r) => !!r && r.top <= 10 && r.bottom > 0 && r.height <= innerHeight * 0.35).map((r) => r!.bottom))
 				const launcher = document.querySelector('.aixc-launcher')!.getBoundingClientRect()
-				return { top: c.top, bottom: c.bottom, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, right: right.length, left: left.length, limit: Math.min(...[...right, ...left].map((r) => r.top)) - 16, header, placement: el.dataset.placement ?? null, under: launcher.bottom }
+				// Each corner's control grown by 16 px (box.js's SAFE): the zones the composer beside its opener keeps out of.
+				const zones = [...right, ...left].map((r) => ({ left: r.left - 16, top: r.top - 16, right: r.right + 16, bottom: r.bottom + 16 }))
+				return { top: c.top, bottom: c.bottom, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, right: right.length, left: left.length, limit: Math.min(...[...right, ...left].map((r) => r.top)) - 16, header, placement: el.dataset.placement ?? null, under: launcher.bottom, zones, box: { left: c.left, top: c.top, right: c.right, bottom: c.bottom } }
 			})
 			assert.deepEqual([fit.right, fit.left], [2, 1], `${where}: both corners' controls measured: the accessibility button and the microphone, the Pocket's button`)
 			assert.equal(fit.placement, at, `${where}: the composer goes ${at} its opener`)
 			assert.ok(fit.limit - (fit.under + 8) < H_MIN, `${where}: the room under the launcher (${fit.limit - (fit.under + 8)}) is shorter than the composer (H_MIN ${H_MIN})`)
 			if (at === 'below') assert.ok(fit.scrollHeight > fit.clientHeight + 1, `${where}: the composer's content (${fit.scrollHeight}) is taller than its room (${fit.clientHeight}): its max-height holds it`)
 			else assert.ok(fit.scrollHeight <= fit.clientHeight + 1, `${where}: the composer shows whole beside its opener (${fit.scrollHeight} in ${fit.clientHeight})`)
-			assert.ok(fit.bottom <= fit.limit + 1, `${where}: the composer's bottom ${fit.bottom} above the corners' controls (${fit.limit})`)
+			// Below its opener its bottom ends above both corners' controls; beside it, it meets neither corner's zone (box.js's
+			// rule: its column may pass beside a corner's control, as at 1366x520 beside the Pocket's button, never over it).
+			if (at === 'below') assert.ok(fit.bottom <= fit.limit + 1, `${where}: the composer's bottom ${fit.bottom} above the corners' controls (${fit.limit})`)
+			else assert.deepEqual(fit.zones.filter((z) => fit.box.left < z.right - 1 && z.left < fit.box.right - 1 && fit.box.top < z.bottom - 1 && z.top < fit.box.bottom - 1), [], `${where}: the composer beside its opener meets no corner's zone (16 px around its controls)`)
 			assert.ok(fit.top >= fit.header + 8 - 1, `${where}: the composer's top ${fit.top} under Vodafone's header (${fit.header})`)
 		} finally {
 			await l.close()
@@ -1182,12 +1369,15 @@ test('the composer: Escape closes it and gives the focus back, the launcher open
  *   most), where that column is at least W_MIN wide and H_MIN tall;
  * - else BELOW as before: the room down to the corners' controls as its height, scrolling inside, however little shows
  *   (375x360: the opener is about as low as the corners' controls), covering nothing.
- * H_MIN and W_MIN as measured on the composer in Vodafone's faces: H_MIN is the composer whole in English (its heading,
- * the Original / Reimagined row, "Ready-made experiences" and the row of template buttons, with its padding) at any
- * width from 240 px up (in Arabic under 320 px one template's name takes three lines, 19 px more, which it scrolls);
- * W_MIN is the narrowest width at which its heading stays on one line, in both languages.
+ * H_MIN and W_MIN as measured on the composer in Vodafone's faces: H_MIN is the composer down to its first row of
+ * template buttons (its heading, the Original / Reimagined row, "Ready-made experiences" and that row, with its
+ * padding), the most it is from 240 to 400 px wide in English and Arabic (215: a row whose names take two lines); the
+ * rows after it scroll inside the composer where the room is shorter (six templates: 277 to 371 px in all, thirteen 449
+ * to 684, the columns as many as fit, 2 to 4; the shortest column beside: 219 px, 812x375 from "Change experience"), so
+ * there the first row is pressed as it opens and every other one once scrolled into view inside it; W_MIN is the
+ * narrowest width at which its heading stays on one line, in both languages (box.js holds the same).
  */
-const H_MIN = 216
+const H_MIN = 215
 const W_MIN = 240
 
 type ShortRun = { viewport: { width: number; height: number }; lang?: 'en' | 'ar'; opener: 'launcher' | 'change'; at: 'below' | 'beside'; pocketed?: boolean }
@@ -1273,6 +1463,24 @@ async function shortScreen({ viewport, lang = 'en', opener, at, pocketed = false
 			const stops = [...(pill ? [grown(pill.rest, 8)] : []), ...(launcher ? [grown(launcher, 8)] : []), ...barParts.map((b) => grown(b, 8)), ...controls.map((b) => grown(box(b), 16))].map((s) => ({ edge: rtl ? s.right : s.left, top: s.top, bottom: s.bottom }))
 			const under = Math.max(from.getBoundingClientRect().bottom, pill && !pill.tucked ? pill.rest.bottom : 0)
 			const limit = Math.min(...controls.map((b) => b.top)) - 16
+			// The templates as the composer opens (not scrolled): those a press at the centre misses, and its first row.
+			const templates = [...el.querySelectorAll<HTMLElement>('.aixc-template')]
+			const scrolledAtOpen = el.scrollTop
+			const unreachedAtOpen = templates.filter((t) => !reaches(t)).map((t) => t.dataset.template)
+			const rowTop = templates.length ? templates[0].getBoundingClientRect().top : 0
+			const firstRow = templates.filter((t) => Math.abs(t.getBoundingClientRect().top - rowTop) <= 1)
+			const firstRowUnreached = firstRow.filter((t) => !reaches(t)).map((t) => t.dataset.template)
+			// The template it focuses as it opens (the shown one, else the first), which the composer scrolls to if need be.
+			const focused = templates.find((t) => t === document.activeElement)
+			// Then each one scrolled into view inside the composer, as a reader scrolls it there: a press at its centre
+			// reaches it, and neither the page nor the box (where it shows) moved for it. The composer is put back after.
+			const boxEl = document.querySelector<HTMLElement>('.aixc-box:not([hidden])')
+			const still = { y: scrollY, box: boxEl ? boxEl.scrollTop : 0 }
+			const scrolled = templates.map((t) => {
+				t.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+				return { id: t.dataset.template, reaches: reaches(t), moved: scrollY !== still.y || (!!boxEl && boxEl.scrollTop !== still.box) ? `window ${scrollY - still.y}, box ${boxEl ? boxEl.scrollTop - still.box : 0}` : '' }
+			})
+			el.scrollTop = scrolledAtOpen
 			return {
 				c,
 				placement: el.dataset.placement ?? null,
@@ -1299,10 +1507,20 @@ async function shortScreen({ viewport, lang = 'en', opener, at, pocketed = false
 				coversBar: barParts.filter((b) => meets(c, b, 7)).map((b) => `[${[b.left, b.top, b.right, b.bottom].map(Math.round)}]`),
 				unreached: presses.filter((b) => !reaches(b)).map((b) => b.textContent?.trim() || b.className),
 				presses: presses.length,
-				templates: [...el.querySelectorAll<HTMLElement>('.aixc-template')].filter((t) => !reaches(t)).map((t) => t.dataset.template),
+				templates: unreachedAtOpen,
+				count: templates.length,
+				tallest: Math.max(0, ...templates.map((t) => t.getBoundingClientRect().height)),
+				scrolledAtOpen,
+				firstRow: firstRow.map((t) => t.dataset.template),
+				firstRowUnreached,
+				focused: focused ? { id: focused.dataset.template, reached: reaches(focused) } : null,
+				unreachedScrolled: scrolled.filter((s) => !s.reaches).map((s) => s.id),
+				moved: scrolled.filter((s) => s.moved).map((s) => `${s.id}: ${s.moved}`),
 			}
 		}, opener)
 		const room = fit.limit - (fit.under + 8)
+		const scrolls = fit.scrollHeight > fit.clientHeight + 1
+		console.log(`[composer] ${where}: ${fit.placement} ${fmt(fit.c)}, ${fit.clientHeight} of ${fit.scrollHeight} px, ${scrolls ? `first row ${fit.firstRow.join(' ')} pressed as it opens (scrolled ${fit.scrolledAtOpen} to ${fit.focused?.id}), ${at === 'beside' || fit.clientHeight >= fit.tallest ? `${fit.count} scrolled into view and pressed` : 'too short for a template'}` : 'the whole of it shows'}`)
 		assert.ok(fit.controls >= 2, `${where}: the accessibility button and the microphone were measured (${fit.controls})`)
 		if (pocketed) assert.ok(fit.peek, `${where}: the Pocket's button shows in the bottom-left corner`)
 		assert.ok(room < H_MIN, `${where}: the room under the opener (${room}) is shorter than H_MIN (${H_MIN})`)
@@ -1326,7 +1544,28 @@ async function shortScreen({ viewport, lang = 'en', opener, at, pocketed = false
 			// The pill and the launcher are in its way, not its edge: it keeps 8 px from both (the launcher checked below).
 			assert.equal(fit.nearPill, false, `${where}: the composer ${fmt(fit.c)} keeps 8 px from the trail's pill where it rests`)
 			assert.deepEqual(fit.inZone, [], `${where}: the composer ${fmt(fit.c)} keeps 16 px from both corners' controls`)
-			assert.deepEqual(fit.templates, [], `${where}: a press at each template's centre reaches it`)
+			if (!scrolls) {
+				// The whole composer shows: every template is pressed where it is.
+				assert.deepEqual(fit.templates, [], `${where}: a press at each template's centre reaches it`)
+			} else {
+				// Taller than its column (H_MIN is down to its first row): the first row as it opens, the rest scrolled to.
+				// From the launcher it opens at its top, its first row pressable with no scroll. From "Change experience" it
+				// opens scrolled just to the shown template, which it focuses (the lead's decision, 2026-11-18: the reader's
+				// current choice in view and under the keyboard's focus; with 13 templates the first row can be out of view).
+				assert.ok(fit.focused?.reached, `${where}: the template the composer focuses as it opens (${JSON.stringify(fit.focused)}) is reached by a press at its centre, without the reader scrolling (the composer scrolled itself ${fit.scrolledAtOpen} px to it)`)
+				if (opener === 'change') assert.equal(fit.focused?.id, 'magazine', `${where}: from "Change experience" the composer focuses the shown template (magazine)`)
+				if (opener === 'launcher') {
+					assert.equal(fit.scrolledAtOpen, 0, `${where}: the composer opens at its top`)
+					assert.ok(fit.firstRow.length >= 1, `${where}: the composer shows its first row of templates (${fit.count} in all)`)
+					assert.deepEqual(fit.firstRowUnreached, [], `${where}: a press at the centre of each template in the first row (${fit.firstRow.join(', ')}) reaches it, with no scroll`)
+				}
+			}
+		}
+		if (scrolls && (at === 'beside' || fit.clientHeight >= fit.tallest)) {
+			// Wherever it scrolls (below: where a template fits in it): each one scrolled into view inside it is pressed at its centre,
+			// and that scroll stays the composer's (overscroll-behavior: contain), the page and the box still.
+			assert.deepEqual(fit.unreachedScrolled, [], `${where}: every template (${fit.count}), scrolled into view inside the composer (${fit.clientHeight} of ${fit.scrollHeight}), is reached by a press at its centre`)
+			assert.deepEqual(fit.moved, [], `${where}: scrolling a template into view inside the composer moves neither the window nor the box`)
 		}
 		assert.equal(fit.coversControl, false, `${where}: the composer ${fmt(fit.c)} covers none of the corners' controls`)
 		assert.equal(fit.coversPill, false, `${where}: the composer ${fmt(fit.c)} does not cover the trail's pill`)
@@ -1337,8 +1576,9 @@ async function shortScreen({ viewport, lang = 'en', opener, at, pocketed = false
 		assert.ok(fit.presses >= 1, `${where}: the opener's buttons were found`)
 		assert.deepEqual(fit.unreached, [], `${where}: a press at the centre of each of the opener's buttons reaches it`)
 		if (at === 'beside') {
-			// A template pressed in it (the mouse at its centre) opens that view.
+			// A template pressed in it (scrolled into view inside it, the mouse at its centre) opens that view.
 			const template = opener === 'change' ? 'spotlight' : 'magazine'
+			await l.page.evaluate((template) => document.querySelector(`#aixc-composer .aixc-template[data-template="${template}"]`)!.scrollIntoView({ block: 'nearest', inline: 'nearest' }), template)
 			await pressIn(l.page, `#aixc-composer .aixc-template[data-template="${template}"]`)
 			await l.page
 				.waitForFunction((template) => {

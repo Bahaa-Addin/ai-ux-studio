@@ -458,6 +458,13 @@
   gap: 10px;
 }
 
+/* In the box on Vodafone's pages (ADR-0076) the stores are text buttons (shared.js storeLink: no badges), wider
+   than the clone's badges: they wrap onto more lines rather than run past the box's side (the third of three ran
+   73 px past a phone's). Every experience's band; the clone keeps its one row. */
+.aixc-box .aixc-vx .vx-closing__stores ul {
+  flex-wrap: wrap;
+}
+
 .aixc-vx .vx-closing__stores a {
   display: inline-flex;
   border-radius: 12px;

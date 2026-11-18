@@ -258,7 +258,7 @@ body:has(#header :is([aria-expanded='true'], .show, .nav-opened, .nav-flag:check
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 12px;
+  margin: 0 0 8px;
 }
 
 .aixc-composer .aixc-composer__title,
@@ -278,7 +278,7 @@ body:has(#header :is([aria-expanded='true'], .show, .nav-opened, .nav-flag:check
 }
 
 .aixc-composer .aixc-templates__title {
-  margin: 16px 0 8px;
+  margin: 10px 0 6px;
   font-size: 15px;
   line-height: 1.3;
 }
@@ -309,9 +309,15 @@ body:has(#header :is([aria-expanded='true'], .show, .nav-opened, .nav-flag:check
   height: 22px;
 }
 
+/* The templates as many to a row as fit: 2 at its least width (240), 4 at its own (400). Each a tile, its icon over its
+   name on one or two lines; 84 px is the least that keeps every name of the thirteen on two at most, unbroken, in
+   Vodafone's faces (Arabic's "Spotlight cards" 70 px on two lines, English's widest word "Streaming" 62, and the tile's
+   14). The rows after the first scroll inside the composer where it is short: down to the first row it is 215 px at
+   most (box.js H_MIN), which the head's, the heading's and the tile's spacing are kept tight for, so the shortest
+   column beside its opener (219 px, phones in landscape) holds it. */
 .aixc-composer .aixc-templates__list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -325,17 +331,19 @@ body:has(#header :is([aria-expanded='true'], .show, .nav-opened, .nav-flag:check
 }
 
 .aixc-composer .aixc-template {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 2px;
   width: 100%;
-  min-height: 48px;
-  padding: 10px 12px;
+  min-height: 44px;
+  padding: 5px 6px;
   border: 1px solid #ccc;
   border-radius: 8px;
   background: #fff;
-  text-align: start;
+  font-size: 14px;
+  line-height: 1.15;
+  text-align: center;
 }
 
 .aixc-composer .aixc-template:hover {
@@ -355,9 +363,9 @@ body:has(#header :is([aria-expanded='true'], .show, .nav-opened, .nav-flag:check
 
 .aixc-composer .aixc-template__icon {
   box-sizing: border-box;
-  width: 28px;
-  height: 28px;
-  padding: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
   border-radius: 6px;
   background: #f4f4f4;
   color: #e60000;
