@@ -563,3 +563,172 @@
     transition: none;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the stage pins inside the view's own box under its view bar
+   (vodafone.css maps --vx-top and --vx-vh to the bar and the room), and the box's bottom corners belong to Vodafone's
+   accessibility button and the guide's microphone, with its transcript bar while it listens (right), and the
+   Pocket's button (left). The shell measures how far each reaches into the box (--aixc-safe-{left,right}-{w,h}).
+   The stage is the room at any height (never the clone's 520 px floor: a room shorter than that lays the tunnel
+   flat, tunnel.js SHORT_ROOM), with the HUD above everything that flies (the items' z-index is 4000 plus their
+   depth), so a press on prev or next always reaches it. From 720 px the HUD's bottom row runs between the zones with
+   prev / next at its centre, lifted above the taller zone where it does not fit there, and the cards' column is
+   centred between the zones; on phones the pair sits under the HUD's title row and the cards under it, clear of the
+   taller zone where the room allows. What flies past the stage's sides or into a zone is inert while there
+   (tunnel.js fence()). */
+.aixc-box .aixc-vx--tunnel {
+  --tn-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  --tn-safe-l: calc(var(--aixc-safe-left-w, 0px) + 16px);
+  --tn-safe-r: calc(var(--aixc-safe-right-w, 0px) + 16px);
+  --tn-hud-y: 20px;
+}
+
+.aixc-box .aixc-vx--tunnel .tn-stage {
+  min-height: 0;
+}
+
+.aixc-box .aixc-vx--tunnel .tn-hud {
+  inset-block: var(--tn-hud-y);
+  z-index: 5000;
+}
+
+/* A card shorter than its copy (a laptop's room) gives its image up first, so its link stays in the card. */
+.aixc-box .aixc-vx--tunnel .tn-card__media {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+/* Laid flat, the grid ends 24 px over what follows (the closing band, or the box's end band: in a short box the
+   clone's 72 px and that band would fill the room at the box's end, with nothing of the view left in it). */
+.aixc-box .aixc-vx--tunnel.is-static .tn-world {
+  padding-bottom: 24px;
+}
+
+/* What flows past the corners (laid flat, the services; the closing band always): a link in a corner's zone takes
+   no press while there (fence() adds .tn-fenced), but stays in the Tab order and the accessibility tree; a link the
+   focus moves to is scrolled clear of the bar and of the corners' zones by the box's scroll (tunnel.js
+   onFlowFocus(); a scroll-margin here scrolled the window too), and fence() never fences the focused one. */
+.aixc-box .aixc-vx--tunnel .tn-fenced {
+  pointer-events: none;
+}
+
+@media (min-width: 720px) {
+  /* The bottom row between the zones (each side kept clear of its own zone plus 16 px, physical sides as the zones
+     are) needs 320 px (the depth readout, prev / next, a shortened place readout). --tn-row-fit is the room between
+     the zones less that, times 1000: at least +1000 px when the row fits, at most -1000 px when it does not, so min()
+     and max() pick one placement or the other (spotlight.css's way). 100cqw is the track's width, the stage's. */
+  .aixc-box .aixc-vx--tunnel {
+    --tn-row-fit: calc((100cqw - var(--tn-safe-l) - var(--tn-safe-r) - 320px) * 1000);
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-track {
+    container-type: inline-size;
+  }
+
+  /* The cards' column centred between the zones (a quarter of the room's width off the centre while the guide
+     listens), never closer to the stage's sides than the gutter. */
+  .aixc-box .aixc-vx--tunnel:not(.is-static) .tn-world {
+    left: clamp(
+      calc(var(--tn-card-w) / 2 + var(--vx-gutter)),
+      calc(var(--tn-safe-l) + (100% - var(--tn-safe-l) - var(--tn-safe-r)) / 2),
+      calc(100% - var(--tn-card-w) / 2 - var(--vx-gutter))
+    );
+  }
+
+  /* A category's word (up to 92vw wide) centred on the stage, not on the cards' column: while the guide listens the
+     column moves a quarter of the room off the centre (to 324 px at 1024 px), where a long word would run past the
+     box's side and, cut there, be made inert by fence(). The words take no press, so the zones do not concern them. */
+  .aixc-box .aixc-vx--tunnel:not(.is-static) .tn-item--word {
+    left: calc(
+      50cqw -
+        clamp(
+          calc(var(--tn-card-w) / 2 + var(--vx-gutter)),
+          calc(var(--tn-safe-l) + (100cqw - var(--tn-safe-l) - var(--tn-safe-r)) / 2),
+          calc(100cqw - var(--tn-card-w) / 2 - var(--vx-gutter))
+        )
+    );
+  }
+
+  /* The bottom row: the depth readout at its start, prev / next at its centre, the place readout at its end. */
+  .aixc-box .aixc-vx--tunnel .tn-hud__row:last-child {
+    position: relative;
+    bottom: max(0px, min(calc(var(--tn-safe-h) + 16px - var(--tn-hud-y)), calc(-1 * var(--tn-row-fit))));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    padding-left: max(0px, min(calc(var(--tn-safe-l) - var(--vx-gutter)), var(--tn-row-fit)));
+    padding-right: max(0px, min(calc(var(--tn-safe-r) - var(--vx-gutter)), var(--tn-row-fit)));
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-hud__row:last-child > * {
+    grid-row: 1;
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-hud__row:last-child > :first-child {
+    grid-column: 1;
+    justify-self: start;
+    white-space: nowrap;
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-hud__row:last-child > .tn-hud__line {
+    display: none;
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-hud__nav {
+    grid-column: 2;
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-hud__place {
+    grid-column: 3;
+    justify-self: end;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Laid flat, the grid kept beside the zones on each side (physical sides, as the zones are), so no card's copy or
+     link rests under the accessibility button, the microphone or the Pocket's button; never narrower than one card
+     (290 px): each side gives up to half of what is left over (the guide's transcript bar is 472 px wide). */
+  .aixc-box .aixc-vx--tunnel.is-static .tn-world {
+    padding-left: max(var(--vx-gutter), min(var(--tn-safe-l), calc((100% - 290px) / 2)));
+    padding-right: max(var(--vx-gutter), min(var(--tn-safe-r), calc((100% - 290px) / 2)));
+  }
+
+  /* The closing band's stores kept beside the zones when the box is scrolled to its end. */
+  .aixc-box .aixc-vx--tunnel .vx-closing__inner {
+    width: auto;
+    max-width: 1140px;
+    margin-left: max(var(--vx-gutter), var(--tn-safe-l), calc((100% - 1140px) / 2));
+    margin-right: max(var(--vx-gutter), var(--tn-safe-r), calc((100% - 1140px) / 2));
+  }
+}
+
+/* Phones: prev / next (with the place readout) right under the HUD's title row, and the cards under them, as tall
+   as the room allows above the taller zone (24 px over it: the camera rests a little off a card's centre), between
+   340 px and the clone's height. The hint at the bottom centre, between the zones. */
+@media (max-width: 719px) {
+  .aixc-box .aixc-vx--tunnel {
+    --tn-top: 108px;
+    --tn-card-h: clamp(340px, calc(var(--vx-vh) - var(--tn-top) - var(--tn-safe-h) - 24px), min(440px, calc(var(--vx-vh) * 0.66)));
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-hud {
+    justify-content: flex-start;
+    gap: 12px;
+  }
+
+  .aixc-box .aixc-vx--tunnel:not(.is-static) .tn-world {
+    top: calc(var(--tn-top) + var(--tn-card-h) / 2);
+  }
+
+  .aixc-box .aixc-vx--tunnel .tn-hint {
+    top: auto;
+    bottom: var(--tn-hud-y);
+    left: calc(var(--tn-safe-l) + (100% - var(--tn-safe-l) - var(--tn-safe-r)) / 2);
+    width: max(0px, calc(100% - var(--tn-safe-l) - var(--tn-safe-r)));
+    text-align: center;
+  }
+}

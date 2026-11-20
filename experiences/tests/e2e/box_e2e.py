@@ -1300,6 +1300,790 @@ async def ring_extra(page, tag, zones, layout):
     await page.evaluate("() => __h.box.scrollTo({ top: 0, behavior: 'instant' })")
     await page.wait_for_timeout(1200)
 
+# reveal(id) on the gallery: what it returns, and the piece's state a frame later (its walk is instant: the box's
+# scroll jumps there). A piece in a zone (the guide listening) is inert by design: inZone says so.
+GALLERY_REVEAL = """async ({ id, zones }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const piece = [...box.querySelectorAll('.gl-piece')].find((p) => p.dataset.aixcItem === id)
+  const r = piece ? piece.getBoundingClientRect() : null
+  const b = box.getBoundingClientRect()
+  const zoneRects = """ + ZONE_RECTS + """
+  const inZone = !!r && zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top)
+  const inView = !!r && r.top >= b.top + 57 - 1 && r.bottom <= b.bottom + 1 && r.left >= b.left - 1 && r.right <= b.right + 1
+  return { back, active: !!piece && piece.classList.contains('is-active'), inert: !piece || piece.inert, inZone, inView, counter: box.querySelector('.gl-counter').textContent.trim().slice(0, 2), windowScroll: scrollY }
+}"""
+
+# On phones: the row's top under the stage's title (its intro's; the stage's top on a short phone, where the title
+# gives way), and nothing of the caption under the row.
+GALLERY_ROW = """() => {
+  const box = __h.box
+  const rect = (n) => { const r = n.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }
+  const row = rect(box.querySelector('.gl-controls'))
+  const brand = box.querySelector('.gl-intro__brand')
+  const title = brand.getClientRects().length ? rect(brand) : { ...rect(box.querySelector('.gl-stage')), bottom: rect(box.querySelector('.gl-stage')).top }
+  const meets = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+  const over = [...box.querySelectorAll('.gl-caption > *')].filter((n) => n.getClientRects().length && meets(rect(n), row)).map((n) => n.className)
+  return { gap: Math.round(row.top - title.bottom), over }
+}"""
+
+
+# Every piece shown in turn (its moves off, so each is measured where it rests): how much of the shown piece the
+# caption and the row hide, the caption's top under the stage's (never under the bar), its gap under the stage's intro (title and hint) when it is shown, and the
+# progress bar's length when it is shown (the review, 2026-11-18: short phones, the short box while listening), and
+# the shown pieces that are inert (in a zone or past the box's sides).
+GALLERY_COVER = """async () => {
+  const box = __h.box
+  const off = document.createElement('style')
+  off.textContent = '.aixc-vx--gallery, .aixc-vx--gallery * { animation: none !important; transition: none !important }'
+  document.head.append(off)
+  const q = (s) => box.querySelector(s)
+  const meet = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+  const shown = (n) => !!n && n.getClientRects().length > 0
+  let cover = 0, coverAt = 0, gap = null, gapAt = 0, bar = null, top = null, topAt = 0
+  const inert = []
+  for (const [at, id] of __h.itemIds.entries()) {
+    __h.current.reveal(id)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const shownPiece = q('.gl-piece.is-active')
+    if (shownPiece.inert) inert.push(at + 1)
+    const a = shownPiece.getBoundingClientRect()
+    const c = q('.gl-caption').getBoundingClientRect()
+    const hidden = (meet(a, c) + meet(a, q('.gl-controls').getBoundingClientRect())) / (a.width * a.height)
+    if (hidden > cover) { cover = hidden; coverAt = at + 1 }
+    const t = Math.round(c.top - q('.gl-stage').getBoundingClientRect().top)
+    if (top === null || t < top) { top = t; topAt = at + 1 }
+    if (shown(q('.gl-intro'))) {
+      const g = Math.round(c.top - q('.gl-intro').getBoundingClientRect().bottom)
+      if (gap === null || g < gap) { gap = g; gapAt = at + 1 }
+    }
+    const p = q('.gl-progress')
+    if (shown(p)) bar = Math.min(bar ?? Infinity, Math.round(p.getBoundingClientRect().width))
+  }
+  off.remove()
+  return { cover: Math.round(cover * 100) / 100, coverAt, gap, gapAt, bar, top, topAt, inert }
+}"""
+
+
+# The stand-in header as tall as Vodafone's (its 120 px with its 61 px bar put the stage 24 px lower than the
+# harness's 100 + 57), the box shorter by as much: the caption's tiers follow the box's room, not the window's.
+GALLERY_HEADER = """async (h) => {
+  const box = __h.box
+  document.getElementById('header').style.height = `${h}px`
+  box.style.setProperty('--aixc-box-h', `${innerHeight - h}px`)
+  box.style.setProperty('--aixc-pin-y', `${box.getBoundingClientRect().top + 57}px`)
+  dispatchEvent(new Event('resize'))
+  await new Promise((r) => setTimeout(r, 300))
+}"""
+
+
+async def gallery_extra(page, tag, zones, layout):
+    """The gallery's own checks: reveal(itemId) walks to its piece, which is the shown one, in the box's view and
+    pressable (inert only in a zone), and false for an id it has not; on phones the row under the stage's title,
+    clear of the caption."""
+    ids = await page.evaluate("() => [...__h.box.querySelectorAll('.gl-piece')].map((p) => p.dataset.aixcItem)")
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    picks = sorted({0, len(ids) // 2, len(ids) - 1})
+    bad = []
+    for at in picks:
+        got = await page.evaluate(GALLERY_REVEAL, {"id": ids[at], "zones": zones})
+        if not (got["back"] is True and got["active"] and got["inView"] and (not got["inert"] or got["inZone"]) and got["counter"] == f"{at + 1:02d}" and got["windowScroll"] == 0):
+            bad.append((at + 1, got))
+    check(f"{tag}: reveal() of pieces {', '.join(f'{a + 1:02d}' for a in picks)} returns true, the piece shown, in the box's view and pressable (inert only in a zone), the window still", not bad, bad[:3])
+    seen = await page.evaluate(GALLERY_COVER)
+    check(f"{tag}: every piece shown in turn: at most a quarter of it under the caption and the row ({seen['cover']} of piece {seen['coverAt']:02d})", seen["cover"] <= 0.25, seen)
+    check(f"{tag}: every piece shown in turn: the caption's top within the stage ({seen['top']} px under it, piece {seen['topAt']:02d})", seen["top"] is not None and seen["top"] >= 0, seen)
+    if seen["bar"] is not None:
+        check(f"{tag}: the progress bar, where it is shown, at least 48 px long ({seen['bar']} px)", seen["bar"] >= 48, seen)
+    if zones.get("right-w") != LISTENING["right-w"]:
+        # Quiet, the shown piece is never in a corner's zone nor past the box's sides (the live page's 1024x768 put a
+        # wide one into the right zone once, 2026-11-18); while the guide listens it may hang in the bar's zone.
+        check(f"{tag}: every piece shown in turn, quiet: the shown piece pressable ({len(seen['inert'])} inert)", not seen["inert"], seen["inert"][:6])
+    if seen["gap"] is not None and zones.get("right-w") != LISTENING["right-w"]:
+        # Quiet only: while the guide listens in Arabic the caption's side is the transcript bar's, and the caption
+        # lifted over the bar may meet the intro for as long as it listens (a gap the report keeps, 2026-11-18).
+        check(f"{tag}: the caption under the stage's intro, every piece ({seen['gap']} px, piece {seen['gapAt']:02d})", seen["gap"] >= 0, seen)
+    # Vodafone's desktop header (a window from 600 px tall; in a phone's landscape its header is 80 px, lower than
+    # the harness's), quiet.
+    if layout != "phone" and zones.get("right-w") != LISTENING["right-w"] and await page.evaluate("innerHeight") >= 600:
+        await page.evaluate(GALLERY_HEADER, 124)
+        tall = await page.evaluate(GALLERY_COVER)
+        await page.evaluate(GALLERY_HEADER, 100)
+        check(f"{tag}: under a header as tall as Vodafone's (124 px): the caption within the stage and under its intro ({tall['gap']} px), at most a quarter of the piece under it ({tall['cover']}), the shown piece pressable ({len(tall['inert'])} inert)", tall["top"] >= 0 and (tall["gap"] is None or tall["gap"] >= 0) and tall["cover"] <= 0.25 and not tall["inert"], tall)
+    if layout == "phone":
+        row = await page.evaluate(GALLERY_ROW)
+        check(f"{tag}: the row under the stage's title ({row['gap']} px), clear of the caption", row["gap"] >= 0 and not row["over"], row)
+    await page.evaluate("() => { __h.current.reveal(__h.itemIds[0]); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }")
+    await page.evaluate(FRAMES)
+
+
+# Journey: one item revealed (its top at the pin line, or the box at its end), in the box's view, pressable, the window
+# still; the scene's progress (--p) at the box's top and end; the closing band's links pressable at the box's end.
+JOURNEY_REVEAL = """async ({ id, zones }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const b = box.getBoundingClientRect()
+  const top = b.top + box.clientTop + 57
+  const bottom = b.top + box.clientTop + box.clientHeight
+  const n = [...box.querySelectorAll('[data-aixc-item]')].find((x) => x.dataset.aixcItem === id)
+  const r = n.getBoundingClientRect()
+  const atEnd = box.scrollTop >= box.scrollHeight - box.clientHeight - 1
+  // In view: its top under the bar, and its bottom too when it fits the room. Pressable: not inert, and each of its
+  // links that takes no pointer events in a corner's zone (a card taller than the room clear of the zones: its
+  // links further down reached by scrolling on).
+  const zoneRects = """ + ZONE_RECTS + """
+  const inZone = (q) => zoneRects.some(([, z]) => q.left < z.right && q.right > z.left && q.top < z.bottom && q.bottom > z.top)
+  const off = [...n.querySelectorAll('a[href], button')].filter((l) => getComputedStyle(l).pointerEvents === 'none' && !inZone(l.getBoundingClientRect()))
+  const fits = r.height <= bottom - top + 1
+  return { back, top: Math.round(r.top - top), atEnd, fits, inView: r.top >= top - 1 && r.top < bottom && (!fits || r.bottom <= bottom + 1), inert: !!n.closest('[inert]') || off.length > 0, windowScroll: scrollY }
+}"""
+
+# The intro's title (the view's one h1), its text and its hint at the box's top, clear of both zones: the opening
+# screen's words never under a corner's control (journey.css: the space under the intro at least the taller zone; in
+# the short box the intro steps in from both sides). Not
+# pressable, so the generic zone checks do not read them.
+JOURNEY_INTRO = """({ zones }) => {
+  const box = __h.box
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  return ['.jr-intro__title', '.jr-intro__text', '.jr-intro__hint span'].map((sel) => {
+    const n = box.querySelector(sel)
+    const r = n ? n.getBoundingClientRect() : null
+    return { sel, shown: !!r && r.height > 0, zones: r ? zoneRects.filter(([, z]) => meets(r, z)).map(([name]) => name) : [], rect: r ? [r.left, r.top, r.right, r.bottom].map(Math.round) : null }
+  })
+}"""
+
+# The focused link's state after focus() and two frames' wait: active, pressable (pointer events) and clear of every
+# zone. A zone as tall as the room under the bar (the guide's transcript bar in a phone's landscape box) leaves no
+# place clear of it: there the link is scrolled as high as it goes, its top at the bar (noRoom).
+JOURNEY_FOCUS_STATE = """
+  const focusState = (link) => {
+    const r = link.getBoundingClientRect()
+    const b2 = box.getBoundingClientRect()
+    const barBottom = b2.top + box.clientTop + 57
+    const met = zoneRects.filter(([, z]) => meets(r, z))
+    const noRoom = met.length > 0 && met.every(([, z]) => z.top <= barBottom + r.height + 16) && Math.abs(r.top - barBottom) <= 1
+    return { what: link.textContent.trim().slice(0, 24), active: document.activeElement === link, inert: !!link.closest('[inert]') || (!noRoom && getComputedStyle(link).pointerEvents === 'none'), zones: noRoom ? [] : met.map(([name]) => name), noRoom, rect: [r.left, r.top, r.right, r.bottom].map(Math.round) }
+  }"""
+
+# A pressable of the story focused from just under the box's view (as Tab reaches it from above): it keeps the focus
+# and ends pressable and clear of both zones. The browser's own focus scroll brings it into the view first (where it
+# lands depends on the link and the room), so this case alone does not show journey.js clearFocus() for every link;
+# JOURNEY_FOCUS_UNDER sets up the case only clearFocus() handles.
+JOURNEY_FOCUS = """async ({ zones }) => {
+  const box = __h.box
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top""" + JOURNEY_FOCUS_STATE + """
+  const links = [...box.querySelectorAll('.jr-story :is(a[href], button)')]
+  const out = []
+  for (const link of [links[0], links[Math.floor(links.length / 2)], links[links.length - 1]]) {
+    const b = box.getBoundingClientRect()
+    box.scrollTop += link.getBoundingClientRect().top - (b.top + box.clientTop + box.clientHeight) + 4
+    await frames()
+    link.focus()
+    await frames()
+    await frames()
+    out.push(focusState(link))
+    link.blur()
+  }
+  return { out, windowScroll: scrollY }
+}"""
+
+# The clearFocus() path: a story link fully in the box's view but lying inside a corner's zone (it takes jr-under
+# there), as Tab reaches it from a visible link before it. focus() does not scroll a visible element, so only
+# journey.js clearFocus() moves it: it keeps the focus and ends pressable and clear of every zone (noRoom aside).
+# The first, a middle and the last of the links that one zone's width meets and its height holds.
+JOURNEY_FOCUS_UNDER = """async ({ zones }) => {
+  const box = __h.box
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top""" + JOURNEY_FOCUS_STATE + """
+  const view = () => { const b = box.getBoundingClientRect(); return { top: b.top + box.clientTop + 57, bottom: b.top + box.clientTop + box.clientHeight } }
+  const fitting = []
+  for (const link of box.querySelectorAll('.jr-story :is(a[href], button)')) {
+    const r = link.getBoundingClientRect()
+    // The part of a zone in the box's view under the bar (the listening zone in a landscape phone's box reaches
+    // above the bar).
+    const z = zoneRects.map(([, q]) => ({ ...q, top: Math.max(q.top, view().top), bottom: Math.min(q.bottom, view().bottom) })).find((q) => r.left < q.right && r.right > q.left && r.height + 8 <= q.bottom - q.top)
+    if (z) fitting.push([link, z])
+  }
+  const out = []
+  const picked = [...new Set([0, Math.floor(fitting.length / 2), fitting.length - 1])].filter((i) => fitting[i])
+  for (const [link, z] of picked.map((i) => fitting[i])) {
+    box.scrollTop += link.getBoundingClientRect().top - (z.top + 4)
+    await frames()
+    await frames()
+    const r = link.getBoundingClientRect()
+    const v = view()
+    const set = { inZone: r.top >= z.top - 1 && r.bottom <= z.bottom + 1, visible: r.top >= v.top - 1 && r.bottom <= v.bottom + 1, under: link.classList.contains('jr-under'), scrollBefore: box.scrollTop }
+    link.focus()
+    await frames()
+    await frames()
+    out.push({ ...focusState(link), ...set, moved: box.scrollTop !== set.scrollBefore })
+    link.blur()
+  }
+  return { out, fitting: fitting.length, windowScroll: scrollY }
+}"""
+
+
+async def journey_extra(page, tag, zones, layout):
+    """Journey's own checks: its h1 (the model's title) the one shown; the intro's words clear of both zones;
+    reveal(itemId) brings the item into the box's view, pressable; the scene's progress follows the box's scroll;
+    at the box's end the closing band pressable; a story link focused from under the box's view, and one focused
+    in view but inside a zone (clearFocus()), keeps the focus and ends clear of both zones."""
+    h1 = await page.evaluate("() => [...__h.box.querySelectorAll('h1')].map((n) => n.className + ':' + n.textContent.trim().length)")
+    check(f"{tag}: its own h1 (.jr-intro__title, named) the view's one", len(h1) == 1 and h1[0].startswith("jr-intro__title:") and not h1[0].endswith(":0"), h1)
+    # The opening screen's words clear of both corners, the guide listening too (2026-11-18 review: in the short box
+    # the Arabic title and hint under the mic, the English text and hint under the Pocket's button).
+    intro = await page.evaluate(JOURNEY_INTRO, {"zones": zones})
+    bad = [i for i in intro if (not i["shown"] and i["sel"] != ".jr-intro__text") or i["zones"]]
+    check(f"{tag}: at the box's top the intro's title, text and hint clear of both zones", not bad, bad)
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    ids = await page.evaluate("() => __h.itemIds")
+    bad = []
+    for at in sorted({0, len(ids) // 2, len(ids) - 1}):
+        got = await page.evaluate(JOURNEY_REVEAL, {"id": ids[at], "zones": zones})
+        if not (got["back"] is True and (abs(got["top"]) <= 1 or got["atEnd"]) and got["inView"] and not got["inert"] and got["windowScroll"] == 0):
+            bad.append((at + 1, got))
+    check(f"{tag}: reveal() of the first, a middle and the last item returns true, its top at the pin line (or the box at its end), in the box's view and pressable (no pointer events only in a zone), the window still", not bad, bad[:3])
+    progress = await page.evaluate("""async () => {
+      const box = __h.box
+      const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const p = () => Number(getComputedStyle(box.querySelector('.aixc-vx--journey')).getPropertyValue('--p'))
+      box.scrollTo({ top: 0, behavior: 'instant' })
+      await frames()
+      const top = p()
+      box.scrollTo({ top: box.scrollHeight, behavior: 'instant' })
+      await frames()
+      const end = p()
+      const band = [...box.querySelectorAll('.aixc-vx--journey .vx-closing :is(a[href], button)')].map((n) => !!n.closest('[inert]') || getComputedStyle(n).pointerEvents === 'none')
+      return { top, end, band }
+    }""")
+    check(f"{tag}: the scene's progress follows the box's scroll ({progress['top']} at its top, {progress['end']} at its end)", progress["top"] <= 0.01 and progress["end"] >= 0.99, progress)
+    check(f"{tag}: at the box's end the closing band's links pressable ({len(progress['band'])})", progress["band"] and not any(progress["band"]), progress["band"])
+    focus = await page.evaluate(JOURNEY_FOCUS, {"zones": zones})
+    bad = [f for f in focus["out"] if not f["active"] or f["inert"] or f["zones"]]
+    check(f"{tag}: a story link focused from under the box's view (the browser's focus scroll brings it in) keeps the focus, ends pressable and clear of both zones (first, middle, last)", not bad and focus["windowScroll"] == 0, bad[:3] or focus)
+    under = await page.evaluate(JOURNEY_FOCUS_UNDER, {"zones": zones})
+    bad = [f for f in under["out"] if not (f["inZone"] and f["visible"] and f["under"]) or not f["active"] or f["inert"] or f["zones"]]
+    check(f"{tag}: a story link in the box's view but inside a corner's zone (jr-under there) focused: clearFocus() moves it clear of both zones, it keeps the focus, pressable ({len(under['out'])} of {under['fitting']} that a zone holds)", under["out"] and not bad and under["windowScroll"] == 0, bad[:3] or under)
+    await page.evaluate("() => __h.box.scrollTo({ top: 0, behavior: 'instant' })")
+    await page.evaluate(FRAMES)
+# The cube's sweep: the box scrolled from its top to its end in `step` px, a couple of frames at each place; there,
+# everything of the cube that can be pressed (not inert) and shows in the box, the zones it meets, and which of them
+# could be pressed at some place (every one: cube.js fence() makes a link inert only while it is in a zone). A card's
+# stretched title link is pressed over the whole card while its ::after shows (fence() turns that off in a zone).
+CUBE_SWEEP = """async ({ zones, step }) => {
+  const box = __h.box
+  const root = box.querySelector('.aixc-vx--cube')
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const b = box.getBoundingClientRect()
+  const nodes = [...root.querySelectorAll('a[href], button')]
+  const reached = new Set()
+  const hits = []
+  let places = 0
+  const end = box.scrollHeight - box.clientHeight
+  for (let y = 0; ; y = Math.min(end, y + step)) {
+    box.scrollTo({ top: y, behavior: 'instant' })
+    await frames()
+    places += 1
+    nodes.forEach((el, at) => {
+      const style = getComputedStyle(el)
+      // A card's stretched title link presses over the whole card (its ::after) unless fence() has turned that off.
+      const card = el.matches('.vx-story-link') ? el.closest('.vx-has-story-link') : null
+      const r = (card && getComputedStyle(el, '::after').content !== 'none' ? card : el).getBoundingClientRect()
+      if (el.closest('[inert]') || !r.width || !r.height || style.visibility === 'hidden') return
+      if (r.bottom <= b.top + 57 || r.top >= b.bottom) return
+      reached.add(at)
+      for (const [zone, z] of zoneRects) if (meets(r, z)) hits.push({ y, zone, label: (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30), rect: [r.left, r.top, r.right, r.bottom].map(Math.round) })
+    })
+    if (y >= end) break
+  }
+  box.scrollTo({ top: 0, behavior: 'instant' })
+  await frames()
+  const never = nodes.filter((_, at) => !reached.has(at)).map((el) => (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30))
+  return { places, nodes: nodes.length, hits: hits.slice(0, 5), hitCount: hits.length, never, windowScroll: scrollY }
+}"""
+
+# Where the press on a dot lands: the box's scroll, the window's, the block's heading in the box's view under the
+# bar (and under the dots' row where it floats over the sheets), the dot marked current.
+CUBE_DOT_AT = """({ at }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const nav = box.querySelector('.cb-dots')
+  const dot = box.querySelectorAll('.cb-dot')[at]
+  const block = box.querySelectorAll('.cb-story > *')[at]
+  const heading = block.querySelector('h1, h2')
+  const r = heading.getBoundingClientRect()
+  const n = nav.getBoundingClientRect()
+  const floats = nav.classList.contains('is-row') && innerWidth < 900
+  const top = Math.max(b.top + 57, floats ? n.bottom : 0)
+  return { box: Math.round(box.scrollTop), windowScroll: scrollY, inView: r.top >= top - 1 && r.bottom <= b.bottom + 1, heading: [r.top, r.bottom].map(Math.round), view: [Math.round(top), Math.round(b.bottom)], current: dot.getAttribute('aria-current') === 'true' }
+}"""
+
+# reveal(id) on the cube: what it returns; then (a scroll later) the card in the box's view: whole under the bar and
+# the dots' row where it fits there; else whole under the bar where it fits the room (the row over its top); else its
+# top under the row; and a press at the middle of what shows of it reaching it (nothing over it: the row, a sheet).
+CUBE_REVEALED = """({ id }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const nav = box.querySelector('.cb-dots')
+  const card = [...box.querySelectorAll('[data-aixc-item]')].find((n) => n.dataset.aixcItem === id)
+  const r = card.getBoundingClientRect()
+  const n = nav.getBoundingClientRect()
+  const pin = b.top + 57
+  const under = Math.max(pin, nav.classList.contains('is-row') && innerWidth < 900 ? n.bottom : 0)
+  const whole = (top) => r.top >= top - 1 && r.bottom <= b.bottom + 1
+  const inView = r.height <= b.bottom - under ? whole(under) : r.height <= b.bottom - pin ? whole(pin) : r.top >= under - 1
+  const hit = document.elementFromPoint(r.left + r.width / 2, (Math.max(r.top, under) + Math.min(r.bottom, b.bottom)) / 2)
+  return { top: Math.round(r.top), bottom: Math.round(r.bottom), view: [Math.round(pin), Math.round(under), Math.round(b.bottom)], inView, reaches: !!hit && card.contains(hit), windowScroll: scrollY }
+}"""
+
+
+# The cube's dots as they are: a row or a column, how many, the room beside the column (the box's room less the zone
+# of the corner on the dots' side less 16 px above and below), in the layout; the row's rectangle against the HUD's
+# (side by side or the HUD under it, never over each other) and a press at each dot's centre reaching it.
+CUBE_DOTS = """() => {
+  const box = __h.box
+  const nav = box.querySelector('.cb-dots')
+  const side = document.documentElement.dir === 'rtl' ? 'right' : 'left'
+  const z = parseFloat(getComputedStyle(box).getPropertyValue(`--aixc-safe-${side}-h`)) || 0
+  const d = nav.getBoundingClientRect()
+  const h = box.querySelector('.cb-hud').getBoundingClientRect()
+  const missed = [...nav.querySelectorAll('.cb-dot')].map((dot, at) => {
+    const r = dot.getBoundingClientRect()
+    const hit = document.elementFromPoint(r.left + Math.min(r.width / 2, 14), r.top + r.height / 2)
+    return !!hit && dot.contains(hit) ? -1 : at
+  }).filter((at) => at >= 0)
+  return {
+    row: nav.classList.contains('is-row'), count: box.querySelectorAll('.cb-dot').length, room: Math.round(box.clientHeight - 57 - z - 32),
+    inLayout: nav.parentElement.classList.contains('cb-layout'),
+    clearOfHud: d.right <= h.left || d.left >= h.right || d.bottom <= h.top || d.top >= h.bottom,
+    nav: [d.left, d.top, d.right, d.bottom].map(Math.round), hud: [h.left, h.top, h.right, h.bottom].map(Math.round), missed,
+  }
+}"""
+
+# On phones (the dots' row at the top left in either language), each dot's name as it would show under the row,
+# made long (the longest a name may show: the label's max-width) for the check and given back: on the screen.
+CUBE_LONG_LABELS = """() => {
+  const out = []
+  for (const label of __h.box.querySelectorAll('.cb-dot__label')) {
+    const was = label.textContent
+    label.textContent = (was + ' ').repeat(12)
+    const r = label.getBoundingClientRect()
+    out.push([r.left, r.right].map(Math.round))
+    label.textContent = was
+  }
+  return { labels: out, off: out.filter(([l, r]) => l < -1 || r > innerWidth + 1) }
+}"""
+
+# The page's h1 at the box's top (the first view): in the box's view under the bar and clear of both zones.
+CUBE_FIRST_H1 = """({ zones }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const zoneRects = """ + ZONE_RECTS + """
+  const r = box.querySelector('.aixc-vx--cube h1').getBoundingClientRect()
+  const meets = zoneRects.filter(([, z]) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top).map(([zone]) => zone)
+  return { h1: [r.left, r.top, r.right, r.bottom].map(Math.round), view: [Math.round(b.top + 57), Math.round(b.bottom)], inView: r.top >= b.top + 57 - 1 && r.bottom <= b.bottom + 1, meets }
+}"""
+
+
+async def cube_extra(page, tag, zones, layout):
+    """The cube's own checks, with motion allowed: the box swept from top to end, nothing pressable in either zone at
+    any place and every link and button pressable at some place; the dots a column from 900 px where the column fits
+    above the zone on its side and a row elsewhere; a press on a dot scrolls the box (not the window) to its block,
+    the dot then current; reveal(itemId) brings a card into the box's view, pressable, and is false for an id it has
+    not; zones that grow while it rests (the guide starting to listen) keep the dots and every pressable clear, the
+    dots turning into the row where the column no longer fits; the row clear of the HUD, every dot pressable, on
+    phones a dot's longest name on the screen; at the box's top the page's h1 clear of both zones."""
+    width, height = await page.evaluate("[innerWidth, innerHeight]")
+    sweep = await page.evaluate(CUBE_SWEEP, {"zones": zones, "step": 40})
+    check(f"{tag}: swept in 40 px steps ({sweep['places']} places): nothing pressable in either safe zone at any of them", sweep["hitCount"] == 0, sweep["hits"])
+    # Every one reached at some place, but under the guide's listening zone: its transcript bar can cover the whole
+    # room on its side (812x375), and what is under it is pressed once the guide stops.
+    if zones.get("right-w") != LISTENING["right-w"]:
+        check(f"{tag}: swept: every one of its {sweep['nodes']} links and buttons pressable in the box at some place (inert only while in a zone)", sweep["nodes"] > 0 and not sweep["never"], sweep["never"][:5])
+    # The first view (the sweep ends at the box's top): the page's h1 under the bar and clear of both zones; not on a
+    # phone in landscape (a short box: the opening sheet stays at the cube's foot, its h1 in the corners' band) or
+    # while the guide listens (its transcript bar spans the phone's width).
+    if not (width < 900 and width > height) and zones.get("right-w") != LISTENING["right-w"]:
+        first = await page.evaluate(CUBE_FIRST_H1, {"zones": zones})
+        check(f"{tag}: at the box's top the page's h1 shows under the bar, clear of both zones", first["inView"] and not first["meets"], first)
+    dots = await page.evaluate(CUBE_DOTS)
+    want_row = width < 900 or dots["count"] * 34 - 2 > dots["room"]
+    check(f"{tag}: the dots are the layout's own in the box, a {'row' if want_row else 'column'} ({dots['count']} dots, {dots['room']} px beside the column)", dots["inLayout"] and dots["row"] == want_row, dots)
+    if dots["row"]:
+        check(f"{tag}: the dots' row clear of the HUD, a press at each dot's centre reaching it", dots["clearOfHud"] and not dots["missed"], dots)
+    if dots["row"] and width < 900:
+        long = await page.evaluate(CUBE_LONG_LABELS)
+        check(f"{tag}: on a phone each dot's name, at its longest, shows on the screen under the row", not long["off"], long)
+    # A press on the third dot, then on the first: the box scrolls to the block, the window does not.
+    for at in (2, 0):
+        was = await page.evaluate("() => __h.box.scrollTop")
+        spot = await page.evaluate("""(at) => { const d = __h.box.querySelectorAll('.cb-dot')[at]; const r = d.getBoundingClientRect(); const x = r.left + Math.min(r.width / 2, 14), y = r.top + r.height / 2; const hit = document.elementFromPoint(x, y); return { x, y, reaches: !!hit && d.contains(hit) } }""", at)
+        if not spot["reaches"]:
+            check(f"{tag}: a press reaches dot {at + 1}", False, spot)
+            continue
+        await page.mouse.click(spot["x"], spot["y"])
+        await page.wait_for_timeout(1400)
+        await page.evaluate(FRAMES)
+        got = await page.evaluate(CUBE_DOT_AT, {"at": at})
+        moved = got["box"] != round(was) or at == 0 and got["box"] == 0
+        check(f"{tag}: a press on dot {at + 1} scrolls the box ({round(was)} -> {got['box']}), not the window, to its block's heading in view, the dot current", moved and got["windowScroll"] == 0 and got["inView"] and got["current"], got)
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    ids = await page.evaluate("() => __h.itemIds")
+    bad = []
+    for item in sorted({ids[0], ids[len(ids) // 2], ids[-1]}, key=ids.index):
+        back = await page.evaluate("(id) => __h.current.reveal(id)", item)
+        await page.evaluate(FRAMES)
+        got = await page.evaluate(CUBE_REVEALED, {"id": item})
+        if not (back is True and got["inView"] and got["reaches"] and got["windowScroll"] == 0):
+            bad.append((item, back, got))
+    check(f"{tag}: reveal() of the first, a middle and the last item returns true, the card in the box's view under the bar (and the dots' row), a press reaching it, the window still", not bad, bad[:2])
+    if zones.get("right-w") == LISTENING["right-w"]:
+        return
+    # Mid-track, at rest; then the guide starts to listen: only the box's style changes.
+    at = await page.evaluate(TRACK_AT, {"track": ".cb-layout", "stage": ".cb-stage", "k": 0.5})
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.evaluate(FRAMES)
+    heard = {**zones, **LISTENING}
+    await page.evaluate("(zones) => __h.measure(zones)", heard)
+    await page.evaluate(FRAMES)
+    # The dots follow the zones (cube.js onViewZones): a row where the column no longer fits above the zone on its
+    # side (from 900 px in Arabic in a short box), the row clear of the HUD.
+    dots = await page.evaluate(CUBE_DOTS)
+    want_row = width < 900 or dots["count"] * 34 - 2 > dots["room"]
+    check(f"{tag}: the guide starting to listen while it rests: the dots a {'row' if want_row else 'column'} ({dots['room']} px beside the column){', clear of the HUD' if want_row else ''}", dots["row"] == want_row and (not want_row or dots["clearOfHud"] and not dots["missed"]), dots)
+    zone = await page.evaluate(CONTROLS_IN_ZONES, {"zones": heard, "controls": [".cb-dots"], "name": "cube"})
+    check(f"{tag}: the guide starting to listen while it rests: the dots and every pressable clear of both zones ({zone['seen']} pressables in view)", zone["seen"] > 0 and not zone["out"] and not any(c["zones"] for c in zone["each"]) and all(c["shown"] for c in zone["each"]), {"out": zone["out"][:3], "each": zone["each"]})
+    await page.evaluate("(zones) => __h.measure(zones)", zones)
+    await page.evaluate(FRAMES)
+
+
+# The tunnel in the box: laid flat or not, its stage's position, the HUD's display, the pair's and the title row's
+# rectangles, the stage's, the place readout, the box's scroll and the window's.
+TUNNEL_STATE = """() => {
+  const box = __h.box
+  const rect = (n) => (n && n.getClientRects().length ? (({ left, top, right, bottom }) => ({ left, top, right, bottom }))(n.getBoundingClientRect()) : null)
+  return {
+    flat: box.querySelector('.aixc-vx--tunnel').classList.contains('is-static'),
+    position: getComputedStyle(box.querySelector('.tn-stage')).position,
+    hud: getComputedStyle(box.querySelector('.tn-hud')).display,
+    nav: rect(box.querySelector('.tn-hud__nav')),
+    title: rect(box.querySelector('.tn-hud__row')),
+    stage: rect(box.querySelector('.tn-stage')),
+    place: box.querySelector('.tn-hud__place').textContent,
+    boxScroll: Math.round(box.scrollTop),
+    windowScroll: scrollY,
+  }
+}"""
+
+# reveal(id) on the tunnel: what it returns and, at once (the camera there without its flight; laid flat, the card's
+# top at the bar), the card: its top in the box's view under the bar and all of it where it fits; not inert, and a
+# press at its link's centre reaching the link, unless that link is in a zone (inZone: the guide listening).
+TUNNEL_REVEAL = """({ id, zones }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  const b = box.getBoundingClientRect()
+  const card = [...box.querySelectorAll('[data-aixc-item]')].find((n) => n.dataset.aixcItem === id)
+  const r = card.getBoundingClientRect()
+  const link = card.querySelector('a[href], button')
+  const l = link ? link.getBoundingClientRect() : null
+  const hit = l ? document.elementFromPoint(l.left + l.width / 2, l.top + l.height / 2) : null
+  const zoneRects = """ + ZONE_RECTS + """
+  const inZone = !!l && zoneRects.some(([, z]) => l.left < z.right && l.right > z.left && l.top < z.bottom && l.bottom > z.top)
+  const fits = r.bottom - r.top <= b.bottom - b.top - 57
+  const inView = r.top >= b.top + 57 - 1 && r.top < b.bottom && (!fits || r.bottom <= b.bottom + 1) && r.left >= b.left - 1 && r.right <= b.right + 1
+  // A card taller than the room (laid flat in a short box) shows its top: its link may be further down.
+  const linkShown = !!l && l.top >= b.top + 57 && l.bottom <= b.bottom
+  return { back, inView, inert: !!card.closest('[inert]'), linkShown, reaches: !!hit && !!link && link.contains(hit), inZone, rect: [r.left, r.top, r.right, r.bottom].map(Math.round), windowScroll: scrollY }
+}"""
+
+# The tunnel laid flat, swept: the box scrolled from its top to its end in `step` px, a couple of frames at each
+# place; everything of the tunnel that can be pressed (not inert, taking pointer events) and shows in the box, the
+# zones it meets, and which of them could be pressed at some place (every one: tunnel.js fence() blocks presses on a
+# link only while it is in a zone: the 3D slots inert, a flowing link .tn-fenced, which keeps its focus).
+TUNNEL_SWEEP = """async ({ zones, step }) => {
+  const box = __h.box
+  const root = box.querySelector('.aixc-vx--tunnel')
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const b = box.getBoundingClientRect()
+  const nodes = [...root.querySelectorAll('a[href], button')].filter((el) => el.getClientRects().length)
+  const reached = new Set()
+  const hits = []
+  let places = 0
+  const end = box.scrollHeight - box.clientHeight
+  for (let y = 0; ; y = Math.min(end, y + step)) {
+    box.scrollTo({ top: y, behavior: 'instant' })
+    await frames()
+    places += 1
+    nodes.forEach((el, at) => {
+      const r = el.getBoundingClientRect()
+      const style = getComputedStyle(el)
+      if (el.closest('[inert]') || !r.width || !r.height || style.visibility === 'hidden' || style.pointerEvents === 'none') return
+      if (r.bottom <= b.top + 57 || r.top >= b.bottom) return
+      reached.add(at)
+      for (const [zone, z] of zoneRects) if (meets(r, z)) hits.push({ y, zone, label: (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30), rect: [r.left, r.top, r.right, r.bottom].map(Math.round) })
+    })
+    if (y >= end) break
+  }
+  box.scrollTo({ top: 0, behavior: 'instant' })
+  await frames()
+  const never = nodes.filter((_, at) => !reached.has(at)).map((el) => (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30))
+  return { places, nodes: nodes.length, hits: hits.slice(0, 5), hitCount: hits.length, never, windowScroll: scrollY }
+}"""
+
+
+async def tunnel_press(page, at):
+    """A press at the centre of the HUD's prev (0) or next (1), where it reaches the button: whether it does."""
+    spot = await page.evaluate("""(at) => { const b = __h.box.querySelectorAll('.tn-hud__nav .vx-round')[at]; const r = b.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2; const hit = document.elementFromPoint(x, y); return { x, y, reaches: !!hit && b.contains(hit) } }""", at)
+    if spot["reaches"]:
+        await page.mouse.click(spot["x"], spot["y"])
+    return spot
+
+
+async def tunnel_reveals(page, tag, zones):
+    """reveal() of the first, a middle and the last item, and of an id it has not. Inert only while the guide listens
+    and the card's link is in a zone (its transcript bar can cover a phone's card: by design); a link not shown (below
+    the room) only laid flat, where a card can be taller than a short box's room."""
+    listening = zones.get("right-w") == LISTENING["right-w"]
+    flat = (await page.evaluate(TUNNEL_STATE))["flat"]
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    ids = await page.evaluate("() => __h.itemIds")
+    services = [i for i in ids if await page.evaluate("(id) => !!__h.box.querySelector(`.tn-card[data-aixc-item='${CSS.escape(id)}']`)", i)]
+    bad = []
+    for item in sorted({services[0], services[len(services) // 2], services[-1]}, key=services.index):
+        got = await page.evaluate(TUNNEL_REVEAL, {"id": item, "zones": zones})
+        ok = got["back"] is True and got["inView"] and got["windowScroll"] == 0 and (
+            (listening and got["inZone"] and got["inert"])
+            or (not got["inert"] and (got["reaches"] or (flat and not got["linkShown"])))
+        )
+        if not ok:
+            bad.append((item, got))
+    check(f"{tag}: reveal() of the first, a middle and the last service returns true, its card at once in the box's view under the bar, pressable at its link where that shows (inert only while the guide listens and its link is in a zone)", not bad, bad[:2])
+
+
+# The tunnel's current slot (the stop the box's scroll rests on) once the camera has settled there (its rect the same
+# over two frames, at most 3 s): a service's card or a category's word, whether it is inert, cut by the box's inner
+# sides (more than 1 px past them), and whether its link is in a zone. Unlike CUT_BY_SIDES this does not skip what is
+# inert: fence() makes a slot cut by the sides inert, so a probe that skips inert slots could never see one cut at rest.
+TUNNEL_CURRENT = """async ({ at, y, zones }) => {
+  const box = __h.box
+  const frame = () => new Promise((r) => requestAnimationFrame(r))
+  box.scrollTo({ top: y, behavior: 'instant' })
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const read = () => {
+    const slot = box.querySelector('.tn-item.is-current')
+    const el = slot && (slot.querySelector('.tn-card') || slot.querySelector('.tn-word'))
+    return { slot, el, r: el ? el.getBoundingClientRect() : null }
+  }
+  let was = null
+  const t0 = performance.now()
+  for (;;) {
+    await frame()
+    const now = read()
+    const same = was && now.el === was.el && now.r && ['left', 'top', 'right', 'bottom'].every((k) => Math.abs(now.r[k] - was.r[k]) < 0.5)
+    if (same || performance.now() - t0 > 3000) break
+    was = now
+  }
+  await frame()
+  await frame()
+  const { slot, el, r } = read()
+  const left = box.getBoundingClientRect().left + box.clientLeft, right = left + box.clientWidth
+  const link = el && el.querySelector('a[href], button')
+  const l = link ? link.getBoundingClientRect() : null
+  return {
+    at,
+    kind: slot && slot.classList.contains('tn-item--word') ? 'word' : 'card',
+    text: el ? el.textContent.trim().slice(0, 30) : null,
+    inert: !slot || !!slot.closest('[inert]'),
+    cut: !r || r.left < left - 1 || r.right > right + 1,
+    linkInZone: !!l && zoneRects.some(([, z]) => meets(l, z)),
+    rect: r && [Math.round(r.left), Math.round(r.right)],
+    box: [Math.round(left), Math.round(right)],
+  }
+}"""
+
+
+async def tunnel_settled(page, tag, zones):
+    """The 3D tunnel settled on each of its stops in turn (words included): the current slot inside the box's sides
+    and not inert (inert only while the guide listens and a card's link is in a zone, as TUNNEL_REVEAL allows)."""
+    listening = zones.get("right-w") == LISTENING["right-w"]
+    t = await page.evaluate(TRACK_AT, {"track": ".tn-track", "stage": ".tn-stage", "k": 0})
+    count = await page.evaluate("() => __h.box.querySelectorAll('.tn-item').length")
+    bad = []
+    for at in range(count):
+        got = await page.evaluate(TUNNEL_CURRENT, {"at": at, "y": t["y"] + at * 320, "zones": zones})
+        if got["cut"] or (got["inert"] and not (listening and got["kind"] == "card" and got["linkInZone"])):
+            bad.append(got)
+    check(f"{tag}: settled on each of its {count} stops (words included), the current slot inside the box's sides and not inert (inert only while the guide listens and its link is in a zone)", count > 0 and not bad, bad[:3])
+
+
+# The tunnel laid flat: from the view bar (focused, as the bar's last control would be), Tab once per link up to the
+# last service's link: which of the view's links gets the focus each time (its index among the view's shown links,
+# -1 outside the view), and once there, whether it is clear of both zones and a press at its centre reaches it (where
+# the room under the bar and over the zones fits it: scroll-margin-block scrolls a focused link clear).
+TUNNEL_TAB = """async ({ zones, presses }) => {
+  const box = __h.box
+  const root = box.querySelector('.aixc-vx--tunnel')
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const nodes = [...root.querySelectorAll('a[href], button')].filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden')
+  const cards = nodes.filter((el) => el.closest('.tn-card'))
+  const want = nodes.slice(0, nodes.indexOf(cards[cards.length - 1]) + 1)
+  if (presses === 0) {
+    box.scrollTo({ top: 0, behavior: 'instant' })
+    await frames()
+    const bar = box.querySelector('.aixc-viewbar')
+    bar.tabIndex = -1
+    bar.focus({ preventScroll: true })
+    return { want: want.map((el) => nodes.indexOf(el)), cards: cards.length }
+  }
+  await frames()
+  await frames()
+  const a = document.activeElement
+  const r = a.getBoundingClientRect()
+  const b = box.getBoundingClientRect()
+  const safeH = Math.max(zones['right-h'], zones['left-h'])
+  const fits = box.clientHeight - 57 - 16 - (safeH + 16) >= r.height
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+  return { at: nodes.indexOf(a), card: !!a.closest('.tn-card'), fits, inZone: zoneRects.some(([, z]) => meets(r, z)), reaches: !!hit && a.contains(hit), rect: [r.left, r.top, r.right, r.bottom].map(Math.round), boxScroll: Math.round(box.scrollTop), windowScroll: scrollY }
+}"""
+
+
+async def tunnel_tab_flat(page, tag, zones):
+    """Laid flat: Tab from the view bar reaches each service's link in DOM order (none skipped: fence() blocks presses
+    on a link in a zone, never its focus), each one, focused, clear of both zones and pressable where the room fits it."""
+    start = await page.evaluate(TUNNEL_TAB, {"zones": zones, "presses": 0})
+    seen = []
+    for _ in start["want"]:
+        await page.keyboard.press("Tab")
+        seen.append(await page.evaluate(TUNNEL_TAB, {"zones": zones, "presses": 1}))
+    await page.evaluate("() => { document.activeElement.blur(); __h.box.querySelector('.aixc-viewbar').removeAttribute('tabindex'); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }")
+    order = [s["at"] for s in seen]
+    check(f"{tag}: laid flat, Tab from the view bar reaches every link up to the last service's ({len(start['want'])}, {start['cards']} of them the services'), in DOM order, none skipped", order == start["want"] and start["cards"] > 0, {"want": start["want"], "got": order})
+    covered = [s for s in seen if s["fits"] and (s["inZone"] or not s["reaches"])]
+    check(f"{tag}: laid flat, each link Tab reaches is scrolled clear of both zones and pressable ({sum(s['fits'] for s in seen)} where the room fits one), the window still", not covered and all(s["windowScroll"] == 0 for s in seen), covered[:3])
+
+
+async def tunnel_extra(page, tag, zones, layout):
+    """The 3D tunnel's own checks, with motion allowed: not laid flat (the room is SHORT_ROOM or more), its stage
+    sticky and its HUD shown; the pair under the HUD's title row on phones, at the stage's bottom from 720 px; from
+    the track's first stop next goes to the first service, 320 px of the box's scroll, then next and prev between
+    services, the window still; reveal(); Tab to the next service's link flies the camera there, scrolling the box and
+    not the window, the link then pressable; zones that grow while it rests (the guide starting to listen) keep the
+    pair and every pressable clear."""
+    listening = zones.get("right-w") == LISTENING["right-w"]
+    st = await page.evaluate(TUNNEL_STATE)
+    check(f"{tag}: the 3D tunnel (not laid flat), its stage sticky and its HUD shown", not st["flat"] and st["position"] == "sticky" and st["hud"] == "flex", st)
+    nav, title, stage = st["nav"], st["title"], st["stage"]
+    mid = (stage["top"] + stage["bottom"]) / 2
+    if layout == "phone":
+        check(f"{tag}: on a phone the pair under the HUD's title row, in the stage's top half", nav["top"] >= title["bottom"] and nav["bottom"] < mid, st)
+    else:
+        check(f"{tag}: from 720 px the pair in the stage's bottom half, between the zones or above the taller one", nav["top"] > mid, st)
+    # From the track's first stop (the first category's word).
+    at = await page.evaluate(TRACK_AT, {"track": ".tn-track", "stage": ".tn-stage", "k": 0})
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.wait_for_timeout(1500)
+    steps, moves = [], []
+    for which, want in ((1, "01"), (1, "02"), (0, "01")):
+        was = await page.evaluate(TUNNEL_STATE)
+        spot = await tunnel_press(page, which)
+        await page.wait_for_timeout(1500)
+        now = await page.evaluate(TUNNEL_STATE)
+        moves.append(now["boxScroll"] - was["boxScroll"])
+        ok = spot["reaches"] and now["place"].startswith(f"{want} /") and now["windowScroll"] == 0 and (moves[-1] > 0 if which else moves[-1] < 0)
+        steps.append({"press": "next" if which else "prev", "reaches": spot["reaches"], "place": now["place"], "moved": moves[-1], "ok": ok})
+    measures[tag]["steps"] = steps
+    check(f"{tag}: from the first stop next shows service 01 (320 px of the box's scroll), next 02, prev 01 again, the box scrolling and not the window", all(s["ok"] for s in steps) and abs(moves[0] - 320) <= 2 and moves[1] >= 318 and abs(moves[1] + moves[2]) <= 2, steps)
+    await tunnel_reveals(page, tag, zones)
+    await tunnel_settled(page, tag, zones)
+    # Swept from the box's top to its end (the camera in flight two frames after each jump, the closing band coming up
+    # past the corners): nothing pressable in either zone at any place.
+    sweep = await page.evaluate(TUNNEL_SWEEP, {"zones": zones, "step": 80})
+    check(f"{tag}: swept in 80 px steps ({sweep['places']} places, mid-flight): nothing pressable in either safe zone at any of them", sweep["places"] > 2 and sweep["hitCount"] == 0, sweep["hits"])
+    # Tab from the first service's last link to the next service's link: the camera flies there.
+    ids = await page.evaluate("() => [...__h.box.querySelectorAll('.tn-card')].map((c) => c.dataset.aixcItem)")
+    await page.evaluate(TUNNEL_REVEAL, {"id": ids[0], "zones": zones})
+    await page.evaluate("() => { const links = __h.box.querySelectorAll('.tn-card')[0].querySelectorAll('a[href], button'); links[links.length - 1].focus() }")
+    was = await page.evaluate(TUNNEL_STATE)
+    await page.keyboard.press("Tab")
+    await page.wait_for_timeout(1500)
+    tab = await page.evaluate("""() => { const a = document.activeElement; const card = a.closest('.tn-card'); const r = a.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { item: card ? card.dataset.aixcItem : null, inert: !!a.closest('[inert]'), reaches: !!hit && a.contains(hit), boxScroll: Math.round(__h.box.scrollTop), windowScroll: scrollY } }""")
+    check(f"{tag}: Tab to the next service's link flies the camera there: the box scrolls ({was['boxScroll']} -> {tab['boxScroll']}), the window does not, the link pressable", tab["item"] == ids[1] and tab["boxScroll"] > was["boxScroll"] and tab["windowScroll"] == 0 and not tab["inert"] and (tab["reaches"] or listening), tab)
+    await page.evaluate("() => document.activeElement.blur()")
+    if listening and layout != "phone":
+        # A tablet's bottom row while the guide listens: from 720 px, where the room between the zones is under the
+        # row's 320 px (100cqw < 112 + 488 + 320 px), the pair lifted above the taller zone (tunnel.css --tn-row-fit),
+        # and the card the camera rests on pressable at its link.
+        view = await page.evaluate("() => ({ w: innerWidth, h: innerHeight, stage: Math.round(__h.box.querySelector('.tn-track').getBoundingClientRect().width) })")
+        lifted = view["stage"] < (zones["left-w"] + 16) + (zones["right-w"] + 16) + 320
+        top = view["h"] - max(zones["right-h"], zones["left-h"])
+        if lifted:
+            check(f"{tag}: listening, the row between the zones does not fit ({view['stage']} px): the pair lifted above the taller zone (its bottom {round(nav['bottom'])} over {top})", nav["bottom"] < top, st)
+        services = await page.evaluate("() => [...__h.box.querySelectorAll('.tn-card')].map((c) => c.dataset.aixcItem)")
+        got = await page.evaluate(TUNNEL_REVEAL, {"id": services[1], "zones": zones})
+        check(f"{tag}: listening, the card the camera rests on (service 02) pressable at its link", got["back"] is True and not got["inert"] and got["reaches"] and not got["inZone"], got)
+    if listening:
+        return
+    # Mid-track, at rest; then the guide starts to listen: only the box's style changes.
+    at = await page.evaluate(TRACK_AT, {"track": ".tn-track", "stage": ".tn-stage", "k": 0.5})
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", at["y"])
+    await page.wait_for_timeout(1500)
+    heard = {**zones, **LISTENING}
+    await page.evaluate("(zones) => __h.measure(zones)", heard)
+    await page.evaluate(FRAMES)
+    zone = await page.evaluate(CONTROLS_IN_ZONES, {"zones": heard, "controls": [".tn-hud__nav"], "name": "tunnel"})
+    check(f"{tag}: the guide starting to listen while it rests: the pair and every pressable clear of both zones ({zone['seen']} pressables in view)", zone["seen"] > 0 and not zone["out"] and not any(c["zones"] for c in zone["each"]) and all(c["shown"] for c in zone["each"]), {"out": zone["out"][:3], "each": zone["each"]})
+    await page.evaluate("(zones) => __h.measure(zones)", zones)
+    await page.evaluate(FRAMES)
+
+
+async def tunnel_flat_extra(page, tag, zones, layout):
+    """The tunnel laid flat (reduced motion, or a box too short for its stage): its stage not sticky, no HUD; swept in
+    40 px steps, nothing pressable in either zone at any place and every link pressable at some place (but under the
+    guide's listening zone, which can cover the box's whole width); reveal()."""
+    st = await page.evaluate(TUNNEL_STATE)
+    check(f"{tag}: laid flat, its stage not sticky and no HUD", st["flat"] and st["position"] != "sticky" and st["hud"] == "none", st)
+    sweep = await page.evaluate(TUNNEL_SWEEP, {"zones": zones, "step": 40})
+    check(f"{tag}: laid flat, swept in 40 px steps ({sweep['places']} places): nothing pressable in either safe zone at any of them", sweep["hitCount"] == 0, sweep["hits"])
+    if zones.get("right-w") != LISTENING["right-w"]:
+        check(f"{tag}: laid flat, swept: every one of its {sweep['nodes']} links and buttons pressable in the box at some place (inert only while in a zone)", sweep["nodes"] > 0 and not sweep["never"], sweep["never"][:5])
+        await tunnel_tab_flat(page, tag, zones)
+    await tunnel_reveals(page, tag, zones)
+
+
+async def tunnel_after(browser, langs):
+    """The tunnel laid flat, through box_generic() and tunnel_flat_extra(): a phone in landscape with motion allowed (a
+    room under SHORT_ROOM), at rest and with the guide listening; desktop and phone under reduced motion."""
+    base = EXPERIENCES["tunnel"]
+    try:
+        for motion, sizes, listening in (("no-preference", [(812, 375)], [(812, 375)]), ("reduce", [(1366, 900), (375, 812)], [])):
+            EXPERIENCES["tunnel"] = {**base, "pins": None, "controls": [], "motion": motion, "extra": tunnel_flat_extra}
+            for width, height in sizes:
+                for lang in langs:
+                    await box_generic(browser, "tunnel", width, height, lang)
+            for width, height in listening:
+                for lang in langs:
+                    await box_generic(browser, "tunnel", width, height, lang, listening=True)
+    finally:
+        EXPERIENCES["tunnel"] = base
+
+
 # In the order they run. The selectors of the todo rows are today's markup (what box_generic() would check once
 # the row is done); a phase that converts one adjusts its row as it drops `todo`.
 EXPERIENCES = {
@@ -1321,10 +2105,44 @@ EXPERIENCES = {
     # listening in the short box (812x375, 1024x600) and on a phone, and ring_extra: the ring's room, fence()'s
     # zones and the short box's clipped column during a fast turn.
     "ring": row(pins=(".rg-stage", ".rg-track"), controls=[".rg-nav", ".rg-detail__actions"], sizes=GENERIC_SIZES + [(812, 375), (375, 667), (360, 640), (1024, 600)], listening=[(1024, 768), (768, 1024), (812, 375), (1024, 600), (375, 812)], extra=ring_extra),
-    "gallery": row(todo=PHASE_4B, pins=(".gl-stage", ".gl-track"), controls=[".gl-controls"]),
-    "cube": row(todo=PHASE_4B, pins=(".cb-stage", ".cb-layout"), controls=[".cb-dots"]),
-    "journey": row(todo=PHASE_4B, pins=(".jr-scene", ".aixc-vx--journey"), controls=[]),
-    "tunnel": row(todo=PHASE_4B, pins=(".tn-stage", ".tn-track"), controls=[".tn-hud__nav"]),
+    # Phase 3 (2026-11-18): its prev / next row and the shown piece's caption (its link) out of both zones (the row at
+    # the bottom centre from 720 px, under the stage's title on phones); phones in landscape too, as its row sits low;
+    # the guide listening where the row or the caption could meet its transcript bar. The pieces hung past the box's
+    # sides or into a zone are inert while there (gallery.js fence()), which the generic pressable, zone and sides
+    # checks see with motion allowed; gallery_extra: reveal() and the phones' row.
+    # The review (2026-11-18) added shorter phones (375x667, 360x640), short laptop windows (1366x700, 1024x600: the
+    # start column) and a tablet (768x1024: the caption beside the wall at 720..899 px), each with the guide listening
+    # too, every piece shown in turn and a header as tall as Vodafone's (gallery_extra: GALLERY_COVER, GALLERY_HEADER).
+    "gallery": row(pins=(".gl-stage", ".gl-track"), controls=[".gl-controls", ".gl-caption"], sizes=GENERIC_SIZES + [(812, 375), (375, 667), (360, 640), (1366, 700), (1024, 600), (768, 1024)], listening=[(1366, 900), (1024, 768), (812, 375), (375, 812), (375, 667), (1366, 700), (1024, 600), (768, 1024)], extra=gallery_extra),
+    # Phase 3 (2026-11-18): the scene pins at the bar while the story scrolls over it; no controls (the scene is drawn
+    # only). The story's links and buttons take no pointer events while one passes under a corner (journey.js
+    # keepClear(), never inert: the keyboard and a screen reader meet each in order); a focused one is moved clear.
+    # The closing band above the taller zone at the box's end. A phone in landscape and a shorter phone for the short box;
+    # the guide listening at each width, where its transcript bar meets the story. journey_extra: its h1, the intro's
+    # words clear of the zones, reveal(), the scene's progress, the band at the end, the focus (from below the view,
+    # and in view inside a zone: clearFocus()).
+    "journey": row(pins=(".jr-scene", ".aixc-vx--journey"), controls=[], sizes=GENERIC_SIZES + [(812, 375), (375, 667)], listening=[(1366, 900), (1024, 768), (812, 375), (375, 812)], extra=journey_extra),
+    # Phase 3 (2026-11-18): the stage pinned beside the story (from 900 px) or under the sheets (phones); its dots
+    # out of both zones: from 900 px a column at the stage's start edge above the zone on that side, a row at the
+    # stage's top where the column does not fit (cube.js placeDots()), on phones a row at the top left over the
+    # sheets. The story's and the closing band's links are inert while they pass a corner's zone (cube.js fence()),
+    # which the generic pressable check sees along the track. Phones in landscape too (a short box), and the guide
+    # listening where the column or the row could meet its transcript bar: from 900 px in Arabic the column is over
+    # the right zone; at 812x375 the row is in the box's top band.
+    # The review (2026-11-18) added a short laptop window (1024x600), at rest and listening: there in Arabic the
+    # column fits at rest and turns into the row as the guide starts to listen, the row from 900 px clear of the HUD.
+    "cube": row(pins=(".cb-stage", ".cb-layout"), controls=[".cb-dots"], sizes=GENERIC_SIZES + [(812, 375), (1024, 600)], listening=[(1366, 900), (1366, 768), (1024, 768), (812, 375), (375, 812), (1024, 600)], extra=cube_extra),
+    # Phase 3 (2026-11-18): the 3D tunnel with motion allowed (under reduced motion it lays flat, as on the clone): the
+    # stage pinned at the bar, the HUD's prev / next out of both zones (from 720 px at the bottom centre between them,
+    # lifted above the taller one where the row does not fit; on phones under the HUD's title row); the words and
+    # services flying past the stage's sides or into a zone inert while there (tunnel.js fence()), which the generic
+    # zone and sides checks see mid-flight, two frames after each jump. The guide listening where its transcript bar
+    # could meet the pair or the cards' column (a tablet's bottom row; the column moves between the zones). Laid flat
+    # (tunnel_after): a phone in landscape (its room under SHORT_ROOM), at rest and listening, and reduced motion.
+    # The review (2026-11-18) added a tablet (768x1024), at rest and listening: there the row between the zones does
+    # not fit while the guide listens and the pair is lifted above the taller zone; tunnel_settled() settles on each
+    # stop (words included) with nothing inert or cut; laid flat, Tab reaches every service's link (tunnel_tab_flat).
+    "tunnel": row(pins=(".tn-stage", ".tn-track"), controls=[".tn-hud__nav"], sizes=GENERIC_SIZES + [(768, 1024)], listening=[(1366, 900), (1024, 768), (768, 1024), (375, 812)], extra=tunnel_extra, after=tunnel_after),
     "flipbook": row(todo=PHASE_4B, controls=[".fb-controls"]),
     "canvas": row(todo=PHASE_4B, controls=[]),
     "streaming": row(todo=PHASE_4B, controls=[".st-nav"]),

@@ -29,13 +29,23 @@
  * wall is mirrored: the pieces hang leftward, the wall recedes the other way, and
  * walking forward moves left. The reference wraps infinitely; here the walk has a
  * start and an end so the page can continue to the footer.
+ *
+ * On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box instead of the page: every
+ * scroll read and write goes through shared.js's seam, every handler, frame and timer through on(),
+ * frame() and later() while mounted, and gallery.css keeps the controls and the caption out of the
+ * bottom corners' safe zones (the row at the bottom centre from 720 px, under the stage's title on phones).
+ * The wall runs past the stage's sides by design (the pieces still to come, the pieces passed): there, a
+ * piece that rests past the box's side or in a corner's safe zone, or is on its way while the wall walks,
+ * is inert until it rests clear (fence(), again when the zones change); the shown piece is pressable where
+ * it rests but while a zone covers it (the guide listening); prev, next, the arrow keys, a drag and the
+ * scroll still reach every piece. reveal(itemId) walks to an item's piece at once.
  */
 
 import { h, pathIcon } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PREV, arrowKeys, chromeOffset, clamp, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, groupsOf, inlineSign,
-  ltrMark, media, onScrollFrame, pad2, pageHeading, promotionOf, reducedMotion, scrollToY, sidewaysWheel,
-  t,
+  ICON_NEXT, ICON_PREV, arrowKeys, closingBand, ctaFor, dragToScroll, experienceRoot, flatItems, frame, groupsOf, inlineSign, later,
+  ltrMark, media, on, onScrollFrame, onViewResize, onViewScroll, onViewZones, pad2, pageHeading, promotionOf, reducedMotion,
+  scrollStepper, sidewaysWheel, t, viewScroller, words,
 } from './shared.js'
 
 const STEP_PX = 240 // page scroll per piece
@@ -67,7 +77,6 @@ export const renderGallery = (schema, index) => {
     const ratio = item.image?.width && item.image?.height ? item.image.width / item.image.height : 4 / 3
     piece.style.setProperty('--ratio', ratio.toFixed(4))
     piece.style.setProperty('--max-w', `${Math.round((item.image?.width ?? 300) * 1.6)}px`)
-    piece.addEventListener('click', () => goTo(at))
     return piece
   })
   const wall = h('div', { class: 'gl-wall' }, h('span', { class: 'gl-rail gl-rail--top', 'aria-hidden': 'true' }), h('span', { class: 'gl-rail gl-rail--bottom', 'aria-hidden': 'true' }), pieces)
@@ -96,7 +105,7 @@ export const renderGallery = (schema, index) => {
     h('p', { class: 'gl-intro__hint' }, t('Scroll, or use the arrows, to walk along the wall.')),
   )
 
-  const stage = h('section', { class: 'gl-stage', 'aria-label': t('Gallery of Vodafone services') }, viewport, intro, caption, controls)
+  const stage = h('section', { class: 'gl-stage', 'aria-label': words('Gallery of Vodafone services') }, viewport, intro, caption, controls)
   const track = h('div', { class: 'gl-track' }, stage)
   track.style.setProperty('--pieces', String(total))
   track.style.setProperty('--step', `${STEP_PX}px`)
@@ -104,12 +113,12 @@ export const renderGallery = (schema, index) => {
   const root = experienceRoot('gallery', schema, pageHeading(index), track, closingBand(promo))
 
   /* ---------------------------------------------------------------- state */
+  const stepper = scrollStepper({ track, count: total, step: () => STEP_PX, settleMs: SETTLE_MS })
   let offsets = []
   let active = -1
-  let settleTimer = 0
-  let stop = null
-  let stopDrag = null
-  let stopWheel = null
+  let mounted = false
+  let resting = null
+  let tilted = null
 
   /**
    * Frame widths follow the image ratio at the current frame height. `--x` is the
@@ -119,15 +128,21 @@ export const renderGallery = (schema, index) => {
    */
   const measure = () => {
     const styles = getComputedStyle(root)
-    const height = parseFloat(styles.getPropertyValue('--gl-frame-h')) || 300
+    // In a box, the frame's height as laid out (gallery.css sizes it by the room); the clone's as before.
+    const boxed = Boolean(viewScroller())
+    const height = (boxed ? pieces[0]?.firstElementChild.offsetHeight : parseFloat(styles.getPropertyValue('--gl-frame-h'))) || 300
     // Never wider than most of the stage, so wide images still fit on phones.
     let stageCap = (stage.clientWidth || window.innerWidth) * 0.8
-    // Beside the caption (wide screens), the active piece stops short of it.
-    if (window.matchMedia('(min-width: 900px)').matches) {
+    // Beside the caption (wide screens; in a box where gallery.css says so: --gl-beside), the active piece stops short of it.
+    if (boxed ? styles.getPropertyValue('--gl-beside').trim() === '1' : window.matchMedia('(min-width: 900px)').matches) {
       const stageRect = stage.getBoundingClientRect()
       const capRect = caption.getBoundingClientRect()
-      const anchorX = stageRect.left + (stageRect.width * (parseFloat(styles.getPropertyValue('--gl-anchor')) || 50)) / 100
-      const room = inlineSign > 0 ? anchorX - capRect.right : capRect.left - anchorX
+      // In a box the anchor may be a calc() (gallery.css's short room): read where the wall stands (its left, before
+      // its transforms), and the room on whichever side of the caption it stands.
+      const anchorX = boxed
+        ? stageRect.left + stage.clientLeft + wall.offsetLeft
+        : stageRect.left + (stageRect.width * (parseFloat(styles.getPropertyValue('--gl-anchor')) || 50)) / 100
+      const room = boxed ? Math.max(anchorX - capRect.right, capRect.left - anchorX) : inlineSign > 0 ? anchorX - capRect.right : capRect.left - anchorX
       if (stageRect.width && capRect.width) stageCap = Math.min(stageCap, Math.max(160, 2 * (room - 32)))
     }
     let x = 0
@@ -141,13 +156,6 @@ export const renderGallery = (schema, index) => {
       x += width + GAP_PX
       return center * inlineSign
     })
-  }
-
-  const trackTop = () => track.getBoundingClientRect().top + window.scrollY
-
-  const positionFor = () => {
-    const travelled = chromeOffset() - track.getBoundingClientRect().top
-    return clamp(travelled / STEP_PX, 0, total - 1)
   }
 
   const showCaption = (at) => {
@@ -179,52 +187,133 @@ export const renderGallery = (schema, index) => {
     })
   }
 
+  /**
+   * In a box: each piece that rests past the box's left or right side or in a bottom corner's safe zone (the box's
+   * --aixc-safe-{left,right}-{w,h}) is inert, the others not; the shown piece too while a zone covers it (the guide's
+   * transcript bar while it listens; gallery.css keeps it clear of the corners' controls otherwise): its title and link
+   * are in the caption too. Read from the pieces' own rects (the wall at rest, rest()).
+   */
+  const fence = (only) => {
+    const box = viewScroller()
+    if (!box || !mounted) return
+    const style = getComputedStyle(box)
+    const px = (name) => Number.parseFloat(style.getPropertyValue(`--aixc-safe-${name}`)) || 0
+    const b = box.getBoundingClientRect()
+    const left = b.left + box.clientLeft
+    const right = left + box.clientWidth
+    const bottom = b.top + box.clientTop + box.clientHeight
+    const zones = [
+      { left: right - px('right-w'), top: bottom - px('right-h'), right },
+      { left, top: bottom - px('left-h'), right: left + px('left-w') },
+    ].filter((z) => z.right > z.left && z.top < bottom)
+    pieces.forEach((piece, at) => {
+      if (only !== undefined && at !== only) return
+      const r = piece.getBoundingClientRect()
+      const out = r.left < left - 1 || r.right > right + 1 || zones.some((z) => r.left < z.right && r.right > z.left && r.bottom > z.top && r.top < bottom)
+      if (piece.inert !== out) piece.inert = out
+    })
+    keepFocus()
+  }
+
+  /** A piece that had the focus and turned inert hands it to the row (prev when next is off). */
+  const keepFocus = () => {
+    const focused = pieces.includes(document.activeElement) ? document.activeElement : null
+    if (focused?.inert) (nextButton.disabled ? prevButton : nextButton).focus({ preventScroll: true })
+  }
+
+  /**
+   * In a box, as the wall walks: the pieces other than the shown one are inert while they move (on their way past
+   * the box's sides and the corners: no place to press), the shown one fenced where it is; then fence() where they
+   * rest, once neither the wall nor a piece is moving (at once without motion).
+   */
+  const walked = () => {
+    if (!viewScroller() || !mounted) return
+    resting?.()
+    resting = null
+    if (reducedMotion()) return fence()
+    pieces.forEach((piece, at) => {
+      if (at !== active && !piece.inert) piece.inert = true
+    })
+    fence(active)
+    const moving = () => [wall, ...pieces].some((node) => node.getAnimations?.().some((a) => a.transitionProperty === 'transform' && a.playState === 'running'))
+    let tries = 0
+    const rest = () => {
+      if (moving() && tries++ < 20) {
+        resting = later(rest, 50)
+        return
+      }
+      resting = null
+      fence()
+    }
+    resting = later(rest, 140)
+  }
+
+  /** fence() unless the wall is walking (it follows the walk). */
+  const refit = () => {
+    if (!resting) fence()
+  }
+
+  let camera = ''
   const render = () => {
-    const position = positionFor()
+    const position = stepper.position()
     const lower = Math.floor(position)
     const upper = Math.min(lower + 1, total - 1)
     const x = offsets[lower] + (offsets[upper] - offsets[lower]) * (position - lower)
-    wall.style.setProperty('--camera', `${-x.toFixed(1)}px`)
+    const next = `${-x.toFixed(1)}px`
     const nearest = Math.round(position)
+    const moved = next !== camera || nearest !== active
+    camera = next
+    wall.style.setProperty('--camera', next)
     if (nearest !== active) {
       active = nearest
       showCaption(active)
     }
+    if (moved) walked()
   }
 
-  const settle = () => {
-    window.clearTimeout(settleTimer)
-    settleTimer = window.setTimeout(() => {
-      const rect = track.getBoundingClientRect()
-      const top = chromeOffset()
-      const inside = rect.top <= top && rect.bottom >= window.innerHeight
-      if (!inside) return
-      const position = positionFor()
-      if (Math.abs(position - Math.round(position)) > 0.02) goTo(Math.round(position))
-    }, SETTLE_MS)
-  }
-
-  const goTo = (at) => {
-    const target = clamp(at, 0, total - 1)
-    scrollToY(trackTop() + target * STEP_PX - chromeOffset() + 1)
-  }
+  const goTo = (at) => stepper.goTo(at)
 
   /* --------------------------------------------------------------- events */
-  prevButton.addEventListener('click', () => goTo(active - 1))
-  nextButton.addEventListener('click', () => goTo(active + 1))
-  // Left/right follow the reading line (ArrowLeft walks forward in Arabic).
-  arrowKeys(stage, { step: (direction) => goTo(active + direction), axis: 'x' })
   const onPointer = (event) => {
     if (reducedMotion()) return
     const rect = stage.getBoundingClientRect()
     wall.style.setProperty('--tilt-x', (((event.clientY - rect.top) / rect.height - 0.5) * -2).toFixed(3))
     wall.style.setProperty('--tilt-y', (((event.clientX - rect.left) / rect.width - 0.5) * 2).toFixed(3))
+    // In a box the tilt moves the pieces a little too: fenced again once the pointer rests (its 0.12 s turn done).
+    if (viewScroller()) {
+      tilted?.()
+      tilted = later(() => {
+        tilted = null
+        refit()
+      }, 160)
+    }
   }
-  const onScroll = () => settle()
   const onResize = () => {
     measure()
     render()
+    refit()
   }
+
+  // Everything the stage listens to while it shows, added on mount through the seam and undone on unmount
+  // (or by the seam's reset), so a kept view mounted again listens again.
+  const listen = () => [
+    onScrollFrame(render),
+    onViewScroll(() => stepper.settle()),
+    onViewResize(onResize),
+    on(prevButton, 'click', () => goTo(active - 1)),
+    on(nextButton, 'click', () => goTo(active + 1)),
+    ...pieces.map((piece, at) => on(piece, 'click', () => goTo(at))),
+    // Left/right follow the reading line (ArrowLeft walks forward in Arabic).
+    arrowKeys(stage, { step: (direction) => goTo(active + direction), axis: 'x' }),
+    on(stage, 'pointermove', onPointer),
+    // Dragging or swiping sideways walks the wall, along the reading line.
+    dragToScroll(stage, { axis: 'x', factor: STEP_PX / 160, touch: true }),
+    sidewaysWheel(stage),
+    // In a box: which pieces are clear changes with the zones alone too (the Pocket's button showing, the guide
+    // listening, without the box changing size), and in a short box the caption's column with them.
+    ...(viewScroller() ? [onViewZones(onResize)] : []),
+  ]
+  let offs = []
 
   measure()
   showCaption(0)
@@ -232,24 +321,40 @@ export const renderGallery = (schema, index) => {
   return {
     element: root,
     mount() {
+      mounted = true
       measure()
-      stop = onScrollFrame(render)
-      window.addEventListener('scroll', onScroll, { passive: true })
-      window.addEventListener('resize', onResize)
-      stage.addEventListener('pointermove', onPointer)
-      // Dragging or swiping sideways walks the wall, along the reading line.
-      stopDrag = dragToScroll(stage, { axis: 'x', factor: STEP_PX / 160, touch: true })
-      stopWheel = sidewaysWheel(stage)
+      offs = listen()
     },
     unmount() {
-      stop?.()
-      stopDrag?.()
-      stopWheel?.()
-      stop = stopDrag = stopWheel = null
-      window.clearTimeout(settleTimer)
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onResize)
-      stage.removeEventListener('pointermove', onPointer)
+      mounted = false
+      for (const off of offs.splice(0)) off()
+      stepper.stop()
+      resting?.()
+      tilted?.()
+      resting = tilted = null
+      wall.classList.remove('is-instant')
+    },
+    /**
+     * Walks the wall to the piece of `itemId` at once (the guide's spotlight comes next); false if it has none. In a
+     * box the wall takes its place without its move (gallery.css: .gl-wall.is-instant, for a frame), so the piece is
+     * pressable at once where it is clear.
+     */
+    reveal(itemId) {
+      const at = entries.findIndex((entry) => entry.item.id === itemId)
+      if (at < 0) return false
+      const instant = Boolean(viewScroller()) && mounted
+      if (instant) {
+        wall.classList.add('is-instant')
+        frame(() => wall.classList.remove('is-instant'))
+      }
+      stepper.goTo(at, { instant: true })
+      render()
+      if (instant) {
+        resting?.()
+        resting = null
+        fence()
+      }
+      return true
     },
   }
 }

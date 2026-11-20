@@ -4,8 +4,8 @@
  * pinning on scroll as its own script does (one run with it always pinned), in English and Arabic, at 1366x900 and
  * 375x812 (spotlight also at 1366x768 and 1024x768).
  *
- * - One row per experience (EXPERIENCE_CASES, checkInBox; magazine, spotlight, fan, coverflow, split and ring now, the
- *   seven others listed as todo until phases 2 to 4 bring them): the checks below, prev and next moving the box and not the window, reveal(), and
+ * - One row per experience (EXPERIENCE_CASES, checkInBox; magazine, spotlight, fan, coverflow, split, ring, gallery,
+ *   journey, cube and tunnel now, the three others listed as todo until phase 4 brings them): the checks below, prev and next moving the box and not the window, reveal(), and
  *   the experience's own unmount giving back all the seam held for it (state.debug().kept).
  * - The view in its box: #main-content hidden laid out (ADR-0075 §2), the box from the header's pinned bottom to the
  *   screen's bottom after the open scroll, its own scroll (the window's does not move), every item once, one exposed
@@ -389,9 +389,11 @@ const headerBottomOf = (page: Page) =>
 
 /**
  * One run of a box check: a page at a size. `fixedHeader` left out is LIVE's ('scroll': the navigation pins on scroll),
- * and the run's name gives it only when it is set.
+ * and the run's name gives it only when it is set. `motion`: the reader allows motion (prefers-reduced-motion:
+ * no-preference, as most readers have it); left out, the run reduces it as every other run here does. The run's name
+ * says "motion" when it is set.
  */
-type Cell = { p: string; viewport: { width: number; height: number }; fixedHeader?: LayerOptions['fixedHeader'] }
+type Cell = { p: string; viewport: { width: number; height: number }; fixedHeader?: LayerOptions['fixedHeader']; motion?: boolean }
 
 /**
  * One experience in the box (ADR-0076; the phase 4b plan's Phase 1): what checkInBox applies to it beyond the checks
@@ -411,6 +413,12 @@ type ExperienceCase = {
 	pocketed: boolean
 	/** A stage that pins at the bar while the box scrolls through its track (selectors inside the box). */
 	pins: false | { stage: string; track: string }
+	/**
+	 * The cells where the experience lays its stage flat by design (tunnel under reduced motion, or in a box too short
+	 * for its stage): there the stage does not pin (checked: it is not sticky) and has no prev and next to step; every
+	 * other check as anywhere.
+	 */
+	flat?: (cell: Cell) => boolean
 	/** What pressablesInZones reads; else the pinned stage, or the whole view when nothing pins. */
 	zoneScope?: string
 	/** The controls (inside the box) kept clear of both corners' zones; one not shown is skipped. Needs `pocketed`. */
@@ -704,39 +712,412 @@ const EXPERIENCE_CASES: Record<string, ExperienceCase> = {
 		},
 	},
 	gallery: {
-		todo: PHASE_4B,
+		title: 'gallery in the box: pinned at the bar with its bottom at the box\'s, prev and next, its controls and the caption\'s link out of both corners (at the box\'s end too), nothing cut by the box\'s sides (the pieces hung past them not pressable while there), the row under the title on phones, the clone\'s words on Services only',
 		cells: DEFAULT_CELLS,
 		landscape: true,
 		pocketed: true,
 		pins: { stage: '.gl-stage', track: '.gl-track' },
-		controlSelectors: ['.gl-controls'],
+		// The prev / next row and the shown piece's caption (its link).
+		controlSelectors: ['.gl-controls', '.gl-caption'],
+		// STEP_PX in gallery.js: the box's scroll per piece.
 		step: { next: '.gl-controls .vx-round:nth-of-type(2)', prev: '.gl-controls .vx-round:nth-of-type(1)', counter: '.gl-counter', distance: 240 },
+		specifics: async (page, cell, where) => {
+			// Its words about services on Services, neutral ones elsewhere (shared.js words()).
+			const ar = cell.p.startsWith('/ar')
+			const services = /\/services$/.test(cell.p)
+			const label = await page.evaluate(() => document.querySelector('.aixc-box .gl-stage')!.getAttribute('aria-label'))
+			assert.equal(label, services ? (ar ? 'معرض خدمات ڤودافون' : 'Gallery of Vodafone services') : (ar ? 'حيطة معرض' : 'Gallery wall'), `${where}: the stage's name`)
+			// Pinned in its track: nothing of the view cut by the box's sides (the pieces hung past them are not pressable
+			// while there), and the shown piece pressable.
+			const pinned = await cutBySides(page, '.aixc-vx--gallery')
+			assert.deepEqual(pinned.cut, [], `${where}: pinned, nothing of the view cut by the box's sides (${pinned.seen} read)`)
+			const active = await page.evaluate(() => {
+				const n = document.querySelector<HTMLElement>('.aixc-box .gl-piece.is-active')!
+				return { inert: n.inert, visible: getComputedStyle(n).visibility }
+			})
+			assert.deepEqual(active, { inert: false, visible: 'visible' }, `${where}: the shown piece pressable`)
+			// On phones the row right under the stage's title, clear of the caption's copy.
+			if (cell.viewport === PHONE) {
+				const row = await page.evaluate(() => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					const rect = (n: Element | null) => (n && n.getClientRects().length ? (({ left, top, right, bottom }) => ({ left, top, right, bottom }))(n.getBoundingClientRect()) : null)
+					return { controls: rect(box.querySelector('.gl-controls')), title: rect(box.querySelector('.gl-intro__brand')), parts: [...box.querySelectorAll('.gl-caption > *')].map((n) => ({ what: n.className, box: rect(n)! })) }
+				})
+				assert.ok(row.controls && row.title && row.controls.top >= row.title.bottom, `${where}: the row ${fmt(row.controls)} under the title ${fmt(row.title)}`)
+				const over = row.parts.filter((x) => x.box && x.box.bottom > x.box.top && meets(x.box, row.controls!))
+				assert.deepEqual(over.map((x) => x.what), [], `${where}: the caption clear of the row`)
+			}
+			// At the box's end (the closing band after the track, the stage gone by): nothing pressable of the view in a
+			// corner's zone (nothing of it cut by the box's sides there: checkInBox's, for every row).
+			await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				box.scrollTop = box.scrollHeight
+			})
+			await settle(page, 300)
+			const zones = await zonesNow(page)
+			const end = await pressablesInZones(page, '.aixc-box .aixc-vx--gallery', zones)
+			assert.deepEqual(end.out, [], `${where}: at the box's end nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${end.seen} read)`)
+		},
 	},
 	cube: {
-		todo: PHASE_4B,
+		title: 'cube in the box: pinned at the bar with its bottom at the box\'s, its dots out of both corners (above the sheets on phones) and a press on one scrolling the box and not the window, the links passing a corner not pressable there (at the box\'s end too), nothing cut by the box\'s sides, its own neutral words',
 		cells: DEFAULT_CELLS,
 		landscape: true,
 		pocketed: true,
-		// The stage is sticky in .cb-layout, beside the story that scrolls past it.
+		// The stage is sticky in .cb-layout, beside the story that scrolls past it (under the story's sheets on phones).
 		pins: { stage: '.cb-stage', track: '.cb-layout' },
+		// In the box the dots are the layout's own (pinned in the stage's place) and the story's links flow past the
+		// corners (inert while in a zone: cube.js fence()): the layout, not the stage alone.
+		zoneScope: '.aixc-box .cb-layout',
 		controlSelectors: ['.cb-dots', '.cb-hud'],
+		specifics: async (page, cell, where) => {
+			// Its own words, neutral on every page (no word about services): the dots' list and the intro's button.
+			const ar = cell.p.startsWith('/ar')
+			const named = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				return { nav: box.querySelector('.cb-dots')!.getAttribute('aria-label'), start: box.querySelector('.cb-intro__actions button')!.textContent, dots: box.querySelectorAll('.cb-dot').length, groups: (window as any).__aixc.model.sections.filter((s: any) => s.items?.length).length }
+			})
+			assert.deepEqual([named.nav, named.start], ar ? ['الأقسام', 'لفّ المكعب'] : ['Categories', 'Turn the cube'], `${where}: its own words`)
+			assert.ok(named.dots >= 2, `${where}: a dot for the overview and each category (${named.dots}; ${named.groups} sections with items)`)
+			// Mid-story, a press on the third dot (a sheet under the row on phones: the row is above it) scrolls the box to
+			// its block, the window still, and the dot is the current one.
+			await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const layout = box.querySelector<HTMLElement>('.cb-layout')!
+				box.scrollTop += layout.getBoundingClientRect().top - box.getBoundingClientRect().top + layout.offsetHeight * 0.3
+			})
+			await settle(page, 400)
+			const was = await page.evaluate(() => ({ box: document.querySelector('.aixc-box')!.scrollTop, y: scrollY }))
+			const third = '.aixc-box .cb-dots li:nth-child(3) .cb-dot'
+			await pressIn(page, third)
+			await page.waitForFunction((sel) => document.querySelector(sel)!.getAttribute('aria-current') === 'true', third, { timeout: 5_000 }).catch(() => {})
+			await settle(page, 400)
+			const now = await page.evaluate((sel) => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const b = box.getBoundingClientRect()
+				const h = box.querySelectorAll('.cb-story > *')[2].querySelector('h2')!.getBoundingClientRect()
+				return { box: box.scrollTop, y: scrollY, current: document.querySelector(sel)!.getAttribute('aria-current'), heading: { top: h.top, bottom: h.bottom }, view: { top: b.top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight, bottom: b.top + box.clientTop + box.clientHeight } }
+			}, third)
+			assert.ok(Math.abs(now.y - was.y) <= 0.5, `${where}: a dot leaves the window (${was.y} -> ${now.y})`)
+			assert.ok(Math.abs(now.box - was.box) > 1, `${where}: a dot scrolls the box (${was.box} -> ${now.box})`)
+			assert.ok(now.heading.top >= now.view.top - 1 && now.heading.bottom <= now.view.bottom + 1, `${where}: its block's heading ${fmt({ left: 0, right: 0, ...now.heading })} in the box's view ${fmt({ left: 0, right: 0, ...now.view })}`)
+			assert.equal(now.current, 'true', `${where}: the third dot is the current one`)
+			// There, and at the box's end (the closing band after the layout): nothing pressable of the view in a corner's zone.
+			for (const at of ['mid-story', 'end']) {
+				if (at === 'end') {
+					await page.evaluate(() => {
+						const box = document.querySelector<HTMLElement>('.aixc-box')!
+						box.scrollTop = box.scrollHeight
+					})
+					await settle(page, 300)
+				}
+				const zones = await zonesNow(page)
+				const hits = await pressablesInZones(page, '.aixc-box .aixc-vx--cube', zones)
+				// (At the end of a short box only the closing band's code may show: nothing to press there.)
+				if (at === 'mid-story') assert.ok(hits.seen > 0, `${where}: ${at}: the view's pressables were read (${hits.seen})`)
+				assert.deepEqual(hits.out, [], `${where}: ${at}: nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${hits.seen} read)`)
+			}
+		},
 	},
 	journey: {
-		todo: PHASE_4B,
-		cells: DEFAULT_CELLS,
+		title: 'journey in the box: the scene pinned at the bar with its bottom at the box\'s while the story scrolls over it, its own h1 the one exposed, the sun mark drawn, the story\'s pressables out of both corners (no pointer events while one passes under a corner, a focused one moved clear), the closing band clear at the box\'s end, nothing cut by the box\'s sides',
+		// Phones in landscape on Services too (2026-11-18 review: the short box's intro steps in from both corners'
+		// zones). Not on Home: with no closing band there, the box's end in a 234 px room shows only the shell's end (the
+		// view's last 47 px under the bar), so the generic "view's parts read at the box's end" cannot hold; box_e2e
+		// covers the landscape box on the clone's pages.
+		cells: [...DEFAULT_CELLS, ...LANDSCAPE_CELLS.filter((c) => c.p.endsWith('/services'))],
 		pocketed: true,
-		// The scene is sticky while the story scrolls over it.
+		// The scene is sticky while the story scrolls over it (.jr-story starts where the scene does).
 		pins: { stage: '.jr-scene', track: '.jr-story' },
+		// No controls: the scene is drawn only (aria-hidden, no pointer events, no step or counter); what is pressable
+		// is the story's (each chapter's links, its cards', the closing band's), checked in specifics.
 		controlSelectors: [],
+		specifics: async (page, cell, where) => {
+			// Its own h1 (the model's title, else the document's) the view's one, and no heading of the shell's beside it.
+			const head = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const h1s = [...box.querySelectorAll('h1')]
+				const use = box.querySelector('.jr-sun__mark use')
+				const id = (use?.getAttribute('href') ?? '').replace(/^#/, '')
+				const symbol = id ? document.getElementById(id) : null
+				const mark = box.querySelector('.jr-sun__mark')!.getBoundingClientRect()
+				return { h1s: h1s.map((n) => n.className), text: h1s[0]?.textContent?.trim() ?? '', model: String((window as any).__aixc.model.title ?? '').trim(), doc: document.title, symbol: symbol?.localName ?? null, id, mark: [mark.width, mark.height].map(Math.round), hint: box.querySelector('.jr-intro__hint')?.textContent ?? '' }
+			})
+			assert.deepEqual(head.h1s, ['jr-intro__title'], `${where}: the view's one h1 is the journey's own (${JSON.stringify(head)})`)
+			assert.ok(head.text.length > 0 && (head.text === head.model || (!head.model && head.doc.includes(head.text))), `${where}: it names the page (${head.text})`)
+			assert.ok(head.symbol === 'symbol' && head.mark[0] > 0 && head.mark[1] > 0, `${where}: the sun mark draws a symbol on the page (${head.id}, ${head.mark})`)
+			assert.equal(head.hint, cell.p.startsWith('/ar') ? 'انزل عشان تبدأ' : 'Scroll to begin', `${where}: the hint's neutral words`)
+			// Through the story (a quarter, half and three quarters of the box's scroll) and at the box's end: nothing
+			// pressable in a corner's zone (what passes under one takes no pointer events while there: journey.js keepClear()), the scene pinned, its progress
+			// moving with the box's scroll, the window still.
+			const zones = await zonesNow(page)
+			assert.ok(zones.right && zones.left, `${where}: both corners' zones measured (${fmt(zones.right)} ${fmt(zones.left)})`)
+			// At the box's top the intro's title (the view's one h1), its text and its hint clear of both corners (not
+			// pressable, so the zone checks do not read them; the short box's intro steps in from both, journey.css).
+			await page.evaluate(() => document.querySelector<HTMLElement>('.aixc-box')!.scrollTo({ top: 0, behavior: 'instant' }))
+			await settle(page, 200)
+			const intro = await page.evaluate(() => ['.jr-intro__title', '.jr-intro__text', '.jr-intro__hint span'].map((sel) => {
+				const r = document.querySelector('.aixc-box .aixc-vx--journey ' + sel)?.getBoundingClientRect()
+				return { sel, rect: r && r.height > 0 ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom } : null }
+			}))
+			assert.ok(intro[0].rect && intro[2].rect, `${where}: the intro's title and hint shown (${JSON.stringify(intro)})`)
+			for (const { sel, rect } of intro) for (const [name, z] of Object.entries(zones)) if (rect && z) assert.ok(!meets(rect, z), `${where}: at the box's top the intro's ${sel} ${fmt(rect)} clear of the ${name} zone ${fmt(z)}`)
+			const y = await page.evaluate(() => scrollY)
+			let seen = 0
+			const progress: number[] = []
+			// A phone in landscape (its room 234 px, most of it beside a corner) reads at eight places, so as many of the
+			// story's pressables pass clear of the corners as at four elsewhere.
+			const places = cell.viewport.height < 560 ? [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] : [0.25, 0.5, 0.75, 1]
+			for (const k of places) {
+				await page.evaluate((k) => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					box.scrollTop = Math.round((box.scrollHeight - box.clientHeight) * k)
+				}, k)
+				await settle(page, 300)
+				const hits = await pressablesInZones(page, '.aixc-box .aixc-vx--journey', zones)
+				seen += hits.seen
+				assert.deepEqual(hits.out, [], `${where}: at ${k * 100}% of the box's scroll nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${hits.seen} read)`)
+				progress.push(await page.evaluate(() => Number(getComputedStyle(document.querySelector('.aixc-box .aixc-vx--journey')!).getPropertyValue('--p'))))
+				if (k < 1) {
+					const s = await pinNow(page, '.jr-scene')
+					assert.ok(Math.abs(s.bottomGap) <= 1 && Math.abs(s.top - s.barH) <= 1, `${where}: at ${k * 100}% the scene pinned (top ${s.top}, bar ${s.barH}, gap ${s.bottomGap})`)
+				}
+			}
+			assert.ok(seen >= 3, `${where}: the story's pressables were read (${seen})`)
+			assert.ok(progress.every((p, i) => i === 0 || p > progress[i - 1]) && progress[progress.length - 1] > 0.99, `${where}: the scene's progress follows the box's scroll (${progress})`)
+			// At the box's end the closing band's links, where the page has one (Services: the app's band), are all
+			// pressable (nothing after them to scroll them clear).
+			const band = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.aixc-box .aixc-vx--journey .vx-closing :is(a[href], button)')].map((n) => Boolean(n.closest('[inert]')) || getComputedStyle(n).pointerEvents === 'none'))
+			if (/\/services$/.test(cell.p)) assert.ok(band.length > 0, `${where}: the app's band at the box's end`)
+			assert.ok(band.every((inert) => !inert), `${where}: at the box's end the closing band's links pressable, none inert or without pointer events (${band})`)
+			// A link focused from just below the box's view (the keyboard reaching it from above): the browser's own focus
+			// scroll brings it in first, so this alone does not show journey.js clearFocus() (the case after it does). It
+			// keeps the focus and ends pressable, clear of the zones.
+			const focused = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const b = box.getBoundingClientRect()
+				const links = [...box.querySelectorAll<HTMLElement>('.aixc-vx--journey .jr-story :is(a[href], button)')]
+				const link = links[Math.floor(links.length / 2)]
+				// The link just under the box's view, as Tab finds it: the box scrolled so its top is 4 px below the bottom.
+				box.scrollTop += link.getBoundingClientRect().top - (b.top + box.clientTop + box.clientHeight) + 4
+				return link.textContent?.trim().slice(0, 30) ?? ''
+			})
+			await settle(page, 200)
+			await page.evaluate(() => {
+				const links = [...document.querySelectorAll<HTMLElement>('.aixc-box .aixc-vx--journey .jr-story :is(a[href], button)')]
+				links[Math.floor(links.length / 2)].focus()
+			})
+			await settle(page, 400)
+			const kept = await page.evaluate(() => {
+				const links = [...document.querySelectorAll<HTMLElement>('.aixc-box .aixc-vx--journey .jr-story :is(a[href], button)')]
+				const link = links[Math.floor(links.length / 2)]
+				const r = link.getBoundingClientRect()
+				return { active: document.activeElement === link, inert: Boolean(link.closest('[inert]')) || getComputedStyle(link).pointerEvents === 'none', rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }
+			})
+			assert.ok(kept.active && !kept.inert, `${where}: the focused link (${focused}) keeps the focus, pressable (${JSON.stringify(kept)})`)
+			for (const [name, z] of Object.entries(zones)) if (z) assert.ok(!meets(kept.rect, z), `${where}: the focused link ${fmt(kept.rect)} clear of the ${name} zone ${fmt(z)}`)
+			await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+			// The clearFocus() path: a link fully in the box's view but inside a corner's zone (jr-under there, as Tab
+			// reaches it from a visible link before it). focus() does not scroll a visible element, so only clearFocus()
+			// moves it: it keeps the focus and ends pressable, clear of every zone (or, where a zone is as tall as the room
+			// under the bar, as high as it goes: its top at the bar).
+			const placed = await page.evaluate((zones) => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const b = box.getBoundingClientRect()
+				const bar = (box.firstElementChild as HTMLElement | null)?.offsetHeight ?? 0
+				const view = { top: b.top + box.clientTop + bar, bottom: b.top + box.clientTop + box.clientHeight }
+				const links = [...box.querySelectorAll<HTMLElement>('.aixc-vx--journey .jr-story :is(a[href], button)')]
+				const clipped = (Object.values(zones).filter(Boolean) as Box[]).map((z) => ({ ...z, top: Math.max(z.top, view.top), bottom: Math.min(z.bottom, view.bottom) }))
+				const fitting = links.map((link, at) => {
+					const r = link.getBoundingClientRect()
+					const z = clipped.find((q) => r.width > 0 && r.left < q.right && r.right > q.left && r.height + 8 <= q.bottom - q.top)
+					return z ? { at, z } : null
+				}).filter(Boolean) as { at: number; z: Box }[]
+				const pick = fitting[Math.floor(fitting.length / 2)]
+				if (!pick) return null
+				const link = links[pick.at]
+				box.scrollTop += link.getBoundingClientRect().top - (pick.z.top + 4)
+				return { at: pick.at, zone: pick.z, view, what: link.textContent?.trim().slice(0, 30) ?? '', count: fitting.length }
+			}, zones)
+			assert.ok(placed, `${where}: a story link that a corner's zone can hold (${fmt(zones.right)} ${fmt(zones.left)})`)
+			await settle(page, 200)
+			const before = await page.evaluate((at) => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const link = [...box.querySelectorAll<HTMLElement>('.aixc-vx--journey .jr-story :is(a[href], button)')][at]
+				const r = link.getBoundingClientRect()
+				return { rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, under: link.classList.contains('jr-under'), scrollTop: box.scrollTop }
+			}, placed!.at)
+			assert.ok(before.rect.top >= placed!.zone.top - 1 && before.rect.bottom <= placed!.zone.bottom + 1 && before.rect.top >= placed!.view.top - 1 && before.rect.bottom <= placed!.view.bottom + 1, `${where}: the link (${placed!.what}) ${fmt(before.rect)} in the box's view and inside the zone ${fmt(placed!.zone)}`)
+			assert.ok(before.under, `${where}: the link (${placed!.what}) under the corner takes jr-under`)
+			await page.evaluate((at) => [...document.querySelectorAll<HTMLElement>('.aixc-box .aixc-vx--journey .jr-story :is(a[href], button)')][at].focus(), placed!.at)
+			await settle(page, 400)
+			const cleared = await page.evaluate((at) => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const link = [...box.querySelectorAll<HTMLElement>('.aixc-vx--journey .jr-story :is(a[href], button)')][at]
+				const r = link.getBoundingClientRect()
+				return { active: document.activeElement === link, pointer: getComputedStyle(link).pointerEvents, inert: Boolean(link.closest('[inert]')), rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, scrollTop: box.scrollTop }
+			}, placed!.at)
+			const met = (Object.entries(zones).filter(([, z]) => z && meets(cleared.rect, z)) as [string, Box][])
+			const noRoom = met.length > 0 && met.every(([, z]) => z.top <= placed!.view.top + (cleared.rect.bottom - cleared.rect.top) + 16) && Math.abs(cleared.rect.top - placed!.view.top) <= 1
+			assert.ok(cleared.active && !cleared.inert, `${where}: the link focused under the corner (${placed!.what}) keeps the focus (${JSON.stringify(cleared)})`)
+			if (!noRoom) {
+				assert.notEqual(cleared.pointer, 'none', `${where}: the link focused under the corner (${placed!.what}) pressable once moved (${JSON.stringify(cleared)})`)
+				for (const [name, z] of met) assert.fail(`${where}: the link focused under the corner (${placed!.what}) ${fmt(cleared.rect)} clear of the ${name} zone ${fmt(z)} (box scrolled ${before.scrollTop} -> ${cleared.scrollTop})`)
+			}
+			assert.ok(Math.abs((await page.evaluate(() => scrollY)) - y) <= 0.5, `${where}: the window stays`)
+			await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+		},
 	},
 	tunnel: {
-		todo: PHASE_4B,
-		cells: DEFAULT_CELLS,
-		landscape: true,
+		title: 'tunnel in the box: the pinned 3D tunnel with motion allowed (its bottom at the box\'s, prev and next moving the box, its HUD\'s pair at the bottom centre or under the title on phones, out of both corners), laid flat under reduced motion and in a short box, nothing pressable in a corner, nothing cut by the box\'s sides, the clone\'s words on Services only',
+		// The 3D tunnel only flies with motion allowed (under reduced motion tunnel.js lays it flat, as on the clone): the
+		// 16 cells and phones in landscape with motion, as most readers see it; desktop and phone on Services, en and ar,
+		// under reduced motion, the flat layout.
+		cells: [
+			...[...DEFAULT_CELLS, ...LANDSCAPE_CELLS].map((cell): Cell => ({ ...cell, motion: true })),
+			...[DESKTOP, PHONE].flatMap((viewport) => ['/en/services', '/ar/services'].map((p): Cell => ({ p, viewport }))),
+		],
 		pocketed: true,
 		pins: { stage: '.tn-stage', track: '.tn-track' },
-		// Prev and next in .tn-hud__nav; no counter element yet (the phase adds the step when it has one).
-		controlSelectors: ['.tn-hud'],
+		// Laid flat under reduced motion, and in a box too short for the tunnel's stage (a phone in landscape).
+		flat: (cell) => !cell.motion || cell.viewport === LANDSCAPE,
+		// Prev and next in the HUD (.tn-hud__nav); the HUD's other parts take no press. Its place readout ("05 / 12 ·
+		// …") is the counter: specifics steps it, from the track's first stop (a category's word, no number).
+		controlSelectors: ['.tn-hud__nav'],
+		specifics: async (page, cell, where) => {
+			const ar = cell.p.startsWith('/ar')
+			const services = /\/services$/.test(cell.p)
+			const flat = !cell.motion || cell.viewport === LANDSCAPE
+			// Its words about services on Services, neutral ones elsewhere (shared.js words()).
+			const named = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				return { prev: box.querySelector('.tn-hud__nav .vx-round')!.getAttribute('aria-label'), stage: box.querySelector('.tn-stage')!.getAttribute('aria-label') }
+			})
+			const want = services
+				? { prev: ar ? 'الخدمة اللي قبلها' : 'Previous service', stage: ar ? 'خدمات ڤودافون، النفق السريع' : 'Vodafone services, hyper tunnel' }
+				: { prev: ar ? 'السابق' : 'Previous', stage: ar ? 'النفق السريع' : 'Hyper tunnel' }
+			assert.deepEqual(named, want, `${where}: ${services ? 'the clone\'s words on Services' : 'neutral words where the page is not about services'}`)
+			const mode = await page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				return { flat: box.querySelector('.aixc-vx--tunnel')!.classList.contains('is-static'), hud: getComputedStyle(box.querySelector('.tn-hud')!).display }
+			})
+			assert.deepEqual(mode, flat ? { flat: true, hud: 'none' } : { flat: false, hud: 'flex' }, `${where}: ${flat ? 'laid flat, no HUD' : 'the 3D tunnel and its HUD'}`)
+			if (!flat) {
+				// The pair: on phones under the HUD's title row, from 720 px at the bottom centre (between the zones).
+				const hud = await page.evaluate(() => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					const rect = (n: Element | null) => (n && n.getClientRects().length ? (({ left, top, right, bottom }) => ({ left, top, right, bottom }))(n.getBoundingClientRect()) : null)
+					return { nav: rect(box.querySelector('.tn-hud__nav')), title: rect(box.querySelector('.tn-hud__row')), stage: rect(box.querySelector('.tn-stage')) }
+				})
+				if (cell.viewport === PHONE) assert.ok(hud.nav && hud.title && hud.nav.top >= hud.title.bottom && hud.nav.bottom < (hud.stage!.top + hud.stage!.bottom) / 2, `${where}: the pair ${fmt(hud.nav)} under the title row ${fmt(hud.title)}, in the stage's top half`)
+				else assert.ok(hud.nav && hud.nav.top > (hud.stage!.top + hud.stage!.bottom) / 2 && Math.abs((hud.nav.left + hud.nav.right) / 2 - (hud.stage!.left + hud.stage!.right) / 2) <= 40, `${where}: the pair ${fmt(hud.nav)} at the stage's bottom centre ${fmt(hud.stage)}`)
+				// Steps: from the track's first stop (the first category's word) next goes to the first service (one stop,
+				// 320 px of the box's scroll, the window still); then next and prev between services (a category's word
+				// between two of them is a stop more).
+				const read = () => page.evaluate(() => ({ place: document.querySelector('.aixc-box .tn-hud__place')!.textContent ?? '', box: document.querySelector('.aixc-box')!.scrollTop, y: scrollY }))
+				const press = async (which: 'next' | 'prev', n: string) => {
+					const was = await read()
+					await pressIn(page, `.aixc-box .tn-hud__nav .vx-round:nth-of-type(${which === 'next' ? 2 : 1})`)
+					await page.waitForFunction((n) => (document.querySelector('.aixc-box .tn-hud__place')!.textContent ?? '').startsWith(`${n} /`), n, { timeout: 5_000 }).catch(() => {})
+					await settle(page, 400)
+					const now = await read()
+					assert.ok(now.place.startsWith(`${n} /`), `${where}: ${which} shows service ${n} (${was.place} -> ${now.place})`)
+					assert.ok(Math.abs(now.y - was.y) <= 0.5, `${where}: ${which}: the window stays (${was.y} -> ${now.y})`)
+					return now.box - was.box
+				}
+				const first = await press('next', '01')
+				assert.ok(Math.abs(first - 320) <= 2, `${where}: next from the first category's word is one stop, 320 px of the box's scroll (${first})`)
+				const next = await press('next', '02')
+				const prev = await press('prev', '01')
+				assert.ok(next >= 318 && Math.abs(prev + next) <= 2, `${where}: next and prev move the box's scroll by whole stops of 320 px, there and back (${next}, ${prev})`)
+				console.log(`[step] tunnel ${where}: first ${first} px, next ${next} px, prev ${prev} px of the box's scroll`)
+			}
+			// Laid flat, the box swept from its top to its end in 60 px steps (two frames at each place): nothing pressable
+			// of the view in a corner's zone at any place (tunnel.js fence(): a link is inert while it passes one).
+			if (flat) {
+				const zones = await zonesNow(page)
+				const sweep = await page.evaluate(async ({ zones }) => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					const b = box.getBoundingClientRect()
+					const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+					const meets = (a: Box, z: Box) => a.left < z.right && z.left < a.right && a.top < z.bottom && z.top < a.bottom
+					const hits: string[] = []
+					let [seen, places] = [0, 0]
+					const end = box.scrollHeight - box.clientHeight
+					for (let y = 0; ; y = Math.min(end, y + 60)) {
+						box.scrollTop = y
+						await frames()
+						places++
+						for (const el of box.querySelectorAll<HTMLElement>('.aixc-vx--tunnel :is(button, a[href], [tabindex="0"], input, select)')) {
+							const r = el.getBoundingClientRect()
+							const s = getComputedStyle(el)
+							if (!r.width || !r.height || el.closest('[inert], [hidden]') || s.visibility === 'hidden' || Number(s.opacity) === 0 || s.pointerEvents === 'none') continue
+							if (r.bottom <= b.top || r.top >= b.bottom) continue
+							seen++
+							for (const [name, z] of Object.entries(zones)) if (z && meets(r, z)) hits.push(`${y}: ${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 30)} in the ${name} zone`)
+						}
+						if (y >= end) break
+					}
+					return { places, seen, hits: hits.slice(0, 5), count: hits.length }
+				}, { zones })
+				assert.ok(sweep.seen > 0 && sweep.count === 0, `${where}: laid flat, swept (${sweep.places} places, ${sweep.seen} pressables read): nothing pressable in a corner's zone ${JSON.stringify(sweep.hits)}`)
+			}
+			// Pinned (or flat, mid-view), and at the box's end: nothing pressable of the view in a corner's zone, nothing of
+			// it cut by the box's sides (the words and services flying past the stage's sides are not pressable there).
+			for (const at of ['here', 'end']) {
+				if (at === 'end') {
+					await page.evaluate(() => {
+						const box = document.querySelector<HTMLElement>('.aixc-box')!
+						box.scrollTop = box.scrollHeight
+					})
+					await settle(page, 300)
+				}
+				const zones = await zonesNow(page)
+				const hits = await pressablesInZones(page, '.aixc-box .aixc-vx--tunnel', zones)
+				assert.deepEqual(hits.out, [], `${where}: ${at}: nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${hits.seen} read)`)
+				const sides = await cutBySides(page, '.aixc-vx--tunnel')
+				assert.deepEqual(sides.cut, [], `${where}: ${at}: nothing of the view cut by the box's sides (${sides.seen} read)`)
+			}
+			// Settled on each stop, words included: the current slot inside the box's sides and not inert (cutBySides
+			// skips what is inert, and fence() makes a slot cut by the sides inert).
+			if (!flat) {
+				const was = await page.evaluate(() => document.querySelector<HTMLElement>('.aixc-box')!.scrollTop)
+				await tunnelSettled(page, where)
+				await page.evaluate((y) => {
+					document.querySelector<HTMLElement>('.aixc-box')!.scrollTop = y
+				}, was)
+				await settle(page, 300)
+			}
+		},
+		// The guide listening at 1024x768 (its transcript bar widens the right zone, and the cards' column moves to the
+		// room between the zones), with motion allowed: settled on each stop, nothing inert but a card under the bar,
+		// nothing cut by the box's sides.
+		andThen: async () => {
+			for (const p of ['/en/services', '/ar/services']) {
+				const where = `${p} ${sizeOf(TABLET)} motion listening`
+				const l = await launchLayer(gw, { viewport: TABLET, reducedMotion: false, ...LIVE, initScripts: [MIC_STAND_IN] })
+				try {
+					await open(l.page, p, '?aixc-debug')
+					await ready(l.page)
+					await pocketOne(l.page)
+					await choose(l.page, 'tunnel')
+					const quiet = await zonesNow(l.page)
+					const mic = await l.page.evaluate(() => {
+						const r = document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-mic')!.getBoundingClientRect()
+						return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+					})
+					await l.page.mouse.click(mic.x, mic.y)
+					await l.page.waitForFunction(() => !document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-bar')!.classList.contains('hidden'), null, { timeout: 10_000 })
+					await settle(l.page, 600)
+					const zones = await zonesNow(l.page)
+					assert.ok(zones.right && quiet.right && zones.right.left < quiet.right.left - 100, `${where}: the transcript bar widens the right zone ${fmt(quiet.right)} -> ${fmt(zones.right)}`)
+					assert.equal(await l.page.evaluate(() => document.querySelector('.aixc-box .aixc-vx--tunnel')!.classList.contains('is-static')), false, `${where}: the 3D tunnel`)
+					await tunnelSettled(l.page, where, true)
+				} finally {
+					await l.close()
+				}
+			}
+		},
 	},
 	flipbook: {
 		todo: PHASE_4B,
@@ -806,6 +1187,64 @@ const cutBySides = (page: Page, scope: string) =>
 		}
 		return { seen, cut }
 	}, scope)
+
+/**
+ * The 3D tunnel settled on each of its stops in turn (the box's scroll at the track's top under the bar plus k stops of
+ * 320 px; the camera settled: the current slot's rect the same over two frames, at most 3 s): its current slot (a
+ * service's card or a category's word) inside the box's inner sides (±1 px) and not inert. Unlike cutBySides this
+ * does not skip what is inert: tunnel.js fence() makes a slot cut by the sides inert, so a probe that skips inert
+ * slots could never see one cut at rest. Inert is let through only while the guide listens and the card's link is in
+ * a zone (`listening`: its transcript bar can cover a card by design).
+ */
+async function tunnelSettled(page: Page, where: string, listening = false) {
+	const zones = await zonesNow(page)
+	const bad = await page.evaluate(
+		async ({ zones, listening }) => {
+			const box = document.querySelector<HTMLElement>('.aixc-box')!
+			const barH = (box.firstElementChild as HTMLElement).offsetHeight
+			const frame = () => new Promise((r) => requestAnimationFrame(r))
+			const b = box.getBoundingClientRect()
+			const left = b.left + box.clientLeft
+			const right = left + box.clientWidth
+			const track = box.querySelector<HTMLElement>('.tn-track')!
+			const trackTop = track.getBoundingClientRect().top - b.top - box.clientTop + box.scrollTop - barH
+			const count = box.querySelectorAll('.tn-item').length
+			const meets = (a: DOMRect, z: { left: number; top: number; right: number; bottom: number }) => a.left < z.right && z.left < a.right && a.top < z.bottom && z.top < a.bottom
+			const read = () => {
+				const slot = box.querySelector<HTMLElement>('.tn-item.is-current')
+				const el = slot && (slot.querySelector<HTMLElement>('.tn-card') || slot.querySelector<HTMLElement>('.tn-word'))
+				return { slot, el, r: el ? el.getBoundingClientRect() : null }
+			}
+			const out: string[] = []
+			for (let k = 0; k < count; k++) {
+				box.scrollTop = trackTop + k * 320
+				let was: ReturnType<typeof read> | null = null
+				const t0 = performance.now()
+				for (;;) {
+					await frame()
+					const now = read()
+					const same = was && now.el === was.el && now.r && was.r && (['left', 'top', 'right', 'bottom'] as const).every((p) => Math.abs(now.r![p] - was!.r![p]) < 0.5)
+					if (same || performance.now() - t0 > 3000) break
+					was = now
+				}
+				await frame()
+				await frame()
+				const { slot, el, r } = read()
+				const kind = slot?.classList.contains('tn-item--word') ? 'word' : 'card'
+				const link = el?.querySelector('a[href], button')
+				const linkInZone = !!link && Object.values(zones).some((z) => z && meets(link.getBoundingClientRect(), z))
+				const inert = !slot || !!slot.closest('[inert]')
+				const cut = !r || r.left < left - 1 || r.right > right + 1
+				if (cut || (inert && !(listening && kind === 'card' && linkInZone)))
+					out.push(`stop ${k} (${kind} '${(el?.textContent ?? '').trim().slice(0, 24)}'): ${inert ? 'inert' : ''}${cut ? ` cut [${r ? `${Math.round(r.left)},${Math.round(r.right)}` : 'none'}] by [${Math.round(left)},${Math.round(right)}]` : ''}`)
+			}
+			return { count, out }
+		},
+		{ zones, listening },
+	)
+	assert.ok(bad.count > 0, `${where}: the tunnel has stops (${bad.count})`)
+	assert.deepEqual(bad.out, [], `${where}: settled on each of its ${bad.count} stops (words included), the current slot inside the box's sides and not inert${listening ? ' (but a card whose link is under the transcript bar)' : ''}`)
+}
 
 /** One press on prev or next: the counter moves by one, the box's scroll moves and the window's does not; the distance. */
 async function stepOnce(page: Page, step: NonNullable<ExperienceCase['step']>, dir: 'next' | 'prev', where: string) {
@@ -909,14 +1348,22 @@ async function checkInBox(page: Page, { experience, cell, where, served, servedH
 	const wide = await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, box: document.querySelector('.aixc-box')!.scrollWidth, boxClient: document.querySelector('.aixc-box')!.clientWidth }))
 	assert.ok(wide.doc <= wide.client && wide.box <= wide.boxClient + 1, `${where}: no sideways overflow (${JSON.stringify(wide)})`)
 
+	// Where the row lays its stage flat (row.flat), it does not pin there: not sticky, and no step.
+	const flat = row.flat?.(cell) ?? false
+	const pins = flat ? false : row.pins
+	if (flat && row.pins) {
+		const position = await page.evaluate((stage) => getComputedStyle(document.querySelector(`.aixc-box ${stage}`)!).position, row.pins.stage)
+		assert.notEqual(position, 'sticky', `${where}: laid flat, the stage does not pin (${position})`)
+	}
+
 	// Into the track: the stage pins at the bar, its bottom at the box's (higher when it is taller than the room).
-	if (row.pins) {
+	if (pins) {
 		await page.evaluate(({ track }) => {
 			const box = document.querySelector('.aixc-box')!
 			box.scrollTop += box.querySelector(track)!.getBoundingClientRect().top - box.getBoundingClientRect().top - (box.firstElementChild as HTMLElement).offsetHeight + 1
-		}, row.pins)
+		}, pins)
 		await settle(page, 500)
-		const s = await pinNow(page, row.pins.stage)
+		const s = await pinNow(page, pins.stage)
 		const roomUnderBar = s.room - s.barH
 		assert.ok(Math.abs(s.bottomGap) <= 1, `${where}: the stage's bottom at the box's (gap ${s.bottomGap})`)
 		if (s.height <= roomUnderBar + 1) assert.ok(Math.abs(s.top - s.barH) <= 1, `${where}: the stage's top ${s.top} at the bar's height ${s.barH}`)
@@ -924,7 +1371,7 @@ async function checkInBox(page: Page, { experience, cell, where, served, servedH
 	}
 
 	// Prev and next step it: the box's scroll moves, the window's does not.
-	if (row.step) {
+	if (row.step && !flat) {
 		const next = await stepOnce(page, row.step, 'next', where)
 		const prev = await stepOnce(page, row.step, 'prev', where)
 		console.log(`[step] ${experience} ${where}: next ${next} px, prev ${prev} px of the box's scroll`)
@@ -934,8 +1381,10 @@ async function checkInBox(page: Page, { experience, cell, where, served, servedH
 	if (row.controlSelectors.length && row.pocketed) {
 		const zones = await zonesNow(page)
 		assert.ok(zones.right && zones.left, `${where}: both corners' zones measured (${fmt(zones.right)} ${fmt(zones.left)})`)
-		const hits = await pressablesInZones(page, row.zoneScope ?? (row.pins ? `.aixc-box ${row.pins.stage}` : '.aixc-box .aixc-stage'), zones)
-		assert.ok(hits.seen >= 3, `${where}: the stage's controls were read (${hits.seen})`)
+		const hits = await pressablesInZones(page, row.zoneScope ?? (pins ? `.aixc-box ${pins.stage}` : '.aixc-box .aixc-stage'), zones)
+		// Laid flat (row.flat) the row's controls are not shown: what shows of the view here may be one link in a short box
+		// (the row's specifics sweep the box's whole scroll instead).
+		if (!flat) assert.ok(hits.seen >= 3, `${where}: the stage's controls were read (${hits.seen})`)
 		assert.deepEqual(hits.out, [], `${where}: nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)}`)
 		for (const what of row.controlSelectors) {
 			const c = await shownRect(page, what)
@@ -999,8 +1448,8 @@ async function checkInBox(page: Page, { experience, cell, where, served, servedH
 /** One cell of a row: the page opened, the served page read, something pocketed if the row asks, the view chosen; checkInBox. */
 async function boxCell(experience: string, cell: Cell) {
 	const row = EXPERIENCE_CASES[experience]
-	const where = `${cell.p} ${sizeOf(cell.viewport)}${cell.fixedHeader === undefined ? '' : ` fixedHeader ${cell.fixedHeader}`}`
-	const l = await launchLayer(gw, { viewport: cell.viewport, reducedMotion: true, ...LIVE, ...(cell.fixedHeader === undefined ? {} : { fixedHeader: cell.fixedHeader }) })
+	const where = `${cell.p} ${sizeOf(cell.viewport)}${cell.fixedHeader === undefined ? '' : ` fixedHeader ${cell.fixedHeader}`}${cell.motion ? ' motion' : ''}`
+	const l = await launchLayer(gw, { viewport: cell.viewport, reducedMotion: !cell.motion, ...LIVE, ...(cell.fixedHeader === undefined ? {} : { fixedHeader: cell.fixedHeader }) })
 	try {
 		const seen = watch(l.page)
 		await open(l.page, cell.p, '?aixc-debug')
@@ -1643,12 +2092,40 @@ test('Original from the bar or the end band closes a composer opened from "Chang
 				await settle(l.page)
 				if (from === 'the bar') await pressIn(l.page, '.aixc-viewbar .aixc-seg[data-view="original"]')
 				else {
+					const END_ORIGINAL = '.aixc-end .aixc-end__btn:not(.aixc-end__btn--primary)'
 					await l.page.evaluate(() => {
 						const box = document.querySelector('.aixc-box')!
 						box.scrollTop = box.scrollHeight
 					})
 					await settle(l.page, 300)
-					await pressIn(l.page, '.aixc-end .aixc-end__btn:not(.aixc-end__btn--primary)')
+					// The composer is a panel over the view and may cover the end band at the box's end (on a phone, with ten
+					// templates, it reaches past Original): the reader scrolls the box back until Original shows under it, the
+					// composer staying open, then presses it. (At 375x812 the 10 px between the composer and the right corner's
+					// zone cannot hold the 44 px button: scrolled back, its right end goes under the guide's microphone; its centre is
+					// clear, which pressIn checks.)
+					await l.page.evaluate((selector) => {
+						const box = document.querySelector('.aixc-box')!
+						const c = document.getElementById('aixc-composer')!.getBoundingClientRect()
+						const b = document.querySelector(selector)!.getBoundingClientRect()
+						if (b.left < c.right && c.left < b.right && b.top < c.bottom && c.top < b.bottom) box.scrollTop -= Math.ceil(c.bottom + 8 - b.top)
+					}, END_ORIGINAL)
+					await settle(l.page, 300)
+					const shows = await l.page.evaluate((selector) => {
+						const box = document.querySelector<HTMLElement>('.aixc-box')!
+						const area = box.getBoundingClientRect()
+						const c = document.getElementById('aixc-composer')!
+						const cr = c.getBoundingClientRect()
+						const b = document.querySelector(selector)!.getBoundingClientRect()
+						const r = (x: DOMRect) => [x.left, x.top, x.right, x.bottom].map(Math.round)
+						return {
+							composerOpen: !c.hidden && (window as any).__aixc.demos.reimagine.state.composerOpen === true,
+							clear: !(b.left < cr.right && cr.left < b.right && b.top < cr.bottom && cr.top < b.bottom),
+							inBox: b.top >= area.top + box.clientTop && b.bottom <= Math.min(area.top + box.clientTop + box.clientHeight, innerHeight),
+							rects: `composer ${r(cr)}, Original ${r(b)}, box ${r(area)}`,
+						}
+					}, END_ORIGINAL)
+					assert.ok(shows.composerOpen && shows.clear && shows.inBox, `${where}: the end band's Original shows in the box clear of the open composer (${shows.rects})`)
+					await pressIn(l.page, END_ORIGINAL)
 				}
 				await l.page.waitForFunction(() => (window as any).__aixc.demos.reimagine.state.view === 'original', null, { timeout: 5_000 })
 				await settle(l.page, 400)

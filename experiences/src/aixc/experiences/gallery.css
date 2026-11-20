@@ -440,3 +440,394 @@
     transition: none;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the stage pins inside the view's own box, and the box's bottom
+   corners belong to Vodafone's accessibility button and the guide's microphone, with its transcript bar while
+   it listens (right), and the Pocket's button (left). The shell measures how far each reaches into the box
+   from its bottom edge and side (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits
+   in either. The stage is always the room under the bar (never the clone's 520 px floor, which would push its
+   bottom out of a short box). From 720 px the caption hangs beside the wall on its start side, its bottom above
+   that side's zone and the row; the previous / next row runs along the bottom between the zones (spotlight's
+   placement). In a short box the caption and the row stand in a column on the start side, clear of that side's
+   zone. On phones the row sits under the stage's title, the caption under it and the wall above the zones. The
+   pieces hung past the box's sides or into a zone are inert while there (gallery.js). The tiers by height ask the
+   stage, which is the box's room under the bar (a size container), not the window: Vodafone's header and the view
+   bar take what they take (the live page's 120 + 61 px, the harness's 100 + 57), and the room is what is left. */
+.aixc-box .aixc-vx--gallery {
+  --gl-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  /* The zone on the caption's side: the left in English, the right in Arabic. */
+  --gl-start-w: var(--aixc-safe-left-w, 0px);
+  --gl-start-h: var(--aixc-safe-left-h, 0px);
+  --gl-end-w: var(--aixc-safe-right-w, 0px);
+  /* The row from 720 px, as spotlight's: each side kept clear of its own zone plus 16 px, never nearer the edge
+     than the gutter; lifted above the taller zone and spanning the stage when the gap between them is narrower
+     than the row's own width (--gl-row-min: two 48 px buttons, the counter, a short progress bar, three gaps).
+     --gl-row-fit is that gap less the width, times 1000, so min() and max() pick one placement or the other. */
+  --gl-row-min: 320px;
+  --gl-row-l: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px));
+  --gl-row-r: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px));
+  --gl-row-fit: calc((100cqw - var(--gl-row-l) - var(--gl-row-r) - var(--gl-row-min)) * 1000);
+  --gl-row-bottom: 28px;
+  --gl-beside: 1;
+  --gl-frame-h: clamp(160px, calc(var(--vx-vh) * 0.44), 330px);
+  overflow-anchor: none;
+}
+
+[dir='rtl'] .aixc-box .aixc-vx--gallery {
+  --gl-start-w: var(--aixc-safe-right-w, 0px);
+  --gl-start-h: var(--aixc-safe-right-h, 0px);
+  --gl-end-w: var(--aixc-safe-left-w, 0px);
+}
+
+.aixc-box .aixc-vx--gallery .gl-stage {
+  min-height: 0;
+  /* Its own height is the room's (--vx-vh), its width the box's: the tiers' @container queries and the cqw below. */
+  container-type: size;
+}
+
+/* reveal(): the wall and its pieces take their places at once, for a frame. */
+.aixc-box .aixc-vx--gallery .gl-wall.is-instant,
+.aixc-box .aixc-vx--gallery .gl-wall.is-instant .gl-piece {
+  transition: none;
+}
+
+@media (min-width: 720px) {
+  .aixc-box .aixc-vx--gallery .gl-controls {
+    left: max(var(--vx-gutter), min(var(--gl-row-l), var(--gl-row-fit)));
+    right: max(var(--vx-gutter), min(var(--gl-row-r), var(--gl-row-fit)));
+    bottom: max(var(--gl-row-bottom), min(calc(var(--gl-safe-h) + 16px), calc(-1 * var(--gl-row-fit))));
+    width: auto;
+    max-width: 440px;
+    margin: 0 auto;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-controls > .vx-round {
+    flex: none;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-counter {
+    white-space: nowrap;
+  }
+
+  /* The caption beside the wall, its bottom above its side's zone and above the row (16 px each), growing up. */
+  .aixc-box .aixc-vx--gallery .gl-caption {
+    top: auto;
+    bottom: max(
+      calc(var(--gl-start-h) + 16px),
+      calc(var(--gl-row-bottom) + 64px),
+      min(calc(var(--gl-safe-h) + 80px), calc(-1 * var(--gl-row-fit)))
+    );
+    inset-inline: var(--vx-gutter) auto;
+    width: min(380px, 30vw);
+    max-height: none;
+    overflow: visible;
+    padding: 28px 28px 24px;
+    transform: none;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-caption__meta {
+    display: grid;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-intro__hint {
+    display: block;
+  }
+
+  /* The closing band's stores kept beside the zones when the box is scrolled to its end. */
+  .aixc-box .aixc-vx--gallery .vx-closing__inner {
+    width: auto;
+    max-width: 1140px;
+    margin-left: max(var(--gl-row-l), calc((100% - 1140px) / 2));
+    margin-right: max(var(--gl-row-r), calc((100% - 1140px) / 2));
+  }
+}
+
+/* From 720 to 899 px the clone centres the piece with its caption below; in a box the caption stays beside it. */
+@media (min-width: 720px) and (max-width: 899px) {
+  .aixc-box .aixc-vx--gallery {
+    --gl-anchor: 62%;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--gallery {
+    --gl-anchor: 38%;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-wall {
+    top: 44%;
+  }
+}
+
+/* From 720 px in a room under 760 px tall (the whole caption, its tallest 466 px with the meta, fits between the
+   intro and the zones from 731 px of room, Arabic's the tallest there: measured 2026-11-18), and on a tablet
+   (720..899 px, where the caption beside the wall is 30vw wide and its whole self grows to 557 px, past the bar
+   while the guide listens): a compact caption, its meta not shown (the category is above the title), its title
+   smaller, its description three lines at most. */
+@media (min-width: 720px) {
+  @container (width < 900px) or (height < 760px) {
+    .aixc-box .aixc-vx--gallery .gl-caption {
+      gap: 0.45rem;
+      padding: 20px 22px 18px;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption__title {
+      font-size: clamp(1.6rem, 2.4vw, 2.1rem);
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption__desc {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption__meta {
+      display: none;
+    }
+  }
+}
+
+/* From 720 px in a short room (under 580 px tall): the compact caption (its tallest 304 px in English, 281 in
+   Arabic) no longer fits between the intro and the zone on its side (Arabic's from 579 px of room, measured
+   2026-11-18; the live page's 768 px windows leave 587). The caption and the row stand in a column on the start
+   side, inset past that side's zone (16 px), the row at its foot and the caption above it. The shown piece hangs
+   centred in the room between the column and the end side's zone (16 px), so it is never in that zone: gallery.js
+   caps its width by its distance to the caption. Where that room is under 240 px (a piece's least, 160 px, and
+   32 px each side: the guide's transcript bar on the right while it listens, past the column in either language),
+   it hangs on the right of the column instead, in the transcript bar's zone and inert there (gallery.js fence()).
+   The variables are the stage's children's: a container query cannot style its container. */
+@media (min-width: 720px) {
+  @container (height < 580px) {
+    .aixc-box .aixc-vx--gallery .gl-stage > * {
+      --gl-col-start: max(var(--vx-gutter), calc(var(--gl-start-w) + 16px));
+      --gl-end-reserve: max(var(--vx-gutter), calc(var(--gl-end-w) + 16px));
+      /* Never into the other side's zone either (the transcript bar while the guide listens reaches 472 px in). */
+      --gl-col-w: min(360px, 42cqw, calc(100cqw - var(--gl-col-start) - var(--gl-end-reserve)));
+      /* The room between the column and the end side's zone, and whether a piece fits there (>= 0) or not (< 0),
+         times 1000 so min() and max() pick one place or the other: the room's centre where it fits, else the
+         centre of what is right of the column (the larger of the two either way). */
+      --gl-col-room: calc(100cqw - var(--gl-col-start) - var(--gl-col-w) - var(--gl-end-reserve));
+      --gl-col-fit: calc((var(--gl-col-room) - 240px) * 1000);
+      --gl-anchor: max(
+        calc(100cqw - var(--gl-end-reserve) - var(--gl-col-room) / 2),
+        min(calc(100cqw - (100cqw - var(--gl-col-start) - var(--gl-col-w)) / 2), calc(-1 * var(--gl-col-fit)))
+      );
+      --gl-frame-h: clamp(90px, calc(var(--vx-vh) * 0.5), 280px);
+    }
+
+    [dir='rtl'] .aixc-box .aixc-vx--gallery .gl-stage > * {
+      --gl-anchor: max(
+        calc(var(--gl-end-reserve) + var(--gl-col-room) / 2),
+        min(calc(100cqw - var(--gl-col-start) / 2), calc(-1 * var(--gl-col-fit)))
+      );
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-wall {
+      top: 46%;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-intro {
+      top: 14px;
+      inset-inline-start: var(--gl-col-start);
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-intro__brand {
+      font-size: 1.375rem;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-intro__hint {
+      display: none;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-controls {
+      inset-inline: var(--gl-col-start) auto;
+      bottom: 16px;
+      width: var(--gl-col-w);
+      max-width: none;
+      margin: 0;
+      /* Its width is the column's: the progress bar gives way where the column is narrow (below). */
+      container-type: inline-size;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption {
+      bottom: 76px;
+      inset-inline: var(--gl-col-start) auto;
+      width: var(--gl-col-w);
+      padding: 14px 16px;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption__title {
+      font-size: 1.5rem;
+    }
+
+    /* A column under 260 px (the guide listening in a short box: 212 px at 812x375) leaves the progress bar a
+       sliver beside the buttons and the counter: the counter says where the wall is on its own. */
+    @container (width < 260px) {
+      .aixc-box .aixc-vx--gallery .gl-progress {
+        display: none;
+      }
+    }
+  }
+
+  /* A very short room (a phone in landscape, under 340 px tall): no intro (the page's title is the view's h1 and
+     the bar's), the caption its number, category, title and link, the pieces their frames. */
+  @container (height < 340px) {
+    .aixc-box .aixc-vx--gallery .gl-intro,
+    .aixc-box .aixc-vx--gallery .gl-caption__desc,
+    .aixc-box .aixc-vx--gallery .gl-plate {
+      display: none;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption {
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: 10px;
+      row-gap: 4px;
+      padding: 8px 14px 10px;
+      border-top-width: 3px;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption > :nth-child(n + 3) {
+      grid-column: 1 / -1;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption__group {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    /* Its title two lines at most, the link straight under it, the column's foot lower (the row 12 px up, the
+       caption 8 px above it): the room's 218 px at the least (812x375 under the harness's 100 + 57 px; the live
+       page's 80 + 61 leave 234) then hold the row and the tallest caption, 144 px (Arabic's two-line title in the
+       212 px column the guide's listening leaves) in the 150 above the row (measured 2026-11-18). */
+    .aixc-box .aixc-vx--gallery .gl-caption__title {
+      display: -webkit-box;
+      overflow: hidden;
+      font-size: 1.125rem;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption__action {
+      margin-top: 0;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-controls {
+      bottom: 12px;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption {
+      bottom: 68px;
+    }
+  }
+}
+
+/* Phones: the stage's title, the row right under it, the caption under the row; the wall hangs above the
+   zones' height (16 px), its pieces their frames; the caption's number and category share a line. */
+@media (max-width: 719px) {
+  .aixc-box .aixc-vx--gallery {
+    --gl-beside: 0;
+    --gl-frame-h: clamp(90px, calc(var(--vx-vh) - 510px), 150px);
+    /* The wall keeps its place above the corners' controls; the transcript bar, while the guide listens,
+       covers its foot instead of moving it (the quiet zones reach 175 px at most, measured). */
+    --gl-wall-floor: max(var(--aixc-safe-left-h, 0px), min(var(--aixc-safe-right-h, 0px), 175px));
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px var(--vx-gutter) 0;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-intro,
+  .aixc-box .aixc-vx--gallery .gl-controls,
+  .aixc-box .aixc-vx--gallery .gl-caption {
+    position: relative;
+    inset: auto;
+    margin: 0;
+    transform: none;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-intro {
+    order: 1;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-controls {
+    order: 2;
+    width: auto;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-controls > .vx-round {
+    flex: none;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-caption {
+    order: 3;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 0.4rem;
+    padding: 14px 16px;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-caption > :nth-child(n + 3) {
+    grid-column: 1 / -1;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-caption__group {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-caption__desc {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-wall {
+    top: calc(100% - var(--gl-wall-floor) - 16px - var(--gl-frame-h) * 0.5);
+  }
+
+  .aixc-box .aixc-vx--gallery .gl-plate {
+    display: none;
+  }
+}
+
+/* Short phones (a room under 600 px: an iPhone SE's 375x667, a 360x640): the column (title, row, caption) hangs
+   from the top and the wall stands on the floor, so the caption would cover the shown piece, and its link would
+   sit in the transcript bar's zone while the guide listens. The caption keeps its number, category, title and
+   link; the stage's title gives way (the view bar and the h1 carry it, as in the very short room). From 600 px
+   of room (584 under the stage's 16 px padding, which the query measures without: the live page's 375x812 leaves
+   606) the frame (room - 510 px) keeps the tallest caption's foot over a fifth of the piece at most. */
+@media (max-width: 719px) {
+  @container (height < 584px) {
+    .aixc-box .aixc-vx--gallery .gl-stage > * {
+      --gl-frame-h: clamp(72px, calc(var(--vx-vh) - 420px), 90px);
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-intro,
+    .aixc-box .aixc-vx--gallery .gl-caption__desc {
+      display: none;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-controls {
+      margin-top: -4px;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption {
+      row-gap: 4px;
+      padding: 10px 14px 12px;
+    }
+
+    .aixc-box .aixc-vx--gallery .gl-caption__title {
+      font-size: 1.25rem;
+    }
+  }
+}

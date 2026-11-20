@@ -26,10 +26,23 @@
  * sets behind the hills and day turns to night with stars. Each category is a
  * chapter that scrolls over the scene; its services sit on white Vodafone cards.
  * Native scroll only (no wheel hijacking); motion is removed under reduced motion.
+ *
+ * On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box instead of the page: the scene
+ * pins at the box's bar and its progress reads the box (shared.js's seam: viewBottom(), onScrollFrame()). The
+ * scene is drawn only (nothing to press, no controls); the story is a document that scrolls past the box's
+ * bottom corners, where Vodafone's accessibility button and the guide's microphone (right) and the Pocket's
+ * button (left) sit over it. A link or button of the story is not pressable by a pointer while it passes under a
+ * corner's safe zone (keepClear(): pointer-events off, the class jr-under, never inert, so the keyboard and a
+ * screen reader still meet every one in order), and one that takes the focus there is scrolled clear of the
+ * zones (clearFocus()). journey.css keeps the closing band over the taller zone at the box's end, where nothing
+ * follows to scroll it clear. reveal(itemId) scrolls the view to an item's card at once.
  */
 
 import { h, svgIcon } from '../dom.js'
-import { closingBand, experienceRoot, groupExtras, groupTitle, groupsOf, onScrollFrame, promotionOf, serviceCard, clamp, t } from './shared.js'
+import {
+  closingBand, experienceRoot, frame, groupExtras, groupTitle, groupsOf, on, onScrollFrame, onViewZones, promotionOf, scrollByY,
+  scrollToElement, serviceCard, clamp, t, viewBottom, viewScroller, viewTop,
+} from './shared.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -141,7 +154,9 @@ export const renderJourney = (schema, index) => {
   const intro = h(
     'header',
     { class: 'jr-intro' },
-    h('h1', { class: 'jr-intro__title', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' }, index.model.title),
+    // The view's one h1 (no pageHeading beside it); a page with no title has none, never an empty one (the shell
+    // gives a blank model title the document's).
+    String(index.model.title ?? '').trim() ? h('h1', { class: 'jr-intro__title', id: 'aixc-cover-title', tabindex: '-1', 'data-aixc-focus': '' }, index.model.title) : null,
     index.model.intro ? h('p', { class: 'jr-intro__text' }, index.model.intro) : null,
     h('p', { class: 'jr-intro__hint', 'aria-hidden': 'true' }, h('span', null, t('Scroll to begin'))),
   )
@@ -150,25 +165,82 @@ export const renderJourney = (schema, index) => {
   const story = h('div', { class: 'jr-story' }, intro, chapters)
   const root = experienceRoot('journey', schema, scene, story, closingBand(promo))
 
-  let stop = null
+  /**
+   * In a box: each link and button of the view that meets a bottom corner's safe zone (the box's
+   * --aixc-safe-{left,right}-{w,h}) takes jr-under (journey.css: no pointer events) while there, the others lose it.
+   * A card's stretched title link (.vx-story-link: its ::after covers the card) takes jr-under-card while its card
+   * meets one (journey.css: the stretch takes no pointer events, the title itself still does where it is clear), so
+   * a card taller than the room clear of the zones keeps its title pressable. Reads first, then writes.
+   */
+  const pressables = [...root.querySelectorAll('a[href], button')]
+  const cards = pressables.map((node) => (node.classList.contains('vx-story-link') ? node.closest('.vx-card') : null))
+  const zonesNow = () => {
+    const box = viewScroller()
+    const style = getComputedStyle(box)
+    const px = (name) => Number.parseFloat(style.getPropertyValue(`--aixc-safe-${name}`)) || 0
+    const b = box.getBoundingClientRect()
+    const left = b.left + box.clientLeft
+    const right = left + box.clientWidth
+    const bottom = viewBottom()
+    return [
+      { left: right - px('right-w'), top: bottom - px('right-h'), right, bottom },
+      { left, top: bottom - px('left-h'), right: left + px('left-w'), bottom },
+    ].filter((z) => z.right > z.left && z.top < z.bottom)
+  }
+  const meets = (r, z) => r.width > 0 && r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const keepClear = () => {
+    const zones = zonesNow()
+    const inZone = (node) => {
+      const r = node.getBoundingClientRect()
+      return zones.some((z) => meets(r, z))
+    }
+    const under = pressables.map((node, at) => [inZone(node), Boolean(cards[at]) && inZone(cards[at])])
+    pressables.forEach((node, at) => {
+      node.classList.toggle('jr-under', under[at][0])
+      if (cards[at]) node.classList.toggle('jr-under-card', under[at][1])
+    })
+  }
+  /** A link or button of the view that took the focus in a corner's zone: the box scrolled until it is clear (16 px over the zone), its top kept under the bar. */
+  const clearFocus = (node) => {
+    if (!pressables.includes(node) || document.activeElement !== node) return
+    const r = node.getBoundingClientRect()
+    const dy = Math.min(Math.max(0, ...zonesNow().filter((z) => meets(r, z)).map((z) => r.bottom - z.top + 16)), r.top - viewTop())
+    if (dy > 0) scrollByY(dy)
+  }
+
   const update = () => {
     const rect = root.getBoundingClientRect()
-    const top = scene.getBoundingClientRect().height ? window.innerHeight - scene.getBoundingClientRect().height : 0
+    const top = scene.getBoundingClientRect().height ? viewBottom() - scene.getBoundingClientRect().height : 0
     const travel = Math.max(1, rect.height - scene.getBoundingClientRect().height)
     const progress = clamp((top - rect.top) / travel, 0, 1)
     root.style.setProperty('--p', progress.toFixed(4))
     // Day to night across the middle of the journey.
     root.style.setProperty('--night', clamp((progress - 0.3) / 0.45, 0, 1).toFixed(4))
+    if (viewScroller()) keepClear()
   }
+
+  let offs = []
 
   return {
     element: root,
     mount() {
-      stop = onScrollFrame(update)
+      offs = [
+        onScrollFrame(update),
+        // In a box: the zones alone change (the Pocket's button showing, the guide listening); a focus taken under a
+        // corner (the keyboard reaching a link from below the box's view), after the browser's own scroll to it.
+        ...(viewScroller() ? [onViewZones(keepClear), on(root, 'focusin', (event) => frame(() => clearFocus(event.target)))] : []),
+      ]
     },
     unmount() {
-      stop?.()
-      stop = null
+      for (const off of offs.splice(0)) off()
+      for (const node of pressables) node.classList.remove('jr-under', 'jr-under-card')
+    },
+    /** Scrolls the view to the item's card at once (its top to the pin line); false if the view has none. */
+    reveal(itemId) {
+      const item = [...root.querySelectorAll('[data-aixc-item]')].find((node) => node.dataset.aixcItem === itemId)
+      if (!item) return false
+      scrollToElement(item, { instant: true })
+      return true
     },
   }
 }

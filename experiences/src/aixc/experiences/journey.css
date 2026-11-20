@@ -315,3 +315,83 @@
     transform: none !important;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the scene pins inside the view's own box (vodafone.css maps --vx-top
+   and --vx-vh to the box's bar and room), and the box's bottom corners belong to Vodafone's accessibility button
+   and the guide's microphone, with its transcript bar while it listens (right), and the Pocket's button (left):
+   the shell measures how far each reaches into the box (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h). The
+   scene has nothing to press. The story scrolls past the corners: what of it passes under one is not pressable
+   by a pointer while there (journey.js keepClear() adds jr-under; a card's stretched title link jr-under-card
+   while its card meets a zone, the title itself pressable where it is clear). */
+.aixc-box .aixc-vx--journey .jr-under,
+.aixc-box .aixc-vx--journey .jr-under-card::after {
+  pointer-events: none;
+}
+
+/* The intro's words (its title, the view's one h1, its text and its hint) clear of both corners' zones at the box's
+   top (2026-11-18 review). From 720 px wide, and in a short box at any width, the intro steps in from both sides by
+   the zones' widths and 16 px (physical, as the zones are: the Arabic title and hint clear of the accessibility
+   button and the mic, the English ones of the Pocket's button), as the closing band does: its height then never
+   matters (live, a long Arabic title at 136 px set the hint 607 px under the bar at 1366x900, into the zone). On a
+   phone upright, where stepping in would leave too narrow a column, the space under it is at least the taller zone
+   and 16 px (the clone's 18vh where that is more): 189 px of a 510 to 671 px room. */
+@media (min-width: 720px), (max-height: 559px) {
+  .aixc-box .aixc-vx--journey .jr-intro {
+    width: auto;
+    margin-left: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px), calc((100% - var(--vx-max)) / 2));
+    margin-right: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px), calc((100% - var(--vx-max)) / 2));
+  }
+}
+
+@media (max-width: 719px) and (min-height: 560px) {
+  .aixc-box .aixc-vx--journey .jr-intro {
+    padding-bottom: max(18vh, calc(max(var(--aixc-safe-left-h, 0px), var(--aixc-safe-right-h, 0px)) + 16px));
+  }
+}
+
+/* The closing band's stores kept beside the zones where the band ends the view (from 720 px; on phones the code
+   follows the stores in one column, so they stand above the zones there), as the other experiences' bands. */
+@media (min-width: 720px) {
+  .aixc-box .aixc-vx--journey .vx-closing__inner {
+    width: auto;
+    max-width: 1140px;
+    margin-left: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px), calc((100% - 1140px) / 2));
+    margin-right: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px), calc((100% - 1140px) / 2));
+  }
+}
+
+/* A short box (a window under 560 px tall: a phone in landscape, its room 234 px under Vodafone's 80 px header and the
+   61 px bar): the clone's intro (its title 10vw, 18vh under it) is taller than the room below that (313 px of it in
+   English at 812 px wide, against 218 to 393 px of room from 375 to 550 px tall, measured in the box harness,
+   2026-11-18), so its title has its size from the room, its spacing is tighter and the hint takes less; the
+   chapters' titles too. The corners' zones (171 px of that room on the right, 96 on the left) are taller than the
+   room above them: the intro steps in from both sides (above). */
+@media (max-height: 559px) {
+  .aixc-box .aixc-vx--journey .jr-intro {
+    padding-bottom: calc(var(--vx-vh) * 0.08);
+  }
+
+  .aixc-box .aixc-vx--journey .jr-intro__title {
+    font-size: clamp(2.25rem, calc(var(--vx-vh) * 0.19), 4.5rem);
+  }
+
+  .aixc-box .aixc-vx--journey .jr-intro__text {
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    font-size: 1.0625rem;
+  }
+
+  .aixc-box .aixc-vx--journey .jr-intro__hint {
+    margin-top: 0.75rem;
+  }
+
+  .aixc-box .aixc-vx--journey .jr-intro__hint span::after {
+    height: 20px;
+  }
+
+  .aixc-box .aixc-vx--journey .jr-chapter__title {
+    font-size: clamp(1.75rem, calc(var(--vx-vh) * 0.15), 2.75rem);
+  }
+}

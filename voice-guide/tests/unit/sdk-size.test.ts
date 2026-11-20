@@ -203,6 +203,40 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  * 2026-11-18, phase 2, ring's review: its short phones' tiers, the short box's tight stack (.is-tight) and the group's
  * link (.has-extras) in ring.css, measure()'s zones and floor in ring.js: 7,896 -> 8,360 bytes, so 8.25 KB (88 under).
  * The shell 24,328, the Pocket 28,306, magazine 10,509, spotlight 7,733, split 7,827: every other budget unchanged.
+ *
+ * 2026-11-18, phase 3: the gallery wall in the registry (its chunk: gallery.js through the seam with its fence of the
+ * pieces hung past the box's sides or into a zone, gallery.css with its box rules, its live wrapper) 8,071
+ * bytes gzipped; after its review (its tiers asking the box's room, short phones, the short box while the guide
+ * listens) 8,291, so 8.25 KB. The shell 24,558 -> 24,610 bytes (the registry's seventh line), within its 24.5 KB;
+ * the Pocket unchanged (28,306). Every other budget unchanged.
+ *
+ * 2026-11-18, phase 3: the scroll journey in the registry (its chunk: journey.js through the seam with keepClear() of
+ * the story's links under the corners, journey.css with its box rules and short box, its live wrapper) 6,404 bytes
+ * gzipped, so 6.5 KB. The shell 24,610 -> 24,862 bytes (the registry's eighth line, and shared.js's groupTitle and
+ * scrollByY, which no experience in the registry used before, are no longer shaken out of the chunk the shell shares
+ * with the experiences), within its 24.5 KB; the Pocket unchanged (28,306). Every other budget unchanged. After its
+ * review (2026-11-18: the intro's words clear of the corners) the chunk is 6,476 bytes, still 6.5 KB; the shell 24,861.
+ * 2026-11-18, phase 3: the cube in the registry (its chunk: cube.js through the seam with placeDots() and fence() of
+ * the links that pass the bottom corners, cube.css with its box rules, experience-wrap.js and vodafone.css shared)
+ * 8,055 bytes gzipped, so 8 KB (137 under). The shell 24,558 -> 24,823 bytes, within its 24.5 KB (265 left): shared.js's
+ * serviceCard (and the helpers it uses), groupTitle and scrollTop, which the cube is the first in the registry to use,
+ * are no longer shaken out of the chunk the shell shares with the experiences. The Pocket
+ * unchanged (28,306); magazine 10,513, spotlight 7,741, the fan 7,493, the cover flow 8,044, split 7,821, ring 8,353.
+ *
+ * 2026-11-18, phase 3's review: the cube's fence() also turns off a card's stretched title link over the card while
+ * the card meets a zone and the title does not, the dots' names from the row's left on phones, the opening sheet
+ * higher on phones upright: its chunk 8,209 bytes gzipped, so 8.25 KB (239 under).
+ *
+ * 2026-11-18, phase 3: the tunnel in the registry (its chunk: tunnel.js through the seam with fence() of what flies past
+ * the stage's sides or into a zone and of the links that flow past the corners, SHORT_ROOM's flat layout and reveal();
+ * tunnel.css with its box rules over the clone's long sheet; experience-wrap.js and vodafone.css shared) 9,453 bytes
+ * gzipped, so 9.25 KB (19 under). The shell 24,823 -> 24,839 bytes, within its 24.5 KB (249 left); the Pocket unchanged
+ * (28,306); magazine 10,513, spotlight 7,741, the fan 7,493, the cover flow 8,044, split 7,821, ring 8,353, the cube 8,209.
+ *
+ * 2026-11-18, phase 3's review of the tunnel: the links that flow past the corners fenced by a class (no pointer events)
+ * instead of inert, so Tab still reaches them, and scrolled clear of the zones by the box's scroll when focused
+ * (onFlowFocus, in place of a scroll-margin that scrolled the window); the flat grid kept beside the zones from 720 px;
+ * the category words centred on the stage: its chunk 9,647 bytes gzipped, so 9.5 KB (81 under).
  */
 /**
  * Reimagine's experiences on Vodafone's pages, one row each (ADR-0076, phase 1): the key is the experience's name in
@@ -217,6 +251,10 @@ const REIMAGINE_EXPERIENCES: Record<string, number> = {
 	coverflow: 8 * 1024,
 	split: 7.75 * 1024,
 	ring: 8.25 * 1024,
+	gallery: 8.25 * 1024,
+	journey: 6.5 * 1024,
+	cube: 8.25 * 1024,
+	tunnel: 9.5 * 1024,
 }
 const REIMAGINE_SHELL = 'src/host/demos/reimagine/shell.js'
 const reimagineEntry = (name: string) => `src/host/demos/reimagine/${name}.js`

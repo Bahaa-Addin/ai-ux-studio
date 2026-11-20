@@ -499,3 +499,172 @@
     aspect-ratio: 7 / 3;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box under the box's view bar, and the
+   box's bottom corners belong to Vodafone's accessibility button and the guide's microphone, with its transcript
+   bar while it listens (right), and the Pocket's button (left). The shell measures how far each reaches into the
+   box (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h). vodafone.css maps --vx-top and --vx-vh to the box's bar and
+   room, so the stage, the cube's size, the sheets' gaps and the blocks' heights above follow the box; what the clone
+   sizes in vh (the blocks' and the story's padding) is mapped to the room here. The stage is always the room under
+   the bar (never the clone's 480 px floor), so it pins with its bottom at the box's at any height: the cube scales
+   to it. The scene dots are the layout's own in the box (cube.js), pinned in the stage's place: from 900 px a
+   column at the stage's start edge, centred between the bar and the zone of the corner on that side less 16 px;
+   where the column does not fit there (cube.js placeDots(): a short window, the guide listening in Arabic, many
+   categories), a row at the stage's top. Phones: a row at the top left over the sheets, the HUD at the top right.
+   The story's and the closing band's links are inert while they pass a corner's zone (cube.js fence()). */
+.aixc-box .aixc-vx--cube {
+  /* The zone of the corner under the dots' column: the inline-start one. */
+  --cb-dots-zone-h: var(--aixc-safe-left-h, 0px);
+  --cb-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
+  --cb-safe-l: max(var(--vx-gutter), calc(var(--aixc-safe-left-w, 0px) + 16px));
+  --cb-safe-r: max(var(--vx-gutter), calc(var(--aixc-safe-right-w, 0px) + 16px));
+}
+
+[dir='rtl'] .aixc-box .aixc-vx--cube {
+  --cb-dots-zone-h: var(--aixc-safe-right-h, 0px);
+}
+
+.aixc-box .aixc-vx--cube .cb-stage {
+  min-height: 0;
+}
+
+/* A link or button the focus moves to is scrolled clear of the bar and of the corners' zones. */
+.aixc-box .aixc-vx--cube :is(a[href], button) {
+  scroll-margin-block: calc(var(--vx-top) + 16px) calc(var(--cb-safe-h) + 16px);
+}
+
+/* A card whose stretched title link is clear of the zones while the card meets one (cube.js fence()): the link
+   presses on its title only, so a press on the card in the zone reaches the corner's button. */
+.aixc-box .aixc-vx--cube .cb-fenced .vx-story-link::after {
+  content: none;
+}
+
+/* The dots in the stage's place: the stage's grid area, pinned under the bar, above the stage (and the sheets). */
+.aixc-box .aixc-vx--cube .cb-layout > .cb-dots {
+  position: sticky;
+  z-index: 2;
+  grid-area: 1 / 1;
+  top: var(--vx-top);
+  align-self: start;
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  height: calc(var(--vx-vh) - var(--cb-dots-zone-h) - 16px);
+  margin-inline-start: 20px;
+  inset-inline-start: auto;
+  transform: none;
+}
+
+/* A row: the dots side by side in a pill, each 28 px wide; a dot's name under the pill on hover and focus. */
+.aixc-box .aixc-vx--cube .cb-layout > .cb-dots.is-row {
+  top: calc(var(--vx-top) + 16px);
+  height: auto;
+  margin-block-start: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--vx-white);
+  box-shadow: var(--vx-shadow);
+}
+
+.aixc-box .aixc-vx--cube .cb-dots.is-row ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.aixc-box .aixc-vx--cube .cb-dots.is-row .cb-dot {
+  justify-content: center;
+  width: 28px;
+}
+
+.aixc-box .aixc-vx--cube .cb-dots.is-row .cb-dot__label {
+  position: absolute;
+  top: calc(100% + 6px);
+  inset-inline-start: 0;
+  max-width: min(320px, calc(100vw - 2 * var(--vx-gutter)));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(-4px);
+}
+
+.aixc-box .aixc-vx--cube .cb-dots.is-row .cb-dot:is(:hover, :focus-visible) .cb-dot__label {
+  transform: none;
+}
+
+/* From 900 px: the clone's vh-sized padding of the blocks and the story as parts of the room. */
+@media (min-width: 900px) {
+  /* The stage and the story in their columns (the dots take the stage's cell first, as auto-placement would not). */
+  .aixc-box .aixc-vx--cube .cb-stage {
+    grid-area: 1 / 1;
+  }
+
+  .aixc-box .aixc-vx--cube .cb-story {
+    grid-area: 1 / 2;
+    padding-block-end: calc(var(--vx-vh) * 0.2);
+  }
+
+  .aixc-box .aixc-vx--cube .cb-block {
+    padding-block: calc(var(--vx-vh) * 0.1);
+  }
+
+  /* The row at the stage's top start, the HUD at its top end: the row leaves the HUD its room (24 px from the
+     end, its figure, 120 px bar and gap, and 12 px between). */
+  .aixc-box .aixc-vx--cube .cb-layout > .cb-dots.is-row {
+    max-width: calc(100% - 20px - 232px);
+  }
+}
+
+/* From 720 px the closing band's stores are kept beside the zones when the box is scrolled to its end. */
+@media (min-width: 720px) {
+  .aixc-box .aixc-vx--cube .vx-closing__inner {
+    width: auto;
+    max-width: 1140px;
+    margin-left: max(var(--cb-safe-l), calc((100% - 1140px) / 2));
+    margin-right: max(var(--cb-safe-r), calc((100% - 1140px) / 2));
+  }
+}
+
+/* Phones and tablets under 900 px (the sheets over the pinned cube): the dots' row at the top left, the HUD at the
+   top right, both physical sides in either language, so the guide's transcript bar, which widens the bottom-right
+   zone while it listens, never meets the row in a short box (a phone in landscape). The row leaves the HUD 132 px
+   and wraps onto a second line when the page has more categories than fit. */
+@media (max-width: 899px) {
+  .aixc-box .aixc-vx--cube .cb-layout > .cb-dots.is-row {
+    top: calc(var(--vx-top) + 8px);
+    justify-self: left;
+    max-width: calc(100% - 2 * var(--vx-gutter) - 132px);
+    margin: 8px 0 0 var(--vx-gutter);
+  }
+
+  /* A dot's name from the row's left edge in either language (the row is at the left), so a long one ends in its
+     ellipsis on the screen rather than past its left edge in Arabic. */
+  .aixc-box .aixc-vx--cube .cb-dots.is-row .cb-dot__label {
+    left: 0;
+    right: auto;
+  }
+
+  .aixc-box .aixc-vx--cube .cb-hud {
+    top: 14px;
+    right: var(--vx-gutter);
+    left: auto;
+  }
+
+  .aixc-box .aixc-vx--cube :is(a[href], button) {
+    scroll-margin-top: calc(var(--vx-top) + 64px);
+  }
+}
+
+/* Phones upright: the opening sheet higher than the clone's place under the cube's foot where that would put the
+   page's h1 in the corners' band, so the first view shows it clear of the taller zone (184 px: the sheet's 32 px
+   padding, the tag, a two-line h1 as Arabic's on the live kit, 174 px measured, and a little room); never higher
+   than the cube's centre. (On a phone in landscape the box is too short for both: the clone's place stays.) */
+@media (max-width: 899px) and (orientation: portrait) {
+  .aixc-box .aixc-vx--cube .cb-block--intro {
+    margin-top: max(
+      calc(var(--vx-vh) * 0.44),
+      min(calc(var(--vx-vh) * 0.44 + var(--cb-size) * 0.78 + 16px), calc(var(--vx-vh) - var(--cb-safe-h) - 184px))
+    );
+  }
+}

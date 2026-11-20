@@ -220,8 +220,11 @@ export const createBox = ({ host, guard, box, bar, composer, anchor, opener, lau
       // the screen, pinned or in the flow (host.chromeBottom() counts a pinned header only: at the top of the page 0).
       const header = headerBottom()
       const zones = [...right, ...left]
-      const floor = Math.min(innerHeight, ...zones.map((r) => r.top - SAFE))
-      const top = Math.max(header, rectOf(anchor())?.bottom ?? 0, pill && !pill.tucked ? pill.bottom : 0) + GAP
+      // In whole pixels, the top rounded up and the floor down (Vodafone's header and the view bar end on a fraction):
+      // rounding each of the top and the room up on its own put the composer's bottom (top + room) up to 1 px past
+      // the floor, into a corner's zone.
+      const floor = Math.floor(Math.min(innerHeight, ...zones.map((r) => r.top - SAFE)))
+      const top = Math.ceil(Math.max(header, rectOf(anchor())?.bottom ?? 0, pill && !pill.tucked ? pill.bottom : 0) + GAP)
       const column = floor - top < H_MIN ? beside(header, pill, zones, boxShown) : null
       if (column) {
         // In whole pixels inside the column.
