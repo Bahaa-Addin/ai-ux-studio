@@ -206,7 +206,20 @@ export const renderStreaming = (schema, index) => {
   const modal = boxed ? h('dialog', { class: 'st-modal', 'aria-labelledby': 'st-modal-title' }, panel) : h('dialog', { class: 'st-modal', 'aria-labelledby': 'st-modal-title' }, modalClose, modalBody)
   const sheet = viewDialog(modal, { onEscape: () => hideModal() })
   // The clone: showModal() through viewDialog, its own Escape and close() as before.
-  const hideModal = () => (boxed ? sheet.close() : modal.close())
+  let opener = null
+  const hideModal = () => {
+    if (!boxed) return modal.close()
+    const card = opener?.closest?.('.st-card')
+    opener = null
+    // The fence cut the opener's card while the preview showed (a narrower window paged its row): brought back onto its
+    // page first, so the preview can give it the focus.
+    if (card?.inert) {
+      cardsById.get(card.dataset.aixcItem)?.show()
+      fence()
+      card.inert = false
+    }
+    sheet.close()
+  }
   onPress(modalClose, () => hideModal())
   onPress(modal, (event) => {
     if (event.target === modal) hideModal() // backdrop
@@ -234,7 +247,8 @@ export const renderStreaming = (schema, index) => {
 
   /** Shows the preview (`from` gets the focus back when it closes), at its top, the focus on its close button. */
   const showModal = (from) => {
-    sheet.open(from ?? document.activeElement)
+    if (!modal.open) opener = from ?? document.activeElement
+    sheet.open(opener)
     ;(panel ?? modal).scrollTop = 0
     if (boxed) modalClose.focus({ preventScroll: true })
     else modalClose.focus()
@@ -946,7 +960,14 @@ export const renderStreaming = (schema, index) => {
     const sides = [...navList.children, ...rowCards]
     const cut = sides.map((node) => {
       const r = node.getBoundingClientRect()
-      return r.width > 0 && (r.left < left - 1 || r.right > right + 1)
+      if (!(r.width > 0 && (r.left < left - 1 || r.right > right + 1))) return false
+      // Off its row's page, or scrolled out of its row or the bar: its own container clips it, not the box. Tab pages
+      // the row to it (the track's focusin), and the browser scrolls a row or the bar that scrolls sideways to it.
+      const clip = node.closest('.st-row__viewport') ?? navList
+      if (getComputedStyle(clip).overflowX === 'auto') return false
+      const c = clip.getBoundingClientRect()
+      const [shownLeft, shownRight] = [Math.max(r.left, c.left), Math.min(r.right, c.right)]
+      return shownRight - shownLeft >= 1 && (shownLeft < left - 1 || shownRight > right + 1)
     })
     const pressables = [...root.querySelectorAll('a[href], button')]
     const covered = pressables.map((node) => {

@@ -185,7 +185,14 @@ export const renderFan = (schema, index) => {
       const inZone = zones.some((z) => r.left < z.right && r.right > z.left && r.bottom + dy > z.top && r.top + dy < bottom)
       card.inert = inZone || (at !== active && (card.classList.contains('is-away') || cut))
     })
-    if (focused?.inert) (nextButton.disabled ? prevButton : nextButton).focus({ preventScroll: true })
+    if (focused?.inert) handFocus()
+  }
+
+  /** The focus from a card turned inert: Next, or Previous where Next is off, or the stage itself where both are (one card). */
+  const handFocus = () => {
+    const to = [nextButton, prevButton].find((button) => !button.disabled) ?? stage
+    if (to === stage && !stage.hasAttribute('tabindex')) stage.tabIndex = -1
+    to.focus({ preventScroll: true })
   }
 
   /**
@@ -198,7 +205,7 @@ export const renderFan = (schema, index) => {
     settling?.()
     settling = null
     if (instant || reducedMotion()) return keepClear()
-    if (cards.includes(document.activeElement)) (nextButton.disabled ? prevButton : nextButton).focus({ preventScroll: true })
+    if (cards.includes(document.activeElement)) handFocus()
     for (const card of cards) card.inert = true
     // Then where they rest: a frame late on a busy page, a card can still be on its way at SETTLE_MS (a few more checks).
     const moving = () => cards.some((card) => card.getAnimations?.().some((a) => a.transitionProperty === 'transform' && a.playState === 'running'))

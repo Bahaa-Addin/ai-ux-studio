@@ -215,10 +215,16 @@ export const renderGallery = (schema, index) => {
     keepFocus()
   }
 
-  /** A piece that had the focus and turned inert hands it to the row (prev when next is off). */
+  /**
+   * A piece that had the focus and turned inert hands it to the row (prev when next is off), or to the stage itself
+   * when both are off (one piece only), never the page's body.
+   */
   const keepFocus = () => {
     const focused = pieces.includes(document.activeElement) ? document.activeElement : null
-    if (focused?.inert) (nextButton.disabled ? prevButton : nextButton).focus({ preventScroll: true })
+    if (!focused?.inert) return
+    const to = [nextButton, prevButton].find((button) => !button.disabled) ?? stage
+    if (to === stage && !stage.hasAttribute('tabindex')) stage.tabIndex = -1
+    to.focus({ preventScroll: true })
   }
 
   /**
@@ -310,8 +316,9 @@ export const renderGallery = (schema, index) => {
     dragToScroll(stage, { axis: 'x', factor: STEP_PX / 160, touch: true }),
     sidewaysWheel(stage),
     // In a box: which pieces are clear changes with the zones alone too (the Pocket's button showing, the guide
-    // listening, without the box changing size), and in a short box the caption's column with them.
-    ...(viewScroller() ? [onViewZones(onResize)] : []),
+    // listening, without the box changing size), and in a short box the caption's column with them; and with the
+    // box's scroll past the wall's last stop, where the stage scrolls up out of its pin while the wall stays put.
+    ...(viewScroller() ? [onViewZones(onResize), onScrollFrame(refit)] : []),
   ]
   let offs = []
 

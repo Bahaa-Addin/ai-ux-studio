@@ -643,7 +643,8 @@
 
 /* The rail, at the inline end, centred in the room above the taller zone instead of the stage's middle; never above
    the stage's top: where it is taller than that room (305 px for Services, while the guide listens in a 700 px
-   window) it starts at the top. The column it is centred in takes no presses; only the rail itself does. */
+   window) it starts at the top and is not shown (.is-tight below). The column it is centred in takes no presses;
+   only the rail itself does. */
 .aixc-box .aixc-vx--split .ss-rail {
   top: 0;
   bottom: calc(var(--ss-safe-h) + 16px);
@@ -656,6 +657,12 @@
 
 .aixc-box .aixc-vx--split .ss-rail ul {
   pointer-events: auto;
+}
+
+/* A rail taller than that column (split.js fitRail()) would reach into the taller zone: not shown while it is. Hidden,
+   not removed, so the column keeps its size and is still measured. */
+.aixc-box .aixc-vx--split .ss-rail.is-tight ul {
+  visibility: hidden;
 }
 
 /* Each category's button is its ticks (and their padding), not its label too: the label, unseen until the button is

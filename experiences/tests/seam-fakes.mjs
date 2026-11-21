@@ -280,12 +280,17 @@ export const fakeDialogView = ({ top = 120, height = 780, width = 1351, bar = 57
       return false
     }
 
+    /** A selector list of tag names, [inert], [role=…] and [contenteditable], matched from here up. */
     closest(selector) {
-      if (selector === '[inert]') {
-        for (let at = this; at; at = at.parentElement) if (at.inert) return at
-        return null
-      }
-      if (selector === 'a, button') return this.localName === 'a' || this.localName === 'button' ? this : null
+      const parts = selector.split(',').map((part) => part.trim())
+      const matches = (at) => parts.some((part) => {
+        if (part === '[inert]') return at.inert
+        const role = /^\[role=["']?([\w-]+)["']?\]$/.exec(part)
+        if (role) return at.getAttribute('role') === role[1]
+        if (part === '[contenteditable]') return at.getAttribute('contenteditable') !== null
+        return at.localName === part
+      })
+      for (let at = this; at; at = at.parentElement) if (matches(at)) return at
       return null
     }
 

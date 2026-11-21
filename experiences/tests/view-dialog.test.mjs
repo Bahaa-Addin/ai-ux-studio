@@ -107,17 +107,25 @@ test('a scroller: Escape goes to the experience; Tab and Shift+Tab stay inside',
 })
 
 test('a scroller: a wheel, a touch move or a scroll key that would leave the dialog is held; one an inner scroller takes is not', () => {
-  const { dialog, opener, box, body, controls } = setup()
+  const { dialog, opener, box, body, controls, El } = setup()
   configure({ scroller: box })
   const sheet = viewDialog(dialog)
   sheet.open(opener)
   // The body does not scroll: everything is held.
   assert.equal(dialog.dispatch('wheel', { target: controls[0], deltaY: 100 }).defaultPrevented, true)
   assert.equal(key(dialog, controls[0], { key: 'PageDown' }).defaultPrevented, true)
-  assert.equal(key(dialog, controls[0], { key: ' ' }).defaultPrevented, false, 'Space on a link or button presses it')
+  const button = controls[controls.length - 1]
+  assert.equal(key(dialog, button, { key: ' ' }).defaultPrevented, false, 'Space on a button presses it')
+  const role = new El('span')
+  role.setAttribute('role', 'button')
+  body.append(role)
+  assert.equal(key(dialog, role, { key: ' ' }).defaultPrevented, false, 'Space on a [role=button] presses it')
+  // Space on a link only scrolls (it never follows it): with nothing inside to scroll it would move Vodafone's page.
+  assert.equal(key(dialog, controls[0], { key: ' ' }).defaultPrevented, true, 'Space on a link, nothing inside scrolls: held')
   // The body scrolls (overflow auto, 300 px more, at its top): down goes to it, up is held.
   Object.assign(body, { scrollHeight: 900, clientHeight: 600, scrollTop: 0 })
   body.computed.overflowY = 'auto'
+  assert.equal(key(dialog, controls[0], { key: ' ' }).defaultPrevented, false, 'Space on a link, the body scrolls down: it takes it')
   assert.equal(dialog.dispatch('wheel', { target: controls[0], deltaY: 100 }).defaultPrevented, false)
   assert.equal(dialog.dispatch('wheel', { target: controls[0], deltaY: -100 }).defaultPrevented, true)
   dialog.dispatch('touchstart', { target: controls[0], touches: [{ clientY: 400 }] })
@@ -125,6 +133,43 @@ test('a scroller: a wheel, a touch move or a scroll key that would leave the dia
   assert.equal(dialog.dispatch('touchmove', { target: controls[0], touches: [{ clientY: 360 }] }).defaultPrevented, true, 'down, at its top: held')
   sheet.close()
   configure()
+})
+
+test('a scroller: the view bar\'s height changing on the box\'s style (box.js\'s --aixc-viewbar-h, the trail\'s pill) places the preview again', () => {
+  const observers = new Set()
+  const saved = globalThis.MutationObserver
+  globalThis.MutationObserver = class {
+    constructor(callback) {
+      this.callback = callback
+    }
+
+    observe(target, options) {
+      Object.assign(this, { target, options })
+      observers.add(this)
+    }
+
+    disconnect() {
+      observers.delete(this)
+    }
+  }
+  try {
+    const { dialog, opener, box, viewbar, root } = setup()
+    configure({ scroller: box })
+    const sheet = viewDialog(dialog)
+    sheet.open(opener)
+    assert.equal(dialog.props.get('--vx-sheet-top'), `${177 - root.getBoundingClientRect().top}px`)
+    const watching = [...observers].filter((o) => o.target === box && o.options?.attributeFilter?.includes('style'))
+    assert.equal(watching.length, 1, 'the box\'s style watched while the preview shows')
+    viewbar.rect = { ...viewbar.rect, height: 57 + 40 }
+    for (const o of watching) o.callback([])
+    assert.equal(dialog.props.get('--vx-sheet-top'), `${177 + 40 - root.getBoundingClientRect().top}px`, 'its top under the taller bar')
+    assert.equal(dialog.props.get('--vx-sheet-h'), `${900 - 177 - 40}px`)
+    sheet.close()
+    assert.equal([...observers].filter((o) => o.target === box).length, 0, 'not watched once closed')
+  } finally {
+    globalThis.MutationObserver = saved
+    configure()
+  }
 })
 
 test('a scroller: configure() (the shell\'s reset, the guard\'s stop) undoes an open preview; an opener gone inert gets no focus', () => {

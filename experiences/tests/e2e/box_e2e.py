@@ -1128,12 +1128,40 @@ SPLIT_RAIL_CLEAR = """async (y) => {
 }"""
 
 
+# The first slide from 10 % of the track whose copy has a link (shown at once, reveal()), that link focused (as Tab
+# reaches it): the counter's number then.
+SPLIT_FOCUS_LINK = """async () => {
+  const box = __h.box
+  const ids = [...box.querySelectorAll('.ss-text[data-aixc-item]')].map((n) => n.dataset.aixcItem)
+  const counter = () => Number(box.querySelector('.ss-counter__now').textContent)
+  for (const id of ids.slice(counter() - 1, -4)) {
+    __h.current.reveal(id)
+    await new Promise((r) => setTimeout(r, 1200))
+    const link = box.querySelector('.ss-text[data-pos="0"] .ss-actions a[href]')
+    if (link) {
+      link.focus()
+      return { focused: document.activeElement === link, at: counter() }
+    }
+  }
+  return { focused: false, at: counter() }
+}"""
+
+
 async def split_extra(page, tag, zones, layout):
     """Split's own checks in the box: its jumps clear; where the rail shows, no action of the copy under it; on
     phones its row stays under the title while the zones change under it (the guide starting and stopping
     listening moves the copy's bottom, not the stage)."""
     jumps = await page.evaluate(SPLIT_JUMPS)
     check(f"{tag}: layers that jumped across the stage slide again (no .is-jump two frames after a long jump and back, or after an unmount mid-jump)", jumps["during"] > 0 and jumps["afterJumps"] == 0 and jumps["afterRemount"] == 0, jumps)
+    # The keys from the shown slide's link (the review, 2026-11-21): ArrowDown steps the stage and the slide that held
+    # the focus turns inert; the focus goes on to the stage's controls, never the page's body, so the keys keep stepping.
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", (await page.evaluate(TRACK_AT, {"track": ".ss-track", "stage": ".ss-stage", "k": 0.1}))["y"])
+    await page.wait_for_timeout(1200)
+    linked = await page.evaluate(SPLIT_FOCUS_LINK)
+    seen = await keys_keep_stepping(page, ".ss-stage", "() => Number(__h.box.querySelector('.ss-counter__now').textContent)", presses=3, wait=1300)
+    check(f"{tag}: the shown slide's link focused, then ArrowDown {len(seen)} times: the focus stays in the stage and the slide steps each time ({[s['front'] for s in seen]}, from {linked['at']})", linked["focused"] and all(s["inStage"] for s in seen) and [s["front"] for s in seen] == [linked["at"] + k + 1 for k in range(len(seen))], {"linked": linked, "seen": seen})
+    await page.evaluate("() => { __h.current.reveal(__h.itemIds[0]); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }")
+    await page.wait_for_timeout(1200)
     width, height = await page.evaluate("() => [innerWidth, innerHeight]")
     if ".ss-rail" in split_controls(width, height):
         at = await page.evaluate(TRACK_AT, {"track": ".ss-track", "stage": ".ss-stage", "k": 0.1})
@@ -1171,7 +1199,8 @@ SPLIT_RAIL = """() => {
   const u = box.querySelector('.ss-rail ul').getBoundingClientRect()
   const style = getComputedStyle(box)
   const safe = Math.max(parseFloat(style.getPropertyValue('--aixc-safe-right-h')), parseFloat(style.getPropertyValue('--aixc-safe-left-h')))
-  return { top: Math.round(u.top - s.top), bottom: Math.round(u.bottom - s.top), height: Math.round(u.height), room: Math.round(s.height), aboveZones: Math.round(s.bottom - safe - 16 - u.bottom) }
+  const u_el = box.querySelector('.ss-rail ul')
+  return { top: Math.round(u.top - s.top), bottom: Math.round(u.bottom - s.top), height: Math.round(u.height), room: Math.round(s.height), aboveZones: Math.round(s.bottom - safe - 16 - u.bottom), shown: getComputedStyle(u_el).visibility !== 'hidden' }
 }"""
 
 
@@ -1189,8 +1218,11 @@ async def split_after(browser, langs):
             await page.wait_for_timeout(1200)
             rail = await page.evaluate(SPLIT_RAIL)
             check(f"{tag}: the rail's top inside the stage ({rail['top']} px down)", rail["top"] >= -1, rail)
+            # Listening or not (the review, 2026-11-21: listening, its 305 px reached 9 px into the transcript bar's
+            # zone): a rail shown ends above both zones; one taller than that room is not shown (split.js fitRail()).
+            check(f"{tag}: the rail, {'shown' if rail['shown'] else 'not shown'}, ends above both zones where it shows, 16 px clear ({rail['aboveZones']} px)", (not rail["shown"]) or rail["aboveZones"] >= -1, rail)
             if not listening:
-                check(f"{tag}: the rail ends above both zones, 16 px clear ({rail['aboveZones']} px)", rail["aboveZones"] >= -1, rail)
+                check(f"{tag}: quiet, the rail shown", rail["shown"], rail)
             check(f"{tag}: no page errors", page.errors == [], page.errors)
             await context.close()
 
@@ -1276,6 +1308,42 @@ RING_EVERY_FOOT = """async (zones) => {
 # The ring's unit at least this (px): its front service 100 px across, its titles legible.
 RING_MIN_U = 2
 
+# A press on a shown service (a pressable neighbour of the front one, else the front one): it takes the focus, as
+# Chrome gives a pressed button, and turns to the front. Its id, the front's number after it settles, the reasons.
+RING_PRESS_NEXT = """async () => {
+  const box = __h.box
+  const items = [...box.querySelectorAll('.rg-item')]
+  const front = items.findIndex((n) => n.classList.contains('is-front'))
+  const pressable = (n) => !!n && !n.inert && !n.classList.contains('is-off')
+  const next = [items[front + 1], items[front - 1], items[front]].find(pressable)
+  if (!next) return { pressed: null, front, states: items.slice(Math.max(0, front - 1), front + 2).map((n) => ({ inert: n.inert, off: n.classList.contains('is-off') })) }
+  next.focus({ preventScroll: true })
+  next.click()
+  await new Promise((r) => setTimeout(r, 1200))
+  const a = document.activeElement
+  // The pressed service keeps the focus, or (inert on its way to the front: it passed the guide's listening zone) has
+  // handed it to the stage's controls: either way it is in the stage.
+  return { pressed: next.dataset.aixcItem, front: items.findIndex((n) => n.classList.contains('is-front')), focused: a !== document.body && box.querySelector('.rg-stage').contains(a), on: a === next ? 'the pressed service' : (a?.getAttribute('aria-label') || '').slice(0, 30) }
+}"""
+
+# Where the focus is, and the front service's number.
+STAGE_FOCUS = """(stage) => {
+  const box = __h.box
+  const a = document.activeElement
+  return { inStage: !!a && a !== document.body && box.querySelector(stage).contains(a), on: a === document.body ? 'body' : (a?.getAttribute('aria-label') || a?.className || a?.tagName || '').slice(0, 40) }
+}"""
+
+
+async def keys_keep_stepping(page, stage, front_js, presses=4, wait=1100):
+    """ArrowDown pressed `presses` times from where the focus is: after each the focus still in `stage` (never the
+    page's body, where the keys no longer step the stage) and the front one further on (`front_js` reads it)."""
+    seen = []
+    for _ in range(presses):
+        await page.keyboard.press("ArrowDown")
+        await page.wait_for_timeout(wait)
+        seen.append({**(await page.evaluate(STAGE_FOCUS, stage)), "front": await page.evaluate(front_js)})
+    return seen
+
 
 async def ring_extra(page, tag, zones, layout):
     """Ring's own checks in the box: settled mid-track, the ring keeps a room of its own (its unit at least
@@ -1297,6 +1365,20 @@ async def ring_extra(page, tag, zones, layout):
     turn = await page.evaluate(RING_FAST_TURN, {"from": near["y"], "to": far["y"]})
     if turn["clips"]:
         check(f"{tag}: a fast turn (stretch {turn['stretch']}) never widens the ring's clipped column ({turn['wider']} px)", turn["stretch"] > 1.05 and turn["wider"] <= 0.5, turn)
+    # The keys after a press on a service (the review, 2026-11-21): the pressed service keeps the focus as it turns to
+    # the front; the arrow keys turn the ring on from it, and as it turns past the stage's side (inert) or out of view
+    # the focus goes on to the stage's controls, never the page's body, so the keys keep turning the ring.
+    await page.evaluate("(y) => __h.box.scrollTo({ top: y, behavior: 'instant' })", near["y"])
+    await page.wait_for_timeout(1200)
+    pressed = await page.evaluate(RING_PRESS_NEXT)
+    check(f"{tag}: a shown service pressable to start the keys from", bool(pressed["pressed"]), pressed)
+    if pressed["pressed"]:
+        start = pressed["front"]
+        front_js = "() => [...__h.box.querySelectorAll('.rg-item')].findIndex((n) => n.classList.contains('is-front'))"
+        total = await page.evaluate("() => __h.box.querySelectorAll('.rg-item').length")
+        seen = await keys_keep_stepping(page, ".rg-stage", front_js)
+        want = [min(start + k + 1, total - 1) for k in range(len(seen))]
+        check(f"{tag}: a pressed service (the focus in the stage), then ArrowDown {len(seen)} times: the focus stays in the stage and the ring turns each time ({[s['front'] for s in seen]}, from {start})", pressed["focused"] and all(s["inStage"] for s in seen) and [s["front"] for s in seen] == want, {"pressed": pressed, "seen": seen})
     await page.evaluate("() => __h.box.scrollTo({ top: 0, behavior: 'instant' })")
     await page.wait_for_timeout(1200)
 
@@ -1378,6 +1460,29 @@ GALLERY_HEADER = """async (h) => {
 }"""
 
 
+# The box at its end after the wall rests on its last piece (the review, 2026-11-21): the stage has scrolled up out
+# of its pin while the wall stays put. The pieces fenced in a zone at the pin, and the pieces left inert at the end
+# though they are inside the box's sides and clear of both zones (each should be fenced again as the box scrolls).
+GALLERY_END = """async ({ zones }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const [left, right] = [b.left + box.clientLeft, b.left + box.clientLeft + box.clientWidth]
+  const zoneRects = """ + ZONE_RECTS + """
+  const pieces = [...box.querySelectorAll('.gl-piece')]
+  const rect = (r) => [r.left, r.top, r.right, r.bottom].map(Math.round)
+  const sideOut = (r) => r.left < left - 1 || r.right > right + 1
+  const inZone = (r) => zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.bottom > z.top && r.top < z.bottom)
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  __h.current.reveal(pieces[pieces.length - 1].dataset.aixcItem)
+  await wait(1200)
+  const fenced = pieces.filter((p) => { const r = p.getBoundingClientRect(); return p.inert && !sideOut(r) && inZone(r) }).map((p) => p.dataset.aixcItem)
+  box.scrollTo({ top: box.scrollHeight - box.clientHeight, behavior: 'instant' })
+  await wait(400)
+  const wrongly = pieces.map((p) => [p, p.getBoundingClientRect()]).filter(([p, r]) => r.width && p.inert && !sideOut(r) && !inZone(r)).map(([p, r]) => ({ item: p.dataset.aixcItem, rect: rect(r), fenced: fenced.includes(p.dataset.aixcItem) }))
+  return { fenced: fenced.length, wrongly }
+}"""
+
+
 async def gallery_extra(page, tag, zones, layout):
     """The gallery's own checks: reveal(itemId) walks to its piece, which is the shown one, in the box's view and
     pressable (inert only in a zone), and false for an id it has not; on phones the row under the stage's title,
@@ -1415,8 +1520,41 @@ async def gallery_extra(page, tag, zones, layout):
     if layout == "phone":
         row = await page.evaluate(GALLERY_ROW)
         check(f"{tag}: the row under the stage's title ({row['gap']} px), clear of the caption", row["gap"] >= 0 and not row["over"], row)
+    end = await page.evaluate(GALLERY_END, {"zones": zones})
+    check(f"{tag}: the box at its end past the last piece: no piece inside the box's sides and clear of both zones inert ({end['fenced']} fenced in a zone at the pin)", not end["wrongly"], end)
     await page.evaluate("() => { __h.current.reveal(__h.itemIds[0]); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }")
     await page.evaluate(FRAMES)
+
+
+# One item only (the review, 2026-11-21): prev and next both off. Its item focused (a press), then a zone covering the
+# stage (as the guide's listening one widens): the item turns inert and the focus goes on inside the stage, never the
+# page's body.
+ONE_ITEM_FOCUS = """async ({ item, stage }) => {
+  const box = __h.box
+  const node = box.querySelector(item)
+  node.focus({ preventScroll: true })
+  const was = document.activeElement === node
+  __h.measure({ 'right-w': innerWidth, 'right-h': innerHeight, 'left-w': 96, 'left-h': 96 })
+  await new Promise((r) => setTimeout(r, 600))
+  const a = document.activeElement
+  return { was, inert: node.inert, inStage: a !== document.body && box.querySelector(stage).contains(a), on: a === document.body ? 'body' : (a.getAttribute('aria-label') || a.className).slice(0, 40), buttons: [...box.querySelectorAll(`${stage} button.vx-round`)].map((b) => b.disabled) }
+}"""
+
+
+def one_item_after(name, item, stage):
+    async def after(browser, langs):
+        for lang in langs:
+            tag = f"{name} {lang} 1366x900 one item"
+            context, page = await open_harness(browser, 1366, 900, lang, ZONES[(1366, 900)], "reduce")
+            await page.evaluate("async (name) => { await __h.load(name); __h.open(name, { limit: 1 }) }", name)
+            await page.evaluate("document.fonts.ready")
+            await page.wait_for_timeout(600)
+            got = await page.evaluate(ONE_ITEM_FOCUS, {"item": item, "stage": stage})
+            check(f"{tag}: its item focused, then covered by a zone: inert, the focus still in the stage (prev and next both off)", got["was"] and got["inert"] and got["inStage"], got)
+            check(f"{tag}: no page errors", page.errors == [], page.errors)
+            await page.evaluate("() => __h.close()")
+            await context.close()
+    return after
 
 
 # Journey: one item revealed (its top at the pin line, or the box at its end), in the box's view, pressable, the window
@@ -1957,8 +2095,13 @@ TUNNEL_TAB = """async ({ zones, presses }) => {
   const a = document.activeElement
   const r = a.getBoundingClientRect()
   const b = box.getBoundingClientRect()
-  const safeH = Math.max(zones['right-h'], zones['left-h'])
-  const fits = box.clientHeight - 57 - 16 - (safeH + 16) >= r.height
+  // The room tunnel.js onFlowFocus scrolls a focused link into: under the bar (+16), over the zone on the link's side
+  // where one meets it in width (-16), else the box's bottom (the review, 2026-11-21: not the taller zone's top across
+  // the box's whole width, which left 812x375 no room for any link and the check below empty).
+  const top = b.top + box.clientTop + 57 + 16
+  const bottom = b.top + box.clientTop + box.clientHeight
+  const floor = Math.min(bottom, ...zoneRects.filter(([, z]) => r.left < z.right && r.right > z.left).map(([, z]) => z.top - 16))
+  const fits = floor - top >= r.height
   const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
   return { at: nodes.indexOf(a), card: !!a.closest('.tn-card'), fits, inZone: zoneRects.some(([, z]) => meets(r, z)), reaches: !!hit && a.contains(hit), rect: [r.left, r.top, r.right, r.bottom].map(Math.round), boxScroll: Math.round(box.scrollTop), windowScroll: scrollY }
 }"""
@@ -1976,7 +2119,7 @@ async def tunnel_tab_flat(page, tag, zones):
     order = [s["at"] for s in seen]
     check(f"{tag}: laid flat, Tab from the view bar reaches every link up to the last service's ({len(start['want'])}, {start['cards']} of them the services'), in DOM order, none skipped", order == start["want"] and start["cards"] > 0, {"want": start["want"], "got": order})
     covered = [s for s in seen if s["fits"] and (s["inZone"] or not s["reaches"])]
-    check(f"{tag}: laid flat, each link Tab reaches is scrolled clear of both zones and pressable ({sum(s['fits'] for s in seen)} where the room fits one), the window still", not covered and all(s["windowScroll"] == 0 for s in seen), covered[:3])
+    check(f"{tag}: laid flat, each link Tab reaches is scrolled clear of both zones and pressable ({sum(s['fits'] for s in seen)} where the room fits one), the window still", any(s["fits"] for s in seen) and not covered and all(s["windowScroll"] == 0 for s in seen), covered[:3])
 
 
 async def tunnel_extra(page, tag, zones, layout):
@@ -2553,6 +2696,91 @@ async def streaming_after(browser, langs):
             await context.close()
 
 
+# Streaming's first paged row (it does not scroll sideways): its cards, the ones on its page, and whether any is inert.
+ST_ROW = """() => {
+  const box = __h.box
+  const row = [...box.querySelectorAll('.st-row')].find((r) => getComputedStyle(r.querySelector('.st-row__viewport')).overflowX !== 'auto' && r.querySelector('.st-card.is-offpage'))
+  if (!row) return null
+  const cards = [...row.querySelectorAll('.st-card')]
+  return { id: row.id, on: cards.filter((c) => !c.classList.contains('is-offpage')).map((c) => c.dataset.aixcItem), off: cards.filter((c) => c.classList.contains('is-offpage')).map((c) => c.dataset.aixcItem), inert: cards.filter((c) => c.closest('[inert]')).map((c) => c.dataset.aixcItem) }
+}"""
+
+# Where the focus is: the row card it is in (or what it is), and whether that card is on its row's page now.
+ST_FOCUS = """() => {
+  const a = document.activeElement
+  const card = a?.closest?.('.st-card')
+  return { card: card?.dataset.aixcItem ?? null, row: card?.closest('.st-row')?.id ?? null, onPage: !!card && !card.classList.contains('is-offpage'), on: a === document.body ? 'body' : (a?.className || a?.localName || '').slice(0, 40) }
+}"""
+
+
+async def streaming_keys(browser, langs):
+    """The review (2026-11-21), motion allowed: in a paged row (1366 px) the cards off its page stay focusable, as on
+    the clone, so Tab from the last card on the page reaches the next one and pages the row to it; a preview opened
+    from a card that a narrower window pages off gives the focus back to that card at Escape; on a phone the bar's
+    links past the box's side stay focusable (the bar scrolls sideways to a focused one) and no row card is inert."""
+    for lang in langs:
+        tag = f"streaming {lang} 1366x900 keys (motion allowed)"
+        context, page = await open_harness(browser, 1366, 900, lang, ZONES[(1366, 900)], "no-preference")
+        await page.evaluate("async () => { await __h.load('streaming'); __h.open('streaming') }")
+        await page.evaluate("() => __h.box.querySelector('.st-skip')?.click()")
+        await page.wait_for_timeout(1200)
+        row = await page.evaluate(ST_ROW)
+        check(f"{tag}: a paged row with cards off its page", row is not None, row)
+        if row is None:
+            await context.close()
+            continue
+        await page.evaluate("(id) => __h.current.reveal(id)", row["on"][0])
+        await page.wait_for_timeout(1000)
+        row = await page.evaluate(ST_ROW)
+        check(f"{tag}: no card of the paged row inert ({len(row['off'])} off its page)", not row["inert"], row)
+        last = row["on"][-1]
+        await page.evaluate("(id) => __h.box.querySelector(`.st-card[data-aixc-item=\"${CSS.escape(id)}\"] .st-card__open`).focus()", last)
+        reached = None
+        for _ in range(12):
+            await page.keyboard.press("Tab")
+            await page.wait_for_timeout(120)
+            now = await page.evaluate(ST_FOCUS)
+            if now["card"] != last:
+                reached = now
+                break
+        await page.wait_for_timeout(1000)
+        settled = await page.evaluate(ST_FOCUS)
+        check(f"{tag}: Tab from the page's last card ({last}) reaches the next card of its row ({row['off'][0]}) and pages the row to it", reached is not None and reached["card"] == row["off"][0] and reached["row"] == row["id"] and settled["onPage"], {"reached": reached, "settled": settled, "row": row})
+        # A preview from the page's last card, then a narrower window (fewer cards a page): that card is off its page.
+        await page.evaluate("(id) => __h.current.reveal(id)", row["on"][0])
+        await page.wait_for_timeout(1000)
+        opener = row["on"][-1]
+        await page.evaluate("(id) => __h.box.querySelector(`.st-card[data-aixc-item=\"${CSS.escape(id)}\"] .st-card__open`).click()", opener)
+        await page.wait_for_function("() => __h.box.querySelector('.st-modal').open", timeout=5000)
+        await page.set_viewport_size({"width": 1050, "height": 900})
+        await page.wait_for_timeout(800)
+        off = await page.evaluate("(id) => __h.box.querySelector(`.st-card[data-aixc-item=\"${CSS.escape(id)}\"]`).classList.contains('is-offpage')", opener)
+        await page.keyboard.press("Escape")
+        await page.wait_for_function("() => !__h.box.querySelector('.st-modal').open", timeout=5000)
+        await page.wait_for_timeout(300)
+        back = await page.evaluate(ST_FOCUS)
+        check(f"{tag}: a preview from {opener}, the window narrowed under it ({'off its page' if off else 'still on its page'}): Escape gives the focus back to its card", back["card"] == opener, {"back": back, "off": off})
+        check(f"{tag}: the window never scrolled", await page.evaluate("() => scrollY") == 0)
+        check(f"{tag}: no page errors", page.errors == [], page.errors)
+        await page.evaluate("() => __h.close()")
+        await context.close()
+        tag = f"streaming {lang} 375x812 keys (motion allowed)"
+        context, page = await open_harness(browser, 375, 812, lang, ZONES[(375, 812)], "no-preference")
+        await page.evaluate("async () => { await __h.load('streaming'); __h.open('streaming') }")
+        await page.evaluate("() => __h.box.querySelector('.st-skip')?.click()")
+        await page.wait_for_timeout(1200)
+        nav = await page.evaluate("() => { const b = __h.box.getBoundingClientRect(); const li = [...__h.box.querySelectorAll('.st-nav__links > li')]; return { past: li.filter((n) => { const r = n.getBoundingClientRect(); return r.right > b.right + 1 || r.left < b.left - 1 }).length, inert: li.filter((n) => n.inert).length, cards: [...__h.box.querySelectorAll('.st-card')].filter((c) => c.inert).length } }")
+        check(f"{tag}: the bar's links past the box's side ({nav['past']}) and the rows' cards stay focusable (none inert)", nav["inert"] == 0 and nav["cards"] == 0, nav)
+        check(f"{tag}: no page errors", page.errors == [], page.errors)
+        await page.evaluate("() => __h.close()")
+        await context.close()
+
+
+async def streaming_after_all(browser, langs):
+    await streaming_after(browser, langs)
+    await streaming_keys(browser, langs)
+
+
 # In the order they run. The selectors of the todo rows are today's markup (what box_generic() would check once
 # the row is done); a phase that converts one adjusts its row as it drops `todo`.
 # The flipbook (phase 4, 2026-11-18). reveal(id): the item's page open and the item in the box's view (under the bar,
@@ -2640,12 +2868,16 @@ async def flipbook_extra(page, tag, zones, layout):
 EXPERIENCES = {
     "spotlight": row(run=run_spotlight),
     "magazine": row(run=run_magazine),
-    "fan": row(pins=(".fn-stage", ".fn-track"), controls=[".fn-controls", ".fn-detail"], extra=fan_extra, listening=[(1366, 900), (1024, 768), (768, 1024)]),
+    # The review (2026-11-21) added a phone in landscape (812x375), at rest and listening: there the end corner's zone
+    # reaches the controls' row at the stage's top, which moves in past it (fan.css --fn-ctl-fit).
+    "fan": row(pins=(".fn-stage", ".fn-track"), controls=[".fn-controls", ".fn-detail"], sizes=[*GENERIC_SIZES, (812, 375)], extra=fan_extra, listening=[(1366, 900), (1024, 768), (768, 1024), (812, 375)], after=one_item_after("fan", ".fn-card", ".fn-stage")),
     # Phase 2 (2026-11-18): its row and rail out of both zones; phones in landscape too, as its row sits low. In a
     # short box (from 720 px wide under 700 px tall, or any under 500) split.css does not show the rail. The tablet
     # sizes again with the guide listening (its transcript bar widens the right zone), as spotlight's; its jumps, its
-    # row under the title on phones, and its rail at 700 px tall (split_extra, split_after).
-    "split": row(pins=(".ss-stage", ".ss-track"), controls=split_controls, sizes=GENERIC_SIZES + [(812, 375)], listening=[(1024, 768), (768, 1024)], extra=split_extra, after=split_after),
+    # row under the title on phones, and its rail at 700 px tall (split_extra, split_after). The review (2026-11-21)
+    # added the guide listening on phones (812x375's short box keeps the copy beside the right zone; 375x812's copy
+    # ends above it), the keys from a slide's link, and the rail checked while listening too.
+    "split": row(pins=(".ss-stage", ".ss-track"), controls=split_controls, sizes=GENERIC_SIZES + [(812, 375)], listening=[(1024, 768), (768, 1024), (812, 375), (375, 812)], extra=split_extra, after=split_after),
     "coverflow": row(pins=(".cf-stage", ".cf-track"), controls=[".cf-controls", ".cf-panel"], sizes=[*GENERIC_SIZES, (812, 375)], extra=coverflow_extra, listening=[(1366, 900), (1024, 768), (812, 375), (375, 812)]),
     # Phase 2 (2026-11-18): its prev / next and the shown service's actions out of both zones (the foot one column
     # at the bottom centre; beside the ring in a short box); phones in landscape too, as its row sits low; the tablet
@@ -2664,7 +2896,7 @@ EXPERIENCES = {
     # The review (2026-11-18) added shorter phones (375x667, 360x640), short laptop windows (1366x700, 1024x600: the
     # start column) and a tablet (768x1024: the caption beside the wall at 720..899 px), each with the guide listening
     # too, every piece shown in turn and a header as tall as Vodafone's (gallery_extra: GALLERY_COVER, GALLERY_HEADER).
-    "gallery": row(pins=(".gl-stage", ".gl-track"), controls=[".gl-controls", ".gl-caption"], sizes=GENERIC_SIZES + [(812, 375), (375, 667), (360, 640), (1366, 700), (1024, 600), (768, 1024)], listening=[(1366, 900), (1024, 768), (812, 375), (375, 812), (375, 667), (1366, 700), (1024, 600), (768, 1024)], extra=gallery_extra),
+    "gallery": row(pins=(".gl-stage", ".gl-track"), controls=[".gl-controls", ".gl-caption"], sizes=GENERIC_SIZES + [(812, 375), (375, 667), (360, 640), (1366, 700), (1024, 600), (768, 1024)], listening=[(1366, 900), (1024, 768), (812, 375), (375, 812), (375, 667), (1366, 700), (1024, 600), (768, 1024)], extra=gallery_extra, after=one_item_after("gallery", ".gl-piece", ".gl-stage")),
     # Phase 3 (2026-11-18): the scene pins at the bar while the story scrolls over it; no controls (the scene is drawn
     # only). The story's links and buttons take no pointer events while one passes under a corner (journey.js
     # keepClear(), never inert: the keyboard and a screen reader meet each in order); a focused one is moved clear.
@@ -2716,7 +2948,7 @@ EXPERIENCES = {
     # the guide listening where its transcript bar meets the rows. streaming_extra: reveal(), the preview in the box
     # (view-dialog.js viewDialog: not in the top layer, the rest inert, Tab kept in it, Escape giving the focus back);
     # streaming_after: the opening in the box (Skip clear of the zones, ended by the box's scroll), no Roboto.
-    "streaming": row(controls=[".st-nav"], sizes=GENERIC_SIZES + [(812, 375)], listening=[(1366, 900), (1024, 768), (375, 812)], extra=streaming_extra, after=streaming_after),
+    "streaming": row(controls=[".st-nav"], sizes=GENERIC_SIZES + [(812, 375)], listening=[(1366, 900), (1024, 768), (375, 812)], extra=streaming_extra, after=streaming_after_all),
 }
 
 
@@ -2728,11 +2960,10 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         only = sys.argv[2].split(",") if len(sys.argv) > 2 else None
-        sizes = SIZES
-        if only:
-            sizes = [s for s in sizes if f"{s[0]}x{s[1]}" in only]
-        # Generic rows: the sizes and languages the second argument names (all of either when it names none).
+        # The sizes the second argument names (all of them when it names none: a language alone keeps every size, for
+        # spotlight's and magazine's own runs too); for generic rows also the languages it names.
         only_sizes = [t for t in only or [] if "x" in t]
+        sizes = [s for s in SIZES if f"{s[0]}x{s[1]}" in only_sizes] if only_sizes else SIZES
         langs = [lang for lang in ("en", "ar") if lang in (only or [])] or ["en", "ar"]
         for name, spec in EXPERIENCES.items():
             if tried:

@@ -102,6 +102,9 @@ const createShell = ({ host, guard, layer, ensureCss, checkpoint, launcher }) =>
     return node
   }
   const copy = SERVICES.test(location.pathname) ? 'services' : 'items'
+  /** The cards' names off Services (ADR-0076 §6: the word "services" only there): two of them say services. */
+  const NEUTRAL_CARD_NAMES = { ring: 'Ring', cube: 'Cube' }
+  const cardName = (card) => t(copy === 'items' ? (NEUTRAL_CARD_NAMES[card.id] ?? card.name) : card.name)
 
   /* ------------------------------------------------------------- the model */
   let index = null
@@ -194,7 +197,7 @@ const createShell = ({ host, guard, layer, ensureCss, checkpoint, launcher }) =>
   const composerSegs = [seg('original'), seg('reimagined')]
   const cards = TEMPLATE_CARDS.filter((card) => EXPERIENCES[card.experience])
   const templateButtons = cards.map((card) =>
-    h('button', { type: 'button', class: 'aixc-template', 'data-template': card.id, 'aria-pressed': 'false' }, pathIcon(card.icon, 'aixc-template__icon'), h('span', { class: 'aixc-template__name' }, t(card.name))),
+    h('button', { type: 'button', class: 'aixc-template', 'data-template': card.id, 'aria-pressed': 'false' }, pathIcon(card.icon, 'aixc-template__icon'), h('span', { class: 'aixc-template__name' }, cardName(card))),
   )
   const closeButton = h('button', { type: 'button', class: 'aixc-icon-btn', 'aria-label': t('Close composer') }, pathIcon(ICON_CLOSE, 'aixc-icon'))
   const composer = mark(
@@ -295,7 +298,7 @@ const createShell = ({ host, guard, layer, ensureCss, checkpoint, launcher }) =>
     }
     for (const button of templateButtons) button.setAttribute('aria-pressed', String(button.dataset.template === state.template))
     const card = cards.find((c) => c.id === state.template)
-    meta.textContent = card ? t(card.name) : ''
+    meta.textContent = card ? cardName(card) : ''
   }
 
   /* ----------------------------------------------------------------- views */
@@ -431,7 +434,7 @@ const createShell = ({ host, guard, layer, ensureCss, checkpoint, launcher }) =>
     note.hidden = true
     closeComposer({ focus: false })
     showReimagined({ fresh: true })
-    announce(t('{name} ready.', { name: t(card.name) }))
+    announce(t('{name} ready.', { name: cardName(card) }))
   }
 
   const reset = () => {

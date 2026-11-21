@@ -268,6 +268,11 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  *
  * 2026-11-20, phase 4 merged (the flipbook, canvas and streaming together: all thirteen in the registry): the shell
  * 25,100 bytes, 12 over its 24.5 KB, so 24.75 KB (244 left), the smallest step; the core and the Pocket unchanged.
+ *
+ * 2026-11-21, phase 4b's review: split hands the focus on where a slide or its rail turns inert or hidden under it
+ * (to Next, Previous or the stage), 7,992 bytes, 56 over its 7.75 KB, so 8 KB (200 left), the smallest step. Ring the
+ * same where a service turns inert or out of view under the focus, 8,472 bytes, 24 over its 8.25 KB, so 8.5 KB (232
+ * left).
  */
 /**
  * Reimagine's experiences on Vodafone's pages, one row each (ADR-0076, phase 1): the key is the experience's name in
@@ -280,8 +285,8 @@ const REIMAGINE_EXPERIENCES: Record<string, number> = {
 	spotlight: 7.75 * 1024,
 	fan: 7.5 * 1024,
 	coverflow: 8 * 1024,
-	split: 7.75 * 1024,
-	ring: 8.25 * 1024,
+	split: 8 * 1024,
+	ring: 8.5 * 1024,
 	gallery: 8.25 * 1024,
 	journey: 6.5 * 1024,
 	cube: 8.25 * 1024,
@@ -443,7 +448,19 @@ test('the experience layer is its own small script; guide.js carries none of it'
 	assert.deepEqual(launcher.imports.filter((i) => i.kind === 'import-statement'), [], 'the launcher\'s chunk imports no other chunk statically')
 	assert.match(fs.readFileSync(path.join(aixc, launcher.file), 'utf8'), /aixc-launcher/, 'the launcher\'s button and stylesheet are in its chunk')
 	// The shell carries no experience: each renderer and its stylesheet come with their own chunk, on the template's choice.
-	for (const f of closure(manifest.files.find((x) => x.entry === 'src/host/demos/reimagine/shell.js')?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), /aixc-magazine|sp-stage|mag-cover/, `no experience in the shell's closure (${f})`)
+	// Each row's root class (its stylesheet's selectors), magazine's and spotlight's own, streaming's preview, and the
+	// preview's module (view-dialog.js, which sets --vx-sheet-top; canvas.css and streaming.css read it).
+	const EXPERIENCE_IN_SHELL = new RegExp(`${Object.keys(REIMAGINE_EXPERIENCES).map((name) => `aixc-vx--${name}\\b`).join('|')}|aixc-magazine|sp-stage|mag-cover|st-modal|--vx-sheet-top`)
+	const shellClosure = closure(manifest.files.find((x) => x.entry === REIMAGINE_SHELL)?.file ?? '')
+	assert.ok(shellClosure.length > 0, 'the shell is a chunk')
+	for (const f of shellClosure) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), EXPERIENCE_IN_SHELL, `no experience in the shell's closure (${f})`)
+	for (const name of Object.keys(REIMAGINE_EXPERIENCES)) {
+		const own = manifest.files.find((x) => x.entry === reimagineEntry(name))?.file
+		assert.ok(own && !shellClosure.includes(own), `${name}'s chunk (${own}) is not in the shell's closure`)
+	}
+	const dialogChunks = manifest.files.filter((x) => fs.readFileSync(path.join(aixc, x.file), 'utf8').includes('--vx-sheet-top') && !x.entry)
+	assert.ok(dialogChunks.length > 0, 'view-dialog.js is a chunk of its own (canvas\'s and streaming\'s), else this proves nothing')
+	for (const x of dialogChunks) assert.ok(!shellClosure.includes(x.file), `view-dialog.js's chunk (${x.file}) is not in the shell's closure`)
 	assert.match(fs.readFileSync(path.join(aixc, manifest.files.find((f) => f.entry === 'src/host/demos/reimagine/shell.js')?.file ?? ''), 'utf8'), /aixc-composer/, 'the composer is in the shell\'s chunk')
 	for (const entry of Object.keys(REIMAGINE_BUDGETS))
 		for (const f of closure(manifest.files.find((x) => x.entry === entry)?.file ?? '')) assert.doesNotMatch(fs.readFileSync(path.join(aixc, f), 'utf8'), REIMAGINE_FORBIDDEN, `nothing of Gemini, a key, Google Fonts or CodePen in ${f} (${entry})`)

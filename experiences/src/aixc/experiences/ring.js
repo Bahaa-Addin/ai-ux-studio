@@ -231,6 +231,7 @@ export const renderRing = (schema, index) => {
    * keys, scrolling). The clone's are untouched.
    */
   const fence = () => {
+    const focused = items.includes(document.activeElement) ? document.activeElement : null
     const s = stage.getBoundingClientRect()
     const style = getComputedStyle(stage)
     const px = (name) => Number.parseFloat(style.getPropertyValue(name)) || 0
@@ -247,6 +248,13 @@ export const renderRing = (schema, index) => {
       }
       if (node.inert !== out) node.inert = out
     })
+    // A focused service turned inert, or out of the ring's view (is-off, hidden), would leave the focus on the page's
+    // body, where the stage's keys stop: it goes to Next, or Previous where Next is off, or the stage where both are.
+    if (focused && (focused.inert || focused.classList.contains('is-off'))) {
+      const to = [nextButton, prevButton].find((button) => !button.disabled) ?? stage
+      if (to === stage && !stage.hasAttribute('tabindex')) stage.tabIndex = -1
+      to.focus({ preventScroll: true })
+    }
   }
 
   /** What fence() depends on besides the ring's turn: the zones and the stage's place in the box (it leaves its pin). */

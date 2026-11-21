@@ -99,6 +99,7 @@ const AR = {
   'Jump to a section': 'روح لقسم',
   // ... and the other eleven's (their labels are the composer's card names below, where those are neutral)
   Ring: 'حلقة',
+  Cube: 'مكعب',
   'Canvas. Use the arrow keys to pan, Tab to move between items.': 'اللوحة. اتحرّك بالأسهم، وTab عشان تنقل بين العناصر.',
   'Vodafone Egypt · {page}': 'ڤودافون مصر · {page}',
   "{title}, piece {n} of {total}": "{title}، برواز {n} من {total}",

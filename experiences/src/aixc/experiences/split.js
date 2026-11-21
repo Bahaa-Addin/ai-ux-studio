@@ -209,6 +209,7 @@ export const renderSplit = (schema, index) => {
     place(startPanes, next)
     place(endPanes, next)
     place(texts, next)
+    const focused = texts.find((text) => text.contains(document.activeElement))
     texts.forEach((text, at) => (text.inert = at !== next))
     const { item, group } = entries[next]
     counterNow.textContent = pad2(next + 1)
@@ -221,6 +222,9 @@ export const renderSplit = (schema, index) => {
     })
     prevButton.disabled = next === 0
     nextButton.disabled = next === total - 1
+    // In a box, a link of the slide that just turned inert would leave the focus on the page's body, where the
+    // stage's keys stop: it goes to Next, or Previous where Next is off (the clone's window scroll kept working).
+    if (focused?.inert && viewScroller()) handFocus()
     stage.dataset.tone = item.image?.fit === 'contain' ? 'mark' : 'photo'
     if (announce) status.textContent = t('{n} of {total}: {title}, {group}', { n: next + 1, total, title: item.title, group: group.title })
     active = next
@@ -238,6 +242,25 @@ export const renderSplit = (schema, index) => {
     let bottom = title.offsetHeight
     for (let at = title; at && at !== stage; at = at.offsetParent) bottom += at.offsetTop
     stage.style.setProperty('--ss-row-top', `${bottom}px`)
+  }
+
+  /**
+   * In a box, a rail taller than its column above the taller zone (Services' 305 px while the guide listens in a 700 px
+   * window) would reach into that zone: it is not shown then (split.css: .is-tight). The column keeps its layout, so
+   * its size is still watched; the row, the keys and scrolling still reach every service.
+   */
+  const railList = rail.firstChild
+  const fitRail = () => {
+    const tight = railList.offsetHeight > rail.clientHeight + 1
+    // A focused rail button about to be hidden would leave the focus on the page's body: it goes on first.
+    if (tight && rail.contains(document.activeElement)) handFocus()
+    rail.classList.toggle('is-tight', tight)
+  }
+  /** The focus to Next, or Previous where Next is off, or the stage itself where both are (one service). */
+  const handFocus = () => {
+    const to = [nextButton, prevButton].find((button) => !button.disabled) ?? stage
+    if (to === stage && !stage.hasAttribute('tabindex')) stage.tabIndex = -1
+    to.focus({ preventScroll: true })
   }
 
   const render = () => {
@@ -268,6 +291,8 @@ export const renderSplit = (schema, index) => {
       ? [
           onViewResize(placeRow),
           observeResize(stage, placeRow),
+          // The rail's column follows the zones (its bottom over the taller one): it fits or not as the guide listens.
+          observeResize(rail, fitRail),
           ...texts.flatMap((text) => [observeResize(text, placeRow), observeResize(text.querySelector('.ss-title'), placeRow)]),
         ]
       : []),

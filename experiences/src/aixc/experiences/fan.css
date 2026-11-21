@@ -517,8 +517,8 @@
    corners belong to Vodafone's accessibility button and the guide's microphone, with its transcript bar while
    it listens (right), and the Pocket's button (left). The shell measures how far each reaches into the box
    from its bottom edge and side (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits
-   in either. The controls keep the clone's place at the top end (clear of both corners at every size); the
-   details keep their bottom start corner, moved in from the zone there (above the taller zone where they do
+   in either. The controls keep the clone's place at the top end, moved in past the end corner's zone where it
+   reaches their row (a short box: phones in landscape, the guide listening); the details keep their bottom start corner, moved in from the zone there (above the taller zone where they do
    not fit between both: the guide listening below about 1000 px); the fan points at the bottom end corner by
    design, so fan.js makes a card that rests in a zone or past the box's side inert (keepClear(), also when the
    zones change; the current card only while a zone covers it, the guide listening).
@@ -526,7 +526,8 @@
    the details reach at most 328 px up from the stage's bottom (Arabic at 1366 px; 296 at 1024; measured
    2026-11-18 on the Services copy), and the controls 108 px down from its top, at opposite sides, so the stage
    fits a room from 344 px tall (a window about 525 px tall under the live header and the bar). Phones in
-   landscape (812x375, a 234 px room) are below that and not laid out for. */
+   landscape (812x375, a 234 px room) are below that: there the end zone reaches the controls' row, which moves in
+   past it (--fn-ctl-fit below), and the hint and the progress bar are not shown. */
 .aixc-box .aixc-vx--fan {
   --fn-safe-h: max(var(--aixc-safe-right-h, 0px), var(--aixc-safe-left-h, 0px));
   /* The zone at the details' and the turned caption's (start) corner: the left in English, the right in Arabic;
@@ -534,6 +535,7 @@
   --fn-safe-start-w: var(--aixc-safe-left-w, 0px);
   --fn-safe-start-h: var(--aixc-safe-left-h, 0px);
   --fn-safe-end-w: var(--aixc-safe-right-w, 0px);
+  --fn-safe-end-h: var(--aixc-safe-right-h, 0px);
   /* The details' width, as the clone's .fn-detail (below 1024 px: min(380px, 44vw)). */
   --fn-detail-w: min(420px, 34vw);
 }
@@ -542,6 +544,7 @@
   --fn-safe-start-w: var(--aixc-safe-right-w, 0px);
   --fn-safe-start-h: var(--aixc-safe-right-h, 0px);
   --fn-safe-end-w: var(--aixc-safe-left-w, 0px);
+  --fn-safe-end-h: var(--aixc-safe-left-h, 0px);
 }
 
 @media (max-width: 1023px) {
@@ -609,6 +612,24 @@
       calc(100cqw - var(--fn-w) * 0.5 - 16px),
       max(var(--fn-x), min(calc(130px + var(--fn-detail-w) + 16px + var(--fn-w) * 0.5), calc(-1 * var(--fn-fit))))
     );
+  }
+
+  /* The end corner's zone reaching the buttons' row (a short box: phones in landscape, or the guide listening
+     there): the row moves in past that zone, 16 px from it. --fn-ctl-fit is +1000 px or more while the zone starts at
+     least 16 px under the row (its top and 48 px), and -1000 px or less once it reaches it. */
+  .aixc-box .aixc-vx--fan .fn-controls {
+    --fn-ctl-fit: calc((var(--vx-vh) - var(--fn-safe-end-h) - clamp(16px, 3.4vh, 30px) - 48px - 16px) * 1000);
+    inset-inline-end: max(var(--vx-gutter), min(calc(var(--fn-safe-end-w) + 16px), calc(-1 * var(--fn-ctl-fit))));
+  }
+}
+
+/* A phone in landscape (under 500 px tall): the hint under the row and the progress bar in it are not shown, as on
+   phones, so the controls are the counter and the buttons alone and stay clear of the start corner's zone too (the
+   guide's transcript bar, in Arabic). */
+@media (min-width: 720px) and (height < 500px) {
+  .aixc-box .aixc-vx--fan .fn-hint,
+  .aixc-box .aixc-vx--fan .fn-progress {
+    display: none;
   }
 }
 

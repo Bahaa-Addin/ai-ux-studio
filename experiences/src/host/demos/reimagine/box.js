@@ -54,7 +54,8 @@ const EDGE = 16
 /**
  * The composer's least room (px), measured on it in Vodafone's faces: H_MIN is its height down to its first row of
  * template buttons (its heading, the Original / Reimagined row, "Ready-made experiences" and that row, with its
- * padding), the most it is at any width from W_MIN to WIDE in English and Arabic: 215, a row whose names take two lines
+ * padding), the most it is at any width from W_MIN to 400 px (measured there; wider, beside its opener, it is no taller)
+ * in English and Arabic: 215, a row whose names take two lines
  * (one line: 199). The rest scrolls inside it (live.css: as many columns as fit, 2 to 4 below, up to 6 beside; six
  * templates are 277 to 371 px in all at 400 px, thirteen 449 to 684), so short screens keep it beside its opener: the
  * shortest column it is given there is

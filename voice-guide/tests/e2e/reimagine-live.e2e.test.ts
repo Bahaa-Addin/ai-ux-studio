@@ -435,6 +435,11 @@ type ExperienceCase = {
 	andThen?: () => Promise<void>
 	/** An experience that adds no listener, frame, timer or observer through the seam: the seam holds none while it shows. */
 	keepsNone?: boolean
+	/**
+	 * The box's end read as box_e2e's CUT_BY_SIDES reads it (cutBySides' `clipped`): what its own ancestors clip as it
+	 * shows (streaming: a card off its row's page stays focusable, as on the clone; the review, 2026-11-21).
+	 */
+	clippedSides?: boolean
 }
 
 const PAGES = ['/en/services', '/ar/services', '/en/home', '/ar/home']
@@ -536,10 +541,13 @@ const EXPERIENCE_CASES: Record<string, ExperienceCase> = {
 	 * The eleven still to come (phases 2 to 4). Their selectors, pins, steps and `landscape` are best guesses from
 	 * experiences/src/aixc/experiences/<name>.{js,css} (the sticky stage, its track, the prev and next buttons, the
 	 * counter, STEP_PX): the phase that brings each one confirms them when it takes the row's todo off. `landscape`
-	 * marks the experiences whose controls sit low (split, coverflow, ring, tunnel, gallery, cube, streaming).
+	 * marks the experiences whose controls sit low (split, coverflow, ring, tunnel, gallery, cube, streaming), and the
+	 * fan, whose controls sit at the top but which the end corner's zone reaches in a box that short (the review,
+	 * 2026-11-21: fan.css moves them in past it).
 	 */
 	fan: {
 		cells: DEFAULT_CELLS,
+		landscape: true,
 		pocketed: true,
 		pins: { stage: '.fn-stage', track: '.fn-track' },
 		controlSelectors: ['.fn-controls', '.fn-detail'],
@@ -1176,6 +1184,7 @@ const EXPERIENCE_CASES: Record<string, ExperienceCase> = {
 		title: 'streaming in the box: its bar pinned at the box\'s top, its links and arrows moving the box, never the window; through the box\'s scroll nothing pressable in a corner\'s zone and nothing cut by its sides; its preview in the box, never in the top layer (Vodafone\'s accessibility button and the guide\'s mic reached, Tab kept in it, Escape giving the focus back); the opening in the box ended by its scroll; Vodafone\'s faces, no Roboto, nothing asked of Google',
 		cells: DEFAULT_CELLS,
 		landscape: true,
+		clippedSides: true,
 		pocketed: true,
 		// Its sticky navigation at the top; the rows scroll sideways under their own arrows. Not a pinned stage: what
 		// passes a corner's zone takes no press there and what the box's sides cut is inert (streaming.js fence()).
@@ -1423,13 +1432,17 @@ const shownRect = (page: Page, selector: string) =>
 /**
  * What of the view inside `scope` the box's left or right side cuts: each pressable, item and heading that shows (not
  * inert, hidden, aria-hidden, invisible or 1 px) within the box's height and reaching past its inner sides by more
- * than 1 px.
+ * than 1 px. With `clipped` (streaming's rows, the review of 2026-11-21), as box_e2e's CUT_BY_SIDES: what its own
+ * ancestors inside `scope` clip is read as it shows (a card off its row's page, which the row's viewport hides and Tab
+ * pages the row to, is not cut; one whose shown part runs past the box's side is), and what is inside a row that
+ * scrolls sideways is not counted (the browser scrolls a focused one into view).
  */
-const cutBySides = (page: Page, scope: string) =>
-	page.evaluate((scope) => {
+const cutBySides = (page: Page, scope: string, { clipped = false } = {}) =>
+	page.evaluate(({ scope, clipped }) => {
 		const box = document.querySelector<HTMLElement>('.aixc-box')!
 		const b = box.getBoundingClientRect()
 		const inner = { left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth, top: b.top + box.clientTop, bottom: b.top + box.clientTop + box.clientHeight }
+		const root = box.querySelector<HTMLElement>(scope)
 		const cut: string[] = []
 		let seen = 0
 		for (const el of box.querySelectorAll<HTMLElement>(`${scope} :is(button, a[href], [data-aixc-item], h1, h2, h3)`)) {
@@ -1437,11 +1450,26 @@ const cutBySides = (page: Page, scope: string) =>
 			const s = getComputedStyle(el)
 			if (r.width <= 1 || r.height <= 1 || el.closest('[inert], [hidden], [aria-hidden="true"]') || s.visibility === 'hidden' || Number(s.opacity) === 0) continue
 			if (r.bottom <= inner.top || r.top >= inner.bottom) continue
+			let v = { left: r.left, right: r.right }
+			let scrolls = false
+			if (clipped) {
+				for (let a = el.parentElement; a && a !== root; a = a.parentElement) {
+					const as = getComputedStyle(a)
+					if (as.overflowX === 'visible') continue
+					if (/auto|scroll/.test(as.overflowX) && a.scrollWidth > a.clientWidth + 1) scrolls = true
+					const c = a.getBoundingClientRect()
+					v = { left: Math.max(v.left, c.left), right: Math.min(v.right, c.right) }
+				}
+				if (v.right - v.left < 1) continue
+			}
 			seen++
-			if (r.left < inner.left - 1 || r.right > inner.right + 1) cut.push(`${el.localName}.${el.classList[0] ?? ''} [${Math.round(r.left)},${Math.round(r.right)}]`)
+			if (scrolls) continue
+			const left = inner.left - r.left > 1 && v.left <= inner.left + 1
+			const right = r.right - inner.right > 1 && v.right >= inner.right - 1
+			if (left || right) cut.push(`${el.localName}.${el.classList[0] ?? ''} [${Math.round(r.left)},${Math.round(r.right)}]`)
 		}
 		return { seen, cut }
-	}, scope)
+	}, { scope, clipped })
 
 /**
  * The 3D tunnel settled on each of its stops in turn (the box's scroll at the track's top under the bar plus k stops of
@@ -1872,7 +1900,8 @@ const streamingScrollTo = (page: Page, k: number) =>
 /**
  * Through the box's whole scroll (its top, a quarter, the middle, three quarters, its end): nothing of the view
  * pressable in a corner's zone (what passes one takes no press there: streaming.js fence()), nothing cut by the box's
- * sides (a page of cards off to the side, a row or the bar scrolled sideways: inert there). Returns the pressables read.
+ * sides (what shows of a card or a link past them: inert there; a card off its row's page, which the row hides, stays
+ * focusable). Returns the pressables read.
  */
 async function streamingSweep(page: Page, where: string) {
 	const zones = await zonesNow(page)
@@ -1882,8 +1911,11 @@ async function streamingSweep(page: Page, where: string) {
 		await settle(page, 150)
 		const hits = await pressablesInZones(page, '.aixc-box .aixc-vx--streaming', zones)
 		assert.deepEqual(hits.out, [], `${where}: at ${k * 100}% of the box's scroll nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${hits.seen} read)`)
-		const sides = await cutBySides(page, '.aixc-vx--streaming')
+		const sides = await cutBySides(page, '.aixc-vx--streaming', { clipped: true })
 		assert.deepEqual(sides.cut, [], `${where}: at ${k * 100}% of the box's scroll nothing of the view cut by the box's sides (${sides.seen} read)`)
+		// The cards off a paged row's page stay focusable, as on the clone: Tab pages the row to them (the review, 2026-11-21).
+		const offInert = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.aixc-box .st-card.is-offpage')].filter((c) => getComputedStyle(c.closest('.st-row__viewport')!).overflowX !== 'auto' && c.closest('[inert]') && !c.closest('.aixc-box')!.querySelector('.st-modal[open]')).map((c) => c.dataset.aixcItem))
+		assert.deepEqual(offInert, [], `${where}: at ${k * 100}% of the box's scroll no card off its row's page inert`)
 		read += hits.seen
 	}
 	return read
@@ -2399,7 +2431,7 @@ async function checkInBox(page: Page, { experience, cell, where, served, servedH
 		return top
 	})
 	await settle(page, 300)
-	const atEnd = await cutBySides(page, '.aixc-stage')
+	const atEnd = await cutBySides(page, '.aixc-stage', { clipped: row.clippedSides })
 	assert.ok(atEnd.seen > 0, `${where}: at the box's end the view's parts were read (${atEnd.seen})`)
 	assert.deepEqual(atEnd.cut, [], `${where}: at the box's end nothing of the view cut by the box's sides (${atEnd.seen} read)`)
 	await page.evaluate((top) => {
@@ -2713,6 +2745,39 @@ test('our words in Vodafone\'s faces: the launcher, the composer, the bar, magaz
 			for (const what of ['.aixc-launcher span', '#aixc-composer .aixc-template__name', '.aixc-viewbar .aixc-seg', '.aixc-magazine h2', '.sp-slide:not([hidden]) .sp-slide__title']) assert.ok(used.some((u) => u.what === what), `${where}: ${what} was read`)
 			const system = used.filter((u) => u.fonts.some((f) => !f.isCustomFont))
 			assert.deepEqual(system.map((u) => `${u.what} "${u.text}": ${u.fonts.map((f) => f.familyName).join(', ')}`), [], `${where}: every word of ours in a web font`)
+		} finally {
+			await l.close()
+		}
+	}
+})
+
+test('the composer\'s names say services on Services only: the templates, the bar\'s name and the announcement (ring, cube; ADR-0076 §6)', { timeout: 300_000 }, async () => {
+	const SERVICE_WORD = { en: /servic/i, ar: /الخدمات|خدمات/ }
+	for (const p of ['/en/home', '/ar/home', '/en/services', '/ar/services']) {
+		const [lang, services] = [p.startsWith('/ar') ? 'ar' : 'en', p.endsWith('/services')] as const
+		const where = `${p} desktop`
+		const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true, ...LIVE })
+		try {
+			await open(l.page, p, '?aixc-debug')
+			await ready(l.page)
+			await openComposer(l.page)
+			const names: Record<string, string> = await l.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLElement>('#aixc-composer .aixc-template')].map((b) => [b.dataset.template ?? '', b.querySelector('.aixc-template__name')!.textContent ?? ''])))
+			if (services) {
+				assert.deepEqual([names.ring, names.cube], lang === 'ar' ? ['حلقة الخدمات', 'مكعب الخدمات'] : ['Service ring', 'Service cube'], `${where}: the cards' own names on Services`)
+			} else {
+				const saying = Object.entries(names).filter(([, name]) => SERVICE_WORD[lang].test(name))
+				assert.deepEqual(saying, [], `${where}: no template's name says services`)
+				assert.deepEqual([names.ring, names.cube], lang === 'ar' ? ['حلقة', 'مكعب'] : ['Ring', 'Cube'], `${where}: ring's and cube's neutral names`)
+			}
+			for (const template of ['ring', 'cube']) {
+				if (template === 'cube') await l.page.locator('.aixc-viewbar .aixc-text-btn[aria-controls="aixc-composer"]').click()
+				await choose(l.page, template)
+				await l.page.waitForFunction(() => (document.querySelector('.aixc-live[data-aixc]')?.textContent ?? '') !== '', null, { timeout: 5_000 })
+				const said = await l.page.evaluate(() => ({ meta: document.querySelector('.aixc-viewbar__meta')?.textContent ?? '', live: document.querySelector('.aixc-live[data-aixc]')?.textContent ?? '' }))
+				assert.ok(said.meta.length > 0 && said.live.includes(said.meta), `${where}, ${template}: the bar names it and the announcement says so (${JSON.stringify(said)})`)
+				if (services) assert.equal(said.meta, names[template], `${where}, ${template}: the bar's name is the card's`)
+				else assert.deepEqual([said.meta, said.live].filter((text) => SERVICE_WORD[lang].test(text)), [], `${where}, ${template}: the bar and the announcement say no word about services`)
+			}
 		} finally {
 			await l.close()
 		}

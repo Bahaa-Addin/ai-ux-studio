@@ -3,7 +3,7 @@
  * its own beside the seam (./shared.js), so only the experiences that open one carry it: shared.js is one chunk with
  * the shell on Vodafone's pages, and everything in it any experience uses counts in the shell's budget.
  */
-import { keep, on, onViewResize, viewScroller, viewBottom, viewTop } from './shared.js'
+import { keep, on, onViewResize, onViewZones, viewScroller, viewBottom, viewTop } from './shared.js'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 const SCROLL_KEYS = { ArrowUp: -1, PageUp: -1, Home: -1, ArrowDown: 1, PageDown: 1, End: 1, ' ': 1 }
@@ -85,7 +85,7 @@ export const viewDialog = (dialog, { onEscape } = {}) => {
           event.preventDefault()
           to.focus({ preventScroll: true })
         }
-      } else if (event.key in SCROLL_KEYS && !event.target.closest('input, textarea, select, [contenteditable]') && !(event.key === ' ' && event.target.closest('a, button'))) {
+      } else if (event.key in SCROLL_KEYS && !event.target.closest('input, textarea, select, [contenteditable]') && !(event.key === ' ' && event.target.closest('button, [role=button], summary'))) {
         if (!scrollsInside(event.target, dialog, SCROLL_KEYS[event.key])) event.preventDefault()
       }
     }
@@ -100,6 +100,8 @@ export const viewDialog = (dialog, { onEscape } = {}) => {
         touchY = y
       }, { passive: false }),
       onViewResize(place),
+      // The bar's height can change without the box's (the trail's pill on phones: box.js writes --aixc-viewbar-h).
+      onViewZones(place),
     ]
     undo = keep(() => {
       undo = null
