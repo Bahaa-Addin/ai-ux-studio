@@ -342,6 +342,8 @@ Checks: `personalization.test.mjs` green; the four scroll-restore cases land on 
 
 Checks: unit tests on the comparison with the two saved dates; an e2e test that shows a real change between 2026-10-23 and the refreshed fixture (or "no change").
 
+**Progress, 2026-11-18:** D1 confirmed by the owner. Phase 6 is built and checked on `feature/live-way2-watch` (cut from `feature/live-way2` at `152f43c`; not pushed, not merged): ADR-0078, the reading and hashing, the IndexedDB store and check on visit, the sticker, the Pocket button's count and the card's "Changed" liner, the demo fill and reset, and two e2e files (`watch-live` 9/9, `watch-floating` 8/8). Still open: the owner's opt-in live run (O45), the Arabic strings for review (O42). Details: `voice-guide/docs/handoff/HANDOFF.md` section 8, entry of 2026-11-18.
+
 ### Phase 7: demo kit and Tips hub
 
 1. `tools/demo-kit.ts` and `config/demo-kit/vodafone-eg.json` (section 3.6).

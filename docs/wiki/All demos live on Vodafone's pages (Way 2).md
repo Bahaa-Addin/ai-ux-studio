@@ -112,6 +112,32 @@ These are builds and checks, not new owner decisions. The ADR is still ADR-0076 
 
 [Phase 4b's new Arabic strings (حلقة, مكعب, the canvas line and sign, and `countWords()`'s forms of عنصر; O42) do not go to the Arabic reviewer.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-21 over="sending them for the native review with the rest of O42"} The rest of O42 still waits for that review before phase 4c's live check.
 
+## Phase 6: the page watch (2026-11-18)
+
+D1 was confirmed by the owner on 2026-11-18 ("D1 is confirmed"), after "I approve" on 2026-11-17. The ADR is ADR-0078. The branch is `feature/live-way2-watch`, cut from `feature/live-way2` at `152f43c`; it was merged into `feature/live-way2` on 2026-11-22. The owner's answers to the design's eight questions:
+
+- **Q1.** A watch is only a pocketed topic: the card pocketed and the page its link opens. Changes show on that card.
+- **Q2.** The person asks on the sticker ("Tell me when this changes"). Pocketing does not watch.
+- **Q3.** The guide's watch chip pockets the spotlit card, then watches it. Existing spoken lines only.
+- **Q4.** Changes show on the sticker, as a red count on the Pocket button and as "Changed" on the card's liner. No system notifications.
+- **Q5.** Hashes only; no page text is stored.
+- **Q6.** The page is read on the main thread with DOMParser.
+- **Q7.** One request at a time, at least 1 s apart, at most 12 pages per visit, at most 1 run per 30 min, at most 20 watched stickers.
+- **Q8.** The demo watches Home "Internet Bundles" and Services "Vodafone Cash", with the 23 Oct hashes. The fixture keeps its name `vodafone-eg`.
+
+What is built, by commit:
+
+- **`7e42fa4`** ADR-0078 (Proposed).
+- **`01fd9d2`** URL rules, robots, mask port, reading and hashing.
+- **`9242d65`** The IndexedDB store `aixc-watch-v1` and the check on visit. The server's browser mode: `POST /v1/watch` answers 409.
+- **`25ea616`** The sticker's action and lines, the red count on the Pocket button, "Changed" on the liner, words in English and Arabic. The guide's chip hands its watch to the layer.
+- **`8e0b957`** Demo data, the fill ("Watch two example cards", or `?aixc-watch=fill`) and the reset (`window.__aixcWatch.reset()`).
+- **`4e7447f`** The independent critic's eleven findings fixed.
+- **`69b883c`** The e2e `watch-live` (9/9) and a spacing fix.
+- **`bec48c0`** The floating-control cells `watch-floating` (8/8) and the actors' floor-scroll fix.
+
+Checks: experiences `npm test` 369/369; the watch's e2e ran three times each; the e2e request log shows at most 12 pages plus robots.txt per visit, at least 1,000 ms between request starts, no cookie sent, and nothing leaving the machine. Nothing has been run on the real site.
+
 ## Still open
 
-The handoff lists the rest (D1 to D4, D6, D7, D9) with the phase each blocks. The page watch decision (D1) depends on two documents that live in the claude.ai project "AIXC", not in this repository. A side session relayed an answer to D1 at 16:14 on 2026-11-17 (browser-only, check on visit, topic watches); it has not been confirmed in the session that builds Reimagine, so it is treated as open (O43). The Arabic strings that wait for the native review are listed in O42; who reviews them is still to be named.
+The handoff lists the rest (D2 to D4, D6, D7, D9) with the phase each blocks. D1 (the page watch) was confirmed by the owner on 2026-11-18 (see the phase 6 section above); O43 can close. The Arabic strings that wait for the native review are listed in O42, which phase 6 added to; who reviews them is still to be named. The owner's opt-in live run of the watch (O45) is not done: it is run once, never scheduled, and needs his go-ahead because it touches production. The guide's watch chip needs a card that has a chip (O46), and "Open the page" is a plain link, not routed through the portal (O47).

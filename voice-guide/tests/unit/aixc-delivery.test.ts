@@ -52,7 +52,7 @@ test('the site config keeps the experiences block (zod would drop an unknown key
 	const s = loadSiteConfig(path.join(ROOT, 'config/sites/vodafone-eg.yaml'))
 	assert.equal(s.experiences.enabled, true)
 	assert.deepEqual(s.experiences.paths, ['^/(en|ar)/'])
-	assert.equal(s.experiences.demos.watch, false, 'page watch waits for its decision (D1)')
+	assert.equal(s.experiences.demos.watch, true, 'page watch is on: D1 confirmed 2026-11-18 (ADR-0078)')
 	assert.equal(s.experiences.demos.pocket, true)
 	// A site that does not mention it (the fixture telco) has it off.
 	assert.equal(loadSiteConfig(path.join(ROOT, 'config/sites/demo-telco.yaml')).experiences.enabled, false, 'off unless a site turns it on')
@@ -95,7 +95,7 @@ test('the demo browser builds the loader settings from the site config: web orig
 	const replay = loaderExperiences({ site, replayDir: '/replay', clone })!
 	assert.equal(replay.origin, WEB, 'the web origin, never the shop')
 	assert.deepEqual(replay.exclude, ['/en/services', '/ar/services'], 'both clone pages, trailing slash dropped')
-	assert.ok(!replay.demos.includes('watch'), 'page watch is off in the site config')
+	assert.ok(replay.demos.includes('watch'), 'page watch is on in the site config (ADR-0078)')
 	assert.ok(replay.demos.includes('pocket') && replay.demos.includes('tips'))
 	assert.deepEqual(loaderExperiences({ site, clone })!.exclude, [], 'live pages: nothing is mounted, nothing left out')
 	assert.equal(loaderExperiences({ site, replayDir: '/replay', clone, experiences: false }), null, 'experiences: false keeps it off')

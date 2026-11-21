@@ -35,6 +35,7 @@
     "demo:live": "node tools/demo-live.ts",
     "demo:trail": "node tools/demo-live.ts --replay --trail --start https://web.vodafone.com.eg/en/home",
     "measure:trail": "node tools/trail-measure.ts",
+    "watch:baselines": "node tools/watch-baselines.ts",
     "live-crawl:import": "node tools/live-crawl/import.ts",
     "live-crawl:bundle": "node tools/live-crawl/bundle.ts",
     "experience": "node jobs/experience.ts",

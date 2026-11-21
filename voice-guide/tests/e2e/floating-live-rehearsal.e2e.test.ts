@@ -473,7 +473,7 @@ const measureOf = (over: Partial<Measure>): Measure => ({
 	at: 'by hand',
 	view: { width: 1366, height: 900, scrollY: 0, dir: 'ltr', lang: 'en' },
 	state: { pocketView: 'page', busy: false, journey: false, mic: 'idle', listening: false, consent: null, mascot: null, covered: false },
-	controls: { accessibility: control({ left: 1291, top: 825, right: 1346, bottom: 880 }, 'vodafone'), banner: null, mic: null, kbd: null, bar: null, pill: null, card: null, pocket: null, reimagine: null, tips: null },
+	controls: { accessibility: control({ left: 1291, top: 825, right: 1346, bottom: 880 }, 'vodafone'), banner: null, mic: null, kbd: null, bar: null, pill: null, card: null, pocket: null, reimagine: null, tips: null, watch: null },
 	filter: null,
 	curlLayers: [],
 	curl: [],

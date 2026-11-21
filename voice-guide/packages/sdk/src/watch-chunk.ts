@@ -2,7 +2,8 @@
  * Page watch from the guide (ADR-0023), loaded only when the person accepts a watch offer or a
  * watched section changes (size budget, T-504, ADR-0041): Web Push where the browser can
  * subscribe, live delivery otherwise; and the announcement and toast that show a change.
- * Defines window.__vgWatch.
+ * A watch is handed to the experience layer first where the page has it (ADR-0078: the watch lives
+ * in the visitor's browser). Defines window.__vgWatch.
  */
 
 export interface WatchContext {
@@ -12,7 +13,39 @@ export interface WatchContext {
 	lang: string
 }
 
-export async function createWatch(c: WatchContext, step: { url: string; pageId?: string; target: unknown; label: string }, turnId: string): Promise<boolean> {
+interface LayerWatch {
+	fromGuide(step: unknown): Promise<{ ok: boolean; reason?: string } | null | undefined>
+}
+
+/**
+ * The experience layer's page watch (ADR-0078 point 7), when the page has it: window.__aixcWatch now, or
+ * once it says 'aixc:watch-ready' within `ms` (the layer loads it at idle after a navigation). Else null.
+ */
+function layerWatch(ms: number): Promise<LayerWatch | null> {
+	const now = () => ((window as any).__aixcWatch?.fromGuide ? ((window as any).__aixcWatch as LayerWatch) : null)
+	if (now()) return Promise.resolve(now())
+	return new Promise((resolve) => {
+		const done = () => {
+			clearTimeout(timer)
+			window.removeEventListener('aixc:watch-ready', done)
+			resolve(now())
+		}
+		const timer = setTimeout(done, ms)
+		window.addEventListener('aixc:watch-ready', done)
+	})
+}
+
+/**
+ * The layer first (phase 6 design §4.6): it pockets the card the step names and watches it in the browser,
+ * so true, and the guide says its `watching` line; its refusal (not a card) is false, so `watchFailed`. No
+ * layer on the page (`/spa/`, `?aixc=off`): false at once on a browser-mode site (the session's site.watch.mode),
+ * before any permission prompt; else the server path.
+ */
+export async function createWatch(c: WatchContext, step: { url: string; pageId?: string; target: unknown; label: string }, turnId: string, o: { layerWaitMs?: number } = {}): Promise<boolean> {
+	const layer = await layerWatch(o.layerWaitMs ?? 3000)
+	if (layer) return !!(await layer.fromGuide(step))?.ok
+	// A browser-mode site (ADR-0078) has no server watch: never a permission prompt or a push subscription for one.
+	if ((window as any).voiceGuide?.session?.site?.watch?.mode === 'browser') return false
 	let subscriptionId: string | undefined
 	try {
 		subscriptionId = await pushSubscription(c)

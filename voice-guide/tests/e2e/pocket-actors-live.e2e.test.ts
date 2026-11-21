@@ -810,6 +810,96 @@ for (const c of [
 	})
 }
 
+/* ------------------------------------------- at rest, a scroll lifting the fixed floor (F11, O44) */
+
+/**
+ * Whether the actors rest (F11): the lid over his eye is there only then, and his box carries the way to the
+ * next drawing; the drone rests with him when its button carries its own (Web Animations the actors started,
+ * not the page's CSS ones). Nothing here reads a layout.
+ */
+const restState = (page: Page) =>
+	page.evaluate(() => {
+		const scripted = (n: Element | null | undefined) => !!n && n.getAnimations().some((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition))
+		const lid = document.querySelector<HTMLElement>('.pocket-mascot__lid')
+		const drone = document.querySelector<HTMLElement>('.pocket-drone')
+		return { on: !!lid && !lid.hidden && scripted(document.querySelector('.pocket-mascot__mover')), drone: !!drone && !drone.hidden && scripted(drone) }
+	})
+
+/** Polls restState every 100 ms until the actors rest (and the drone with them, when `drone`), for up to `ms`; returns the last reading. */
+async function restsWithin(page: Page, ms: number, { drone = false } = {}) {
+	const since = Date.now()
+	let s = await restState(page)
+	while (!(s.on && (!drone || s.drone)) && Date.now() - since < ms) {
+		await page.waitForTimeout(100)
+		s = await restState(page)
+	}
+	return { ...s, ms: Date.now() - since }
+}
+
+/**
+ * Guards the fixed floor's scroll shift re-running the room check: on Vodafone's pages the floor is fixed, and
+ * boundFloor() lifts it (translateY) once the album's end scrolls into view; the scroll then measures him again
+ * (pocket-actors.js boundFloor/fitMascot) when the lift brings a fixed control into his place. Before that fix he
+ * rode up beside the guide's mic: measured 2026-11-18 at 375x812, 12 px from it (16.0 after). Starting from the
+ * rest also covers O44's scroll item (a scroll ends the rest), which had no test until now. The trail off, as the
+ * file's other cases outside 'with the trail on': its pill tucking away on the scroll measures him again by itself
+ * and hides the fault (17.4 px before the fix with it on, 13.4 with it off).
+ */
+test('/en/services 375x812 at rest: the album\'s end scrolled into view, the lifted floor keeps him 16 px from the mic (F11, O44)', { timeout: 150_000 }, async () => {
+	const where = '/en/services 375 at rest, the album\'s end scrolled in'
+	const l = await launchLayer(gw, { viewport: PHONE, owl: true, initScripts: [ACTORS_TEST] })
+	try {
+		const seen = watch(l.page)
+		// As albumAtRest, but the pointer stays where it pressed the Pocket button (on a phone the sticker spans the
+		// album's width: no place beside it for the pointer); a pointer still on a card turns him to it, then he rests.
+		await open(l.page, '/en/services', '?aixc-debug')
+		await pocketReady(l.page)
+		await pocketByPress(l.page, (await chippedIds(l.page))[0], where)
+		await actorsReady(l.page)
+		await cornerShown(l.page)
+		await pressPeek(l.page)
+		await waitView(l.page, 'pocket')
+		await mascotIn(l.page, ['idle', 'tucked'], 10_000)
+		const resting = await restsWithin(l.page, 10_000)
+		assert.ok(resting.on, `${where}: the actors rest before the scroll (${JSON.stringify(resting)})`)
+		const before = await scene(l.page)
+		assert.ok(before.drawn && before.mic, `${where}: he and the mic show before the scroll (${fmt(before.drawn)} ${fmt(before.mic)})`)
+		// The album's end (its last sticker) to the viewport's middle, by script: no pointer, no wheel. The floor
+		// lifts by some 55 px, his place then level with the mic (the end itself centred lifts him far above it).
+		await l.page.evaluate(() => [...document.querySelectorAll('#pocket-output .pocket-grid__item')].at(-1)!.scrollIntoView({ block: 'center', inline: 'nearest' }))
+		// The scroll's frame: until the floor's lift and his place (left, bottom) hold still for three frames (at most 2 s).
+		const floorAt = await l.page.evaluate(
+			() =>
+				new Promise<string>((done) => {
+					const floor = document.querySelector<HTMLElement>('.pocket-actor-floor')!
+					const mascot = document.querySelector<HTMLElement>('.pocket-mascot')!
+					const read = () => `${floor.style.transform}|${mascot.style.left}|${mascot.style.bottom}`
+					const until = performance.now() + 2_000
+					let last = read()
+					let same = 0
+					const step = () => {
+						const now = read()
+						same = now === last && floor.style.transform ? same + 1 : 0
+						last = now
+						if (same >= 3 || performance.now() > until) done(now)
+						else requestAnimationFrame(step)
+					}
+					requestAnimationFrame(step)
+				}),
+		)
+		const s = await scene(l.page)
+		assert.ok(/translateY\(-\d/.test(floorAt), `${where}: the floor is lifted above the album's end (${floorAt})`)
+		assert.equal((await restState(l.page)).on, false, `${where}: the scroll ended the rest`)
+		assert.ok(s.drawn && s.mic, `${where}: he and the mic show after the scroll (${fmt(s.drawn)} ${fmt(s.mic)}; ${s.state})`)
+		const g = gap(s.drawn!, s.mic!)
+		console.log(`${where}: ${JSON.stringify({ floorAt, gap: +g.toFixed(2), drawn: fmt(s.drawn), mic: fmt(s.mic), state: s.state })}`)
+		assert.ok(g >= PAD - 0.5, `${where}: at least ${PAD} px from the microphone (${g.toFixed(1)} px; ${fmt(s.drawn)} vs ${fmt(s.mic)}; ${s.state}, floor ${floorAt})`)
+		assert.deepEqual(seen.pageErrors, [], `${where}: no page errors`)
+	} finally {
+		await l.close()
+	}
+})
+
 /* ---------------------------------------------------------------------- 6. a failure */
 
 for (const lang of ['en', 'ar'] as const) {
@@ -1311,30 +1401,6 @@ describe('with the trail on', () => {
 	})
 
 	/* ------------------------- the trail's consent card while they rest: the rest ends and starts again (F11 with F6b) */
-
-	/**
-	 * Whether the actors rest (F11): the lid over his eye is there only then, and his box carries the way to the
-	 * next drawing; the drone rests with him when its button carries its own (Web Animations the actors started,
-	 * not the page's CSS ones). Nothing here reads a layout.
-	 */
-	const restState = (page: Page) =>
-		page.evaluate(() => {
-			const scripted = (n: Element | null | undefined) => !!n && n.getAnimations().some((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition))
-			const lid = document.querySelector<HTMLElement>('.pocket-mascot__lid')
-			const drone = document.querySelector<HTMLElement>('.pocket-drone')
-			return { on: !!lid && !lid.hidden && scripted(document.querySelector('.pocket-mascot__mover')), drone: !!drone && !drone.hidden && scripted(drone) }
-		})
-
-	/** Polls restState every 100 ms until the actors rest (and the drone with them, when `drone`), for up to `ms`; returns the last reading. */
-	async function restsWithin(page: Page, ms: number, { drone = false } = {}) {
-		const since = Date.now()
-		let s = await restState(page)
-		while (!(s.on && (!drone || s.drone)) && Date.now() - since < ms) {
-			await page.waitForTimeout(100)
-			s = await restState(page)
-		}
-		return { ...s, ms: Date.now() - since }
-	}
 
 	/** Chrome's LayoutCount and ScriptDuration over `ms`, with nothing read from the page meanwhile. */
 	async function costOver(page: Page, ms: number) {

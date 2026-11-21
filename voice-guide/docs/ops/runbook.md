@@ -151,6 +151,16 @@ VG_LIVE=1 VG_LIVE_BROWSER=chrome VG_LIVE_OUT=<a directory outside the repository
 - **Page errors that are not ours:** Vodafone's scripts throw `TenantFeatures` errors; `/vodafone-cash` reloads itself once per session. Neither fails a check.
 - **Offline rehearsals** run the same flows on the saved pages first: `tests/e2e/motion-live-rehearsal.e2e.test.ts` (7 tests), `floating-live-rehearsal.e2e.test.ts` and `floating-controls-live.e2e.test.ts` (4 tests). A rule that fails in a rehearsal is a fault in the layer or the rule, not in the site.
 
+## 3f. Running a demo with the page watch (ADR-0078)
+
+- The watch is on where `experiences.demos.watch` is true in `config/sites/vodafone-eg.yaml` (switched on in phase 6's last commit) and the Pocket is on.
+- Before the demo, open the album on a Vodafone page with nothing pocketed and press "Watch two example cards" (demo mode). Or open any Vodafone page with `?aixc-watch=fill`.
+- On the saved pages both stickers say "Watching · No change since 23 Oct". On live pages they say whatever changed since.
+- To show a change offline, use the e2e's TEST-ONLY edited copies. Never edit the 23 Oct fixture.
+- Reset: `window.__aixcWatch.reset()` in the console (phase 7 adds a button). It deletes only `aixc-watch-v1`.
+- The server never checks Vodafone (`watch.mode: browser`): `POST /v1/watch` answers 409.
+- Rebuild the demo data only if the reader changes: `npm run watch:baselines`. It reads the 23 Oct capture; never re-capture that folder.
+
 ## 3a. The guide's voice: VoiceTut (ADR-0047; the owner's demos only)
 
 The guide speaks with VoiceTut, an Egyptian Arabic and English voice, when `VG_VOICETUT_URL` is set. Otherwise it uses the browser's own voice (§1), and it falls back to that voice for any sentence VoiceTut has not made within 2.5 s. VoiceTut's weights are CC-BY-NC: never for customers.
