@@ -75,13 +75,18 @@ export async function readResult(body: ReadableStream<Uint8Array>): Promise<unkn
 	}
 }
 
-/** The audio file's URL, which must be on the configured host. */
+/**
+ * Where to fetch the audio: Gradio's file path from the reply, always on the configured host. The
+ * host the reply names is never used: behind Modal's proxy Gradio writes its own idea of it (seen
+ * 2026-11-15, the first real synthesis: not the VG_VOICETUT_URL origin), and a reply must never send
+ * the client anywhere else. Only Gradio's own file route is accepted.
+ */
 export function audioUrl(file: unknown, base: string): string {
 	const u = (file as { url?: unknown } | null)?.url
 	if (typeof u !== 'string' || !u) throw new Error('VoiceTut returned no audio URL')
 	const url = new URL(u, `${base}/`)
-	if (url.origin !== base) throw new Error('VoiceTut returned audio from an unexpected host')
-	return url.href
+	if (!url.pathname.startsWith('/gradio_api/file=')) throw new Error('VoiceTut returned something that is not a Gradio audio file')
+	return `${base}${url.pathname}${url.search}`
 }
 
 export interface VoiceTutInfo {
@@ -148,14 +153,35 @@ export class VoiceTut {
 		this.#synthTimeoutMs = o.synthTimeoutMs ?? 120_000
 	}
 
+	/**
+	 * A request that follows redirects on the configured host only (at most 5). Modal answers a web
+	 * request that runs past about 150 s (a cold start) with a 303 back to the same host, to be
+	 * followed; a redirect to any other host is refused, so the reply text goes nowhere else
+	 * (ADR-0047 §8). A 303, or a 301/302 after a POST, is followed as a GET without the body.
+	 */
+	async #request(url: string, init: RequestInit): Promise<Response> {
+		let at = url
+		let req = init
+		for (let hop = 0; hop <= 5; hop++) {
+			const res = await this.#fetch(at, { ...req, redirect: 'manual' })
+			if (![301, 302, 303, 307, 308].includes(res.status)) return res
+			const next = new URL(res.headers.get('location') || '', at)
+			if (next.origin !== this.base) throw new Error('VoiceTut redirected to another host; nothing was sent there')
+			await res.body?.cancel().catch(() => {})
+			if (res.status === 303 || ((res.status === 301 || res.status === 302) && req.method === 'POST')) req = { signal: req.signal, method: 'GET' }
+			at = next.href
+		}
+		throw new Error('VoiceTut redirected too many times')
+	}
+
 	async #call(endpoint: (typeof ENDPOINTS)[number], data: unknown[], timeoutMs: number): Promise<unknown> {
 		const signal = AbortSignal.timeout(timeoutMs)
-		// No redirects anywhere: the reply text goes to the configured host and nowhere else.
-		const res = await this.#fetch(`${this.base}/gradio_api/call/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }), signal, redirect: 'error' })
+		// Redirects on the configured host only: the reply text goes there and nowhere else.
+		const res = await this.#request(`${this.base}/gradio_api/call/${endpoint}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data }), signal })
 		if (!res.ok) throw new Error(`VoiceTut ${endpoint} failed (${res.status}): the service may be starting, unavailable or at its limit`)
 		const { event_id: id } = (await res.json()) as { event_id?: unknown }
 		if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) throw new Error('VoiceTut answered without a valid job id')
-		const events = await this.#fetch(`${this.base}/gradio_api/call/${endpoint}/${id}`, { signal, redirect: 'error' })
+		const events = await this.#request(`${this.base}/gradio_api/call/${endpoint}/${id}`, { signal })
 		if (!events.ok || !events.body) throw new Error(`VoiceTut result unavailable (${events.status})`)
 		return readResult(events.body as ReadableStream<Uint8Array>)
 	}
@@ -176,8 +202,8 @@ export class VoiceTut {
 		const t0 = performance.now()
 		const out = (await this.#call('synthesize', [r.text, r.mode, 'builtin', r.voice, null, '', r.steps, 2.0, r.speed, r.normalize], this.#synthTimeoutMs)) as unknown[]
 		const [file, stats] = Array.isArray(out) ? out : []
-		// No redirects: the audio must come from the configured host, not wherever a reply points.
-		const res = await this.#fetch(audioUrl(file, this.base), { signal: AbortSignal.timeout(30_000), redirect: 'error' })
+		// The audio must come from the configured host (audioUrl checks it; a redirect elsewhere is refused).
+		const res = await this.#request(audioUrl(file, this.base), { signal: AbortSignal.timeout(30_000) })
 		if (!res.ok) throw new Error(`VoiceTut audio unavailable (${res.status})`)
 		if (Number(res.headers.get('content-length')) > MAX_WAV_BYTES) throw new Error('VoiceTut audio is too large')
 		const wav = await readCapped(res.body as ReadableStream<Uint8Array> | null, MAX_WAV_BYTES)

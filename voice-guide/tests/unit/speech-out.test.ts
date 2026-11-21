@@ -6,6 +6,7 @@
  * traces never hold text.
  */
 import assert from 'node:assert/strict'
+import http from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -45,7 +46,11 @@ test('the Gradio event stream: heartbeat skipped, result across chunk boundaries
 	await assert.rejects(readResult(stream('event: error\ndata: "Choose the generation settings offered by the demo."\n\n')), /generation settings/)
 	await assert.rejects(readResult(stream('event: heartbeat\ndata: null\n\n')), /closed the connection/)
 	assert.equal(audioUrl({ url: '/gradio_api/file=/tmp/a.wav' }, 'https://v.example'), 'https://v.example/gradio_api/file=/tmp/a.wav')
-	assert.throws(() => audioUrl({ url: 'https://elsewhere.example/a.wav' }, 'https://v.example'), /unexpected host/)
+	// The host the reply names is never used (behind Modal's proxy Gradio names another); only its file path.
+	assert.equal(audioUrl({ url: 'http://internal:7860/gradio_api/file=/tmp/a.wav' }, 'https://v.example'), 'https://v.example/gradio_api/file=/tmp/a.wav')
+	assert.equal(audioUrl({ url: 'https://elsewhere.example/gradio_api/file=/tmp/b.wav?x=1' }, 'https://v.example'), 'https://v.example/gradio_api/file=/tmp/b.wav?x=1')
+	assert.throws(() => audioUrl({ url: 'https://elsewhere.example/a.wav' }, 'https://v.example'), /not a Gradio audio file/)
+	assert.throws(() => audioUrl({ url: '/gradio_api/call/info' }, 'https://v.example'), /not a Gradio audio file/)
 	assert.throws(() => audioUrl({}, 'https://v.example'), /no audio URL/)
 })
 
@@ -182,6 +187,9 @@ const fresh = () => {
 	vt.inFlightMax = 0
 	vt.audioOrigin = undefined
 	vt.oversizeAudio = false
+	vt.redirect = undefined
+	vt.redirectTo = undefined
+	vt.selfRedirect = false
 	vt.modelVersion = 'VoiceTut stand-in · test001'
 	events.length = 0
 }
@@ -321,17 +329,21 @@ test('cold start: while VoiceTut wakes, the page gets "not ready" within its wai
 	await s.close()
 })
 
-test('audio from another host is refused', async () => {
+test('audio the reply places on another host is fetched from the configured host; that host hears nothing', async () => {
 	fresh()
+	const other = await elsewhere()
 	const s = service()
-	vt.audioOrigin = 'http://127.0.0.2:9'
+	vt.audioOrigin = other.url
 	try {
-		const r = await s.speak({ siteId: vodafone.id, lang: 'en', text: 'Audio that lives elsewhere.', waitMs: 3000 }, ctx)
-		assert.equal(r.reason, 'error')
-		assert.match(String((await s.status({}, ctx)).lastError), /unexpected host/, 'refused by the host check, not by a failed download')
+		const r = await s.speak({ siteId: vodafone.id, lang: 'en', text: 'Audio the reply says lives elsewhere.', waitMs: 3000 }, ctx)
+		assert.equal(r.ready, true, JSON.stringify(r))
+		const audio = await s.audio({ hash: r.hash! })
+		assert.ok('base64' in audio && Buffer.from(audio.base64, 'base64').toString('ascii', 0, 4) === 'RIFF', 'the WAV came from the configured host')
+		assert.deepEqual(other.hits, [], 'the named host was never contacted')
 	} finally {
 		vt.audioOrigin = undefined
 		await s.close()
+		await other.close()
 	}
 })
 
@@ -443,3 +455,57 @@ test('a sentence already queued is joined and moved up, even when the queue is f
 	assert.ok(order.indexOf('Queued line number 10, made ahead.') < 3, `moved up past the rest: ${JSON.stringify(order)}`)
 	await s.close()
 })
+
+// ---- AIXC-49: no redirects, and keep-warm, each with a test ----
+
+/** A second host that records whatever reaches it (it must stay empty). */
+async function elsewhere(): Promise<{ url: string; hits: string[]; close(): Promise<void> }> {
+	const hits: string[] = []
+	const server = http.createServer(async (req, res) => {
+		let body = ''
+		for await (const c of req) body += c
+		hits.push(`${req.method} ${req.url} ${body}`)
+		res.writeHead(200, { 'Content-Type': 'application/json' })
+		res.end('{"event_id":"x"}')
+	})
+	await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+	return { url: `http://127.0.0.1:${(server.address() as { port: number }).port}`, hits, close: () => new Promise<void>((r) => server.close(() => r())) }
+}
+
+test('VoiceTut answering with a redirect: nothing is sent on, the line is not made (AIXC-49)', async () => {
+	fresh()
+	const other = await elsewhere()
+	const s = service()
+	try {
+		// Learn the model version first, so the next line goes straight to synthesis.
+		assert.equal((await s.speak({ siteId: vodafone.id, lang: 'en', text: 'A first line.', waitMs: 3000 }, ctx)).ready, true)
+		vt.redirectTo = other.url
+		vt.redirect = 'all'
+		const a = await s.speak({ siteId: vodafone.id, lang: 'en', text: 'This line must not leave for another host.', waitMs: 3000 }, ctx)
+		assert.deepEqual([a.ready, a.reason], [false, 'error'], 'the synthesis call is redirected')
+		vt.redirect = 'audio'
+		const b = await s.speak({ siteId: vodafone.id, lang: 'en', text: 'Nor this one, whose audio is somewhere else.', waitMs: 3000 }, ctx)
+		assert.deepEqual([b.ready, b.reason], [false, 'error'], 'the audio download is redirected')
+		assert.deepEqual(other.hits, [], 'the other host heard nothing')
+	} finally {
+		await s.close()
+		await other.close()
+	}
+})
+
+test('Modal\'s own 303 back to the same host (a request past ~150 s, a cold start) is followed: the line is made', async () => {
+	fresh()
+	vt.selfRedirect = true
+	const s = service()
+	try {
+		const a = await s.speak({ siteId: vodafone.id, lang: 'en', text: 'A line made through a redirect.', waitMs: 3000 }, ctx)
+		assert.equal(a.ready, true, JSON.stringify(a))
+		assert.deepEqual(vt.calls.map((c) => c.endpoint), ['info', 'synthesize'], 'each call reached VoiceTut once, through its 303')
+		assert.equal(vt.calls[1].data[0], 'A line made through a redirect.')
+		const audio = await s.audio({ hash: a.hash! })
+		assert.ok('base64' in audio, 'the audio too')
+	} finally {
+		await s.close()
+	}
+})
+
