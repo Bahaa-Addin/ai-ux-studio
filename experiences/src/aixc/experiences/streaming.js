@@ -16,13 +16,21 @@
  * sliders and cards that expand on hover/focus, a preview modal (native <dialog>)
  * for details and "Explore all", and the app promotion as a dark closing band.
  * "Skip intro" ends the opening; reduced motion skips it entirely.
+ *
+ * On Vodafone's pages (voice-guide ADR-0076; a scroller configured) it scrolls in the box through the seam: the opening
+ * covers the box's room and ends on the box's scroll; the wordmark is in Vodafone's bold face (no Roboto, nothing asked
+ * of Google: wordmarkFont() does nothing there); the preview opens in the box, never in the top layer (view-dialog.js);
+ * what passes a bottom corner's safe zone takes no press while there and what the box's sides cut is inert (fence());
+ * reveal(itemId) brings an item into view.
  */
 
 import { h, pathIcon, svgIcon, visuallyHidden } from '../dom.js'
 import {
-  ICON_NEXT, ICON_PREV, chromeOffset, clamp, experienceRoot, externalLink, groupsOf, media, onScrollFrame, pageHeading,
-  promotionOf, reducedMotion, scrollToY, sidewaysSwipe, t,
+  ICON_NEXT, ICON_PREV, clamp, experienceRoot, externalLink, frame, groupsOf, later, media, on, onScrollFrame,
+  onViewResize, onViewScroll, onViewZones, pageHeading, promotionOf, reducedMotion, scrollByY, scrollTop, scrollToY,
+  sidewaysSwipe, t, viewScroller, viewTop, words,
 } from './shared.js'
+import { viewDialog } from './view-dialog.js'
 
 const WORD = 'VODAFONE'
 
@@ -147,10 +155,13 @@ const wordmark = (className) => {
  * asked for. Waiting for just this face (not fonts.ready, which also waits for every
  * other font the new page pulls in) and fetching it early keeps the curtain from
  * sitting empty before the intro: about a third of a second on a first visit.
+ * On Vodafone's pages (a scroller) nothing: the wordmark is in Vodafone's bold face there (streaming.css's box rules),
+ * and nothing of ours asks Google for a font (voice-guide AGENTS.md §4.8).
  */
 let wordmarkFontLoad = null
 const wordmarkFont = () => {
-  wordmarkFontLoad ??= document.fonts?.load ? document.fonts.load('900 64px Roboto', WORD).catch(() => {}) : Promise.resolve()
+  if (viewScroller()) return Promise.resolve()
+  wordmarkFontLoad ??=document.fonts?.load ? document.fonts.load('900 64px Roboto', WORD).catch(() => {}) : Promise.resolve()
   return wordmarkFontLoad
 }
 
@@ -176,13 +187,35 @@ export const renderStreaming = (schema, index) => {
     .map((group) => ({ group, items: group === featuredGroup ? group.items.slice(1) : group.items }))
     .filter((row) => row.items.length > 0)
 
+  // In a box (Vodafone's pages): the view scrolls in it, the preview opens in it (below), what a bottom corner's zone
+  // covers takes no press and what the box's sides cut is inert (fence()). Without one (the clone) all as before.
+  const boxed = Boolean(viewScroller())
+  /** Each press the view handles, [element, handler]: added on mount through the seam and taken off on unmount. */
+  const presses = []
+  const onPress = (element, handler) => presses.push([element, handler])
+  /** The rows' focusin handlers, [track, handler], and their sideways swipes (each a start that returns its off). */
+  const onFocus = []
+  const swipes = []
+
   /* ---------------------------------------------------------------- modal */
   const modalBody = h('div', { class: 'st-modal__content' })
   const modalClose = h('button', { type: 'button', class: 'st-modal__close', 'aria-label': t('Close') }, pathIcon(ICON_CLOSE, ''))
-  const modal = h('dialog', { class: 'st-modal', 'aria-labelledby': 'st-modal-title' }, modalClose, modalBody)
-  modalClose.addEventListener('click', () => modal.close())
-  modal.addEventListener('click', (event) => {
-    if (event.target === modal) modal.close() // backdrop
+  // In a box the dialog is the box's room (its backdrop) and a panel inside it scrolls, between the corners' zones or
+  // above them (streaming.css); the clone's dialog is the panel itself, in the top layer.
+  const panel = boxed ? h('div', { class: 'st-modal__panel' }, modalClose, modalBody) : null
+  const modal = boxed ? h('dialog', { class: 'st-modal', 'aria-labelledby': 'st-modal-title' }, panel) : h('dialog', { class: 'st-modal', 'aria-labelledby': 'st-modal-title' }, modalClose, modalBody)
+  const sheet = viewDialog(modal, { onEscape: () => hideModal() })
+  // The clone: showModal() through viewDialog, its own Escape and close() as before.
+  const hideModal = () => (boxed ? sheet.close() : modal.close())
+  onPress(modalClose, () => hideModal())
+  onPress(modal, (event) => {
+    if (event.target === modal) hideModal() // backdrop
+  })
+  /** The "More in" cards the preview shows now, by button: one press handler on the preview's body reads them. */
+  const smallItems = new WeakMap()
+  onPress(modalBody, (event) => {
+    const card = event.target.closest?.('.st-more__card')
+    if (card && smallItems.has(card)) openItem(smallItems.get(card))
   })
 
   const groupOf = (item) => groups.find((group) => group.items.includes(item)) ?? null
@@ -195,13 +228,22 @@ export const renderStreaming = (schema, index) => {
       h('span', { class: 'st-more__title' }, item.title),
       item.description ? h('span', { class: 'st-more__desc' }, item.description) : null,
     )
-    button.addEventListener('click', () => openItem(item))
+    smallItems.set(button, item)
     return button
+  }
+
+  /** Shows the preview (`from` gets the focus back when it closes), at its top, the focus on its close button. */
+  const showModal = (from) => {
+    sheet.open(from ?? document.activeElement)
+    ;(panel ?? modal).scrollTop = 0
+    if (boxed) modalClose.focus({ preventScroll: true })
+    else modalClose.focus()
+    scheduleFence()
   }
 
   const primaryAction = (item, { large = false } = {}) => {
     const { label, href } = item.cta ?? {}
-    const text = label ?? t('View service')
+    const text = label ?? words('View service')
     if (href) {
       return h(
         'a',
@@ -215,7 +257,7 @@ export const renderStreaming = (schema, index) => {
     return label ? h('span', { class: 'st-tag' }, label) : null
   }
 
-  const openItem = (item) => {
+  const openItem = (item, from) => {
     const group = groupOf(item)
     const siblings = group ? group.items.filter((other) => other !== item) : []
     const domain = item.cta?.href ? domainOf(item.cta.href) : null
@@ -241,12 +283,10 @@ export const renderStreaming = (schema, index) => {
         ? h('section', { class: 'st-more', 'aria-labelledby': 'st-more-title' }, h('h3', { class: 'st-more__heading', id: 'st-more-title' }, t('More in {category}', { category: group.title })), h('div', { class: 'st-more__grid' }, siblings.map(smallCard)))
         : null,
     )
-    if (!modal.open) modal.showModal()
-    modal.scrollTop = 0
-    modalClose.focus()
+    showModal(from)
   }
 
-  const openGroup = (group) => {
+  const openGroup = (group, from) => {
     modalBody.replaceChildren(
       h(
         'div',
@@ -257,19 +297,19 @@ export const renderStreaming = (schema, index) => {
       ),
       h('div', { class: 'st-more__grid st-more__grid--all' }, group.items.map(smallCard)),
     )
-    if (!modal.open) modal.showModal()
-    modal.scrollTop = 0
-    modalClose.focus()
+    showModal(from)
   }
 
   /* ------------------------------------------------------------ top bar */
+  // Scroll targets in the view's coordinates (the box's, or the page's): an element's top under the bar.
+  const yOf = (element) => element.getBoundingClientRect().top - viewTop() + scrollTop()
   const brand = h('a', { class: 'st-brand', href: '#st-top', 'aria-label': t('Vodafone, back to the top') }, wordmark('st-brand__word'))
   const navLinks = rows.map((row) => {
     const link = h('a', { class: 'st-nav__link', href: `#st-row-${row.group.id}` }, row.group.title)
-    link.addEventListener('click', (event) => {
+    onPress(link, (event) => {
       event.preventDefault()
       const target = root.querySelector(`#st-row-${row.group.id}`)
-      scrollToY(target.getBoundingClientRect().top + window.scrollY - chromeOffset() - navBar.offsetHeight)
+      scrollToY(yOf(target) - navBar.offsetHeight)
       target.querySelector('.st-row__title')?.focus({ preventScroll: true })
     })
     return link
@@ -277,11 +317,12 @@ export const renderStreaming = (schema, index) => {
   const homeLink = h('a', { class: 'st-nav__link is-current', href: '#st-top', 'aria-current': 'page' }, t('Home'))
   const backToTop = (event) => {
     event.preventDefault()
-    scrollToY(root.getBoundingClientRect().top + window.scrollY - chromeOffset())
+    scrollToY(yOf(root))
   }
-  homeLink.addEventListener('click', backToTop)
-  brand.addEventListener('click', backToTop)
-  const navBar = h('nav', { class: 'st-nav', 'aria-label': t('Streaming showcase') }, brand, h('ul', { class: 'st-nav__links' }, [homeLink, ...navLinks].map((link) => h('li', null, link))))
+  onPress(homeLink, backToTop)
+  onPress(brand, backToTop)
+  const navList = h('ul', { class: 'st-nav__links' }, [homeLink, ...navLinks].map((link) => h('li', null, link)))
+  const navBar = h('nav', { class: 'st-nav', 'aria-label': t('Streaming showcase') }, brand, navList)
 
   /* ------------------------------------------------------------ billboard */
   let billboard = null
@@ -290,7 +331,7 @@ export const renderStreaming = (schema, index) => {
       ? h('img', { class: 'st-billboard__art', src: featured.image.src, alt: '', width: featured.image.width, height: featured.image.height })
       : null
     const moreInfo = h('button', { type: 'button', class: 'st-btn st-btn--info' }, pathIcon(ICON_INFO, 'st-btn__icon'), h('span', null, t('More info')))
-    moreInfo.addEventListener('click', () => openItem(featured))
+    onPress(moreInfo, () => openItem(featured, moreInfo))
     billboard = h(
       'section',
       { class: 'st-billboard', 'aria-labelledby': 'st-billboard-title', 'data-aixc-item': featured.id },
@@ -313,10 +354,16 @@ export const renderStreaming = (schema, index) => {
 
   /* ----------------------------------------------------------------- rows */
   const sliders = []
+  /** Where each row card is, by item id: its card and how to bring it onto its row's page (reveal). */
+  const cardsById = new Map()
+  /** Each row's parts the fence reads and listens to. */
+  const viewports = []
+  const tracks = []
+  const rowCards = []
   const rowEls = rows.map((row) => {
     const titleId = `st-row-title-${row.group.id}`
     const exploreButton = h('button', { type: 'button', class: 'st-row__explore' }, h('span', null, t('Explore all')), pathIcon(ICON_NEXT, ''))
-    exploreButton.addEventListener('click', () => openGroup(row.group))
+    onPress(exploreButton, () => openGroup(row.group, exploreButton))
 
     const cards = row.items.map((item) => {
       const open = h(
@@ -325,9 +372,9 @@ export const renderStreaming = (schema, index) => {
         media(item, { className: 'st-card__media' }),
         h('span', { class: 'st-card__label', 'aria-hidden': 'true' }, item.title),
       )
-      open.addEventListener('click', () => openItem(item))
+      onPress(open, () => openItem(item, open))
       const info = circleButton(ICON_INFO, t('More info: {title}', { title: item.title }), 'st-circle--ghost')
-      info.addEventListener('click', () => openItem(item))
+      onPress(info, () => openItem(item, info))
       const action = item.cta?.href ? circleLink(item.cta.href, ICON_PLAY, item.cta.label ?? t('View {title}', { title: item.title })) : null
       return h(
         'li',
@@ -376,33 +423,58 @@ export const renderStreaming = (schema, index) => {
       if (pager.childElementCount !== slider.pages) pager.replaceChildren(...Array.from({ length: slider.pages }, () => h('li', null)))
       ;[...pager.children].forEach((dash, at) => dash.classList.toggle('is-current', at === slider.page))
       pager.hidden = !paged
+      scheduleFence()
     }
-    prev.addEventListener('click', () => {
+    onPress(prev, () => {
       slider.page -= 1
       layout()
     })
-    next.addEventListener('click', () => {
+    onPress(next, () => {
       slider.page += 1
       layout()
     })
     // Keyboard users tabbing past the visible cards page the row along with them.
-    track.addEventListener('focusin', (event) => {
+    onFocus.push([track, (event) => {
       const card = event.target.closest('.st-card')
       const at = cards.indexOf(card)
-      if (at < 0 || !card.classList.contains('is-offpage')) return
+      // In a box not where the row scrolls natively (phones): there a press on a card scrolled into view focuses it, and
+      // paging back to the row's start under the press took the click from it.
+      if (at < 0 || !card.classList.contains('is-offpage') || (boxed && getComputedStyle(viewport).overflowX === 'auto')) return
       slider.page = Math.floor(at / slider.per)
       layout()
       viewport.scrollLeft = 0
-    })
+    }])
     // A sideways swipe pages the row along the reading line. Where the row
     // scrolls natively (touch, narrow screens) the browser keeps the gesture.
-    sidewaysSwipe(viewport, (direction) => {
+    swipes.push(() => sidewaysSwipe(viewport, (direction) => {
       const page = clamp(slider.page + direction, 0, slider.pages - 1)
       if (page === slider.page) return
       slider.page = page
       layout()
-    }, { enabled: () => getComputedStyle(viewport).overflowX !== 'auto' })
+    }, { enabled: () => getComputedStyle(viewport).overflowX !== 'auto' }))
     sliders.push(layout)
+    // reveal(): the card onto its row's page at once (paged), or the row scrolled to it (a row that scrolls natively).
+    cards.forEach((card, at) =>
+      cardsById.set(card.dataset.aixcItem, {
+        card,
+        show() {
+          if (getComputedStyle(viewport).overflowX === 'auto') {
+            const v = viewport.getBoundingClientRect()
+            const c = card.getBoundingClientRect()
+            viewport.scrollBy({ left: getComputedStyle(viewport).direction === 'rtl' ? c.right - v.right : c.left - v.left, behavior: 'instant' })
+            return
+          }
+          slider.page = Math.floor(at / slider.per)
+          track.style.transition = 'none'
+          layout()
+          void track.offsetWidth
+          track.style.transition = ''
+        },
+      }),
+    )
+    viewports.push(viewport)
+    tracks.push(track)
+    rowCards.push(...cards)
 
     return h(
       'section',
@@ -504,7 +576,6 @@ export const renderStreaming = (schema, index) => {
   let introPlayed = false
   let introAnimations = []
   let skipRequested = false
-  let stopScroll = null
 
   // "Skip intro", a click on the curtain, a scroll, a touch drag or a key ends the
   // intro at its final frame. A request made while the intro still waits for the
@@ -536,18 +607,37 @@ export const renderStreaming = (schema, index) => {
     if (wheelTravel < WHEEL_SKIP_PX) event.preventDefault()
     else endIntro()
   }
-  // Anything else that moves the page (the scrollbar, a wheel over the site header, a script).
+  // Anything else that moves the view (the scrollbar, a wheel over the site header, a script): the page's scroll, or
+  // in a box the box's.
   const onScroll = () => {
-    if (window.scrollY !== introScrollY) endIntro()
+    if (scrollTop() !== introScrollY) endIntro()
   }
-  const listenForInterrupt = (on) => {
-    const method = on ? 'addEventListener' : 'removeEventListener'
-    window[method]('touchmove', onInterrupt, { passive: true })
-    window[method]('keydown', onInterrupt, { passive: true })
-    window[method]('scroll', onScroll, { passive: true })
-    curtain[method]('wheel', onWheel, { passive: false })
-    // click, not pointerdown: a tap's click must still find the curtain, not what lies under it.
-    curtain[method]('click', onInterrupt)
+  let interruptOffs = []
+  const listenForInterrupt = (start) => {
+    for (const off of interruptOffs.splice(0)) off()
+    if (!start) return
+    interruptOffs = [
+      on(window, 'touchmove', onInterrupt, { passive: true }),
+      on(window, 'keydown', onInterrupt, { passive: true }),
+      onViewScroll(onScroll),
+      on(curtain, 'wheel', onWheel, { passive: false }),
+      // click, not pointerdown: a tap's click must still find the curtain, not what lies under it.
+      on(curtain, 'click', onInterrupt),
+    ]
+  }
+  /** The opening's waits (its font's timeout, its frames): undone with the view in a box. */
+  const introWaits = new Set()
+  const wait = (start) =>
+    new Promise((resolve) => {
+      const cancel = start(() => {
+        introWaits.delete(cancel)
+        resolve()
+      })
+      introWaits.add(cancel)
+    })
+  const stopWaits = () => {
+    for (const cancel of introWaits) cancel()
+    introWaits.clear()
   }
 
   /** Skip leaves once there is nothing left to skip, passing keyboard focus to the brand it would have. */
@@ -699,17 +789,18 @@ export const renderStreaming = (schema, index) => {
     introStage.style.transform = `translate3d(0, ${riseFrom.toFixed(1)}px, 0)`
     introStartedAt = performance.now()
     introWidth = window.innerWidth
-    introScrollY = window.scrollY
+    introScrollY = scrollTop()
     wheelTravel = 0
     listenForInterrupt(true)
     // Measure only once the wordmark font is in, so the landing matches exactly (usually
     // already fetched: warmStreaming runs when the composer opens).
-    const fontArrived = await Promise.race([wordmarkFont().then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 1200))])
+    const fontArrived = await Promise.race([wordmarkFont().then(() => true), wait((done) => later(done, 1200)).then(() => false)])
+    stopWaits()
     // Still not in: pin this run to the fallback face, so a late arrival cannot reflow the
     // lockups mid-move or shift the slot they were measured against. The brand swaps once
     // the opening is over.
     if (!fontArrived) root.classList.add('is-fallback-face')
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    await wait((done) => frame(() => introWaits.add(frame(done))))
     if (!root.isConnected) {
       listenForInterrupt(false)
       return
@@ -795,15 +886,104 @@ export const renderStreaming = (schema, index) => {
     cleanupIntro()
   }
 
-  skip.addEventListener('click', () => {
+  onPress(skip, () => {
     endIntro()
     brand.focus({ preventScroll: true })
   })
 
   const updateNav = () => {
-    const stuck = root.getBoundingClientRect().top < chromeOffset() - 4
+    const stuck = root.getBoundingClientRect().top < viewTop() - 4
     navBar.classList.toggle('is-solid', stuck)
   }
+
+  /* ---------------------------------------------------------- in a box: the fence */
+  /**
+   * In a box (voice-guide ADR-0076): each link and button of the view that a bottom corner's safe zone (the box's
+   * --aixc-safe-{left,right}-{w,h}) covers takes no press while there (.st-fenced: no pointer events; Tab and a screen
+   * reader still reach it, and one focused there is scrolled clear first); each row card and bar link the box's left or
+   * right side cuts (a page of cards off to the side, a row or the bar scrolled sideways) is inert while there. Read
+   * from their rects once a frame, as the box, a row or the preview scrolls, a row pages, the zones or the box change.
+   */
+  let fencing = null
+  let focusedNow = null
+  const scheduleFence = () => {
+    if (!boxed || fencing || !mounted) return
+    fencing = frame(() => {
+      fencing = null
+      fence()
+    })
+  }
+  const zonesNow = () => {
+    const box = viewScroller()
+    const style = getComputedStyle(box)
+    const px = (name) => Number.parseFloat(style.getPropertyValue(`--aixc-safe-${name}`)) || 0
+    const b = box.getBoundingClientRect()
+    const left = b.left + box.clientLeft
+    const right = left + box.clientWidth
+    const bottom = b.top + box.clientTop + box.clientHeight
+    const zones = [
+      { left: right - px('right-w'), top: bottom - px('right-h'), right, bottom },
+      { left, top: bottom - px('left-h'), right: left + px('left-w'), bottom },
+    ].filter((z) => z.right > z.left && z.top < bottom)
+    return { left, right, zones }
+  }
+  const meets = (r, z) => r.width > 0 && r.height > 0 && r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const fence = () => {
+    if (!boxed || !mounted) return
+    let { left, right, zones } = zonesNow()
+    // A focused link or button in a zone: the box scrolled so it rests above it (Tab, a screen reader's focus). Only
+    // those: a row's title a bar link focuses is left alone, so the (smooth) scroll the link started runs to its row.
+    const focused = focusedNow
+    focusedNow = null
+    if (focused?.isConnected && focused.matches('a[href], button') && root.contains(focused) && !modal.contains(focused)) {
+      const r = focused.getBoundingClientRect()
+      const zone = zones.find((z) => meets(r, z))
+      if (zone) {
+        scrollByY(r.bottom - zone.top + 12)
+        ;({ left, right, zones } = zonesNow())
+      }
+    }
+    const sides = [...navList.children, ...rowCards]
+    const cut = sides.map((node) => {
+      const r = node.getBoundingClientRect()
+      return r.width > 0 && (r.left < left - 1 || r.right > right + 1)
+    })
+    const pressables = [...root.querySelectorAll('a[href], button')]
+    const covered = pressables.map((node) => {
+      const r = node.getBoundingClientRect()
+      return zones.some((z) => meets(r, z))
+    })
+    sides.forEach((node, at) => {
+      if (node.inert !== cut[at]) node.inert = cut[at]
+    })
+    pressables.forEach((node, at) => node.classList.toggle('st-fenced', covered[at]))
+  }
+  const onViewFocus = (event) => {
+    focusedNow = event.target
+    scheduleFence()
+  }
+
+  /** Everything the view listens to while it shows, through the seam: added on mount, undone on unmount (or the seam's reset). */
+  const listen = () => [
+    ...presses.map(([element, handler]) => on(element, 'click', handler)),
+    ...onFocus.map(([element, handler]) => on(element, 'focusin', handler)),
+    ...swipes.map((start) => start()),
+    onViewResize(onResize),
+    onScrollFrame(updateNav),
+    ...(boxed
+      ? [
+          onViewScroll(scheduleFence),
+          onViewZones(scheduleFence),
+          on(root, 'focusin', onViewFocus),
+          on(navList, 'scroll', scheduleFence, { passive: true }),
+          on(panel, 'scroll', scheduleFence, { passive: true }),
+          ...viewports.map((viewport) => on(viewport, 'scroll', scheduleFence, { passive: true })),
+          ...tracks.map((track) => on(track, 'transitionend', scheduleFence)),
+        ]
+      : []),
+  ]
+  let offs = []
+  let mounted = false
 
   intro.hidden = true
   skip.hidden = true
@@ -811,18 +991,40 @@ export const renderStreaming = (schema, index) => {
   return {
     element: root,
     mount() {
+      mounted = true
+      offs = listen()
       sliders.forEach((layout) => layout())
-      window.addEventListener('resize', onResize)
-      stopScroll = onScrollFrame(updateNav)
       if (!introPlayed) playIntro()
+      scheduleFence()
     },
     unmount() {
-      window.removeEventListener('resize', onResize)
-      stopScroll?.()
-      stopScroll = null
+      mounted = false
+      for (const off of offs.splice(0)) off()
+      fencing?.()
+      fencing = null
       endIntro()
       listenForInterrupt(false) // also when it ends before the intro has started
-      if (modal.open) modal.close()
+      if (boxed) {
+        // Still waiting for its first frames: no opening then (it would wait on frames the seam no longer runs).
+        stopWaits()
+        if (root.classList.contains('is-intro') && !introAnimations.length) cleanupIntro()
+        if (modal.open) sheet.close({ focus: false })
+      } else if (modal.open) modal.close()
+    },
+    /**
+     * Brings the item of `itemId` into the view at once, its top under the bar (the experience's own bar too): the
+     * billboard's, a row's card (its row paged to it, or scrolled sideways to it) or the closing band; false if the view
+     * has none. The box, or the window on the clone.
+     */
+    reveal(itemId) {
+      const card = cardsById.get(itemId)
+      const target = card ? card.card : featured?.id === itemId ? root : promo?.id === itemId ? closing : null
+      if (!target) return false
+      endIntro()
+      card?.show()
+      scrollToY(target === root ? yOf(root) : yOf(target) - navBar.offsetHeight, { instant: true })
+      fence()
+      return true
     },
   }
 

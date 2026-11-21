@@ -237,3 +237,136 @@ export const installDom = ({ lang = 'en', dir = 'ltr' } = {}) => {
   }
   return { document, body, addSymbol, Element }
 }
+
+/**
+ * A view in a scrolling box for view-dialog.js viewDialog (canvas's and streaming's previews, ADR-0076 §7): the box (its view
+ * bar, the shell's stage, the end band) > the experience's root (positioned: the preview's containing block) > a heading,
+ * the stage, the preview <dialog> and the closing band. Elements record focus, inert, attributes and style properties;
+ * `computed` is what getComputedStyle (installed here) returns for each. The dialog records show() and showModal().
+ */
+export const fakeDialogView = ({ top = 120, height = 780, width = 1351, bar = 57, rootTop = -343, scrollbar = 15, focusables = 3 } = {}) => {
+  const doc = { activeElement: null }
+  class El extends FakeTarget {
+    constructor(name, { cls = '', computed = {} } = {}) {
+      super()
+      this.localName = name
+      this.className = cls
+      this.children = []
+      this.parentElement = null
+      this.inert = false
+      this.attrs = new Map()
+      this.computed = { position: 'static', overflowY: 'visible', visibility: 'visible', ...computed }
+      this.props = new Map()
+      this.style = { setProperty: (k, v) => this.props.set(k, v), overflowY: '', scrollbarGutter: '' }
+      this.rect = { top: 0, left: 0, width: 100, height: 40 }
+      this.scrollHeight = 0
+      this.clientHeight = 0
+      this.scrollTop = 0
+      this.focused = 0
+      this.nodeType = 1
+      this.isConnected = true
+    }
+
+    append(...nodes) {
+      for (const node of nodes) {
+        node.parentElement = this
+        this.children.push(node)
+      }
+      return this
+    }
+
+    contains(node) {
+      for (let at = node; at; at = at.parentElement) if (at === this) return true
+      return false
+    }
+
+    closest(selector) {
+      if (selector === '[inert]') {
+        for (let at = this; at; at = at.parentElement) if (at.inert) return at
+        return null
+      }
+      if (selector === 'a, button') return this.localName === 'a' || this.localName === 'button' ? this : null
+      return null
+    }
+
+    getAttribute(name) {
+      return this.attrs.get(name) ?? null
+    }
+
+    setAttribute(name, value) {
+      this.attrs.set(name, String(value))
+    }
+
+    removeAttribute(name) {
+      this.attrs.delete(name)
+    }
+
+    set tabIndex(value) {
+      this.attrs.set('tabindex', String(value))
+    }
+
+    getBoundingClientRect() {
+      const { top: t, left, width: w, height: h } = this.rect
+      return { top: t, left, width: w, height: h, bottom: t + h, right: left + w }
+    }
+
+    getClientRects() {
+      return [this.getBoundingClientRect()]
+    }
+
+    focus() {
+      this.focused += 1
+      doc.activeElement = this
+    }
+
+    walk() {
+      return [this, ...this.children.flatMap((child) => child.walk())]
+    }
+  }
+  const box = new El('div', { cls: 'aixc-box', computed: { position: 'relative', overflowY: 'auto' } })
+  Object.assign(box, { clientTop: 0, clientLeft: 0, clientHeight: height, clientWidth: width - scrollbar, offsetWidth: width })
+  box.rect = { top, left: 0, width, height }
+  const viewbar = new El('div', { cls: 'aixc-viewbar' })
+  viewbar.hidden = false
+  viewbar.rect = { top, left: 0, width, height: bar }
+  box.querySelector = (selector) => (selector === ':scope > .aixc-viewbar' ? viewbar : null)
+  const shellStage = new El('div', { cls: 'aixc-stage', computed: { position: 'relative' } })
+  const end = new El('div', { cls: 'aixc-end' })
+  const root = new El('div', { cls: 'aixc-vx', computed: { position: 'relative' } })
+  root.rect = { top: top + rootTop, left: 0, width: width - scrollbar, height: 3000 }
+  Object.assign(root, { clientTop: 0 })
+  const heading = new El('h1')
+  const stage = new El('section', { cls: 'cv-stage' })
+  const band = new El('section', { cls: 'vx-closing' })
+  const dialog = new El('dialog')
+  const body = new El('div', { cls: 'cv-dialog__body' })
+  const controls = Array.from({ length: focusables }, (_, at) => new El(at === focusables - 1 ? 'button' : 'a'))
+  body.append(...controls.slice(0, -1))
+  dialog.append(body, controls[controls.length - 1])
+  Object.assign(dialog, {
+    open: false,
+    calls: [],
+    show() {
+      dialog.calls.push('show')
+      dialog.open = true
+    },
+    showModal() {
+      dialog.calls.push('showModal')
+      dialog.open = true
+    },
+    close() {
+      dialog.calls.push('close')
+      dialog.open = false
+    },
+    querySelectorAll: () => controls,
+  })
+  root.append(heading, stage, dialog, band)
+  shellStage.append(root)
+  box.append(viewbar, shellStage, end)
+  const opener = new El('button', { cls: 'cv-card' })
+  stage.append(opener)
+  globalThis.getComputedStyle = (el) => el.computed ?? { position: 'static', overflowY: 'visible', visibility: 'visible' }
+  globalThis.document = { ...(globalThis.document ?? {}), documentElement: { lang: 'en', dir: 'ltr' } }
+  Object.defineProperty(globalThis.document, 'activeElement', { get: () => doc.activeElement, set: (v) => (doc.activeElement = v), configurable: true })
+  return { box, viewbar, shellStage, end, root, heading, stage, band, dialog, body, controls, opener, doc, El }
+}

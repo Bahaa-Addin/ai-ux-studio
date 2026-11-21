@@ -2084,8 +2084,559 @@ async def tunnel_after(browser, langs):
         EXPERIENCES["tunnel"] = base
 
 
+# The canvas (phase 4b, Phase 4, 2026-11-18).
+# reveal(id): what it returns, and the card at once: inert, inside the box's sides and its view under the bar, in a zone.
+CANVAS_REVEAL = """({ id, zones }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  const card = box.querySelector(`.cv-card[data-aixc-item="${CSS.escape(id)}"]`)
+  const r = card.getBoundingClientRect()
+  const b = box.getBoundingClientRect()
+  const view = { left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth, top: b.top + box.clientTop + 57, bottom: b.top + box.clientTop + box.clientHeight }
+  const zoneRects = """ + ZONE_RECTS + """
+  const inZone = zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top)
+  return { back, inert: !!card.closest('[inert]'), inZone, inView: r.left >= view.left - 1 && r.right <= view.right + 1 && r.top >= view.top - 1 && r.bottom <= view.bottom + 1, rect: [r.left, r.top, r.right, r.bottom].map(Math.round), view: [view.left, view.top, view.right, view.bottom].map(Math.round), windowScroll: scrollY }
+}"""
+
+# Waits (at most 3 s) until the canvas rests: the brand tile's transform the same over two frames.
+CANVAS_SETTLE = """async () => {
+  const brand = __h.box.querySelector('.cv-tile--brand')
+  const frame = () => new Promise((r) => requestAnimationFrame(r))
+  const t0 = performance.now()
+  let was = null
+  for (;;) {
+    await frame()
+    await frame()
+    const now = brand.style.transform
+    if (now === was || performance.now() - t0 > 3000) return now
+    was = now
+  }
+}"""
+
+# The preview while it shows: not in the top layer, over the box's room under the bar, the rest of the box inert, the
+# box's scroll held; its pressables against the zones; where the focus is.
+CANVAS_PREVIEW = """({ zones }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const dialog = box.querySelector('.cv-dialog')
+  const d = dialog.getBoundingClientRect()
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const pressables = [...dialog.querySelectorAll('a[href], button')].filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden')
+  const hits = pressables.flatMap((el) => zoneRects.filter(([, z]) => meets(el.getBoundingClientRect(), z)).map(([zone]) => ({ zone, label: (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30) })))
+  const room = { top: b.top + box.clientTop + 57, bottom: b.top + box.clientTop + box.clientHeight }
+  const a = document.activeElement
+  return {
+    open: dialog.open,
+    modal: !!document.querySelector(':modal'),
+    popover: document.querySelectorAll(':popover-open').length,
+    position: getComputedStyle(dialog).position,
+    room: Math.abs(d.top - room.top) <= 1 && Math.abs(d.bottom - room.bottom) <= 1 && Math.abs(d.left - b.left - box.clientLeft) <= 1 && Math.abs(d.right - (b.left + box.clientLeft + box.clientWidth)) <= 1,
+    rect: [d.left, d.top, d.right, d.bottom].map(Math.round),
+    want: [b.left, room.top, b.right, room.bottom].map(Math.round),
+    overflowY: getComputedStyle(box).overflowY,
+    stageInert: !!box.querySelector('.cv-stage').closest('[inert]'),
+    barInert: !!box.querySelector('.aixc-viewbar').closest('[inert]'),
+    dialogInert: !!dialog.closest('[inert]'),
+    pressables: pressables.length,
+    hits,
+    focusIn: !!a && dialog.contains(a),
+    focus: a ? (a.dataset.aixcItem || a.className || a.localName) : null,
+    windowScroll: scrollY,
+    boxScroll: box.scrollTop,
+  }
+}"""
+
+
+# The card a press at its centre reaches nearest the stage's middle: its id and that centre; null if none.
+CANVAS_NEAREST = """() => {
+  const s = __h.box.querySelector('.cv-stage').getBoundingClientRect()
+  const [mx, my] = [(s.left + s.right) / 2, (s.top + s.bottom) / 2]
+  const fits = [...__h.box.querySelectorAll('.cv-card')].map((card) => {
+    const r = card.getBoundingClientRect()
+    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2]
+    const hit = document.elementFromPoint(x, y)
+    return { id: card.dataset.aixcItem, at: [x, y], far: Math.hypot(x - mx, y - my), ok: !card.closest('[inert]') && !!hit && card.contains(hit) }
+  }).filter((c) => c.ok).sort((a, b) => a.far - b.far)
+  return fits[0] ? { id: fits[0].id, at: fits[0].at } : null
+}"""
+
+
+async def canvas_extra(page, tag, zones, layout):
+    """The canvas's own checks: reveal(itemId) brings its card into the box's view, pressable, false for an id it has
+    not; panned by the arrow keys, at rest after each pan nothing pressable in a zone and nothing cut by the box's sides;
+    its preview in the box (not modal, nothing in the top layer, over the room under the bar, the rest inert, the box's
+    scroll held, its close button and links clear of both zones, Tab kept in it), Escape closing it with the focus back
+    on the card and the box as it was; the window never scrolled."""
+    ids = await page.evaluate("() => [...__h.box.querySelectorAll('.cv-card')].map((c) => c.dataset.aixcItem)")
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    bad = []
+    listening = " listening" in tag
+    for at in sorted({0, len(ids) // 2, len(ids) - 1}):
+        got = await page.evaluate(CANVAS_REVEAL, {"id": ids[at], "zones": zones})
+        await page.evaluate(FRAMES)
+        settled = await page.evaluate("(id) => !__h.box.querySelector(`.cv-card[data-aixc-item=\"${CSS.escape(id)}\"]`).closest('[inert]')", ids[at])
+        # Pressable at once and after a frame; only while the guide listens may its transcript bar lie over the room
+        # where the card rests (inert there by design).
+        ok_press = (settled and not got["inert"]) or (listening and got["inZone"])
+        if not (got["back"] is True and got["inView"] and ok_press and got["windowScroll"] == 0):
+            bad.append((at, got, settled))
+    check(f"{tag}: reveal() of the first, a middle and the last card returns true, the card whole in the box's view and pressable at once (inert only in a zone while the guide listens), the window still", not bad, bad[:3])
+    # Panned by the arrow keys from the first card: at rest after each pan, nothing pressable in a zone, nothing cut.
+    await page.evaluate("(id) => __h.current.reveal(id)", ids[0])
+    await page.evaluate("() => __h.box.querySelector('.cv-surface').focus({ preventScroll: true })")
+    off, cut, seen = [], [], 0
+    for key in ["ArrowRight", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowLeft", "ArrowLeft", "ArrowUp", "ArrowRight"]:
+        await page.keyboard.press(key)
+        await page.evaluate(CANVAS_SETTLE)
+        zone = await page.evaluate(CONTROLS_IN_ZONES, {"zones": zones, "controls": [], "name": "canvas"})
+        sides = await page.evaluate(CUT_BY_SIDES, {"name": "canvas"})
+        seen += zone["seen"]
+        if zone["out"]:
+            off.append((key, zone["out"][:2]))
+        if sides["cut"]:
+            cut.append((key, sides["cut"][:2]))
+    check(f"{tag}: panned by the arrow keys (8 pans), at rest after each: nothing pressable in either zone ({seen} read)", seen > 0 and not off, off[:3])
+    check(f"{tag}: panned by the arrow keys (8 pans), at rest after each: nothing cut by the box's sides", not cut, cut[:3])
+    # The preview, opened by a press at the centre of the pressable card nearest the stage's middle (after a middle
+    # card's reveal; with the guide listening that one may be under its bar).
+    await page.evaluate("(id) => __h.current.reveal(id)", ids[len(ids) // 2])
+    await page.evaluate(CANVAS_SETTLE)
+    pick = await page.evaluate(CANVAS_NEAREST)
+    check(f"{tag}: a card a press reaches, near the stage's middle", pick is not None, pick)
+    if pick is None:
+        return
+    mid, at = pick["id"], pick["at"]
+    await page.mouse.click(at[0], at[1])
+    await page.wait_for_function("() => __h.box.querySelector('.cv-dialog').open", timeout=5000)
+    await page.wait_for_timeout(900)
+    shown = await page.evaluate(CANVAS_PREVIEW, {"zones": zones})
+    check(f"{tag}: the preview shows in the box: not modal, nothing in the top layer, positioned absolute over the box's room under the bar ({shown['rect']} / {shown['want']})", shown["open"] and not shown["modal"] and shown["popover"] == 0 and shown["position"] == "absolute" and shown["room"], shown)
+    check(f"{tag}: while it shows the rest of the box is inert (the stage, the bar) and the box's scroll held", shown["stageInert"] and shown["barInert"] and not shown["dialogInert"] and shown["overflowY"] == "hidden", shown)
+    check(f"{tag}: the preview's close button and links ({shown['pressables']}) clear of both zones, the focus in it", shown["pressables"] >= 1 and not shown["hits"] and shown["focusIn"], shown)
+    stray = []
+    for key in ["Tab"] * (shown["pressables"] + 2) + ["Shift+Tab"] * (shown["pressables"] + 2):
+        await page.keyboard.press(key)
+        now = await page.evaluate(CANVAS_PREVIEW, {"zones": zones})
+        if not now["focusIn"]:
+            stray.append((key, now["focus"]))
+    check(f"{tag}: Tab and Shift+Tab keep the focus in the preview", not stray, stray[:3])
+    await page.mouse.move(at[0], at[1])
+    await page.mouse.wheel(0, 500)
+    await page.evaluate(FRAMES)
+    wheeled = await page.evaluate(CANVAS_PREVIEW, {"zones": zones})
+    check(f"{tag}: a wheel over the preview scrolls neither the box nor the window", wheeled["windowScroll"] == 0 and wheeled["boxScroll"] == shown["boxScroll"], wheeled)
+    await page.keyboard.press("Escape")
+    await page.wait_for_function("() => !__h.box.querySelector('.cv-dialog').open", timeout=5000)
+    await page.evaluate(FRAMES)
+    after = await page.evaluate(CANVAS_PREVIEW, {"zones": zones})
+    check(f"{tag}: Escape closes the preview: the focus back on its card, the box's scroll and the rest as before", not after["open"] and after["focus"] == mid and after["overflowY"] == "auto" and not after["stageInert"] and not after["barInert"] and after["windowScroll"] == 0, after)
+    await page.evaluate("() => { document.activeElement?.blur(); __h.current.reveal(__h.itemIds[0]); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }")
+    await page.evaluate(FRAMES)
+
+
+def canvas_controls(width, height):
+    """The head's jump links, shown from 720 px (phones have none)."""
+    return [".cv-col--cats"] if width >= 720 else []
+
+
+# The cards a press at their centre reaches: id, that centre, how far from the stage's middle, the rect; `zones` given,
+# whether the card meets those zones' rectangles.
+CANVAS_PRESSABLE = """({ zones }) => {
+  const s = __h.box.querySelector('.cv-stage').getBoundingClientRect()
+  const [mx, my] = [(s.left + s.right) / 2, (s.top + s.bottom) / 2]
+  const zoneRects = zones ? """ + ZONE_RECTS + """ : []
+  return [...__h.box.querySelectorAll('.cv-card')].map((card) => {
+    const r = card.getBoundingClientRect()
+    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2]
+    const hit = document.elementFromPoint(x, y)
+    const meets = zoneRects.some(([, z]) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top)
+    return { id: card.dataset.aixcItem, at: [x, y], far: Math.hypot(x - mx, y - my), meets, rect: [r.left, r.top, r.right, r.bottom].map(Math.round), ok: !card.closest('[inert]') && !!hit && card.contains(hit) }
+  }).filter((c) => c.ok).sort((a, b) => b.far - a.far)
+}"""
+
+CANVAS_CARD = """(id) => {
+  const card = __h.box.querySelector(`.cv-card[data-aixc-item="${CSS.escape(id)}"]`)
+  const r = card.getBoundingClientRect()
+  const a = document.activeElement
+  return { rect: [r.left, r.top, r.right, r.bottom].map(Math.round), inert: !!card.closest('[inert]'), own: card.inert, open: __h.box.querySelector('.cv-dialog').open, focused: a === card, focus: a ? (a.dataset.aixcItem || a.className || a.localName) : null }
+}"""
+
+
+async def canvas_page(browser, width, height, lang, zones, motion, touch=False):
+    """The harness with the canvas open in the box; `touch`: a phone's touch screen (hasTouch, isMobile)."""
+    extra = {"has_touch": True, "is_mobile": True} if touch else {}
+    context = await browser.new_context(viewport={"width": width, "height": height}, reduced_motion=motion, **extra)
+    page = await context.new_page()
+    page.errors = []
+    page.on("pageerror", lambda e: page.errors.append(str(e)))
+    await page.route(URL + "*", lambda route: route.fulfill(status=200, content_type="text/html; charset=utf-8", body=HARNESS))
+    await page.goto(f"{URL}?lang={lang}")
+    await page.wait_for_function("window.__ready === true")
+    await page.evaluate("(zones) => __h.measure(zones)", zones)
+    await page.evaluate("(name) => __h.load(name)", "canvas")
+    await page.evaluate("() => { __h.open('canvas') }")
+    await page.evaluate("document.fonts.ready")
+    await page.evaluate(CANVAS_SETTLE)
+    return context, page
+
+
+async def canvas_touch(browser, lang):
+    """On a touch screen under reduced motion (the review, 2026-11-20): one tap on a card away from the clear spot opens
+    its preview (the card focused by the tap stays where it is; on touch the focus comes after pointerup), while Tab
+    still glides the card it focuses to the clear spot."""
+    tag = f"canvas {lang} 375x812 touch (reduced motion)"
+    context, page = await canvas_page(browser, 375, 812, lang, ZONES[(375, 812)], "reduce", touch=True)
+    cards = await page.evaluate(CANVAS_PRESSABLE, {"zones": None})
+    check(f"{tag}: a pressable card away from the stage's middle", bool(cards), cards[:2])
+    if cards:
+        pick = cards[0]
+        before = await page.evaluate(CANVAS_CARD, pick["id"])
+        await page.touchscreen.tap(pick["at"][0], pick["at"][1])
+        await page.wait_for_timeout(400)
+        await page.evaluate(FRAMES)
+        after = await page.evaluate(CANVAS_CARD, pick["id"])
+        check(f"{tag}: one tap on a card opens its preview, the card left where it was ({before['rect']} -> {after['rect']})", after["open"] and after["rect"] == before["rect"], {"before": before, "after": after, "pick": pick})
+        if after["open"]:
+            await page.keyboard.press("Escape")
+            await page.wait_for_function("() => !__h.box.querySelector('.cv-dialog').open", timeout=5000)
+            await page.evaluate(FRAMES)
+    ids = await page.evaluate("() => [...__h.box.querySelectorAll('.cv-card')].map((c) => c.dataset.aixcItem)")
+    await page.evaluate("() => __h.box.querySelector('.cv-surface').focus({ preventScroll: true })")
+    await page.keyboard.press("Tab")
+    await page.evaluate(FRAMES)
+    was = await page.evaluate(CANVAS_CARD, ids[1])
+    await page.keyboard.press("Tab")
+    await page.evaluate(FRAMES)
+    now = await page.evaluate(CANVAS_CARD, ids[1])
+    moved = max(abs(a - b) for a, b in zip(was["rect"], now["rect"]))
+    check(f"{tag}: Tab to the next card glides it to the clear spot ({was['rect']} -> {now['rect']}), pressable there", now["focused"] and moved > 4 and not now["inert"], {"was": was, "now": now})
+    check(f"{tag}: no page errors", page.errors == [], page.errors)
+    await context.close()
+
+
+async def canvas_zones_escape(browser, lang, motion):
+    """The zones change while the preview shows (the guide starts listening; the review, 2026-11-20): its card, low on
+    the right, falls in the wider zone (the fence makes it inert there); Escape still gives it the focus back."""
+    tag = f"canvas {lang} 1366x900 zones changed under the preview ({'reduced motion' if motion == 'reduce' else 'motion allowed'})"
+    quiet = ZONES[(1366, 900)]
+    wide = {**quiet, **LISTENING}
+    context, page = await canvas_page(browser, 1366, 900, lang, quiet, motion)
+    pick = None
+    for key in [None, "ArrowUp", "ArrowLeft", "ArrowUp", "ArrowLeft"]:
+        if key:
+            await page.evaluate("() => __h.box.querySelector('.cv-surface').focus({ preventScroll: true })")
+            await page.keyboard.press(key)
+            await page.evaluate(CANVAS_SETTLE)
+        cards = [c for c in await page.evaluate(CANVAS_PRESSABLE, {"zones": wide}) if c["meets"]]
+        if cards:
+            pick = cards[-1]
+            break
+    check(f"{tag}: a pressable card low on the right, in the listening zone's reach", pick is not None, pick)
+    if pick:
+        await page.evaluate("() => document.activeElement?.blur()")
+        await page.mouse.click(pick["at"][0], pick["at"][1])
+        await page.wait_for_function("() => __h.box.querySelector('.cv-dialog').open", timeout=5000)
+        await page.wait_for_timeout(900)
+        await page.evaluate("(zones) => __h.measure(zones)", wide)
+        await page.evaluate(FRAMES)
+        under = await page.evaluate(CANVAS_CARD, pick["id"])
+        await page.keyboard.press("Escape")
+        await page.wait_for_function("() => !__h.box.querySelector('.cv-dialog').open", timeout=5000)
+        await page.evaluate(FRAMES)
+        back = await page.evaluate(CANVAS_CARD, pick["id"])
+        check(f"{tag}: Escape closes the preview with the focus back on its card (made inert by the fence under the wider zone while it showed)", under["own"] and not back["open"] and back["focused"] and not back["inert"], {"under": under, "back": back, "pick": pick})
+    check(f"{tag}: no page errors", page.errors == [], page.errors)
+    await context.close()
+
+
+async def canvas_after(browser, langs):
+    for lang in langs:
+        await canvas_touch(browser, lang)
+        for motion in ("reduce", "no-preference"):
+            await canvas_zones_escape(browser, lang, motion)
+
+
+# Streaming (phase 4b, Phase 4, 2026-11-20).
+# reveal(id): what it returns, and the item at once: its top in the box's view under the bar (a row card's under the
+# view's own .st-nav too), whole where it fits,
+# inside the box's sides, not inert; the window still.
+ST_REVEAL = """({ id }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  const node = [...box.querySelectorAll('[data-aixc-item]')].find((n) => n.dataset.aixcItem === id)
+  const r = node.getBoundingClientRect()
+  const b = box.getBoundingClientRect()
+  const view = { left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth, top: b.top + box.clientTop + 57, bottom: b.top + box.clientTop + box.clientHeight }
+  const fits = r.bottom - r.top <= view.bottom - view.top + 1
+  // A row card also clear of the view's own sticky bar (.st-nav), not tucked under it.
+  const under = node.classList.contains('st-card') ? box.querySelector('.st-nav').getBoundingClientRect().bottom : view.top
+  return { back, inert: !!node.closest('[inert]'), top: r.top >= Math.max(view.top, under) - 1 && r.top < view.bottom, whole: !fits || r.bottom <= view.bottom + 1, inside: r.left >= view.left - 1 && r.right <= view.right + 1, rect: [r.left, r.top, r.right, r.bottom].map(Math.round), view: [view.left, view.top, view.right, view.bottom].map(Math.round), windowScroll: scrollY }
+}"""
+
+# The preview while it shows: not in the top layer, over the box's room under the bar, the rest of the box inert, the
+# box's scroll held; its pressables (those that take a press) against the zones; where the focus is.
+ST_PREVIEW = """({ zones }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const dialog = box.querySelector('.st-modal')
+  const d = dialog.getBoundingClientRect()
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  const pressables = [...dialog.querySelectorAll('a[href], button')].filter((el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).pointerEvents !== 'none')
+  const hits = pressables.flatMap((el) => zoneRects.filter(([, z]) => meets(el.getBoundingClientRect(), z)).map(([zone]) => ({ zone, label: (el.getAttribute('aria-label') || el.textContent).trim().slice(0, 30) })))
+  const room = { top: b.top + box.clientTop + 57, bottom: b.top + box.clientTop + box.clientHeight }
+  const a = document.activeElement
+  return {
+    open: dialog.open,
+    modal: !!document.querySelector(':modal'),
+    popover: document.querySelectorAll(':popover-open').length,
+    position: getComputedStyle(dialog).position,
+    room: Math.abs(d.top - room.top) <= 1 && Math.abs(d.bottom - room.bottom) <= 1 && Math.abs(d.left - b.left - box.clientLeft) <= 1 && Math.abs(d.right - (b.left + box.clientLeft + box.clientWidth)) <= 1,
+    rect: [d.left, d.top, d.right, d.bottom].map(Math.round),
+    want: [b.left, room.top, b.right, room.bottom].map(Math.round),
+    overflowY: getComputedStyle(box).overflowY,
+    navInert: !!box.querySelector('.st-nav').closest('[inert]'),
+    rowsInert: !!box.querySelector('.st-rows').closest('[inert]'),
+    barInert: !!box.querySelector('.aixc-viewbar').closest('[inert]'),
+    dialogInert: !!dialog.closest('[inert]'),
+    pressables: pressables.length,
+    hits,
+    focusIn: !!a && dialog.contains(a),
+    focus: a ? (a.closest('.st-card')?.dataset.aixcItem || a.className || a.localName) : null,
+    windowScroll: scrollY,
+    boxScroll: box.scrollTop,
+  }
+}"""
+
+# The row card whose open button a press at its centre reaches nearest the box's middle: its id and that centre.
+ST_NEAREST = """() => {
+  const b = __h.box.getBoundingClientRect()
+  const [mx, my] = [(b.left + b.right) / 2, (b.top + b.bottom) / 2]
+  const fits = [...__h.box.querySelectorAll('.st-card')].map((card) => {
+    const open = card.querySelector('.st-card__open')
+    const r = open.getBoundingClientRect()
+    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2]
+    const hit = document.elementFromPoint(x, y)
+    return { id: card.dataset.aixcItem, at: [x, y], far: Math.hypot(x - mx, y - my), ok: r.width > 0 && !card.closest('[inert]') && !!hit && open.contains(hit) }
+  }).filter((c) => c.ok).sort((a, c) => a.far - c.far)
+  return fits[0] ? { id: fits[0].id, at: fits[0].at } : null
+}"""
+
+
+async def streaming_extra(page, tag, zones, layout):
+    """Streaming's own checks: reveal(itemId) brings the billboard's, a row card's and the closing band's item into the
+    box's view, pressable, false for an id it has not; its preview in the box (not modal, nothing in the top layer, over
+    the room under the bar, the rest inert, the box's scroll held, its close button and links clear of both zones
+    through its own scroll, Tab kept in it, a wheel over it moving neither the box nor the window), Escape closing it
+    with the focus back on the card's button and the box as it was; the window never scrolled."""
+    absent = await page.evaluate("() => __h.current.reveal('no-such-item')")
+    check(f"{tag}: reveal() of an id it has not returns false", absent is False, absent)
+    ids = await page.evaluate("() => [...__h.box.querySelectorAll('[data-aixc-item]')].map((n) => n.dataset.aixcItem)")
+    cards = await page.evaluate("() => [...__h.box.querySelectorAll('.st-card')].map((n) => n.dataset.aixcItem)")
+    bad = []
+    for item in dict.fromkeys([ids[0], cards[len(cards) // 2], cards[-1], ids[-1]]):
+        got = await page.evaluate(ST_REVEAL, {"id": item})
+        await page.evaluate(FRAMES)
+        settled = await page.evaluate("(id) => !__h.box.querySelector(`[data-aixc-item=\"${CSS.escape(id)}\"]`).closest('[inert]')", item)
+        if not (got["back"] is True and got["top"] and got["whole"] and got["inside"] and not got["inert"] and settled and got["windowScroll"] == 0):
+            bad.append((item, got, settled))
+    check(f"{tag}: reveal() of the billboard's, a middle and the last row card's and the closing band's item returns true, the item at the box's view under the bar, inside its sides, pressable at once, the window still", not bad, bad[:3])
+    await page.evaluate("(id) => __h.current.reveal(id)", cards[len(cards) // 2])
+    await page.evaluate(FRAMES)
+    pick = await page.evaluate(ST_NEAREST)
+    check(f"{tag}: a card a press reaches", pick is not None, pick)
+    if pick is None:
+        return
+    mid, at = pick["id"], pick["at"]
+    await page.mouse.click(at[0], at[1])
+    await page.wait_for_function("() => __h.box.querySelector('.st-modal').open", timeout=5000)
+    await page.wait_for_timeout(500)
+    shown = await page.evaluate(ST_PREVIEW, {"zones": zones})
+    check(f"{tag}: the preview shows in the box: not modal, nothing in the top layer, positioned absolute over the box's room under the bar ({shown['rect']} / {shown['want']})", shown["open"] and not shown["modal"] and shown["popover"] == 0 and shown["position"] == "absolute" and shown["room"], shown)
+    check(f"{tag}: while it shows the rest of the box is inert (its bar, the rows, the view bar) and the box's scroll held", shown["navInert"] and shown["rowsInert"] and shown["barInert"] and not shown["dialogInert"] and shown["overflowY"] == "hidden", shown)
+    hits = []
+    for k in (0, 0.5, 1):
+        await page.evaluate("(k) => { const p = __h.box.querySelector('.st-modal__panel'); p.scrollTop = Math.round((p.scrollHeight - p.clientHeight) * k) }", k)
+        await page.evaluate(FRAMES)
+        now = await page.evaluate(ST_PREVIEW, {"zones": zones})
+        if now["hits"] or now["pressables"] < 1:
+            hits.append((k, now["pressables"], now["hits"][:2]))
+    check(f"{tag}: through its own scroll the preview's close button and links that take a press ({shown['pressables']}) are clear of both zones, the focus in it", not hits and shown["focusIn"], {"hits": hits[:3], "focus": shown["focus"]})
+    await page.evaluate("() => { __h.box.querySelector('.st-modal__panel').scrollTop = 0; __h.box.querySelector('.st-modal__close').focus() }")
+    count = await page.evaluate("() => __h.box.querySelectorAll('.st-modal :is(a[href], button)').length")
+    stray = []
+    for key in ["Tab"] * min(count + 2, 14) + ["Shift+Tab"] * min(count + 2, 14):
+        await page.keyboard.press(key)
+        now = await page.evaluate(ST_PREVIEW, {"zones": zones})
+        if not now["focusIn"]:
+            stray.append((key, now["focus"]))
+    check(f"{tag}: Tab and Shift+Tab keep the focus in the preview", not stray, stray[:3])
+    await page.mouse.move(at[0], at[1])
+    await page.mouse.wheel(0, 500)
+    await page.evaluate(FRAMES)
+    wheeled = await page.evaluate(ST_PREVIEW, {"zones": zones})
+    check(f"{tag}: a wheel over the preview scrolls neither the box nor the window", wheeled["windowScroll"] == 0 and wheeled["boxScroll"] == shown["boxScroll"] and wheeled["open"], wheeled)
+    await page.evaluate("() => __h.box.querySelector('.st-modal__close').focus()")
+    await page.keyboard.press("Escape")
+    await page.wait_for_function("() => !__h.box.querySelector('.st-modal').open", timeout=5000)
+    await page.evaluate(FRAMES)
+    after = await page.evaluate(ST_PREVIEW, {"zones": zones})
+    check(f"{tag}: Escape closes the preview: the focus back on its card's button, the box's scroll and the rest as before", not after["open"] and after["focus"] == mid and after["overflowY"] == "auto" and not after["navInert"] and not after["barInert"] and after["windowScroll"] == 0, after)
+    await page.evaluate("() => { document.activeElement?.blur(); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }")
+    await page.evaluate(FRAMES)
+
+
+# The opening while it plays: in the box over its room (not fixed to the screen), Skip inside it and clear of the zones,
+# the wordmark's face not Roboto.
+ST_INTRO = """({ zones }) => {
+  const box = __h.box
+  const b = box.getBoundingClientRect()
+  const intro = box.querySelector('.st-intro')
+  const skip = box.querySelector('.st-skip')
+  const i = intro.getBoundingClientRect()
+  const s = skip.getBoundingClientRect()
+  const room = { left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth, top: b.top + box.clientTop + 57, bottom: b.top + box.clientTop + box.clientHeight }
+  const zoneRects = """ + ZONE_RECTS + """
+  const meets = (r, z) => r.left < z.right && r.right > z.left && r.top < z.bottom && r.bottom > z.top
+  return {
+    shown: !intro.hidden && !skip.hidden,
+    position: getComputedStyle(intro).position,
+    covers: Math.abs(i.top - room.top) <= 1 && Math.abs(i.bottom - room.bottom) <= 1 && Math.abs(i.left - room.left) <= 1 && Math.abs(i.right - room.right) <= 1,
+    skipInside: s.width > 0 && s.left >= room.left && s.right <= room.right && s.top >= room.top && s.bottom <= room.bottom,
+    skipZones: zoneRects.filter(([, z]) => meets(s, z)).map(([zone]) => zone),
+    font: getComputedStyle(box.querySelector('.st-brand .st-word')).fontFamily,
+    rect: [i.left, i.top, i.right, i.bottom].map(Math.round),
+    skip: [s.left, s.top, s.right, s.bottom].map(Math.round),
+    room: [room.left, room.top, room.right, room.bottom].map(Math.round),
+  }
+}"""
+
+
+async def streaming_after(browser, langs):
+    """The opening in the box, with motion allowed (desktop and phone, en and ar): it covers the box's room under the
+    bar, Skip inside it clear of both zones, the wordmark not in Roboto; the box's scroll ends it (the window never
+    scrolls); a second view's Skip ends it and hands the focus to the brand."""
+    for width, height in [(1366, 900), (375, 812)]:
+        for lang in langs:
+            tag = f"streaming {lang} {width}x{height} the opening (motion allowed)"
+            zones = ZONES[(width, height)]
+            context, page = await open_harness(browser, width, height, lang, zones, "no-preference")
+            await page.evaluate("(name) => __h.load(name)", "streaming")
+            await page.evaluate("() => { __h.open('streaming') }")
+            await page.wait_for_timeout(300)
+            got = await page.evaluate(ST_INTRO, {"zones": zones})
+            check(f"{tag}: plays in the box over its room under the bar ({got['rect']} / {got['room']}), not fixed to the screen", got["shown"] and got["position"] == "absolute" and got["covers"], got)
+            check(f"{tag}: Skip {got['skip']} inside the box's room and clear of both zones", got["skipInside"] and not got["skipZones"], got)
+            check(f"{tag}: the wordmark's face is not Roboto ({got['font']})", "roboto" not in got["font"].lower(), got["font"])
+            await page.evaluate("() => { __h.box.scrollTop = 40 }")
+            try:
+                await page.wait_for_function("() => __h.box.querySelector('.st-intro').hidden && __h.box.querySelector('.aixc-vx--streaming').classList.contains('is-ready')", timeout=5000)
+                ended = True
+            except Exception:  # noqa: BLE001 -- the finding is that it did not end
+                ended = False
+            check(f"{tag}: the box's scroll ends it, the window still", ended and await page.evaluate("() => scrollY") == 0)
+            await page.evaluate("() => { __h.close(); __h.box.scrollTop = 0; __h.open('streaming') }")
+            await page.wait_for_timeout(300)
+            skip = await page.evaluate("() => { const r = __h.box.querySelector('.st-skip').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] }")
+            await page.mouse.click(skip[0], skip[1])
+            try:
+                await page.wait_for_function("() => __h.box.querySelector('.st-intro').hidden && document.activeElement?.classList.contains('st-brand')", timeout=5000)
+                skipped = True
+            except Exception:  # noqa: BLE001
+                skipped = False
+            check(f"{tag}: Skip ends it and hands the focus to the brand, the window still", skipped and await page.evaluate("() => scrollY") == 0)
+            left = await page.evaluate("() => { __h.close(); return __h.seam.keptCount() }")
+            check(f"{tag}: closed: nothing kept", left == 0, left)
+            check(f"{tag}: no page errors", page.errors == [], page.errors)
+            await context.close()
+
+
 # In the order they run. The selectors of the todo rows are today's markup (what box_generic() would check once
 # the row is done); a phase that converts one adjusts its row as it drops `todo`.
+# The flipbook (phase 4, 2026-11-18). reveal(id): the item's page open and the item in the box's view (under the bar,
+# and under the row held there; above the box's bottom and the row held there too when it fits), not inert, the
+# window still.
+FB_REVEAL = """async ({ id }) => {
+  const box = __h.box
+  const back = __h.current.reveal(id)
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  const b = box.getBoundingClientRect()
+  const stage = box.querySelector('.fb-stage')
+  const row = box.querySelector('.fb-controls').getBoundingClientRect()
+  const top = stage.classList.contains('fb-row-top') ? Math.max(b.top + box.clientTop + 57, row.bottom) : b.top + box.clientTop + 57
+  const bottom = stage.classList.contains('fb-row-low') ? row.top : b.top + box.clientTop + box.clientHeight
+  const n = [...box.querySelectorAll('[data-aixc-item]')].find((x) => x.dataset.aixcItem === id)
+  const r = n.getBoundingClientRect()
+  const fits = r.height <= bottom - top + 1
+  return { back, none: __h.current.reveal('no-such-item'), top: Math.round(r.top - top), fits, inView: r.top >= top - 1 && r.top < bottom && (!fits || r.bottom <= bottom + 1), inert: !!n.closest('[inert]'), windowScroll: scrollY }
+}"""
+
+# Where the row is: under the book (then the whole stage fits the box's room at its top), held 12 px over the box's
+# bottom (fb-row-low) or above the book, held under the bar (fb-row-top), the box at its top.
+FB_ROW = """() => {
+  const box = __h.box
+  const rect = (n) => n.getBoundingClientRect()
+  const stage = box.querySelector('.fb-stage')
+  const desk = rect(box.querySelector('.fb-desk'))
+  const row = rect(box.querySelector('.fb-controls'))
+  const b = rect(box)
+  return { under: row.top >= desk.bottom - 1, above: row.bottom <= desk.top + 1, top: stage.classList.contains('fb-row-top'), low: stage.classList.contains('fb-row-low'), bottom: Math.round(b.top + box.clientTop + box.clientHeight - row.bottom), fits: rect(stage).bottom <= b.top + box.clientTop + box.clientHeight + 1, sticky: getComputedStyle(box.querySelector('.fb-controls')).position, desk: [desk.left, desk.right].map(Math.round), status: box.querySelector('.fb-status').textContent }
+}"""
+
+# One turn by next (a press on the button, as the reader's), and how long the turn takes to settle (the leaf's 0.95 s
+# with motion allowed; flipbook.js fences again 1 s after it starts).
+FB_NEXT = """async ({ wait }) => {
+  const box = __h.box
+  const next = box.querySelector('.fb-controls .vx-round:last-child')
+  if (next.disabled) return false
+  next.click()
+  await new Promise((r) => setTimeout(r, wait))
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  return true
+}"""
+
+
+async def flipbook_extra(page, tag, zones, layout):
+    """The flipbook's own: the row under the book only where the stage fits the room (above it on phones, held under
+    the bar); from 720 px the book beside both zones at rest; reveal(); then every page in turn by next, the box at
+    its top: the row clear of both zones, nothing pressable in either, nothing cut by the box's sides, the window
+    still."""
+    listening = "listening" in tag
+    row = await page.evaluate(FB_ROW)
+    check(f"{tag}: the row under the book where the stage fits the room, else held 12 px over the box's bottom (from 720 px) or above the book under the bar", (row["under"] and row["fits"] and not row["top"] and not row["low"]) or (row["low"] and not row["fits"] and abs(row["bottom"] - 12) <= 2 and row["sticky"] == "sticky") or (row["above"] and row["top"] and row["sticky"] == "sticky"), row)
+    if layout == "phone":
+        check(f"{tag}: on a phone the row above the book", row["above"], row)
+    elif not listening:
+        width = await page.evaluate("() => __h.box.clientWidth")
+        check(f"{tag}: from 720 px the book {row['desk']} beside both zones", row["desk"][0] >= zones["left-w"] and row["desk"][1] <= width - zones["right-w"], {"desk": row["desk"], "zones": zones, "width": width})
+        check(f"{tag}: from 720 px the row at the bottom centre (under the book, or held over the box's bottom)", not row["top"], row)
+    ids = await page.evaluate("() => __h.itemIds")
+    rev = await page.evaluate(FB_REVEAL, {"id": ids[len(ids) // 2]})
+    check(f"{tag}: reveal() opens the item's page with the item in the box's view, the window still; false for an item it lacks", rev["back"] is True and rev["none"] is False and rev["inView"] and not rev["inert"] and rev["windowScroll"] == 0, rev)
+    # Back to the cover, the box at its top.
+    await page.evaluate("""() => { const prev = __h.box.querySelector('.fb-controls .vx-round:first-child'); while (!prev.disabled) prev.click(); __h.box.scrollTo({ top: 0, behavior: 'instant' }) }""")
+    await page.wait_for_timeout(1100)
+    wait = 1100
+    bad, places, seen = [], 0, 0
+    while True:
+        status = await page.evaluate("() => __h.box.querySelector('.fb-status').textContent")
+        zone = await page.evaluate(CONTROLS_IN_ZONES, {"zones": zones, "controls": [".fb-controls"], "name": "flipbook"})
+        sides = await page.evaluate(CUT_BY_SIDES, {"name": "flipbook"})
+        seen += zone["seen"]
+        if zone["each"][0]["shown"] == 0 or zone["each"][0]["zones"]:
+            bad.append((status, "row", zone["each"][0]))
+        if zone["out"]:
+            bad.append((status, "in a zone", zone["out"][:2]))
+        if sides["cut"]:
+            bad.append((status, "cut", sides["cut"][:2]))
+        places += 1
+        if not await page.evaluate(FB_NEXT, {"wait": wait}):
+            break
+    check(f"{tag}: every page in turn ({places} places, {seen} pressables read): the row shown and clear of both zones, nothing pressable in either, nothing cut by the box's sides", places >= 4 and seen > 0 and not bad, bad[:3])
+
+
 EXPERIENCES = {
     "spotlight": row(run=run_spotlight),
     "magazine": row(run=run_magazine),
@@ -2143,9 +2694,29 @@ EXPERIENCES = {
     # not fit while the guide listens and the pair is lifted above the taller zone; tunnel_settled() settles on each
     # stop (words included) with nothing inert or cut; laid flat, Tab reaches every service's link (tunnel_tab_flat).
     "tunnel": row(pins=(".tn-stage", ".tn-track"), controls=[".tn-hud__nav"], sizes=GENERIC_SIZES + [(768, 1024)], listening=[(1366, 900), (1024, 768), (768, 1024), (375, 812)], extra=tunnel_extra, after=tunnel_after),
-    "flipbook": row(todo=PHASE_4B, controls=[".fb-controls"]),
-    "canvas": row(todo=PHASE_4B, controls=[]),
-    "streaming": row(todo=PHASE_4B, controls=[".st-nav"]),
+    # Phase 4 (2026-11-18): the book turns its pages in place (it does not pin). From 720 px the book keeps beside both
+    # zones and its row sits at the bottom centre between them: under the book where the whole stage fits the room,
+    # else held 12 px over the box's bottom; on phones and where the lane is too narrow while the guide listens the row
+    # is above the book, held under the bar; what of the book meets a zone takes no pointer events while there (flipbook.js keepClear()). Phones in
+    # landscape (a box far shorter than the book) and a tablet; the guide listening at each width. flipbook_extra: the
+    # row's place, the book beside the zones, reveal(), every page in turn.
+    "flipbook": row(controls=[".fb-controls"], sizes=GENERIC_SIZES + [(812, 375), (768, 1024)], listening=[(1366, 900), (1024, 768), (812, 375), (375, 812), (768, 1024)], extra=flipbook_extra),
+    # Phase 4 (2026-11-18): the stage is the box's room and takes the drag; its controls are the head's jump links at the
+    # stage's top (from 720 px); the cards that rest in a corner's zone or past the box's sides are inert while there
+    # (canvas.js fence()), which the generic checks see with motion allowed; a phone in landscape for the short box; the
+    # guide listening at each width. canvas_extra: reveal(), the arrow keys' pans, the preview in the box (view-dialog.js
+    # viewDialog: not in the top layer, the rest inert, Tab kept in it, Escape giving the focus back). canvas_after (the
+    # review, 2026-11-20): one tap opens a preview on a touch screen under reduced motion; Escape gives the focus back
+    # after the zones changed under the preview.
+    "canvas": row(controls=canvas_controls, sizes=GENERIC_SIZES + [(812, 375)], listening=[(1366, 900), (1024, 768), (375, 812), (812, 375)], extra=canvas_extra, after=canvas_after),
+    # Phase 4 (2026-11-20): its bar pinned at the box's top; no pinned stage: the view scrolls in the box, and what
+    # passes a bottom corner's zone takes no press there (streaming.js fence(): no pointer events, Tab still reaches it)
+    # while row cards and bar links the box's sides cut are inert, which the generic checks see at the box's top, middle
+    # and end with motion allowed (the opening, which the box's scroll ends); a phone in landscape for the short box;
+    # the guide listening where its transcript bar meets the rows. streaming_extra: reveal(), the preview in the box
+    # (view-dialog.js viewDialog: not in the top layer, the rest inert, Tab kept in it, Escape giving the focus back);
+    # streaming_after: the opening in the box (Skip clear of the zones, ended by the box's scroll), no Roboto.
+    "streaming": row(controls=[".st-nav"], sizes=GENERIC_SIZES + [(812, 375)], listening=[(1366, 900), (1024, 768), (375, 812)], extra=streaming_extra, after=streaming_after),
 }
 
 

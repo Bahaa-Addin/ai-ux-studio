@@ -68,7 +68,11 @@ const hold = (undo) => {
   if (settings.configured) kept.add(off)
   return { off, done }
 }
-const keep = (undo) => hold(undo).off
+/**
+ * Keeps `undo` until it runs: returns its off, which configure() runs too if it has not run by then (the seam's own
+ * listeners, frames and timers are kept this way; ./view-dialog.js keeps an open preview so).
+ */
+export const keep = (undo) => hold(undo).off
 
 /**
  * Sets where the experiences scroll and how they listen, after undoing every listener, frame, timer and

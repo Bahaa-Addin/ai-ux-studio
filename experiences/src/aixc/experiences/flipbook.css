@@ -745,3 +745,75 @@
     clip-path: none;
   }
 }
+
+/* ------------------------------------------------- Vodafone's pages: the box */
+
+/* On Vodafone's pages (voice-guide ADR-0076) the view scrolls in its own box, and the box's bottom corners belong to
+   Vodafone's accessibility button and the guide's microphone, with its transcript bar while it listens (right), and
+   the Pocket's button (left). The shell measures how far each reaches into the box from its bottom edge and side
+   (--aixc-safe-right-w/-h, --aixc-safe-left-w/-h); nothing pressable here sits in either. The book does not pin: it
+   keeps the clone's heights (a full page of copy) in the box's room (--vx-vh), the box scrolling on where the room is
+   shorter. From 720 px it keeps beside both zones, each side 16 px clear of its zone's width up to 144 px (the zones
+   at rest: a wider one, the guide's transcript bar, does not shrink the book; flipbook.js keepClear() takes the
+   pointer from what it covers). The controls' row: at the bottom centre between the zones from 720 px (under the
+   book where the stage fits the room, else held at the box's bottom while the book scrolls by), at the stage's top on
+   phones and where that lane is too narrow; its insets and place from flipbook.js placeRow(). */
+.aixc-box .aixc-vx--flipbook {
+  --fb-lane-l: max(var(--vx-gutter), min(calc(var(--aixc-safe-left-w, 0px) + 16px), 144px));
+  --fb-lane-r: max(var(--vx-gutter), min(calc(var(--aixc-safe-right-w, 0px) + 16px), 144px));
+}
+
+@media (min-width: 720px) {
+  .aixc-box .aixc-vx--flipbook .fb-stage {
+    padding-left: var(--fb-lane-l);
+    padding-right: var(--fb-lane-r);
+  }
+}
+
+.aixc-box .aixc-vx--flipbook .fb-controls {
+  width: min(560px, calc(100% - var(--fb-row-ml, 0px) - var(--fb-row-mr, 0px)));
+  margin-left: var(--fb-row-ml, 0px);
+  margin-right: var(--fb-row-mr, 0px);
+}
+
+/* The book in the box: the clone's heights in the box's room, with the row's own 98 px (94 under 900 px) taken off,
+   so a stage that fits shows its row under the book at the box's top. */
+.aixc-box .aixc-vx--flipbook .fb-book {
+  height: clamp(600px, calc(var(--vx-vh) - 98px), 720px);
+}
+
+/* The row held where the book scrolls by: a pill on the stage's grey, over the page. */
+.aixc-box .aixc-vx--flipbook .fb-row-top .fb-controls,
+.aixc-box .aixc-vx--flipbook .fb-row-low .fb-controls {
+  position: sticky;
+  z-index: 3;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--vx-grey-100);
+  box-shadow: 0 2px 10px rgba(20, 20, 30, 0.12);
+}
+
+/* From 720 px, a box shorter than the stage: the row at the bottom centre, held 12 px over the box's bottom until the
+   book's end comes up (the zones beside it). */
+.aixc-box .aixc-vx--flipbook .fb-row-low .fb-controls {
+  bottom: 12px;
+}
+
+/* Phones and a lane between the zones too narrow for the row: the row at the stage's top, above the book, held under
+   the bar while the book scrolls past it. */
+.aixc-box .aixc-vx--flipbook .fb-row-top .fb-controls {
+  order: -1;
+  top: var(--vx-top);
+}
+
+/* What meets a corner's zone is not pressable by a pointer while there (flipbook.js keepClear()). */
+.aixc-box .aixc-vx--flipbook .fb-under,
+.aixc-box .aixc-vx--flipbook .fb-under-card::after {
+  pointer-events: none;
+}
+
+@media (max-width: 899px) {
+  .aixc-box .aixc-vx--flipbook .fb-book {
+    height: max(560px, calc(var(--vx-vh) - 94px));
+  }
+}

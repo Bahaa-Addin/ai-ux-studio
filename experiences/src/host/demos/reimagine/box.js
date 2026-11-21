@@ -24,7 +24,8 @@
  *            bottom + GAP down to EDGE above the screen's bottom, its own side EDGE from the screen's, cut clear of both
  *            corners' zones, the pill and the launcher, and the bar's controls and words (clear(): each may take its
  *            top, its bottom or a side, its inline end included), when that is at least W_MIN wide and H_MIN tall:
- *            --aixc-composer-top and -room the column's, --aixc-composer-w at most the composer's own 400 px, and
+ *            --aixc-composer-top and -room the column's, --aixc-composer-w at most WIDE (600 px, wider than its own 400
+ *            below: more columns, so its rows fit the short column), and
  *            --aixc-composer-left with its inline end at the column's;
  *   below    else as the first, its height the room there is however short (0 where there is none).
  * The choice reads only the other controls, never the composer itself, so placing it cannot change it. Vodafone's
@@ -54,14 +55,17 @@ const EDGE = 16
  * The composer's least room (px), measured on it in Vodafone's faces: H_MIN is its height down to its first row of
  * template buttons (its heading, the Original / Reimagined row, "Ready-made experiences" and that row, with its
  * padding), the most it is at any width from W_MIN to WIDE in English and Arabic: 215, a row whose names take two lines
- * (one line: 199). The rest scrolls inside it (live.css: as many columns as fit, 2 to 4; six templates are 277 to 371 px
- * in all, thirteen 449 to 684), so short screens keep it beside its opener: the shortest column it is given there is
+ * (one line: 199). The rest scrolls inside it (live.css: as many columns as fit, 2 to 4 below, up to 6 beside; six
+ * templates are 277 to 371 px in all at 400 px, thirteen 449 to 684), so short screens keep it beside its opener: the
+ * shortest column it is given there is
  * 219 px (812x375, opened from "Change experience"; 844x390 from it 234, 667x375 249, 1366x380 260).
- * W_MIN the narrowest width at which its heading stays on one line, in both languages. WIDE: its own width.
+ * W_MIN the narrowest width at which its heading stays on one line, in both languages. WIDE: the most it takes beside
+ * its opener, six columns (2026-11-20: at 400 px, four columns, thirteen templates took 449 px in 1366x520's 400 px
+ * column; at six they take three rows).
  */
 const H_MIN = 215
 const W_MIN = 240
-const WIDE = 400
+const WIDE = 600
 
 const meets = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 const grow = (r, m) => ({ left: r.left - m, top: r.top - m, right: r.right + m, bottom: r.bottom + m })

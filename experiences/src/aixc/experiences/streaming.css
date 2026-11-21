@@ -1222,3 +1222,121 @@
 [dir='rtl'] .aixc-vx--streaming .st-modal__close {
   float: left;
 }
+
+/* ------------------------------------------------- in a box (Vodafone's pages) */
+
+/* voice-guide ADR-0076: the view scrolls in the box under its view bar (--vx-top and --vx-vh map the box's measures in
+   vodafone.css). The wordmark in Vodafone's bold face, never the pen's face (AGENTS.md §4.8; streaming.js asks no
+   font of anyone there); its weight the face's own, so nothing is drawn bolder than the file. --st-floor: above the taller
+   bottom corner's safe zone (the box's --aixc-safe-*, which keep 16 px around the corners' controls). */
+.aixc-box .aixc-vx--streaming,
+.aixc-box .aixc-vx--streaming.is-fallback-face {
+  --st-logo-font: var(--pocket-bold, vodafone-bold-en, vf-bold, aixc-vodafone-bold-en, sans-serif);
+  --st-floor: calc(max(var(--aixc-safe-left-h, 0px), var(--aixc-safe-right-h, 0px)) + 12px);
+}
+
+.aixc-box .aixc-vx--streaming .st-word {
+  font-weight: normal;
+}
+
+/* What a corner's zone covers takes no press while there (streaming.js fence()). */
+.aixc-box .aixc-vx--streaming .st-fenced {
+  pointer-events: none;
+}
+
+/* A hovered card in the last row grows about 15rem below it (its info panel, scaled 1.42). With no closing band after
+   the rows (Home), keep that inside the view, over our own dark canvas, so it never covers the box's end band. */
+@media (hover: hover) and (pointer: fine) and (min-width: 720px) {
+  .aixc-box .aixc-vx--streaming .st-rows:not(:has(+ .st-closing)) {
+    padding-bottom: 14rem;
+  }
+}
+
+/* The billboard's copy and buttons rest above the corners' zones while the billboard fills the room. */
+.aixc-box .aixc-vx--streaming .st-billboard__info {
+  bottom: max(calc(6vw + 72px), var(--st-floor));
+}
+
+/* The opening covers the box's room (from the view's top, where the box opens), not the screen: the box's scroll ends
+   it. Skip at the room's top end, clear of both corners. */
+.aixc-box .aixc-vx--streaming .st-intro {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--vx-vh);
+}
+
+.aixc-box .aixc-vx--streaming .st-skip {
+  position: absolute;
+  top: 20px;
+}
+
+/* The preview in the box, never in the top layer (view-dialog.js viewDialog; ADR-0076 §7): the dialog is the room under
+   the box's view bar (--vx-sheet-top, --vx-sheet-h), dimmed, below the box's bar and everything of Vodafone's and the
+   guide's (the box is its own stacking context); its panel scrolls, between the corners' zones (wide or short rooms)
+   or above the taller one (phones). */
+.aixc-box .aixc-vx--streaming .st-modal {
+  position: absolute;
+  inset: var(--vx-sheet-top, 0px) 0 auto;
+  z-index: 12;
+  width: auto;
+  max-width: none;
+  height: var(--vx-sheet-h, var(--vx-vh));
+  max-height: none;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.72);
+  box-shadow: none;
+  overscroll-behavior: contain;
+  container-type: size;
+  animation: none;
+}
+
+.aixc-box .aixc-vx--streaming .st-modal__panel {
+  position: absolute;
+  top: 12px;
+  right: max(12px, calc(var(--aixc-safe-right-w, 0px) + 8px));
+  bottom: 12px;
+  left: max(12px, calc(var(--aixc-safe-left-w, 0px) + 8px));
+  max-width: 860px;
+  margin: 0 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 8px;
+  background: var(--st-raised);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aixc-box .aixc-vx--streaming .st-modal[open] .st-modal__panel {
+    animation: st-modal-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+
+@container (max-width: 719px) and (min-height: 480px) {
+  .aixc-box .aixc-vx--streaming .st-modal__panel {
+    right: 12px;
+    bottom: var(--st-floor);
+    left: 12px;
+  }
+}
+
+@media (max-width: 719px) {
+  .aixc-box .aixc-vx--streaming .st-billboard__info {
+    bottom: max(calc(6vw + 40px), var(--st-floor));
+  }
+}
+
+/* A short screen (a phone in landscape, a short window): the corners' zones reach up to the bar pinned at the box's
+   top and over most of the room under it, so the bar ends beside the right one (its links scroll sideways in what is
+   left) and the rows keep between the two, their arrows clear of both. */
+@media (max-height: 600px) {
+  .aixc-box .aixc-vx--streaming .st-nav {
+    margin-right: calc(var(--aixc-safe-right-w, 0px) + 8px);
+  }
+
+  .aixc-box .aixc-vx--streaming .st-row__slider {
+    margin-right: calc(var(--aixc-safe-right-w, 0px) + 8px);
+    margin-left: calc(var(--aixc-safe-left-w, 0px) + 8px);
+  }
+}

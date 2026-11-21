@@ -658,3 +658,173 @@
     transition: none;
   }
 }
+
+/* ------------------------------------------------- in a box (Vodafone's pages) */
+
+/* voice-guide ADR-0076: in a box the stage is the box's room under its view bar (--vx-vh maps the box's measures; never
+   taller, so a revealed card shows whole), and the stage takes the drag: the surface itself takes no press, as a corner
+   of it lies under the bottom corners' controls (canvas.js: the cards in a corner's zone or cut by the box's sides are
+   inert while there). The foot's words keep beside the corners. The preview opens in the box, never in the top layer
+   (view-dialog.js viewDialog): over the room (--vx-sheet-top, --vx-sheet-h), under the box's view bar and everything of
+   Vodafone's and the guide's (the box is its own stacking context), its words and links above the taller corner. */
+.aixc-box .aixc-vx--canvas .cv-stage {
+  min-height: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.aixc-box .aixc-vx--canvas .cv-stage.is-grabbing,
+.aixc-box .aixc-vx--canvas .cv-stage.is-grabbing .cv-card {
+  cursor: grabbing;
+}
+
+@media (pointer: coarse) {
+  .aixc-box .aixc-vx--canvas .cv-stage {
+    height: max(calc(var(--vx-vh) - 88px), calc(var(--vx-vh) * 0.6));
+  }
+}
+
+.aixc-box .aixc-vx--canvas .cv-surface {
+  pointer-events: none;
+}
+
+.aixc-box .aixc-vx--canvas .cv-card {
+  pointer-events: auto;
+}
+
+.aixc-box .aixc-vx--canvas .cv-foot {
+  padding-right: max(var(--vx-gutter), var(--aixc-safe-right-w, 0px));
+  padding-left: max(var(--vx-gutter), var(--aixc-safe-left-w, 0px));
+}
+
+.aixc-box .aixc-vx--canvas .cv-dialog {
+  --cv-floor: max(24px, var(--aixc-safe-left-h, 0px), var(--aixc-safe-right-h, 0px));
+  position: absolute;
+  inset: var(--vx-sheet-top, 0px) 0 auto;
+  z-index: 10;
+  height: var(--vx-sheet-h, var(--vx-vh));
+  overscroll-behavior: contain;
+  container-type: size;
+}
+
+.aixc-box .aixc-vx--canvas .cv-dialog__body {
+  position: absolute;
+  inset: 0 0 var(--cv-floor);
+  height: auto;
+  /* The title and the words below it as tall as they are; the picture takes what is left of the room, up to its own
+     height (cropped where the room is short), never under the title. */
+  grid-template-rows: minmax(0, max-content) max-content max-content;
+  align-content: safe center;
+  padding: 72px var(--vx-gutter) 16px;
+  overscroll-behavior: contain;
+}
+
+/* Its picture sized from the room left for it, never under 120 px wide; the clone's 180 px floor (min-width) is off, as
+   it widened the picture past the height its row was laid out for, over the title; no taller than its row. */
+.aixc-box .aixc-vx--canvas .cv-zoom {
+  width: min(40vw, max(120px, calc((var(--vx-sheet-h, 100vh) - var(--cv-floor) - 380px) * var(--ratio))), 560px);
+  min-width: 0;
+  max-height: 100%;
+}
+
+@media (max-width: 719px) {
+  .aixc-box .aixc-vx--canvas .cv-dialog__body {
+    padding: 64px 16px 12px;
+  }
+
+  /* The keys' hint means nothing on a phone's touch screen, and between the corners' zones it wraps over the cards
+     beside them (Arabic). */
+  .aixc-box .aixc-vx--canvas .cv-keys {
+    display: none;
+  }
+
+  .aixc-box .aixc-vx--canvas .cv-zoom {
+    width: min(78vw, max(120px, calc((var(--vx-sheet-h, 100vh) - var(--cv-floor) - 320px) * var(--ratio))));
+  }
+
+  /* Two columns of cards (canvas.js): the brand tile is shorter than the clone's phone tile, so its mark is smaller. */
+  .aixc-box .aixc-vx--canvas .cv-tile--brand {
+    padding: 12px;
+  }
+
+  .aixc-box .aixc-vx--canvas .cv-tile__mark {
+    top: 12px;
+    inset-inline-start: 12px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .aixc-box .aixc-vx--canvas .cv-tile__title {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+}
+
+/* A short room (a phone in landscape, a short window): no room above the corners, so the preview takes the column
+   between them, its close button at that column's top end (the right zone in English, the left in Arabic). */
+@container (max-height: 479px) {
+  .aixc-box .aixc-vx--canvas .cv-dialog__body {
+    inset: 0 calc(var(--aixc-safe-right-w, 0px) + 8px) 0 calc(var(--aixc-safe-left-w, 0px) + 8px);
+    gap: 0.6rem;
+    padding: 12px 56px 12px 12px;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--canvas .cv-dialog__body {
+    padding: 12px 12px 12px 56px;
+  }
+
+  .aixc-box .aixc-vx--canvas .cv-zoom {
+    width: min(30vw, 150px);
+    min-width: 0;
+  }
+
+  .aixc-box .aixc-vx--canvas .cv-dialog__title {
+    font-size: 1.375rem;
+  }
+
+  .aixc-box .aixc-vx--canvas .cv-dialog__close {
+    top: 8px;
+    right: calc(var(--aixc-safe-right-w, 0px) + 12px);
+    left: auto;
+  }
+
+  [dir='rtl'] .aixc-box .aixc-vx--canvas .cv-dialog__close {
+    right: auto;
+    left: calc(var(--aixc-safe-left-w, 0px) + 12px);
+  }
+}
+
+/* A corner's zone that reaches up to the head's jump links (a short room, the guide's transcript bar): the head steps
+   in from that side, and where that leaves it narrow its brand, count and keys give way to the two lists side by side,
+   set small and without their heading, so a card fits whole between them and the corners; the foot's words (hidden
+   from assistive technology) give way too (canvas.js fitHead()). */
+.aixc-box .aixc-vx--canvas .cv-head.cv-head--clear-r {
+  padding-right: calc(var(--aixc-safe-right-w, 0px) + 16px);
+}
+
+.aixc-box .aixc-vx--canvas .cv-head.cv-head--clear-l {
+  padding-left: calc(var(--aixc-safe-left-w, 0px) + 16px);
+}
+
+.aixc-box .aixc-vx--canvas .cv-head--tight :is(.cv-col--brand, .cv-col--count, .cv-col--keys, h3),
+.aixc-box .aixc-vx--canvas .cv-head--tight ~ .cv-foot {
+  display: none;
+}
+
+.aixc-box .aixc-vx--canvas .cv-head--tight {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.aixc-box .aixc-vx--canvas .cv-head--tight li {
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.aixc-box .aixc-vx--canvas .cv-head--tight .cv-col--cats {
+  grid-column: 1 / span 6;
+}
+
+.aixc-box .aixc-vx--canvas .cv-head--tight .cv-col--cats2 {
+  grid-column: 7 / span 6;
+}

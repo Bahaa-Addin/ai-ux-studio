@@ -237,6 +237,37 @@ const AIXC_CORE_BUDGET = 7.875 * 1024
  * instead of inert, so Tab still reaches them, and scrolled clear of the zones by the box's scroll when focused
  * (onFlowFocus, in place of a scroll-margin that scrolled the window); the flat grid kept beside the zones from 720 px;
  * the category words centred on the stage: its chunk 9,647 bytes gzipped, so 9.5 KB (81 under).
+ *
+ * 2026-11-18, phase 4, the flipbook: its own chunk (Vodafone's faces, the experiences' shared sheet and flipbook.css
+ * with its box rules, as text; flipbook.js on the seam: its row placed between the corners' zones, what meets a zone
+ * fenced, reveal()) 10,075 bytes gzipped, so 10 KB (165 under). The shell 24,905 -> 25,047 bytes with its registry
+ * line, within its 24.5 KB (41 left); the core 8,024 -> 8,027; the Pocket unchanged (28,306).
+ *
+ * 2026-11-18, phase 4: the infinite canvas in the registry (its chunk: canvas.js through the seam with fence() of the
+ * cards in a corner's zone or cut by the box's sides and of the head's and the closing band's links in a zone, Tab from
+ * card to card, a card brought to a spot clear of the corners (clearSpot, reach), the head stepping in from a zone that
+ * reaches it (fitHead), two columns on a phone, reveal(); canvas.css with its box rules and the short room's preview;
+ * view-dialog.js, the preview without the top layer, a module of its own so that only the experiences that open one
+ * carry it (in shared.js it put the shell at 25,893 bytes, over its budget: shared.js is one chunk with the shell);
+ * experience-wrap.js and vodafone.css shared) 12,303 bytes gzipped, so 12.25 KB (241 under). The shell 24,935 bytes (the
+ * registry's line), within its 24.5 KB (153 left); the Pocket unchanged (28,306). After its review (2026-11-20: a tap
+ * leaves its card in place, the card made inert under the preview brought back on close, reveal() fences at once) the
+ * chunk 12,347 bytes (197 under), the shell 24,936.
+ *
+ * 2026-11-18 (built 2026-11-20), phase 4: the streaming showcase in the registry (its chunk: streaming.js through the
+ * seam, every handler through on() on mount, the opening in the box ended by its scroll, wordmarkFont() asking nothing
+ * with a scroller, fence() of what a corner's zone covers (no pointer events) and of the row cards and bar links the
+ * box's sides cut (inert), reveal(); streaming.css with its box rules (Vodafone's bold face for the wordmark, the
+ * preview's panel between or above the zones); view-dialog.js, experience-wrap.js and vodafone.css shared) 15,787 bytes
+ * gzipped, so 15.5 KB (85 under). view-dialog.js, now in two experiences, is a chunk of its own, which puts canvas at
+ * 12,693 (12.5 KB, 107 under). The shell 25,074 bytes, within its 24.5 KB (14 left): the registry's line and the part
+ * of shared.js that streaming and the flipbook use (sidewaysSwipe), as shared.js is one chunk with the shell. The Pocket unchanged
+ * (28,306). The review's fixes the same day (fence() scrolls only a focused link or button clear of a zone, so a bar
+ * link's smooth scroll runs to its row; room under the last row for a hovered card where no closing band follows) put
+ * the chunk at 15,869 (3 under 15.5 KB), so 15.75 KB (259 under); the shell 25,072, canvas 12,693, the Pocket 28,306.
+ *
+ * 2026-11-20, phase 4 merged (the flipbook, canvas and streaming together: all thirteen in the registry): the shell
+ * 25,100 bytes, 12 over its 24.5 KB, so 24.75 KB (244 left), the smallest step; the core and the Pocket unchanged.
  */
 /**
  * Reimagine's experiences on Vodafone's pages, one row each (ADR-0076, phase 1): the key is the experience's name in
@@ -255,6 +286,9 @@ const REIMAGINE_EXPERIENCES: Record<string, number> = {
 	journey: 6.5 * 1024,
 	cube: 8.25 * 1024,
 	tunnel: 9.5 * 1024,
+	flipbook: 10 * 1024,
+	canvas: 12.5 * 1024,
+	streaming: 15.75 * 1024,
 }
 const REIMAGINE_SHELL = 'src/host/demos/reimagine/shell.js'
 const reimagineEntry = (name: string) => `src/host/demos/reimagine/${name}.js`
@@ -262,16 +296,17 @@ const REIMAGINE_REGISTRY = path.join(EXPERIENCES, 'src/host/demos/reimagine/regi
 
 const REIMAGINE_BUDGETS: Record<string, number> = {
 	'src/host/demos/reimagine.js': 3.125 * 1024,
-	[REIMAGINE_SHELL]: 24.5 * 1024,
+	[REIMAGINE_SHELL]: 24.75 * 1024,
 	...Object.fromEntries(Object.entries(REIMAGINE_EXPERIENCES).map(([name, max]) => [reimagineEntry(name), max])),
 }
 /**
  * Never in a Reimagine chunk on live pages (templates only, owner 2026-11-10; the credits as comments, 2026-11-17):
  * Gemini's endpoint and header, the stored key and model, and any word that names Gemini or its key, in English or
  * Arabic (مفتاح, key: the clone composer's copy lives in experiences/src/aixc/composer-words.js, never in the i18n.js
- * the shell shares with the Pocket); Google Fonts; CodePen. Case-sensitive.
+ * the shell shares with the Pocket); Google Fonts (its stylesheets' host and its files' host: streaming's wordmark asks
+ * none on Vodafone's pages, 2026-11-20); CodePen. Case-sensitive.
  */
-const REIMAGINE_FORBIDDEN = /generativelanguage|aixc-key|aixc-model|fonts\.googleapis|x-goog-api-key|codepen|Gemini|API key|مفتاح/
+const REIMAGINE_FORBIDDEN = /generativelanguage|aixc-key|aixc-model|fonts\.googleapis|fonts\.gstatic|x-goog-api-key|codepen|Gemini|API key|مفتاح/
 
 const AIXC_DEMO_BUDGETS: Record<string, number> = {
 	'src/host/demos/pocket.js': 29.75 * 1024,

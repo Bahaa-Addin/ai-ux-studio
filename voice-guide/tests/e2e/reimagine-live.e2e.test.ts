@@ -4,8 +4,8 @@
  * pinning on scroll as its own script does (one run with it always pinned), in English and Arabic, at 1366x900 and
  * 375x812 (spotlight also at 1366x768 and 1024x768).
  *
- * - One row per experience (EXPERIENCE_CASES, checkInBox; magazine, spotlight, fan, coverflow, split, ring, gallery,
- *   journey, cube and tunnel now, the three others listed as todo until phase 4 brings them): the checks below, prev and next moving the box and not the window, reveal(), and
+ * - One row per experience (EXPERIENCE_CASES, checkInBox; all thirteen: magazine, spotlight, fan, coverflow, split,
+ *   ring, gallery, journey, cube, tunnel, flipbook, canvas and streaming): the checks below, prev and next moving the box and not the window, reveal(), and
  *   the experience's own unmount giving back all the seam held for it (state.debug().kept).
  * - The view in its box: #main-content hidden laid out (ADR-0075 §2), the box from the header's pinned bottom to the
  *   screen's bottom after the open scroll, its own scroll (the window's does not move), every item once, one exposed
@@ -43,7 +43,7 @@ import type { Page } from 'playwright'
 
 import { ROOT } from '#shared/config.ts'
 
-import { cellHits, cellViolations, measureControls } from './floating-controls.ts'
+import { cellHits, cellViolations, hitsAt, measureControls } from './floating-controls.ts'
 import { DESKTOP, geometry, type LayerGateway, type LayerOptions, launchLayer, layerState, open, PHONE, REPLAY, startLayerGateway, watch } from './vodafone-layer.ts'
 
 // 4482 by default; VG_REIMAGINE_LIVE_PORT lets builders in parallel worktrees run their rows at once (4484, 4490,
@@ -1120,31 +1120,286 @@ const EXPERIENCE_CASES: Record<string, ExperienceCase> = {
 		},
 	},
 	flipbook: {
-		todo: PHASE_4B,
+		title: 'flipbook in the box: the book beside both corners from 720 px, its controls under it between them (above it on phones), every page turned in place with nothing pressable in a corner\'s zone or cut by the box\'s sides (at the box\'s end and with the guide listening too), contents links scrolling the box and never the address, its words neutral off Services',
 		cells: DEFAULT_CELLS,
+		// Its controls sit under the book from 720 px: a phone in landscape too (a box shorter than the book).
+		landscape: true,
 		pocketed: true,
-		// Not sticky: the book turns its pages in place (the phase decides whether its turns scroll the box).
+		// Not sticky: the book turns its pages in place; the box scrolls on past it where the room is shorter.
 		pins: false,
 		zoneScope: '.aixc-box .fb-stage',
 		controlSelectors: ['.fb-controls'],
+		specifics: (page, cell, where) => flipbookChecks(page, cell, where),
+		// The guide listening (its transcript bar widens the right zone) at each width, en and ar: every page turned with
+		// nothing pressable in a zone, the controls clear of both (moved to the stage's top where the lane between the
+		// zones is too narrow for them).
+		andThen: async () => {
+			for (const viewport of [DESKTOP, TABLET, PHONE, LANDSCAPE])
+				for (const p of ['/en/services', '/ar/services']) {
+					const where = `${p} ${sizeOf(viewport)} listening`
+					const l = await launchLayer(gw, { viewport, reducedMotion: true, ...LIVE, initScripts: [MIC_STAND_IN] })
+					try {
+						await open(l.page, p, '?aixc-debug')
+						await ready(l.page)
+						await pocketOne(l.page)
+						await choose(l.page, 'flipbook')
+						const quiet = await zonesNow(l.page)
+						const mic = await l.page.evaluate(() => {
+							const r = document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-mic')!.getBoundingClientRect()
+							return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+						})
+						await l.page.mouse.click(mic.x, mic.y)
+						await l.page.waitForFunction(() => !document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-bar')!.classList.contains('hidden'), null, { timeout: 10_000 })
+						await settle(l.page, 600)
+						const zones = await zonesNow(l.page)
+						assert.ok(zones.right && quiet.right && zones.right.left < quiet.right.left - 100, `${where}: the transcript bar widens the right zone ${fmt(quiet.right)} -> ${fmt(zones.right)}`)
+						await flipbookChecks(l.page, { p, viewport }, where, true)
+					} finally {
+						await l.close()
+					}
+				}
+		},
 	},
 	canvas: {
-		todo: PHASE_4B,
+		title: 'canvas in the box: the stage the box\'s room, dragged, swiped and panned with the window and the box still; the cards in a corner\'s zone or cut by the box\'s sides inert while there; Tab from card to card; its preview in the box, never in the top layer (Vodafone\'s accessibility button and the guide\'s mic reached, Tab kept in it, Escape giving the focus back); the clone\'s words on Services only',
 		cells: DEFAULT_CELLS,
 		pocketed: true,
-		// A surface dragged in place; its keys' hint and zoom are the phase's to place.
+		// Not sticky: a surface dragged in place, as tall as the box's room. Its controls are the head's jump links at the
+		// stage's top (from 720 px; phones have none); the foot's words take no press. The cards drift everywhere: each one
+		// in a corner's zone or cut by the box's sides is inert while there (canvas.js fence()).
 		pins: false,
-		controlSelectors: [],
+		controlSelectors: ['.cv-col--cats', '.cv-col--cats2'],
+		specifics: canvasSpecifics,
+		andThen: canvasPreviewRules,
 	},
 	streaming: {
-		todo: PHASE_4B,
+		title: 'streaming in the box: its bar pinned at the box\'s top, its links and arrows moving the box, never the window; through the box\'s scroll nothing pressable in a corner\'s zone and nothing cut by its sides; its preview in the box, never in the top layer (Vodafone\'s accessibility button and the guide\'s mic reached, Tab kept in it, Escape giving the focus back); the opening in the box ended by its scroll; Vodafone\'s faces, no Roboto, nothing asked of Google',
 		cells: DEFAULT_CELLS,
 		landscape: true,
 		pocketed: true,
-		// Its sticky navigation at the top; the rows scroll sideways under their own arrows.
+		// Its sticky navigation at the top; the rows scroll sideways under their own arrows. Not a pinned stage: what
+		// passes a corner's zone takes no press there and what the box's sides cut is inert (streaming.js fence()).
 		pins: false,
 		controlSelectors: ['.st-nav'],
+		specifics: streamingSpecifics,
+		andThen: streamingRules,
 	},
+}
+
+/** The flipbook in the box: its desk (the book's laid-out place: the book itself moves sideways while closed), its controls, the status, the box's scroll and the window's. */
+const flipbookNow = (page: Page) =>
+	page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const rect = (n: Element | null) => (n && n.getClientRects().length ? (({ left, top, right, bottom }) => ({ left, top, right, bottom }))(n.getBoundingClientRect()) : null)
+		const b = box.getBoundingClientRect()
+		return {
+			desk: rect(box.querySelector('.fb-desk'))!,
+			stage: rect(box.querySelector('.fb-stage'))!,
+			rowTop: box.querySelector('.fb-stage')!.classList.contains('fb-row-top'),
+			rowLow: box.querySelector('.fb-stage')!.classList.contains('fb-row-low'),
+			controls: rect(box.querySelector('.fb-controls'))!,
+			status: box.querySelector('.fb-status')!.textContent ?? '',
+			next: !box.querySelector<HTMLButtonElement>('.fb-controls .vx-round:last-child')!.disabled,
+			prev: !box.querySelector<HTMLButtonElement>('.fb-controls .vx-round:first-child')!.disabled,
+			open: [...box.querySelectorAll<HTMLElement>('.fb-page.is-open')].map((n) => n.dataset.key!),
+			fenced: [...box.querySelectorAll('.fb-under')].length,
+			view: { top: b.top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight, bottom: b.top + box.clientTop + box.clientHeight },
+			scroll: box.scrollTop,
+			y: scrollY,
+		}
+	})
+
+/**
+ * The flipbook's own checks, at the box's top: its words (the clone's on Services, neutral elsewhere); from 720 px the
+ * book beside both corners' zones and nothing of it fenced, the controls at the bottom centre: under it where the stage
+ * fits the room, else held over the box's bottom (above it on phones, and wherever placeRow() moved them while the guide
+ * listens); a contents link pressed with the book's top scrolled past the bar
+ * scrolls the box back to it, the window and the address as they were, and opens its category; then every page in
+ * turn by next: nothing pressable in a corner's zone, nothing cut by the box's sides, the controls clear of both
+ * zones, the box and the window still; at the box's end the same. `listening`: the guide's transcript bar is up.
+ */
+async function flipbookChecks(page: Page, cell: Cell, where: string, listening = false) {
+	const ar = cell.p.startsWith('/ar')
+	const services = /\/services$/.test(cell.p)
+	const wide = cell.viewport.width >= 720
+	if (!listening) {
+		const named = await page.evaluate(() => {
+			const box = document.querySelector<HTMLElement>('.aixc-box')!
+			return { label: box.querySelector('.fb-stage')!.getAttribute('aria-label'), count: box.querySelector('.fb-cover__count')!.textContent ?? '' }
+		})
+		assert.equal(named.label, services ? (ar ? 'كتاب خدمات ڤودافون' : 'Vodafone services flipbook') : ar ? 'كتاب بيتقلّب' : 'Flipbook', `${where}: the stage's name`)
+		if (services) assert.match(named.count, ar ? /خدم/ : /services/, `${where}: the cover counts services (${named.count})`)
+		else {
+			assert.match(named.count, ar ? /عن(ص|اص)ر/ : /items?\b/, `${where}: the cover counts items (${named.count})`)
+			assert.doesNotMatch(named.count, /service|خدم/, `${where}: no word about services (${named.count})`)
+		}
+	}
+	const toTop = () => page.evaluate(() => (document.querySelector<HTMLElement>('.aixc-box')!.scrollTop = 0))
+	await toTop()
+	await settle(page, 300)
+	const zones = await zonesNow(page)
+	assert.ok(zones.right && zones.left, `${where}: both corners' zones measured (${fmt(zones.right)} ${fmt(zones.left)})`)
+	const atTop = await flipbookNow(page)
+	// The row: under the book where the whole stage fits the room (at 1366x900 it does), else held 12 px over the
+	// box's bottom while the book scrolls by (from 720 px), or above the book held under the bar (phones, a lane too
+	// narrow while the guide listens).
+	const under = !atTop.rowTop && !atTop.rowLow && atTop.controls.top >= atTop.desk.bottom - 1
+	if (under) assert.ok(atTop.stage.bottom <= atTop.view.bottom + 1, `${where}: the controls under the book only where the stage ${fmt(atTop.stage)} fits the box's view ${fmt({ left: 0, right: 0, ...atTop.view })}`)
+	else if (atTop.rowLow)
+		assert.ok(
+			atTop.stage.bottom > atTop.view.bottom + 1 && Math.abs(atTop.controls.bottom - (atTop.view.bottom - 12)) <= 2 && atTop.controls.top > atTop.desk.top,
+			`${where}: the controls ${fmt(atTop.controls)} held 12 px over the box's bottom ${Math.round(atTop.view.bottom)}, over a book ${fmt(atTop.desk)} taller than the room`,
+		)
+	else assert.ok(atTop.rowTop && atTop.controls.bottom <= atTop.desk.top + 1, `${where}: the controls ${fmt(atTop.controls)} above the book ${fmt(atTop.desk)}`)
+	if (!listening) {
+		// From 720 px at the bottom centre: under the book, or held at the box's bottom (a book taller than the room).
+		if (wide) assert.ok(!atTop.rowTop, `${where}: from 720 px the controls ${fmt(atTop.controls)} at the bottom centre, not above the book ${fmt(atTop.desk)}`)
+		if (wide && cell.viewport === DESKTOP) assert.ok(under, `${where}: at 1366x900 the controls ${fmt(atTop.controls)} under the book ${fmt(atTop.desk)}`)
+		if (!wide) assert.ok(atTop.rowTop, `${where}: on a phone the controls above the book`)
+		if (wide) {
+			assert.ok(atTop.desk.left >= zones.left!.right - 1 && atTop.desk.right <= zones.right!.left + 1, `${where}: the book ${fmt(atTop.desk)} beside both zones ${fmt(zones.left)} ${fmt(zones.right)}`)
+			assert.equal(atTop.fenced, 0, `${where}: beside the zones, nothing of the book is fenced`)
+		}
+	}
+	// A contents link with the book's top scrolled past the bar: the box scrolls back to the book, never the window or
+	// the address, and its category opens.
+	const served = await page.evaluate(() => ({ href: location.href, hash: location.hash }))
+	await pressIn(page, '.aixc-box .fb-controls .vx-round:last-child')
+	await settle(page, 300)
+	// Where the row is held under the bar (phones): Shift+Tab to a contents link above the view (the box scrolled past
+	// it, under the row and the bar) brings it out from under the row, inside the box's view.
+	if (atTop.rowTop) {
+		const from = await page.evaluate(() => {
+			const links = [...document.querySelectorAll<HTMLElement>('.aixc-box .fb-page.is-open .fb-contents__link')]
+			const at = links.findIndex((n, i) => i > 0 && links[i - 1].getBoundingClientRect().bottom <= n.getBoundingClientRect().top)
+			return at < 0 ? null : at + 1
+		})
+		assert.ok(from, `${where}: two contents links one above the other`)
+		const lower = `.aixc-box .fb-page.is-open .fb-contents__list li:nth-child(${from}) .fb-contents__link`
+		await page.focus(lower)
+		await settle(page, 200)
+		const hidden = await page.evaluate((lower) => {
+			const box = document.querySelector<HTMLElement>('.aixc-box')!
+			const row = box.querySelector('.fb-controls')!.getBoundingClientRect().bottom
+			box.scrollTop += document.querySelector(lower)!.getBoundingClientRect().top - row - 1
+			const above = document.querySelector(lower)!.closest('li')!.previousElementSibling!.querySelector('.fb-contents__link')!.getBoundingClientRect()
+			return { row, above: { top: above.top, bottom: above.bottom } }
+		}, lower)
+		assert.ok(hidden.above.bottom <= hidden.row + 1.5, `${where}: the link above ${fmt({ left: 0, right: 0, ...hidden.above })} under the row ${Math.round(hidden.row)} before Shift+Tab`)
+		const y0 = await page.evaluate(() => scrollY)
+		await page.keyboard.down('Shift')
+		await page.keyboard.press('Tab')
+		await page.keyboard.up('Shift')
+		await settle(page, 300)
+		const got = await page.evaluate((lower) => {
+			const box = document.querySelector<HTMLElement>('.aixc-box')!
+			const above = document.querySelector(lower)!.closest('li')!.previousElementSibling!.querySelector('.fb-contents__link')!
+			const r = above.getBoundingClientRect()
+			const b = box.getBoundingClientRect()
+			return { focused: document.activeElement === above, top: r.top, bottom: r.bottom, row: box.querySelector('.fb-controls')!.getBoundingClientRect().bottom, boxBottom: b.top + box.clientTop + box.clientHeight, y: scrollY }
+		}, lower)
+		assert.ok(got.focused, `${where}: Shift+Tab reaches the contents link above`)
+		assert.ok(got.top >= got.row - 0.5 && got.bottom <= got.boxBottom + 0.5, `${where}: the focused link ${Math.round(got.top)}..${Math.round(got.bottom)} out from under the row ${Math.round(got.row)}, inside the box ${Math.round(got.boxBottom)}`)
+		assert.ok(Math.abs(got.y - y0) <= 0.5, `${where}: Shift+Tab leaves the window (${y0} -> ${got.y})`)
+		await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+		await toTop()
+		await settle(page, 300)
+	}
+	const link = await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const desk = box.querySelector<HTMLElement>('.fb-desk')!
+		const bar = box.getBoundingClientRect().top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight
+		box.scrollTop += desk.getBoundingClientRect().top - bar + 40
+		return box.scrollTop
+	})
+	await settle(page, 300)
+	const pick = await page.evaluate((zones) => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const barBottom = box.getBoundingClientRect().top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight
+		// Under the bar, and under the controls where they are held there.
+		const bar = box.querySelector('.fb-stage')!.classList.contains('fb-row-top') ? Math.max(barBottom, box.querySelector('.fb-controls')!.getBoundingClientRect().bottom) : barBottom
+		// Above the box's bottom (and the controls held there) and clear of both zones (a phone in landscape: the book
+		// between them, its view short).
+		const floor = box.querySelector('.fb-stage')!.classList.contains('fb-row-low') ? box.querySelector('.fb-controls')!.getBoundingClientRect().top : box.getBoundingClientRect().bottom
+		const clear = (r: DOMRect) => Object.values(zones).every((z: any) => !z || r.right <= z.left || r.left >= z.right || r.bottom <= z.top)
+		const links = [...box.querySelectorAll<HTMLElement>('.fb-page.is-open .fb-contents__link')]
+		const shown = (n: HTMLElement) => {
+			const r = n.getBoundingClientRect()
+			return r.top >= bar + 2 && r.bottom <= floor - 2
+		}
+		// One clear of the zones, pressed; else (a phone in landscape with the transcript bar across the box's bottom:
+		// no room clear of it under the row) one in view, taken by the keyboard.
+		const at = links.findIndex((n) => shown(n) && clear(n.getBoundingClientRect()))
+		const keyed = at < 0 ? links.findIndex(shown) : -1
+		const nth = at < 0 ? keyed : at
+		return nth < 0 ? null : { nth: nth + 1, key: links[nth].dataset.go!, count: links.length, keyboard: at < 0 }
+	}, zones)
+	assert.ok(pick, `${where}: a contents link in the box's view with the book's top past the bar (scrolled to ${link})`)
+	assert.ok(!pick.keyboard || (listening && cell.viewport.height < 400), `${where}: a contents link clear of both zones in the box's view (scrolled to ${link})`)
+	const before = await flipbookNow(page)
+	assert.ok(before.desk.top < before.view.top - 1, `${where}: the book's top ${Math.round(before.desk.top)} past the bar ${Math.round(before.view.top)}`)
+	const contentsLink = `.aixc-box .fb-page.is-open .fb-contents__list li:nth-child(${pick.nth}) .fb-contents__link`
+	if (pick.keyboard) {
+		await page.focus(contentsLink)
+		await settle(page, 300)
+		// Scrolled clear of the transcript's zone, never up under the row held at the top.
+		const f = await page.evaluate((sel) => {
+			const box = document.querySelector<HTMLElement>('.aixc-box')!
+			const r = document.querySelector(sel)!.getBoundingClientRect()
+			const row = box.querySelector('.fb-stage')!.classList.contains('fb-row-top') ? box.querySelector('.fb-controls')!.getBoundingClientRect().bottom : -Infinity
+			return { top: r.top, row }
+		}, contentsLink)
+		assert.ok(f.top >= f.row - 0.5, `${where}: the focused link's top ${Math.round(f.top)} not under the row ${Math.round(f.row)}`)
+		await page.keyboard.press('Enter')
+	} else await pressIn(page, contentsLink)
+	await settle(page, 500)
+	const after = await flipbookNow(page)
+	const now = await page.evaluate(() => ({ href: location.href, hash: location.hash, focused: document.activeElement?.closest('.fb-page')?.getAttribute('data-key') ?? null }))
+	assert.deepEqual([now.href, now.hash], [served.href, served.hash], `${where}: a contents link leaves the address as served`)
+	assert.ok(Math.abs(after.y - before.y) <= 0.5, `${where}: a contents link leaves the window (${before.y} -> ${after.y})`)
+	assert.ok(after.scroll < before.scroll - 1, `${where}: a contents link scrolls the box (${before.scroll} -> ${after.scroll})`)
+	const shownFrom = after.rowTop ? after.controls.bottom : after.view.top
+	assert.ok(after.desk.top >= shownFrom - 1 && after.desk.top <= shownFrom + 40, `${where}: back to the book's top ${Math.round(after.desk.top)}, under the bar${after.rowTop ? ' and the controls' : ''} (${Math.round(shownFrom)})`)
+	assert.ok(after.open.includes(pick.key), `${where}: its category ${pick.key} opens (${after.open.join(', ')})`)
+	assert.equal(now.focused, pick.key, `${where}: the focus on its category's heading`)
+	// Back to the cover, then every page in turn by next, at the box's top.
+	while ((await flipbookNow(page)).prev) {
+		await page.evaluate(() => document.querySelector<HTMLButtonElement>('.aixc-box .fb-controls .vx-round:first-child')!.click())
+		await settle(page, 30)
+	}
+	await toTop()
+	await settle(page, 300)
+	const bad: string[] = []
+	let pages = 0
+	for (;;) {
+		const s = await flipbookNow(page)
+		const hits = await pressablesInZones(page, '.aixc-box .aixc-vx--flipbook', zones)
+		const cut = await cutBySides(page, '.aixc-vx--flipbook')
+		if (hits.out.length) bad.push(`${s.status}: in a zone ${JSON.stringify(hits.out.slice(0, 2))}`)
+		if (cut.cut.length) bad.push(`${s.status}: cut ${cut.cut.slice(0, 2).join(' ')}`)
+		for (const [name, z] of Object.entries(zones)) if (z && meets(s.controls, z)) bad.push(`${s.status}: the controls ${fmt(s.controls)} in the ${name} zone ${fmt(z)}`)
+		if (!listening && wide && s.fenced) bad.push(`${s.status}: ${s.fenced} fenced beside the zones`)
+		if (s.scroll !== atTop.scroll || Math.abs(s.y - atTop.y) > 0.5) bad.push(`${s.status}: the box ${s.scroll} or the window ${s.y} moved`)
+		pages++
+		if (!s.next) break
+		await pressIn(page, '.aixc-box .fb-controls .vx-round:last-child')
+		await page.waitForFunction((was) => document.querySelector('.aixc-box .fb-status')!.textContent !== was, s.status, { timeout: 3_000 })
+		await settle(page, 60)
+	}
+	assert.ok(pages >= 4, `${where}: the book has pages to turn (${pages} places)`)
+	assert.deepEqual(bad, [], `${where}: on each of ${pages} places in turn nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)}, nothing cut by the box's sides, the controls clear, the box and the window still`)
+	// At the box's end (the shell's end band under the book): nothing pressable of the view in a zone, the controls clear.
+	await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		box.scrollTop = box.scrollHeight
+	})
+	await settle(page, 300)
+	const end = await pressablesInZones(page, '.aixc-box .aixc-vx--flipbook', zones)
+	assert.deepEqual(end.out, [], `${where}: at the box's end nothing pressable in a corner's zone (${end.seen} read)`)
+	const c = await shownRect(page, '.fb-controls')
+	if (c) for (const [name, z] of Object.entries(zones)) if (z) assert.ok(!meets(c, z), `${where}: at the box's end the controls ${fmt(c)} clear of the ${name} zone ${fmt(z)}`)
+	await toTop()
+	await settle(page, 200)
 }
 
 /** A stage's place in the box: its top under the box's border, the gap under it, its height, the room and the bar. */
@@ -1289,6 +1544,745 @@ async function revealInBox(page: Page, itemId: string, where: string) {
 	if (item.bottom - item.top <= view.bottom - view.top + 1) assert.ok(item.bottom <= view.bottom + 1, `${where}: the item ${fmt(item)} whole in the box's view ${fmt(view)}`)
 	if (item.right - item.left <= view.right - view.left + 1) assert.ok(item.left >= view.left - 1 && item.right <= view.right + 1, `${where}: the item ${fmt(item)} not beside the box's view ${fmt(view)}`)
 	assert.ok(Math.abs(at.y - y) <= 0.5, `${where}: reveal leaves the window (${y} -> ${at.y})`)
+}
+
+/* ------------------------------------------------------------------ canvas (phase 4b, Phase 4) */
+
+/** The canvas's tiles where they rest: the brand tile's transform, the cards' count and how many are inert. */
+const canvasNow = (page: Page) =>
+	page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const cards = [...box.querySelectorAll<HTMLElement>('.aixc-vx--canvas .cv-card')]
+		return { brand: box.querySelector<HTMLElement>('.cv-tile--brand')!.style.transform, cards: cards.length, inert: cards.filter((c) => c.inert).length, box: box.scrollTop, y: scrollY, open: box.querySelector<HTMLDialogElement>('.cv-dialog')!.open }
+	})
+
+/** At rest: nothing of the canvas pressable in a corner's zone, nothing of it cut by the box's sides. */
+async function canvasClear(page: Page, where: string, at: string) {
+	await settle(page, 120)
+	const zones = await zonesNow(page)
+	const hits = await pressablesInZones(page, '.aixc-box .aixc-vx--canvas', zones)
+	assert.deepEqual(hits.out, [], `${where}: ${at}: nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${hits.seen} read)`)
+	const sides = await cutBySides(page, '.aixc-vx--canvas')
+	assert.deepEqual(sides.cut, [], `${where}: ${at}: nothing of the canvas cut by the box's sides (${sides.seen} read)`)
+	return hits.seen
+}
+
+/**
+ * The preview of a card, opened by a press at its centre: after a middle item's reveal(), the card a press reaches
+ * nearest the stage's middle (with the guide listening the revealed one may lie under its transcript bar, inert there).
+ * It shows (non-modal), the focus on its close button. Returns the card's item id.
+ */
+async function openCanvasPreview(page: Page, where: string) {
+	const middle = await middleItem(page)
+	assert.equal(await page.evaluate((id) => (window as any).__aixc.demos.reimagine.state.activeExperience.reveal(id), middle), true, `${where}: reveal(${middle})`)
+	await settle(page, 300)
+	const pick = await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const s = box.querySelector('.cv-stage')!.getBoundingClientRect()
+		const [mx, my] = [(s.left + s.right) / 2, (s.top + s.bottom) / 2]
+		const fits = [...box.querySelectorAll<HTMLElement>('.cv-card')]
+			.map((card) => {
+				const r = card.getBoundingClientRect()
+				const [x, y] = [r.left + r.width / 2, r.top + r.height / 2]
+				const hit = document.elementFromPoint(x, y)
+				return { id: card.dataset.aixcItem!, far: Math.hypot(x - mx, y - my), ok: !card.closest('[inert]') && !!hit && card.contains(hit) }
+			})
+			.filter((c) => c.ok)
+			.sort((a, b) => a.far - b.far)
+		return fits[0]?.id ?? null
+	})
+	assert.ok(pick, `${where}: a card a press reaches near the stage's middle`)
+	await pressIn(page, `.aixc-box .cv-card[data-aixc-item="${pick}"]`)
+	await page.waitForFunction(() => document.querySelector<HTMLDialogElement>('.aixc-box .cv-dialog')?.open, null, { timeout: 5_000 })
+	await settle(page, 300)
+	return pick!
+}
+
+/** The preview: not in the top layer, over the box's room, the rest of the box inert, the box's scroll held. */
+const canvasPreviewNow = (page: Page) =>
+	page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const b = box.getBoundingClientRect()
+		const dialog = box.querySelector<HTMLDialogElement>('.cv-dialog')!
+		const d = dialog.getBoundingClientRect()
+		const active = document.activeElement as HTMLElement | null
+		return {
+			open: dialog.open,
+			modal: !!document.querySelector(':modal'),
+			popover: document.querySelectorAll(':popover-open').length,
+			ariaModal: dialog.getAttribute('aria-modal'),
+			rect: { top: d.top, bottom: d.bottom, left: d.left, right: d.right },
+			room: { top: b.top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight, bottom: b.top + box.clientTop + box.clientHeight, left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth },
+			overflowY: getComputedStyle(box).overflowY,
+			restInert: { stage: !!box.querySelector('.cv-stage')!.closest('[inert]'), bar: !!box.querySelector('.aixc-viewbar')!.closest('[inert]'), band: !box.querySelector('.vx-closing') || !!box.querySelector('.vx-closing')!.closest('[inert]'), dialog: !!dialog.closest('[inert]') },
+			focus: active ? (dialog.contains(active) ? `in:${active.className}` : `out:${active.localName}.${active.className}`) : 'none',
+			z: getComputedStyle(dialog).zIndex,
+			position: getComputedStyle(dialog).position,
+		}
+	})
+
+/** The centres of Vodafone's accessibility button and the guide's microphone, while each shows. */
+const cornerCentres = (page: Page) =>
+	page.evaluate(() => {
+		const centre = (n: Element | null | undefined) => {
+			if (!n || !n.getClientRects().length) return null
+			const r = n.getBoundingClientRect()
+			return r.width && r.height ? ([Math.round((r.left + r.width / 2) * 10) / 10, Math.round((r.top + r.height / 2) * 10) / 10] as [number, number]) : null
+		}
+		return { accessibility: centre(document.getElementById('vodafone-aw-icon')), mic: centre(document.querySelector('vg-guide')?.shadowRoot?.querySelector('.vg-mic')) }
+	})
+
+/**
+ * The canvas's own checks in each cell: its words; a drag, a sideways swipe and the arrow keys pan it with the window and
+ * the box still; at rest after each pan nothing pressable in a corner's zone and nothing cut by the box's sides; Tab
+ * from card to card; its preview in the box (not modal, nothing in the top layer, over the room, the rest inert, the
+ * box's scroll held, Vodafone's accessibility button and the guide's mic reached by a press at their centres, its
+ * close button and links clear of both zones, Tab and Shift+Tab kept in it, a wheel over it moving nothing, Escape
+ * closing it with the focus back on the card), the window never moved.
+ */
+async function canvasSpecifics(page: Page, cell: Cell, where: string) {
+	const ar = cell.p.startsWith('/ar')
+	const services = /\/services$/.test(cell.p)
+	const y = await page.evaluate(() => scrollY)
+	// Its words about services on Services, neutral ones elsewhere (shared.js words(), countWords()).
+	const named = await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		return {
+			stage: box.querySelector('.cv-stage')!.getAttribute('aria-label'),
+			surface: box.querySelector('.cv-surface')!.getAttribute('aria-label'),
+			sign: box.querySelector('.cv-sign')!.textContent,
+			count: box.querySelector('.cv-tile--brand .cv-tile__text')!.textContent ?? '',
+			// The page's name as the view shows it (the brand tile's title: the content index's model.title).
+			title: box.querySelector('.cv-tile--brand .cv-tile__title')!.textContent,
+		}
+	})
+	assert.ok(named.title && named.title !== 'null', `${where}: the page's name on the brand tile (${named.title})`)
+	const want = services
+		? { stage: ar ? 'خدمات ڤودافون، لوحة مفتوحة' : 'Vodafone services, infinite canvas', surface: ar ? 'لوحة الخدمات. استخدم الأسهم عشان تتحرك، وTab عشان تنقل بين الخدمات.' : 'Services canvas. Use the arrow keys to pan, Tab to move between services.', sign: ar ? 'ڤودافون مصر · الخدمات' : 'Vodafone Egypt · Services' }
+		: { stage: ar ? 'لوحة مفتوحة' : 'Infinite canvas', surface: ar ? 'اللوحة. اتحرّك بالأسهم، وTab عشان تنقل بين العناصر.' : 'Canvas. Use the arrow keys to pan, Tab to move between items.', sign: `${ar ? 'ڤودافون مصر' : 'Vodafone Egypt'} · ${named.title}` }
+	assert.deepEqual({ stage: named.stage, surface: named.surface, sign: named.sign }, want, `${where}: ${services ? 'the clone\'s words on Services' : 'neutral words where the page is not about services'}`)
+	if (services) assert.match(named.count, ar ? /خدم/ : /\d+ services/, `${where}: the count says services (${named.count})`)
+	else assert.match(named.count, ar ? /^(عنصر واحد|عنصرين|\d+ عناصر|\d+ عنصر) · / : /^\d+ items? · /, `${where}: the count says items (${named.count})`)
+
+	// The stage is the box's room under the bar.
+	const room = await pinNow(page, '.cv-stage')
+	await page.evaluate(() => document.querySelector<HTMLElement>('.aixc-box')!.scrollTo({ top: 0, behavior: 'instant' }))
+	await settle(page, 200)
+	const fit = await pinNow(page, '.cv-stage')
+	assert.ok(Math.abs(fit.top - fit.barH) <= 1 && Math.abs(fit.bottomGap) <= 1, `${where}: at the box's top the stage fills the room under the bar (top ${fit.top}, bar ${fit.barH}, gap ${fit.bottomGap}; was ${JSON.stringify(room)})`)
+	let read = await canvasClear(page, where, 'at rest')
+	// A phone's 375 px box shows two columns of cards whole side by side (those its sides cut are inert); wider boxes
+	// show several. (Home at 375x812 reads 3 at rest, so not two full rows everywhere: 2, 2026-11-20.)
+	assert.ok(read >= (cell.viewport.width < 720 ? 2 : 3), `${where}: the canvas's pressables were read (${read})`)
+
+	// A drag on the stage pans it; the window and the box stay; no preview opens.
+	const before = await canvasNow(page)
+	const stage = await shownRect(page, '.cv-stage')
+	const [cx, cy] = [(stage!.left + stage!.right) / 2, (stage!.top + stage!.bottom) / 2]
+	await page.mouse.move(cx, cy)
+	await page.mouse.down()
+	for (let k = 1; k <= 6; k++) await page.mouse.move(cx - 30 * k, cy - 18 * k)
+	await page.mouse.up()
+	await settle(page, 300)
+	const dragged = await canvasNow(page)
+	assert.notEqual(dragged.brand, before.brand, `${where}: a drag pans the canvas (${before.brand} -> ${dragged.brand})`)
+	assert.deepEqual([dragged.y, dragged.box, dragged.open], [before.y, before.box, false], `${where}: a drag moves neither the window nor the box, and opens nothing`)
+	await canvasClear(page, where, 'after a drag')
+	// A sideways swipe pans it too (back the way the drag went: a grid too small to wrap stops at its edges).
+	await page.mouse.wheel(-240, 0)
+	await settle(page, 300)
+	const swiped = await canvasNow(page)
+	assert.notEqual(swiped.brand, dragged.brand, `${where}: a sideways swipe pans the canvas`)
+	assert.deepEqual([swiped.y, swiped.box], [before.y, before.box], `${where}: a sideways swipe moves neither the window nor the box`)
+	// The arrow keys pan a card at a time: at rest after each, nothing pressable in a zone, nothing cut by the sides.
+	await page.evaluate(() => document.querySelector<HTMLElement>('.aixc-box .cv-surface')!.focus({ preventScroll: true }))
+	for (const key of ['ArrowRight', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowLeft', 'ArrowLeft', 'ArrowUp']) {
+		await page.keyboard.press(key)
+		await canvasClear(page, where, `after ${key}`)
+	}
+	const keyed = await canvasNow(page)
+	assert.deepEqual([keyed.y, keyed.box], [before.y, before.box], `${where}: the arrow keys move neither the window nor the box`)
+
+	// Tab from card to card, in the model's order: the next card focused, not inert, inside the box's sides.
+	const ids = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.aixc-box .cv-card')].map((c) => c.dataset.aixcItem!))
+	assert.equal(await page.evaluate((id) => (window as any).__aixc.demos.reimagine.state.activeExperience.reveal(id), ids[2]), true)
+	await settle(page, 200)
+	await page.evaluate((id) => document.querySelector<HTMLElement>(`.aixc-box .cv-card[data-aixc-item="${id}"]`)!.focus(), ids[2])
+	for (const [key, want] of [['Tab', 3], ['Tab', 4], ['Shift+Tab', 3]] as const) {
+		await page.keyboard.press(key)
+		await settle(page, 200)
+		const now = await page.evaluate(() => {
+			const box = document.querySelector<HTMLElement>('.aixc-box')!
+			const a = document.activeElement as HTMLElement
+			const r = a.getBoundingClientRect()
+			const b = box.getBoundingClientRect()
+			return { id: a.dataset.aixcItem ?? a.className, inert: !!a.closest('[inert]'), inside: r.left >= b.left + box.clientLeft - 1 && r.right <= b.left + box.clientLeft + box.clientWidth + 1, y: scrollY }
+		})
+		assert.deepEqual(now, { id: ids[want], inert: false, inside: true, y }, `${where}: ${key} focuses the card of ${ids[want]}, pressable, inside the box's sides, the window still`)
+	}
+	await canvasClear(page, where, 'after Tab')
+	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+
+	// The preview.
+	const itemId = await openCanvasPreview(page, where)
+	const shown = await canvasPreviewNow(page)
+	assert.deepEqual([shown.open, shown.modal, shown.popover, shown.ariaModal, shown.position], [true, false, 0, null, 'absolute'], `${where}: the preview shows, not modal, nothing in the top layer, not aria-modal, in the box (${JSON.stringify(shown)})`)
+	for (const side of ['top', 'bottom', 'left', 'right'] as const) assert.ok(Math.abs(shown.rect[side] - shown.room[side]) <= 1, `${where}: the preview ${fmt(shown.rect)} covers the box's room under the bar ${fmt(shown.room)} (${side})`)
+	assert.deepEqual(shown.restInert, { stage: true, bar: true, band: true, dialog: false }, `${where}: the rest of the box inert while it shows`)
+	assert.equal(shown.overflowY, 'hidden', `${where}: the box's scroll held while it shows`)
+	assert.match(shown.focus, /^in:.*cv-dialog__close/, `${where}: the focus on its close button (${shown.focus})`)
+	// A press at Vodafone's accessibility button's centre reaches it, and one at the guide's mic reaches the mic.
+	const centres = await cornerCentres(page)
+	assert.ok(centres.accessibility && centres.mic, `${where}: the accessibility button and the mic show (${JSON.stringify(centres)})`)
+	const hits = await hitsAt(page, [centres.accessibility!, centres.mic!])
+	assert.deepEqual(hits.map((h) => h.at), ['accessibility', 'mic'], `${where}: presses at the accessibility button's and the mic's centres reach them with the preview open (${JSON.stringify(hits)})`)
+	// Its close button and links clear of both zones.
+	const zones = await zonesNow(page)
+	const inZones = await pressablesInZones(page, '.aixc-box .cv-dialog', zones)
+	assert.ok(inZones.seen >= 1, `${where}: the preview's controls were read (${inZones.seen})`)
+	assert.deepEqual(inZones.out, [], `${where}: nothing pressable of the preview in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)}`)
+	// Tab and Shift+Tab stay in it.
+	const count = await page.evaluate(() => document.querySelectorAll('.aixc-box .cv-dialog :is(a[href], button)').length)
+	for (const key of ['Tab', 'Shift+Tab'])
+		for (let k = 0; k < count + 2; k++) {
+			await page.keyboard.press(key)
+			const focus = (await canvasPreviewNow(page)).focus
+			assert.match(focus, /^in:/, `${where}: ${key} ${k + 1}: the focus stays in the preview (${focus})`)
+		}
+	// A wheel over it moves neither the box nor the window.
+	const held = await canvasNow(page)
+	await page.mouse.move((shown.rect.left + shown.rect.right) / 2, (shown.rect.top + shown.rect.bottom) / 2)
+	await page.mouse.wheel(0, 500)
+	await settle(page, 300)
+	const wheeled = await canvasNow(page)
+	assert.deepEqual([wheeled.y, wheeled.box], [held.y, held.box], `${where}: a wheel over the preview moves neither the window nor the box`)
+	// Escape closes it; the focus back on the card it came from; the box's scroll and the rest as before.
+	await page.keyboard.press('Escape')
+	await page.waitForFunction(() => !document.querySelector<HTMLDialogElement>('.aixc-box .cv-dialog')!.open, null, { timeout: 5_000 }).catch(() => {})
+	await settle(page, 200)
+	const after = await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const a = document.activeElement as HTMLElement | null
+		return { open: box.querySelector<HTMLDialogElement>('.cv-dialog')!.open, focus: a?.dataset.aixcItem ?? `${a?.localName}.${a?.className}`, overflowY: getComputedStyle(box).overflowY, stage: !!box.querySelector('.cv-stage')!.closest('[inert]'), bar: !!box.querySelector('.aixc-viewbar')!.closest('[inert]') }
+	})
+	assert.deepEqual(after, { open: false, focus: itemId, overflowY: 'auto', stage: false, bar: false }, `${where}: Escape closes the preview, the focus back on its card, the box's scroll and the rest as before`)
+	assert.equal(await page.evaluate(() => scrollY), y, `${where}: the window never moved`)
+}
+
+/**
+ * The preview over Vodafone's rules (ADR-0076 §7; floating-controls.ts rules c, d and e), as the test of a view does for
+ * magazine: on Services, en and ar, desktop and phone, the preview open: a press at each fixed control's points reaches
+ * it, the accessibility button's box, style attribute and computed style as with ?aixc=off, the mic as with ?aixc=off.
+ * Then the guide listening at 1024 and 375, en and ar: the preview's close button and links clear of the widened zone.
+ */
+async function canvasPreviewRules() {
+	for (const viewport of [DESKTOP, PHONE])
+		for (const p of ['/en/services', '/ar/services']) {
+			const where = `${p} ${sizeOf(viewport)} preview`
+			const l = await launchLayer(gw, { viewport, reducedMotion: true, ...LIVE })
+			try {
+				const seen = watch(l.page)
+				const guideNow = () =>
+					l.page.evaluate(() => {
+						const g = document.querySelector<HTMLElement>('vg-guide')
+						const mic = g?.shadowRoot?.querySelector<HTMLElement>('.vg-mic')
+						return { bottom: mic ? getComputedStyle(mic).bottom : null, lift: g ? getComputedStyle(g).getPropertyValue('--vg-lift') : null }
+					})
+				await open(l.page, p, '?aixc=off')
+				await settle(l.page, 400)
+				const off = await measureControls(l.page, 'off')
+				const guideOff = await guideNow()
+				await open(l.page, p, '?aixc-debug')
+				await ready(l.page)
+				await choose(l.page, 'canvas')
+				const y = await l.page.evaluate(() => scrollY)
+				await openCanvasPreview(l.page, where)
+				const m = await measureControls(l.page, 'preview')
+				const v = cellViolations(m, { where, off: off.button, ...(await cellHits(l.page, m)) }).filter((x) => /\((c|d|e)\)/.test(x))
+				assert.deepEqual(v, [], `${where}: rules (c), (d) and (e) hold with the preview open`)
+				assert.deepEqual(await guideNow(), guideOff, `${where}: the microphone's computed bottom and --vg-lift as with ?aixc=off`)
+				assert.equal(await l.page.evaluate(() => scrollY), y, `${where}: the window never moved`)
+				assert.deepEqual(seen.pageErrors.filter((e) => !/navUserToggling|navToggling/.test(e)), [], `${where}: no page errors`)
+			} finally {
+				await l.close()
+			}
+		}
+	for (const viewport of [TABLET, PHONE])
+		for (const p of ['/en/services', '/ar/services']) {
+			const where = `${p} ${sizeOf(viewport)} preview listening`
+			const l = await launchLayer(gw, { viewport, reducedMotion: true, ...LIVE, initScripts: [MIC_STAND_IN] })
+			try {
+				await open(l.page, p, '?aixc-debug')
+				await ready(l.page)
+				await pocketOne(l.page)
+				await choose(l.page, 'canvas')
+				const quiet = await zonesNow(l.page)
+				const mic = await cornerCentres(l.page)
+				await l.page.mouse.click(mic.mic![0], mic.mic![1])
+				await l.page.waitForFunction(() => !document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-bar')!.classList.contains('hidden'), null, { timeout: 10_000 })
+				await settle(l.page, 600)
+				const zones = await zonesNow(l.page)
+				assert.ok(zones.right && quiet.right && zones.right.left < quiet.right.left - 100, `${where}: the transcript bar widens the right zone ${fmt(quiet.right)} -> ${fmt(zones.right)}`)
+				await canvasClear(l.page, where, 'listening')
+				await openCanvasPreview(l.page, where)
+				const inZones = await pressablesInZones(l.page, '.aixc-box .cv-dialog', await zonesNow(l.page))
+				assert.ok(inZones.seen >= 1, `${where}: the preview's controls were read (${inZones.seen})`)
+				assert.deepEqual(inZones.out, [], `${where}: nothing pressable of the preview in a corner's zone while the guide listens`)
+			} finally {
+				await l.close()
+			}
+		}
+}
+
+/* ------------------------------------------------------------------ streaming (phase 4b, Phase 4) */
+
+/** The streaming view's preview and the scrolls: not in the top layer, over the box's room, the rest inert, the box held. */
+const streamingNow = (page: Page) =>
+	page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const b = box.getBoundingClientRect()
+		const dialog = box.querySelector<HTMLDialogElement>('.aixc-vx--streaming .st-modal')!
+		const d = dialog.getBoundingClientRect()
+		const active = document.activeElement as HTMLElement | null
+		return {
+			open: dialog.open,
+			modal: !!document.querySelector(':modal'),
+			popover: document.querySelectorAll(':popover-open').length,
+			ariaModal: dialog.getAttribute('aria-modal'),
+			position: getComputedStyle(dialog).position,
+			rect: { top: d.top, bottom: d.bottom, left: d.left, right: d.right },
+			room: { top: b.top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight, bottom: b.top + box.clientTop + box.clientHeight, left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth },
+			overflowY: getComputedStyle(box).overflowY,
+			restInert: { nav: !!box.querySelector('.st-nav')!.closest('[inert]'), rows: !!box.querySelector('.st-rows')!.closest('[inert]'), bar: !!box.querySelector('.aixc-viewbar')!.closest('[inert]'), dialog: !!dialog.closest('[inert]') },
+			focus: active ? (dialog.contains(active) ? `in:${active.className}` : `out:${active.localName}.${active.className}`) : 'none',
+			opener: active?.closest<HTMLElement>('.st-card')?.dataset.aixcItem ?? null,
+			box: box.scrollTop,
+			y: scrollY,
+			hash: location.hash,
+		}
+	})
+
+/** The box scrolled to `k` of its scroll (0 its top, 1 its end), at once. */
+const streamingScrollTo = (page: Page, k: number) =>
+	page.evaluate((k) => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		box.scrollTo({ top: Math.round((box.scrollHeight - box.clientHeight) * k), behavior: 'instant' })
+	}, k)
+
+/**
+ * Through the box's whole scroll (its top, a quarter, the middle, three quarters, its end): nothing of the view
+ * pressable in a corner's zone (what passes one takes no press there: streaming.js fence()), nothing cut by the box's
+ * sides (a page of cards off to the side, a row or the bar scrolled sideways: inert there). Returns the pressables read.
+ */
+async function streamingSweep(page: Page, where: string) {
+	const zones = await zonesNow(page)
+	let read = 0
+	for (const k of [0, 0.25, 0.5, 0.75, 1]) {
+		await streamingScrollTo(page, k)
+		await settle(page, 150)
+		const hits = await pressablesInZones(page, '.aixc-box .aixc-vx--streaming', zones)
+		assert.deepEqual(hits.out, [], `${where}: at ${k * 100}% of the box's scroll nothing pressable in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)} (${hits.seen} read)`)
+		const sides = await cutBySides(page, '.aixc-vx--streaming')
+		assert.deepEqual(sides.cut, [], `${where}: at ${k * 100}% of the box's scroll nothing of the view cut by the box's sides (${sides.seen} read)`)
+		read += hits.seen
+	}
+	return read
+}
+
+/**
+ * The preview of a row's card, opened by a press at its open button's centre: after a middle item's reveal(), the card
+ * a press reaches nearest the box's middle. It shows (non-modal), the focus on its close button. Returns the card's id.
+ */
+async function openStreamingPreview(page: Page, where: string) {
+	const middle = await middleItem(page)
+	assert.equal(await page.evaluate((id) => (window as any).__aixc.demos.reimagine.state.activeExperience.reveal(id), middle), true, `${where}: reveal(${middle})`)
+	await settle(page, 300)
+	const pick = await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		const b = box.getBoundingClientRect()
+		const [mx, my] = [(b.left + b.right) / 2, (b.top + b.bottom) / 2]
+		const fits = [...box.querySelectorAll<HTMLElement>('.st-card')]
+			.map((card) => {
+				const open = card.querySelector<HTMLElement>('.st-card__open')!
+				const r = open.getBoundingClientRect()
+				const [x, y] = [r.left + r.width / 2, r.top + r.height / 2]
+				const hit = document.elementFromPoint(x, y)
+				return { id: card.dataset.aixcItem!, far: Math.hypot(x - mx, y - my), ok: r.width > 0 && !card.closest('[inert]') && !!hit && open.contains(hit) }
+			})
+			.filter((c) => c.ok)
+			.sort((a, c) => a.far - c.far)
+		return fits[0]?.id ?? null
+	})
+	assert.ok(pick, `${where}: a card a press reaches`)
+	await pressIn(page, `.aixc-box .st-card[data-aixc-item="${pick}"] .st-card__open`)
+	await page.waitForFunction(() => document.querySelector<HTMLDialogElement>('.aixc-box .st-modal')?.open, null, { timeout: 5_000 })
+	await settle(page, 400)
+	return pick!
+}
+
+/**
+ * Streaming's own checks in each cell: its words (the clone's on Services, neutral elsewhere); its bar's links and a
+ * row's arrows move the box, never the window, and write no #fragment; through the box's whole scroll nothing pressable
+ * in a corner's zone and nothing cut by its sides; its preview in the box (not modal, nothing in the top layer, over the
+ * room, the rest inert, the box's scroll held, Vodafone's accessibility button and the guide's mic reached by a press at
+ * their centres, its close button and links clear of both zones, Tab and Shift+Tab kept in it, a wheel over it moving
+ * nothing, Escape closing it with the focus back on the card's button), the window never moved.
+ */
+async function streamingSpecifics(page: Page, cell: Cell, where: string) {
+	const ar = cell.p.startsWith('/ar')
+	const services = /\/services$/.test(cell.p)
+	const y = await page.evaluate(() => scrollY)
+	const hash = await page.evaluate(() => location.hash)
+	// Its words: the play buttons' fallback says service on Services only (shared.js words()); the bar's name.
+	const named = await page.evaluate(() => {
+		const box = document.querySelector<HTMLElement>('.aixc-box')!
+		return { nav: box.querySelector('.st-nav')!.getAttribute('aria-label'), text: (box.querySelector('.aixc-vx--streaming') as HTMLElement).innerText }
+	})
+	assert.equal(named.nav, ar ? 'عرض المنصات' : 'Streaming showcase', `${where}: the bar's name`)
+	if (!services) assert.doesNotMatch(named.text, ar ? /شوف الخدمة/ : /View service/, `${where}: no word about services where the page is not about them`)
+	else assert.doesNotMatch(named.text, ar ? /شوف التفاصيل/ : /View details/, `${where}: the clone's words on Services`)
+
+	// The bar's first category link: the box scrolls to its row, the window stays, no #fragment.
+	await streamingScrollTo(page, 0)
+	await settle(page, 200)
+	const link = await page.evaluate(() => {
+		const links = [...document.querySelectorAll<HTMLElement>('.aixc-box .st-nav__link')].slice(1)
+		const at = links.findIndex((a) => {
+			const r = a.getBoundingClientRect()
+			const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+			return r.width > 0 && !a.closest('[inert]') && !!hit && a.contains(hit)
+		})
+		return at < 0 ? null : at + 1
+	})
+	assert.ok(link, `${where}: a bar link a press reaches`)
+	await pressIn(page, `.aixc-box .st-nav__links li:nth-child(${link + 1}) .st-nav__link`)
+	await settle(page, 400)
+	const linked = await streamingNow(page)
+	assert.ok(linked.box > 100, `${where}: the bar's link scrolls the box to its row (${linked.box})`)
+	assert.deepEqual([linked.y, linked.hash], [y, hash], `${where}: the bar's link moves neither the window nor the address`)
+
+	// A row's next arrow (from 720 px) pages it; the window and the box stay.
+	if (cell.viewport.width >= 720) {
+		// Each row whose cards overflow it shows its next arrow, the others none (Home's rows all fit at 1366 px).
+		const paging = await page.evaluate(() => {
+			const rows = [...document.querySelectorAll<HTMLElement>('.aixc-box .st-row')]
+			return rows.map((r) => {
+				const next = r.querySelector<HTMLButtonElement>('.st-row__arrow--next')!
+				const viewport = r.querySelector<HTMLElement>('.st-row__viewport')!
+				return { overflows: viewport.scrollWidth > viewport.clientWidth + 1, arrow: !next.hidden && !next.disabled && getComputedStyle(next).display !== 'none' }
+			})
+		})
+		assert.deepEqual(paging.map((r) => r.arrow), paging.map((r) => r.overflows), `${where}: a next arrow on each row whose cards overflow it, and only there (${JSON.stringify(paging)})`)
+		const row = await page.evaluate(() => {
+			const box = document.querySelector<HTMLElement>('.aixc-box')!
+			const rows = [...box.querySelectorAll<HTMLElement>('.st-row')]
+			const at = rows.findIndex((r) => {
+				const next = r.querySelector<HTMLButtonElement>('.st-row__arrow--next')!
+				return !next.hidden && !next.disabled && getComputedStyle(next).display !== 'none'
+			})
+			if (at < 0) return null
+			// Its top just under the experience's own bar (in a short box the zones reach high up the room).
+			const r = rows[at].getBoundingClientRect()
+			box.scrollTop += r.top - (box.querySelector('.st-nav')!.getBoundingClientRect().bottom + 8)
+			return at + 1
+		})
+		assert.ok(row || !paging.some((r) => r.overflows), `${where}: a row that pages shows a next arrow at >= 720 px`)
+		if (services) assert.ok(row, `${where}: on Services some row pages and shows its next arrow at >= 720 px`)
+		if (row) {
+			await settle(page, 300)
+			const before = await page.evaluate((n) => ({ shift: document.querySelectorAll<HTMLElement>('.aixc-box .st-row__track')[n - 1].style.getPropertyValue('--shift'), box: document.querySelector('.aixc-box')!.scrollTop }), row)
+			await pressIn(page, `.aixc-box .st-rows > .st-row:nth-child(${row}) .st-row__arrow--next`)
+			await settle(page, 300)
+			const after = await page.evaluate((n) => ({ shift: document.querySelectorAll<HTMLElement>('.aixc-box .st-row__track')[n - 1].style.getPropertyValue('--shift'), box: document.querySelector('.aixc-box')!.scrollTop }), row)
+			assert.ok(after.shift !== before.shift && after.box === before.box, `${where}: the next arrow pages its row (${before.shift} -> ${after.shift}), the box still`)
+			assert.equal(await page.evaluate(() => scrollY), y, `${where}: the arrow leaves the window`)
+		}
+	}
+
+	// The box's whole scroll.
+	const read = await streamingSweep(page, where)
+	assert.ok(read >= 10, `${where}: the view's pressables were read through the box's scroll (${read})`)
+
+	// The preview.
+	const itemId = await openStreamingPreview(page, where)
+	const shown = await streamingNow(page)
+	assert.deepEqual([shown.open, shown.modal, shown.popover, shown.ariaModal, shown.position], [true, false, 0, null, 'absolute'], `${where}: the preview shows, not modal, nothing in the top layer, not aria-modal, in the box (${JSON.stringify(shown)})`)
+	for (const side of ['top', 'bottom', 'left', 'right'] as const) assert.ok(Math.abs(shown.rect[side] - shown.room[side]) <= 1, `${where}: the preview ${fmt(shown.rect)} covers the box's room under the bar ${fmt(shown.room)} (${side})`)
+	assert.deepEqual(shown.restInert, { nav: true, rows: true, bar: true, dialog: false }, `${where}: the rest of the box inert while it shows`)
+	assert.equal(shown.overflowY, 'hidden', `${where}: the box's scroll held while it shows`)
+	assert.match(shown.focus, /^in:.*st-modal__close/, `${where}: the focus on its close button (${shown.focus})`)
+	const centres = await cornerCentres(page)
+	assert.ok(centres.accessibility && centres.mic, `${where}: the accessibility button and the mic show (${JSON.stringify(centres)})`)
+	const hits = await hitsAt(page, [centres.accessibility!, centres.mic!])
+	assert.deepEqual(hits.map((h) => h.at), ['accessibility', 'mic'], `${where}: presses at the accessibility button's and the mic's centres reach them with the preview open (${JSON.stringify(hits)})`)
+	const zones = await zonesNow(page)
+	for (const k of [0, 0.5, 1]) {
+		// Through the panel's own scroll.
+		await page.evaluate((k) => {
+			const p = document.querySelector<HTMLElement>('.aixc-box .st-modal__panel')!
+			p.scrollTop = Math.round((p.scrollHeight - p.clientHeight) * k)
+		}, k)
+		await settle(page, 150)
+		const inZones = await pressablesInZones(page, '.aixc-box .st-modal', zones)
+		assert.ok(inZones.seen >= 1, `${where}: the preview's controls were read (${inZones.seen})`)
+		assert.deepEqual(inZones.out, [], `${where}: at ${k * 100}% of its scroll nothing pressable of the preview in a corner's zone ${fmt(zones.right)} ${fmt(zones.left)}`)
+	}
+	await page.evaluate(() => {
+		document.querySelector<HTMLElement>('.aixc-box .st-modal__panel')!.scrollTop = 0
+		document.querySelector<HTMLElement>('.aixc-box .st-modal__close')!.focus()
+	})
+	const count = await page.evaluate(() => document.querySelectorAll('.aixc-box .st-modal :is(a[href], button)').length)
+	for (const key of ['Tab', 'Shift+Tab'])
+		for (let k = 0; k < Math.min(count + 2, 14); k++) {
+			await page.keyboard.press(key)
+			const focus = (await streamingNow(page)).focus
+			assert.match(focus, /^in:/, `${where}: ${key} ${k + 1}: the focus stays in the preview (${focus})`)
+		}
+	// A wheel over its backdrop and over its panel moves neither the box nor the window.
+	const held = await streamingNow(page)
+	const panel = await shownRect(page, '.st-modal__panel')
+	for (const [x, py] of [[shown.room.left + 4, shown.room.top + 6], [(panel!.left + panel!.right) / 2, (panel!.top + panel!.bottom) / 2]]) {
+		await page.mouse.move(x, py)
+		await page.mouse.wheel(0, 800)
+		await settle(page, 300)
+		const wheeled = await streamingNow(page)
+		assert.deepEqual([wheeled.y, wheeled.box, wheeled.open], [held.y, held.box, true], `${where}: a wheel over the preview at ${Math.round(x)},${Math.round(py)} moves neither the window nor the box`)
+	}
+	await page.evaluate(() => document.querySelector<HTMLElement>('.aixc-box .st-modal__close')!.focus())
+	await page.keyboard.press('Escape')
+	await page.waitForFunction(() => !document.querySelector<HTMLDialogElement>('.aixc-box .st-modal')!.open, null, { timeout: 5_000 }).catch(() => {})
+	await settle(page, 200)
+	const after = await streamingNow(page)
+	assert.deepEqual({ open: after.open, opener: after.opener, focus: after.focus.replace(/ .*/, ''), overflowY: after.overflowY, nav: after.restInert.nav, rows: after.restInert.rows, bar: after.restInert.bar }, { open: false, opener: itemId, focus: 'out:button.st-card__open', overflowY: 'auto', nav: false, rows: false, bar: false }, `${where}: Escape closes the preview, the focus back on the card's button, the box's scroll and the rest as before`)
+	assert.deepEqual([after.y, after.hash], [y, hash], `${where}: the window never moved, no #fragment`)
+}
+
+/**
+ * Streaming over Vodafone's rules, once after the cells: (1) on Services, en and ar, desktop and phone, the preview open:
+ * a press at each fixed control's points reaches it, the accessibility button's box, style attribute and computed style
+ * as with ?aixc=off (floating-controls.ts rules c, d and e), the mic as with ?aixc=off, nothing in the top layer, the
+ * window still. (2) The guide listening at 1024 and 375, en and ar: through the box's scroll and in the preview nothing
+ * pressable in the widened zone. (3) With motion allowed (desktop and phone, en and ar): the opening covers the box's
+ * room, its Skip inside the box clear of both zones; the box's scroll ends it; the window still; nothing asked of
+ * Google's fonts or for Roboto. (4) The wordmark and the headings in Vodafone's faces (CSS.getPlatformFontsForNode), on
+ * Services and Home: no system font, no Roboto.
+ */
+async function streamingRules() {
+	for (const viewport of [DESKTOP, PHONE])
+		for (const p of ['/en/services', '/ar/services']) {
+			const where = `${p} ${sizeOf(viewport)} preview`
+			const l = await launchLayer(gw, { viewport, reducedMotion: true, ...LIVE })
+			try {
+				const seen = watch(l.page)
+				const guideNow = () =>
+					l.page.evaluate(() => {
+						const g = document.querySelector<HTMLElement>('vg-guide')
+						const mic = g?.shadowRoot?.querySelector<HTMLElement>('.vg-mic')
+						return { bottom: mic ? getComputedStyle(mic).bottom : null, lift: g ? getComputedStyle(g).getPropertyValue('--vg-lift') : null }
+					})
+				await open(l.page, p, '?aixc=off')
+				await settle(l.page, 400)
+				const off = await measureControls(l.page, 'off')
+				const guideOff = await guideNow()
+				await open(l.page, p, '?aixc-debug')
+				await ready(l.page)
+				await choose(l.page, 'streaming')
+				const y = await l.page.evaluate(() => scrollY)
+				await openStreamingPreview(l.page, where)
+				const m = await measureControls(l.page, 'preview')
+				const v = cellViolations(m, { where, off: off.button, ...(await cellHits(l.page, m)) }).filter((x) => /\((c|d|e)\)/.test(x))
+				assert.deepEqual(v, [], `${where}: rules (c), (d) and (e) hold with the preview open`)
+				assert.deepEqual(await guideNow(), guideOff, `${where}: the microphone's computed bottom and --vg-lift as with ?aixc=off`)
+				const top = await l.page.evaluate(() => ({ modal: !!document.querySelector(':modal'), popover: document.querySelectorAll(':popover-open').length }))
+				assert.deepEqual(top, { modal: false, popover: 0 }, `${where}: nothing in the top layer`)
+				assert.equal(await l.page.evaluate(() => scrollY), y, `${where}: the window never moved`)
+				assert.deepEqual(seen.pageErrors.filter((e) => !/navUserToggling|navToggling/.test(e)), [], `${where}: no page errors`)
+			} finally {
+				await l.close()
+			}
+		}
+	for (const viewport of [TABLET, PHONE])
+		for (const p of ['/en/services', '/ar/services']) {
+			const where = `${p} ${sizeOf(viewport)} listening`
+			const l = await launchLayer(gw, { viewport, reducedMotion: true, ...LIVE, initScripts: [MIC_STAND_IN] })
+			try {
+				await open(l.page, p, '?aixc-debug')
+				await ready(l.page)
+				await pocketOne(l.page)
+				await choose(l.page, 'streaming')
+				const quiet = await zonesNow(l.page)
+				const mic = await cornerCentres(l.page)
+				await l.page.mouse.click(mic.mic![0], mic.mic![1])
+				await l.page.waitForFunction(() => !document.querySelector('vg-guide')!.shadowRoot!.querySelector('.vg-bar')!.classList.contains('hidden'), null, { timeout: 10_000 })
+				await settle(l.page, 600)
+				const zones = await zonesNow(l.page)
+				assert.ok(zones.right && quiet.right && zones.right.left < quiet.right.left - 100, `${where}: the transcript bar widens the right zone ${fmt(quiet.right)} -> ${fmt(zones.right)}`)
+				await streamingSweep(l.page, where)
+				await openStreamingPreview(l.page, where)
+				const inZones = await pressablesInZones(l.page, '.aixc-box .st-modal', await zonesNow(l.page))
+				assert.ok(inZones.seen >= 1, `${where}: the preview's controls were read (${inZones.seen})`)
+				assert.deepEqual(inZones.out, [], `${where}: nothing pressable of the preview in a corner's zone while the guide listens`)
+			} finally {
+				await l.close()
+			}
+		}
+	for (const viewport of [DESKTOP, PHONE])
+		for (const p of ['/en/services', '/ar/services']) {
+			const where = `${p} ${sizeOf(viewport)} motion`
+			const l = await launchLayer(gw, { viewport, reducedMotion: false, ...LIVE })
+			try {
+				const seen = watch(l.page)
+				await open(l.page, p, '?aixc-debug')
+				await ready(l.page)
+				await pocketOne(l.page)
+				await choose(l.page, 'streaming')
+				const y = await l.page.evaluate(() => scrollY)
+				const intro = await l.page.evaluate(() => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					const b = box.getBoundingClientRect()
+					const i = box.querySelector<HTMLElement>('.st-intro')!
+					const s = box.querySelector<HTMLElement>('.st-skip')!
+					const r = (n: HTMLElement) => {
+						const x = n.getBoundingClientRect()
+						return { left: x.left, top: x.top, right: x.right, bottom: x.bottom }
+					}
+					return { shown: !i.hidden, skip: !s.hidden ? r(s) : null, intro: r(i), room: { top: b.top + box.clientTop + (box.firstElementChild as HTMLElement).offsetHeight, bottom: b.top + box.clientTop + box.clientHeight, left: b.left + box.clientLeft, right: b.left + box.clientLeft + box.clientWidth }, position: getComputedStyle(i).position, font: getComputedStyle(box.querySelector('.st-brand .st-word')!).fontFamily }
+				})
+				assert.ok(intro.shown && intro.skip, `${where}: the opening plays, its Skip shown (${JSON.stringify(intro)})`)
+				assert.equal(intro.position, 'absolute', `${where}: the opening in the box, not fixed to the screen`)
+				for (const side of ['top', 'bottom', 'left', 'right'] as const) assert.ok(Math.abs(intro.intro[side] - intro.room[side]) <= 1, `${where}: the opening ${fmt(intro.intro)} covers the box's room ${fmt(intro.room)} (${side})`)
+				const s = intro.skip!
+				assert.ok(s.left >= intro.room.left && s.right <= intro.room.right && s.top >= intro.room.top && s.bottom <= intro.room.bottom, `${where}: Skip ${fmt(s)} inside the box's room ${fmt(intro.room)}`)
+				const zones = await zonesNow(l.page)
+				for (const [name, z] of Object.entries(zones)) if (z) assert.ok(!meets(s, z), `${where}: Skip ${fmt(s)} clear of the ${name} zone ${fmt(z)}`)
+				assert.doesNotMatch(intro.font, /roboto/i, `${where}: the wordmark's face is Vodafone's (${intro.font})`)
+				// The box's scroll ends it (not the window's); the window stays.
+				await l.page.evaluate(() => {
+					document.querySelector<HTMLElement>('.aixc-box')!.scrollTop = 40
+				})
+				await l.page.waitForFunction(() => document.querySelector<HTMLElement>('.aixc-box .st-intro')!.hidden, null, { timeout: 5_000 })
+				await settle(l.page, 300)
+				assert.equal(await l.page.evaluate(() => document.querySelector('.aixc-box .aixc-vx--streaming')!.classList.contains('is-ready')), true, `${where}: the box's scroll ends the opening`)
+				assert.equal(await l.page.evaluate(() => scrollY), y, `${where}: the window never moved`)
+				// A bar link with motion allowed (the review, 2026-11-20): from the box's top its smooth scroll runs to its
+				// row, the row's top under the bar, not cut short where the row's title left a corner's zone.
+				await l.page.evaluate(() => document.querySelector<HTMLElement>('.aixc-box')!.scrollTo({ top: 0, behavior: 'instant' }))
+				await settle(l.page, 300)
+				const linkAt = await l.page.evaluate(() => {
+					const links = [...document.querySelectorAll<HTMLElement>('.aixc-box .st-nav__link')].slice(1)
+					return (
+						links.findIndex((a) => {
+							const r = a.getBoundingClientRect()
+							const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+							return r.width > 0 && !a.closest('[inert]') && !!hit && a.contains(hit)
+						}) + 2
+					)
+				})
+				assert.ok(linkAt >= 2, `${where}: a bar link a press reaches`)
+				await pressIn(l.page, `.aixc-box .st-nav__links li:nth-child(${linkAt}) .st-nav__link`)
+				for (let last = -1, k = 0; k < 24; k++) {
+					await settle(l.page, 250)
+					const now = await l.page.evaluate(() => document.querySelector<HTMLElement>('.aixc-box')!.scrollTop)
+					if (now === last) break
+					last = now
+				}
+				const landed = await l.page.evaluate((n) => {
+					const box = document.querySelector<HTMLElement>('.aixc-box')!
+					const link = box.querySelectorAll<HTMLAnchorElement>('.st-nav__links li .st-nav__link')[n - 1]
+					const row = box.querySelector<HTMLElement>(link.hash)!
+					return { row: Math.round(row.getBoundingClientRect().top), nav: Math.round(box.querySelector('.st-nav')!.getBoundingClientRect().bottom), box: box.scrollTop }
+				}, linkAt)
+				assert.ok(Math.abs(landed.row - landed.nav) <= 4, `${where}: the bar link's smooth scroll lands its row under the bar (row top ${landed.row}, bar bottom ${landed.nav}, box at ${landed.box})`)
+				assert.equal(await l.page.evaluate(() => scrollY), y, `${where}: the bar link leaves the window`)
+				const unmounted = await l.page.evaluate(() => {
+					const st = (window as any).__aixc.demos.reimagine.state
+					st.activeExperience.unmount()
+					const after = st.debug().kept as number
+					st.activeExperience.mount()
+					return after
+				})
+				assert.equal(unmounted, 0, `${where}: after the opening its unmount gives back all it kept`)
+				assert.deepEqual(l.refused.filter((r) => /fonts\.(googleapis|gstatic)|roboto/i.test(r.url)), [], `${where}: nothing asked of Google's fonts, no Roboto`)
+				assert.deepEqual(seen.pageErrors.filter((e) => !/navUserToggling|navToggling/.test(e)), [], `${where}: no page errors`)
+			} finally {
+				await l.close()
+			}
+		}
+	for (const p of ['/en/services', '/ar/services', '/en/home', '/ar/home']) {
+		const where = `${p} desktop fonts`
+		const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true, ...LIVE })
+		try {
+			// The replay did not save static-lite-theme's regular font files: maintheme's copies, as pocket-fonts serves them.
+			await l.b.context.route('**/theme-assets/static-lite-theme/fonts/*.woff', (route) => route.fulfill({ path: path.join(REPLAY, 'assets/theme-assets/maintheme/fonts', path.basename(new URL(route.request().url()).pathname)), contentType: 'font/woff' }))
+			await open(l.page, p, '?aixc-debug')
+			await ready(l.page)
+			await choose(l.page, 'streaming')
+			await l.page.evaluate(() => document.fonts.ready)
+			const used = await fontsOfSelectors(l.page, ['.aixc-box .st-brand .st-word__l', '.aixc-box .st-billboard__title', '.aixc-box .st-row__title', '.aixc-box .st-closing__title'])
+			for (const what of ['.aixc-box .st-brand .st-word__l', '.aixc-box .st-billboard__title', '.aixc-box .st-row__title']) assert.ok(used.some((u) => u.what === what), `${where}: ${what} was read`)
+			const off = used.filter((u) => u.fonts.some((f) => !f.isCustomFont || /roboto/i.test(f.familyName)))
+			assert.deepEqual(off.map((u) => `${u.what} "${u.text}": ${u.fonts.map((f) => f.familyName).join(', ')}`), [], `${where}: the wordmark and the headings in Vodafone's faces (no system font, no Roboto)`)
+			const family = await l.page.evaluate(() => getComputedStyle(document.querySelector('.aixc-box .st-brand .st-word')!).fontFamily)
+			assert.doesNotMatch(family, /roboto/i, `${where}: no Roboto in the wordmark's stack (${family})`)
+			assert.deepEqual(l.refused.filter((r) => /fonts\.(googleapis|gstatic)|roboto/i.test(r.url)), [], `${where}: nothing asked of Google's fonts, no Roboto`)
+		} finally {
+			await l.close()
+		}
+	}
+	// Home has no closing band (the review, 2026-11-20): at the box's end a last-row card grown by hover stays in the view,
+	// above the box's end band, and presses at the band's buttons reach them.
+	for (const p of ['/en/home', '/ar/home']) {
+		const where = `${p} desktop the box's end, a last-row card hovered`
+		const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true, ...LIVE })
+		try {
+			await open(l.page, p, '?aixc-debug')
+			await ready(l.page)
+			await choose(l.page, 'streaming')
+			assert.equal(await l.page.evaluate(() => !!document.querySelector('.aixc-box .st-closing')), false, `${where}: no closing band on Home`)
+			await l.page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				box.scrollTo({ top: box.scrollHeight, behavior: 'instant' })
+			})
+			await settle(l.page, 400)
+			const card = await l.page.evaluate(() => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const b = box.getBoundingClientRect()
+				const mid = (b.left + b.right) / 2
+				const rows = box.querySelectorAll<HTMLElement>('.st-rows > .st-row')
+				const fits = [...rows[rows.length - 1].querySelectorAll<HTMLElement>('.st-card')]
+					.map((c) => {
+						const r = c.getBoundingClientRect()
+						const [x, y] = [r.left + r.width / 2, r.top + r.height / 2]
+						const hit = document.elementFromPoint(x, y)
+						return { id: c.dataset.aixcItem!, x, y, ok: r.width > 0 && !c.closest('[inert]') && !!hit && c.contains(hit) }
+					})
+					.filter((c) => c.ok)
+					.sort((a, c) => Math.abs(a.x - mid) - Math.abs(c.x - mid))
+				return fits[0] ?? null
+			})
+			assert.ok(card, `${where}: a last-row card a pointer reaches`)
+			await l.page.mouse.move(card.x, card.y)
+			await settle(l.page, 700)
+			const now = await l.page.evaluate((id) => {
+				const box = document.querySelector<HTMLElement>('.aixc-box')!
+				const c = [...box.querySelectorAll<HTMLElement>('.st-card')].find((n) => n.dataset.aixcItem === id)!
+				const inner = c.querySelector<HTMLElement>('.st-card__inner')!
+				const r = inner.getBoundingClientRect()
+				const end = box.querySelector<HTMLElement>('.aixc-end')!.getBoundingClientRect()
+				const buttons = [...box.querySelectorAll<HTMLElement>('.aixc-end__btn')].map((btn) => {
+					const s = btn.getBoundingClientRect()
+					const hit = document.elementFromPoint(s.left + s.width / 2, s.top + s.height / 2)
+					return { label: btn.textContent!.trim(), reached: !!hit && btn.contains(hit), hit: hit ? `${hit.localName}.${String(hit.getAttribute('class') ?? '').split(' ')[0]}` : 'nothing' }
+				})
+				return { grown: getComputedStyle(inner).transform !== 'none', card: Math.round(r.bottom), end: Math.round(end.top), buttons }
+			}, card.id)
+			assert.ok(now.grown, `${where}: the card grew on hover`)
+			assert.ok(now.card <= now.end, `${where}: the grown card (bottom ${now.card}) stays above the end band (top ${now.end})`)
+			assert.ok(now.buttons.length === 2 && now.buttons.every((b) => b.reached), `${where}: presses at the end band's buttons reach them (${JSON.stringify(now.buttons)})`)
+		} finally {
+			await l.close()
+		}
+	}
 }
 
 type Layer = Awaited<ReturnType<typeof launchLayer>>
