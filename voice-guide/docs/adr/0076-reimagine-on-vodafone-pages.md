@@ -113,7 +113,7 @@ All 2026-11-17. Each is listed with what it was chosen over.
 
 **Lead's design choices in stage 1 (2026-11-17; not the owner's decisions):** the launcher tucks with the pill, and with no pill it shows only while `scrollY` is under 120; spotlight's queue shows in the box only from 1180 px wide and 850 px tall; the chips keep a hidden launcher's scroll-0 rest and re-check at the top; the launcher's z-index is 19 and it comes in the DOM before `#aixc-viewbar`.
 
-**Lead's decisions in phase 4b (2026-11-18 to 2026-11-21; not the owner's; the wiki page lists them for him to confirm):**
+**Lead's decisions in phase 4b (2026-11-18 to 2026-11-21; the owner confirmed them on 2026-11-21):**
 
 1. The composer's "beside" test checks the two-dimensional clearance of the corner zones (`box.js`'s documented rule), not the old single bottom line.
 2. From the launcher the composer opens at its top with the first row pressable; from "Change experience" it opens scrolled to the shown template, which it focuses.
@@ -123,7 +123,7 @@ All 2026-11-17. Each is listed with what it was chosen over.
 6. At 375x812 only 10 px separate the composer's bottom from the right zone; after "Original" the end band scrolls back, so Original's right end may sit under the mic (its centre is clear).
 7. Ring's and cube's names on pages not about services get neutral names (the review found "Service ring" / "Service cube" there, B-98): "Ring" and "Cube" (حلقة, مكعب) in the composer, the view bar and the announcement since `6e017a9`. Related to O17.
 8. Neutral labels follow the composer's card names: gallery is 'Gallery wall' (the plan said 'Gallery'); the canvas sign is 'Vodafone Egypt · {page}' (only the clone's page name is swapped).
-9. The new Arabic (§11) waits for the owner's Arabic reviewer (O42).
+9. The new Arabic (§11) does not go to the Arabic reviewer (the owner, 2026-11-21; O42).
 10. `view-dialog.js` is a chunk of its own (§5, §7): on live the previews are non-modal inside the box; the clone keeps `showModal()`.
 11. Streaming on live: the wordmark takes Vodafone's bold face, no Roboto and no font request (§8); no MIT notice (the owner's own pen).
 12. The shell's budget from 24.5 to 24.75 KB at the phase 4 merge (25,100 B; the smallest step, dated). With the review's fixes (`6e017a9`) split went from 7.75 to 8 KB (7,992 B) and ring from 8.25 to 8.5 KB (8,472 B), each the smallest step with a dated note. The core and the Pocket are within theirs.
