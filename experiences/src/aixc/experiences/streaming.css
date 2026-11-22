@@ -1273,7 +1273,8 @@
 /* The preview in the box, never in the top layer (view-dialog.js viewDialog; ADR-0076 §7): the dialog is the room under
    the box's view bar (--vx-sheet-top, --vx-sheet-h), dimmed, below the box's bar and everything of Vodafone's and the
    guide's (the box is its own stacking context); its panel scrolls, between the corners' zones (wide or short rooms)
-   or above the taller one (phones). */
+   or above the taller one (phones), and starts under the trail's pill where the pill reaches below the bar into the
+   room (the box at the top of the screen: box.js --aixc-sheet-pill-h, 0 elsewhere), so its close keeps clear of it. */
 .aixc-box .aixc-vx--streaming .st-modal {
   position: absolute;
   inset: var(--vx-sheet-top, 0px) 0 auto;
@@ -1294,7 +1295,7 @@
 
 .aixc-box .aixc-vx--streaming .st-modal__panel {
   position: absolute;
-  top: 12px;
+  top: max(12px, var(--aixc-sheet-pill-h, 0px));
   right: max(12px, calc(var(--aixc-safe-right-w, 0px) + 8px));
   bottom: 12px;
   left: max(12px, calc(var(--aixc-safe-left-w, 0px) + 8px));

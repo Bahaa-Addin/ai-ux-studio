@@ -80,6 +80,8 @@ const AR = {
   "Vodafone, back to the top": "ڤودافون، ارجع لأول الصفحة",
   "Skip intro": "تخطّي المقدمة",
   // Reimagined experiences: spotlight, gallery
+  // O17 (phase 4c): the hints of gallery, split, cover flow, fan and canvas say اتحرّك بالأسهم (move with the arrows), not
+  // استخدم (use), which holds خدم: on pages not about services nothing of ours says it (tests/microcopy-ar.test.mjs).
   "slide": "شريحة",
   "{n} of {total}: {title}": "{n} من {total}: {title}",
   "Show {title}": "اعرض {title}",
@@ -105,7 +107,7 @@ const AR = {
   "{title}, piece {n} of {total}": "{title}، برواز {n} من {total}",
   "Previous piece": "البرواز اللي قبله",
   "Next piece": "البرواز اللي بعده",
-  "Scroll, or use the arrows, to walk along the wall.": "انزل أو استخدم الأسهم عشان تتمشى جنب الحيطة.",
+  "Scroll, or use the arrows, to walk along the wall.": "انزل أو اتحرّك بالأسهم عشان تتمشى جنب الحيطة.",
   "Gallery of Vodafone services": "معرض خدمات ڤودافون",
   "No. {n}": "رقم {n}",
   "In this category": "في النوع ده",
@@ -114,11 +116,11 @@ const AR = {
   "Go to {title}": "روح لـ{title}",
   "Categories": "الأقسام",
   "Vodafone services, split slideshow": "خدمات ڤودافون، شرايح مقسومة",
-  "Scroll, drag or use the arrow keys": "انزل، اسحب أو استخدم الأسهم",
+  "Scroll, drag or use the arrow keys": "انزل، اسحب أو اتحرّك بالأسهم",
   "{title}, card {n} of {total}": "{title}، كارت {n} من {total}",
   "Previous card": "الكارت اللي قبله",
   "Next card": "الكارت اللي بعده",
-  "Drag the cards, scroll, or use the arrow keys": "اسحب الكروت، انزل، أو استخدم الأسهم",
+  "Drag the cards, scroll, or use the arrow keys": "اسحب الكروت، انزل، أو اتحرّك بالأسهم",
   "{title} · {count} services · {groups} categories": "{title} · {count} خدمة · {groups} أقسام",
   "Vodafone services, card fan": "خدمات ڤودافون، كروت مفرودة",
   // Reimagined experiences: canvas, coverflow, flipbook, cube, ring, tunnel
@@ -128,7 +130,7 @@ const AR = {
   "+Categories": "+الأقسام",
   "+On the canvas": "+على اللوحة",
   "+Controls": "+التحكم",
-  "Drag or arrow keys to pan": "اسحب أو استخدم الأسهم عشان تتحرك",
+  "Drag or arrow keys to pan": "اسحب أو اتحرّك بالأسهم",
   "Click or Enter to open": "دوس أو Enter عشان تفتح",
   "Press {enter} to open, {esc} to close": "دوس {enter} عشان تفتح، و{esc} عشان تقفل",
   "Vodafone Egypt · Services": "ڤودافون مصر · الخدمات",

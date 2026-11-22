@@ -13,7 +13,13 @@
  *    the guide listening (its transcript bar and keyboard button; then stopped with the mic's own press), S3
  *    the album open (the mascot and the drone at rest), S4 "Your journey" open in the album (the trail's
  *    consent is ours: when its card shows it is measured as a cell of its own, then allowed); on /en/home
- *    S1 and S2 only. Each page at 1366×900, then each at 375×812 (page.setViewportSize on the same Chrome:
+ *    S1 and S2 only. Then S7, the reimagined view (phase 4c; ADR-0076; design §4), on the same load, no page
+ *    load of its own: on /en/services (static theme) the composer from the launcher, spotlight's view with the
+ *    Pocket peeking, the guide listening over it, the composer over the view from "Change experience", canvas's
+ *    and streaming's previews open in the box, and Vodafone's menu over the view (a hover on its navigation's
+ *    dropdown at 1366, a press on its burger at 375, never a second one: that menu is left open and the page's
+ *    next load closes it), then Original (at 1366); on /en/home (maintheme) the composer, the
+ *    view and the menu. Each page at 1366×900, then each at 375×812 (page.setViewportSize on the same Chrome:
  *    a narrowed desktop window, not a phone; the report says how it differs);
  *  - banner (a throwaway profile, where OneTrust's banner shows): S1 only, on /en/services and /ar/services
  *    at both sizes, and no press at all.
@@ -24,7 +30,10 @@
  * computed style there are rule (d)'s baseline, once per page, size and pass (and a screenshot of it); a
  * baseline with anything of ours on it is a violation, since rule (d) would then compare ours with ours.
  *
- * Every cell: S16's measure, what a press at the points of each control reaches, the violations of rules a
+ * Every page with the layer: the gate's reading (coverage, sections, the launcher's decision; report.gates).
+ * Every cell: the corners' safe zones as a person meets them (their controls and sizes) and, in a view, the
+ * zones the shell wrote on the box against the same zones measured here (cell.view); in S7, S7's rules
+ * (../e2e/floating-controls.ts viewViolations, menuHits). And S16's measure, what a press at the points of each control reaches, the violations of rules a
  * to g, every fixed or sticky element of Vodafone's that is not the banner or the accessibility widget
  * (a chat launcher, an app banner, a pinned header) with its box, the rule that none of our controls
  * overlaps one and that a press at one never reaches ours, with the banner its own z-index (nothing of ours
@@ -35,7 +44,10 @@
  * Safe by construction (AGENTS.md §4 rules 1, 2, 5 and 6):
  *  - public pages, signed out; nothing is typed; a press is only ever one of PRESS_TARGETS (our chips, the
  *    Pocket button, the guide's mic, the trail's pill and its consent card's allow, the journey's allow and
- *    close, the album's Back), found inside one of our roots and not inside a link of Vodafone's, after an
+ *    close, the album's Back; in S7 Reimagine's launcher, a template, the view bar's "Change experience" and
+ *    "Original", a canvas card's and a streaming card's preview button and their close, each a button inside
+ *    no link at all) or, in S7 only, Vodafone's burger to open its phone menu, once per page (on a wide screen its
+ *    dropdown is opened by a hover, no press; report.vodafone lists each), found inside one of our roots and not inside a link of Vodafone's, after an
  *    elementFromPoint hit test that reaches it (again after the pointer has moved there), and never while
  *    OneTrust's banner shows: the main pass then stops and says 'skipped: banner'; the banner pass refuses
  *    every press;
@@ -58,7 +70,7 @@ import type { Page, Route } from 'playwright'
 
 import { ROOT } from '#shared/config.ts'
 
-import { type Box, cellHits, cellViolations, fmt, type Hit, hitsAt, type Measure, measureControls, OT_Z, OVERLAP_EXCEPTIONS, overlaps, points, shownControls } from '../e2e/floating-controls.ts'
+import { type Box, cellHits, cellViolations, cornersLine, fmt, type GateReading, gateOf, gateViolations, type Hit, hitsAt, type Measure, measureControls, MENU_CLOSED, MENU_OPEN, menuHits, OT_Z, OVERLAP_EXCEPTIONS, overlaps, points, reachableOpener, readView, S7, S7_TEMPLATE, shownControls, templateInView, underMenu, type ViewExpect, type ViewReading, viewViolations, vodafoneMenuTarget } from '../e2e/floating-controls.ts'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -75,8 +87,13 @@ export const PHONE: Viewport = { width: 375, height: 812 }
 const vpName = (v: Viewport) => `${v.width}x${v.height}`
 
 export interface Plan {
-	/** The demo profile: each page at each size; `full` walks S5, S3 and S4 after S1 and S2. */
-	main: { viewports: Viewport[]; pages: { pathname: string; full: boolean }[] } | null
+	/**
+	 * The demo profile: each page at each size; `full` walks S5, S3 and S4 after S1 and S2; `reimagine` then walks S7
+	 * on the same load ('full': the composer, the view with the Pocket peeking, the guide listening, the composer over
+	 * the view, canvas's and streaming's previews, Vodafone's menu over the view; 'short': the composer, the view and
+	 * the menu).
+	 */
+	main: { viewports: Viewport[]; pages: { pathname: string; full: boolean; reimagine?: 'full' | 'short' }[] } | null
 	/** A throwaway profile, the banner showing: S1 only. */
 	banner: { viewports: Viewport[]; pages: string[] } | null
 }
@@ -85,15 +102,15 @@ export const PLAN: Plan = {
 	main: {
 		viewports: [DESKTOP, PHONE],
 		pages: [
-			{ pathname: '/en/services', full: true },
+			{ pathname: '/en/services', full: true, reimagine: 'full' },
 			{ pathname: '/ar/services', full: true },
-			{ pathname: '/en/home', full: false },
+			{ pathname: '/en/home', full: false, reimagine: 'short' },
 		],
 	},
 	banner: { viewports: [DESKTOP, PHONE], pages: ['/en/services', '/ar/services'] },
 }
 
-/** Two loads per page and size (?aixc=off, then the layer). */
+/** Two loads per page and size (?aixc=off, then the layer); S7 adds none (it walks on the layer's load). */
 export const plannedLoads = (p: Plan) => (p.main ? p.main.viewports.length * p.main.pages.length * 2 : 0) + (p.banner ? p.banner.viewports.length * p.banner.pages.length * 2 : 0)
 
 /**
@@ -118,12 +135,26 @@ export const MIC_STAND_IN = `(() => {
 export const ACTORS_TEST = `window.__POCKET_ACTORS_TEST__ = { seed: 7, timing: { sleepAt: 600000 } }`
 
 /**
+ * One of our controls this run may press: found by `selector` (in the guide's shadow root where `inGuide`), or by
+ * `byId` with `%s` the card's or template's id; `button`: it must be a <button> inside no link at all (S7's: the
+ * view's cards lead to Vodafone's pages, so nothing in a link of ours is pressed either).
+ */
+export interface PressTarget {
+	name: string
+	inGuide: boolean
+	selector: string
+	byId?: string
+	button?: boolean
+}
+
+/**
  * Everything this run may press: our own controls only. Each is found by its selector (in the guide's shadow
  * root where `inGuide`), must sit inside one of our roots (data-aixc, data-vg, the guide's shadow root) and
- * outside any link of Vodafone's, and a hit test at its centre must reach it.
+ * outside any link of Vodafone's, and a hit test at its centre must reach it. Vodafone's menu is opened apart
+ * (openMenu: a hover on a wide screen, a press on its burger on a narrow one), the only thing of Vodafone's S7 touches.
  */
 export const PRESS_TARGETS = {
-	chip: { name: 'a "Pocket it" chip', inGuide: false, selector: '.pocket-chips .pocket-cta' },
+	chip: { name: 'a "Pocket it" chip', inGuide: false, selector: '.pocket-chips .pocket-cta', byId: '.pocket-chips .pocket-cta[data-pocket-for="%s"]' },
 	pocket: { name: 'the Pocket button', inGuide: false, selector: '.pocket-peek[data-state="shown"]' },
 	mic: { name: "the guide's mic", inGuide: true, selector: '.vg-mic' },
 	pill: { name: "the trail's pill", inGuide: true, selector: '.tr-pill' },
@@ -131,7 +162,16 @@ export const PRESS_TARGETS = {
 	journeyAllow: { name: "allow, in the journey's consent (the trail's)", inGuide: false, selector: '#pocket-journey-layer[data-mode="consent"]:not([hidden]) .pocket-journey-consent__actions > button.pocket-back--solid' },
 	journeyClose: { name: "the journey's close", inGuide: false, selector: '#pocket-journey-layer:not([hidden]) button.pocket-journey-close' },
 	albumBack: { name: "the album's Back", inGuide: false, selector: '#pocket-output:not([hidden]) .pocket-view__start > button.pocket-back:not(.pocket-journey-cta)' },
-} as const
+	// S7 (phase 4c): Reimagine's own controls.
+	launcher: { name: "Reimagine's launcher", inGuide: false, selector: '.aixc-launcher', button: true },
+	template: { name: 'a template in the composer', inGuide: false, selector: '.aixc-composer:not([hidden]) .aixc-template', byId: '.aixc-composer:not([hidden]) .aixc-template[data-template="%s"]', button: true },
+	change: { name: 'the view bar\'s "Change experience"', inGuide: false, selector: '.aixc-viewbar .aixc-text-btn[aria-controls="aixc-composer"]', button: true },
+	original: { name: 'the view bar\'s "Original"', inGuide: false, selector: '.aixc-viewbar .aixc-seg[data-view="original"]', button: true },
+	canvasCard: { name: "a canvas card (its preview)", inGuide: false, selector: '.aixc-box .cv-card', byId: '.aixc-box .cv-card[data-aixc-item="%s"]', button: true },
+	canvasClose: { name: "the canvas preview's close", inGuide: false, selector: '.aixc-box .cv-dialog[open] .cv-dialog__close', button: true },
+	streamingCard: { name: "a streaming card's More info (its preview)", inGuide: false, selector: '.aixc-box .st-card .st-card__open', byId: '.aixc-box .st-card[data-aixc-item="%s"] .st-card__open', button: true },
+	streamingClose: { name: "the streaming preview's close", inGuide: false, selector: '.aixc-box .st-modal[open] .st-modal__close', button: true },
+} as const satisfies Record<string, PressTarget>
 export type Target = keyof typeof PRESS_TARGETS
 
 export interface FloatingBrowser {
@@ -209,6 +249,10 @@ export interface Cell {
 	violations: string[]
 	notes: string[]
 	screenshot: string | null
+	/** Reimagine's view, the corners' zones (their sizes, a view or not), an open preview, Vodafone's open menu (S7). */
+	view: ViewReading | null
+	/** With Vodafone's menu open (S7): what a press at its points reaches. */
+	menuHits: Record<string, Hit[]> | null
 }
 
 export interface Baseline {
@@ -251,6 +295,10 @@ export interface FloatingReport {
 	plannedLoads: number
 	loads: { pass: string; url: string; status: number | null; at: number; how: string }[]
 	presses: { pass: string; what: string; at: number }[]
+	/** Vodafone's controls this run touched, only ever to open and close its menu over a view (S7): a hover or a press. */
+	vodafone: { pass: string; what: string; how: 'hover' | 'press'; at: number }[]
+	/** The gate on every page the layer was loaded on (coverage, sections, the launcher's decision): ADR-0076 §4, O29. */
+	gates: ({ pass: string; page: string; viewport: string } & GateReading)[]
 	cells: Cell[]
 	baselines: Baseline[]
 	environments: Environment[]
@@ -336,7 +384,7 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 	const log = o.log ?? ((line: string) => console.log(`# ${line}`))
 	const hooks = o.hooks ?? {}
 	const t0 = Date.now()
-	const report: FloatingReport = { base, out, startedAt: new Date(t0).toISOString(), ms: 0, outcome: 'failed', main: 'not run', banner: 'not run', message: null, plannedLoads: planned, loads: [], presses: [], cells: [], baselines: [], environments: [], violations: [], notes: [], layerConsole: [], layerPageErrors: [], cleanup: [], exceptions: OVERLAP_EXCEPTIONS }
+	const report: FloatingReport = { base, out, startedAt: new Date(t0).toISOString(), ms: 0, outcome: 'failed', main: 'not run', banner: 'not run', message: null, plannedLoads: planned, loads: [], presses: [], vodafone: [], gates: [], cells: [], baselines: [], environments: [], violations: [], notes: [], layerConsole: [], layerPageErrors: [], cleanup: [], exceptions: OVERLAP_EXCEPTIONS }
 	const jsonFile = path.join(out, 'floating-live.json')
 	const write = () => {
 		report.ms = Date.now() - t0
@@ -527,15 +575,16 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 	 */
 	const locate = (page: Page, target: Target, id: string | null) =>
 		page.evaluate(
-			({ selector, inGuide, id }) => {
+			({ selector, byId, inGuide, id }) => {
 				const guide = document.querySelector('vg-guide')?.shadowRoot ?? null
 				const root: ParentNode | null = inGuide ? guide : document
-				const sel = id === null ? selector : `${selector}[data-pocket-for="${CSS.escape(id)}"]`
+				const sel = id === null ? selector : byId.replace('%s', CSS.escape(id))
 				const el = root ? root.querySelector<HTMLElement>(sel) : null
 				if (!el) return { found: false as const }
 				const ours = (!!guide && el.getRootNode() === guide) || !!el.closest('[data-aixc], [data-vg]')
 				const link = el.closest('a[href]')
 				const inVodafoneLink = !!link && !link.closest('[data-aixc], [data-vg]') && el.getRootNode() === document
+				const plainButton = el.localName === 'button' && !link
 				const r = el.getBoundingClientRect()
 				const vw = document.documentElement.clientWidth || innerWidth
 				const x = r.left + r.width / 2
@@ -550,20 +599,22 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 				const reached = !!hit && (hit === el || el.contains(hit))
 				const onTop = hit ? `${hit.localName}${hit.id ? '#' + hit.id : ''}.${String(hit.getAttribute('class') ?? '').split(' ')[0]}` : 'nothing'
 				const label = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60)
-				return { found: true as const, ours, inVodafoneLink, shown, x, y, reached, onTop, label }
+				return { found: true as const, ours, inVodafoneLink, plainButton, shown, x, y, reached, onTop, label }
 			},
-			{ selector: PRESS_TARGETS[target].selector, inGuide: PRESS_TARGETS[target].inGuide, id },
+			{ selector: PRESS_TARGETS[target].selector, byId: (PRESS_TARGETS[target] as PressTarget).byId ?? '', inGuide: PRESS_TARGETS[target].inGuide, id },
 		)
 
 	/** The only way this run presses anything: one of our controls, hit-tested, never while the banner shows. */
 	const press = async (page: Page, target: Target, id: string | null = null): Promise<{ ok: true } | { ok: false; why: string }> => {
-		const name = PRESS_TARGETS[target].name
+		const t: PressTarget = PRESS_TARGETS[target]
+		const name = t.name
 		if (pass === 'banner') throw new Error(`refused: the banner pass never presses (${name})`)
-		if (target === 'chip' ? id === null : id !== null) throw new Error(`refused: ${name} with ${id === null ? 'no card' : 'a card'}`)
+		if (t.byId ? id === null : id !== null) throw new Error(`refused: ${name} with ${id === null ? 'no card' : 'a card'}`)
 		const at = await locate(page, target, id)
 		if (!at.found) return { ok: false, why: `there is no ${name} on the page` }
 		if (!at.ours) return { ok: false, why: `refused: ${name} is not inside one of our roots` }
 		if (at.inVodafoneLink) return { ok: false, why: `refused: ${name} is inside a link of Vodafone's` }
+		if (t.button && !at.plainButton) return { ok: false, why: `refused: ${name} is not a button outside every link` }
 		if (!at.shown) return { ok: false, why: `${name} is not on the screen` }
 		if (!at.reached) return { ok: false, why: `a press at ${name}'s centre (${Math.round(at.x)},${Math.round(at.y)}) would reach ${at.onTop}` }
 		if (await bannerShows(page)) throw new BannerShows()
@@ -713,8 +764,12 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 		off: Measure['button']
 	}
 
-	/** One cell: measured, hit-tested, held to the rules, its floaters listed, photographed, written. */
-	const take = async (page: Page, ctx: PageCtx, state: string) => {
+	/**
+	 * One cell: measured, hit-tested, held to the rules, its floaters listed, photographed, written. Every cell reads
+	 * the corners' zones and Reimagine's view (readView); an S7 cell (`expect`) is held to S7's rules too, and with
+	 * Vodafone's menu open, our points under the menu are its (underMenu) and its points are held (menuHits).
+	 */
+	const take = async (page: Page, ctx: PageCtx, state: string, expect?: ViewExpect) => {
 		checkUnexpected()
 		await stopIfBlocked(page, null)
 		const info: CellInfo = { pass, pathname: ctx.pathname, viewport: vpName(ctx.vp), state }
@@ -723,10 +778,27 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 			checkUnexpected()
 		}
 		const m = await measureControls(page, state)
-		const h = await hitContext(page, m)
+		const view = await readView(page).catch(() => null)
+		const h0 = await hitContext(page, m)
+		const under = view && expect?.menu ? underMenu(h0.hits, view) : { hits: h0.hits, notes: [] as string[] }
+		const h = { ...h0, hits: under.hits }
 		const v = cellViolations(m, { where: ctx.where, off: ctx.off, hits: h.hits, bannerHits: h.bannerHits })
-		const notes: string[] = []
+		const notes: string[] = [...under.notes]
 		const w = `${ctx.where} ${state}`
+		if (!view) notes.push('skipped: the view and the corners could not be read')
+		let menu: Record<string, Hit[]> | null = null
+		// An S7 cell is held to S7's rules; one whose view could not be read is a violation (viewViolations), never a pass.
+		if (expect) {
+			const s7 = viewViolations(ctx.where, view, m, expect)
+			v.push(...s7.violations)
+			notes.push(...s7.notes)
+			if (view && expect.menu) {
+				const mh = await menuHits(page, ctx.where, view)
+				v.push(...mh.violations)
+				notes.push(...mh.notes)
+				menu = mh.hits
+			}
+		}
 		// Readings that could not be taken are said (their rules did not see them): the curl's painted part, the fonts.
 		if (m.curlSkipped) notes.push(`skipped: ${m.curlSkipped} (rule (a) did not see the curl)`)
 		if (m.fontsSkipped) notes.push(`skipped: ${m.fontsSkipped} (rule (h) did not see our words)`)
@@ -761,7 +833,7 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 			}
 		}
 		const screenshot = await shoot(page, `${pass} ${ctx.pathname} ${vpName(ctx.vp)} ${state}`)
-		const cell: Cell = { n: report.cells.length + 1, pass, page: ctx.pathname, lang: ctx.pathname.slice(1, 3), viewport: vpName(ctx.vp), banner: m.controls.banner?.shown ? 'present' : 'absent', state, measure: m, hits: h.hits, bannerHits: h.bannerHits, bannerMode: h.bannerMode, floaters, violations: v, notes, screenshot }
+		const cell: Cell = { n: report.cells.length + 1, pass, page: ctx.pathname, lang: ctx.pathname.slice(1, 3), viewport: vpName(ctx.vp), banner: m.controls.banner?.shown ? 'present' : 'absent', state, measure: m, hits: h.hits, bannerHits: h.bannerHits, bannerMode: h.bannerMode, floaters, violations: v, notes, screenshot, view, menuHits: menu }
 		report.cells.push(cell)
 		for (const line of v) violation(line)
 		const shownNames = shownControls(m).map(([n]) => n)
@@ -769,7 +841,7 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 		const curl = m.curl.filter((c) => c.shown).map((c) => `${c.what} ${fmt(c.box)}`)
 		const drone = m.droneState ? (m.drone ? `drone ${fmt(m.drone)}` : `drone not shown (${m.droneState.why})`) : 'no drone'
 		const faces = [...new Set(m.fonts.flatMap((f) => f.fonts.map((x) => `${x.familyName}${x.isCustomFont ? '' : ' (system)'}`)))]
-		log(`  cell ${cell.n} ${w}: ${v.length ? `${v.length} violation(s)` : 'ok'}; shown ${shownNames.join(', ')}; Vodafone's floaters ${vf.join(' | ') || 'none'}; curl ${curl.join(' | ') || 'none painted'}; ${drone}; our words in ${faces.join(', ') || 'no font read'}${screenshot ? `; ${screenshot}` : ''}`)
+		log(`  cell ${cell.n} ${w}: ${v.length ? `${v.length} violation(s)` : 'ok'}; shown ${shownNames.join(', ')}; Vodafone's floaters ${vf.join(' | ') || 'none'}; curl ${curl.join(' | ') || 'none painted'}; ${drone}; our words in ${faces.join(', ') || 'no font read'}; corners ${view ? cornersLine(view) : 'not read'}${view?.menu.open ? `; Vodafone's menu open (${view.menu.boxes.map((b) => `${b.what} ${fmt(b.box)}`).join(' | ') || 'nothing of it on the screen'})` : ''}${screenshot ? `; ${screenshot}` : ''}`)
 		return m
 	}
 
@@ -1015,9 +1087,279 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 		}
 	}
 
-	const walkMain = async (page: Page, vp: Viewport, target: { pathname: string; full: boolean }) => {
+	/** The gate on this page (ADR-0076 §4; O29: never measured live before phase 4c), recorded for the report and held to its rule. */
+	const recordGate = async (page: Page, ctx: PageCtx) => {
+		const gate = await gateOf(page)
+		report.gates.push({ pass, page: ctx.pathname, viewport: vpName(ctx.vp), ...gate })
+		for (const line of gateViolations(ctx.where, gate)) violation(line)
+		if (gate.allowed === null) note(`${ctx.where}: Reimagine's launcher had not started within 15 s: the gate's decision was not read`)
+		log(`  the gate: coverage ${gate.coverage ?? 'not read'} (${gate.usable ?? '-'} of ${gate.cards ?? '-'} cards usable, ${gate.unread ?? '-'} unread), sections ${JSON.stringify(gate.sections)}: ${gate.passes ? 'passes' : `does not pass (${gate.why})`}; the launcher ${gate.allowed === null ? 'not started' : gate.allowed ? 'open' : 'closed'}, its button ${gate.launcher}`)
+		return gate
+	}
+
+	/* S7, the reimagined view (phase 4c): on the layer's load of a page, after its other states; no page load of its own. */
+
+	const reimagineNow = (page: Page) =>
+		page.evaluate(() => {
+			const s = (window as any).__aixc?.demos?.reimagine?.state
+			return { view: (s?.view ?? null) as string | null, template: (s?.template ?? null) as string | null, composer: !!document.querySelector('.aixc-composer:not([hidden])'), mounted: !!document.querySelector('.aixc-box:not([hidden]) > .aixc-stage > *'), launcher: (window as any).__aixc?.demos?.reimagine?.debug?.() ?? null }
+		})
+
+	/** The launcher at the top of the page, shown and still: the window scrolled up with the wheel (it tucks with the pill, and shows only near the top without one). */
+	const launcherAtTop = async (page: Page) => {
+		const vs = page.viewportSize() ?? DESKTOP
+		await page.mouse.move(vs.width / 2, vs.height / 2, { steps: 2 })
+		await page.mouse.wheel(0, -8000)
+		await page
+			.waitForFunction(
+				() => {
+					const b = document.querySelector<HTMLElement>('.aixc-launcher')
+					if (!b || b.hidden || b.hasAttribute('data-tucked') || getComputedStyle(b).visibility === 'hidden') return false
+					const r = b.getBoundingClientRect()
+					return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight
+				},
+				null,
+				{ timeout: 20_000 },
+			)
+			.catch(async () => {
+				throw new StateFailed(`Reimagine's launcher did not show at the top of the page (${JSON.stringify(await reimagineNow(page))})`)
+			})
+		await frames(page, 400)
+	}
+	const waitComposer = async (page: Page) => {
+		await page.waitForSelector('.aixc-composer:not([hidden])', { timeout: 15_000 }).catch(() => {
+			throw new StateFailed('the composer did not open')
+		})
+		// Its words in Vodafone's faces (rule h): read once the faces have loaded.
+		await page.evaluate(() => document.fonts.ready.then(() => {}))
+		await frames(page, 400)
+	}
+	/** A template pressed in the open composer, brought into the composer's own view first. */
+	const pressTemplate = async (page: Page, template: string) => {
+		if (!(await templateInView(page, template))) throw new StateFailed(`the composer has no ${template}`)
+		await mustPress(page, 'template', template)
+	}
+	const waitTemplate = async (page: Page, template: string) => {
+		await page
+			.waitForFunction(
+				(t) => {
+					const s = (window as any).__aixc?.demos?.reimagine?.state
+					return s?.view === 'reimagined' && s.template === t && !!document.querySelector('.aixc-box:not([hidden]) > .aixc-stage > *')
+				},
+				template,
+				{ timeout: 25_000 },
+			)
+			.catch(async () => {
+				throw new StateFailed(`${template}'s view did not show (${JSON.stringify(await reimagineNow(page))})`)
+			})
+		await page.evaluate(() => document.fonts.ready.then(() => {}))
+		await frames(page, 900)
+	}
+	const openPreview = async (page: Page, which: 'canvas' | 'streaming') => {
+		const id = await reachableOpener(page, which)
+		if (!id) throw new StateFailed(`no ${which} card whose preview a press reaches`)
+		await mustPress(page, which === 'canvas' ? 'canvasCard' : 'streamingCard', id)
+		await page.waitForFunction(() => !!document.querySelector('.aixc-box dialog[open]'), null, { timeout: 8_000 }).catch(() => {
+			throw new StateFailed(`${which}'s preview did not open`)
+		})
+		// Canvas's preview zooms in (600 ms, its words 650 ms later).
+		await frames(page, 1400)
+	}
+	const closePreview = async (page: Page, which: 'canvas' | 'streaming') => {
+		await mustPress(page, which === 'canvas' ? 'canvasClose' : 'streamingClose')
+		await page.waitForFunction(() => !document.querySelector('.aixc-box dialog[open]'), null, { timeout: 8_000 }).catch(() => {
+			throw new StateFailed(`${which}'s preview did not close`)
+		})
+		await frames(page, 600)
+	}
+
+	/** Where Vodafone's menu opens, the window scrolled to its top first when its navigation is not on the screen (by script, as pocketOne scrolls). */
+	const menuTarget = async (page: Page) => {
+		const at = await vodafoneMenuTarget(page)
+		if (at?.reached) return at
+		await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+		await frames(page, 500)
+		return vodafoneMenuTarget(page)
+	}
+	/**
+	 * Vodafone's menu over a view (S7), the only thing of Vodafone's this run touches (design §4; AGENTS.md §4): on a
+	 * wide screen a hover on its navigation's first dropdown (no press), on a narrow one a press on its burger (not a
+	 * link), and only to open it: the burger is never pressed a second time. Hit-tested as our presses are (again with
+	 * the pointer there), never while the banner shows, never in the banner pass; recorded in `report.vodafone`, and a
+	 * press in `report.presses` too. When the menu does not read open, `how` says whether the pointer or a press touched it.
+	 */
+	const openMenu = async (page: Page): Promise<{ ok: true; how: 'hover' | 'press' } | { ok: false; why: string; how?: 'hover' | 'press' }> => {
+		if (pass === 'banner') throw new Error("refused: the banner pass never touches Vodafone's menu")
+		const at = await menuTarget(page)
+		if (!at) return { ok: false, why: "there is no menu of Vodafone's on the screen to open" }
+		if (!at.reached) return { ok: false, why: `a press at ${at.what} (${Math.round(at.x)},${Math.round(at.y)}) would reach ${at.onTop}` }
+		if (await bannerShows(page)) throw new BannerShows()
+		await stopIfBlocked(page, null)
+		await page.mouse.move(at.x, at.y, { steps: 4 })
+		if (at.how === 'press') {
+			const again = await vodafoneMenuTarget(page)
+			if (!again || !again.reached || again.how !== 'press' || Math.hypot(again.x - at.x, again.y - at.y) > 3) return { ok: false, why: `with the pointer on ${at.what}, a press there would reach ${again?.onTop ?? 'nothing'}` }
+			if (await bannerShows(page)) throw new BannerShows()
+			report.presses.push({ pass, what: `${at.what}, to open its menu`, at: Date.now() })
+			log(`  press: ${at.what}, to open its menu`)
+			await page.mouse.click(again.x, again.y)
+		} else log(`  hover: ${at.what}, to open its dropdown (no press)`)
+		report.vodafone.push({ pass, what: at.what, how: at.how, at: Date.now() })
+		await sleep(80)
+		checkUnexpected()
+		const opened = await page.waitForFunction(MENU_OPEN, null, { timeout: 5_000 }).then(
+			() => true,
+			() => false,
+		)
+		checkUnexpected()
+		return opened ? { ok: true, how: at.how } : { ok: false, why: `Vodafone's menu did not read open (${at.what}, by ${at.how})`, how: at.how }
+	}
+	/**
+	 * After the menu cell (only when the run goes on: never after a stop or with the banner up). A hovered dropdown
+	 * closes as it opened, the pointer moved off the navigation onto our box (no press). The phone menu is left open:
+	 * its burger is pressed only to open it (design §4), and the next page load closes it. True when it reads closed.
+	 */
+	const closeMenu = async (page: Page, how: 'hover' | 'press', where: string): Promise<boolean> => {
+		if (how === 'press') {
+			note(`${where}: Vodafone's phone menu was left open (its burger is pressed only to open it); the next page load closes it`)
+			return false
+		}
+		checkUnexpected()
+		await stopIfBlocked(page, null)
+		const r = await readView(page).catch(() => null)
+		const vs = page.viewportSize() ?? DESKTOP
+		const x = r?.box ? (r.box.left + r.box.right) / 2 : vs.width / 2
+		const y = r?.box ? Math.max(r.box.top + 80, (r.box.top + r.box.bottom) / 2) : vs.height * 0.7
+		await page.mouse.move(x, y, { steps: 4 })
+		await sleep(80)
+		checkUnexpected()
+		const closed = await page.waitForFunction(MENU_CLOSED, null, { timeout: 5_000 }).then(
+			() => true,
+			() => false,
+		)
+		if (!closed) note(`${where}: Vodafone's menu did not close (${how}); the next page load closes it`)
+		await frames(page, 400)
+		return closed
+	}
+
+	/**
+	 * S7 on this load ('full' or 'short', the plan's `reimagine`): the composer from the launcher, spotlight's view (the
+	 * Pocket peeking: S2 pocketed a card); 'full' adds the guide listening over it, the composer over the view from
+	 * "Change experience", canvas's and streaming's previews open in the box; then Vodafone's menu over the view, and
+	 * Original. A state that cannot be reached is a violation, and the states after it on this page are left out.
+	 */
+	const walkS7 = async (page: Page, ctx: PageCtx, kind: 'full' | 'short', gate: GateReading | null) => {
+		const where = ctx.where
+		log(`${where}: S7 (${kind === 'full' ? 'the composer, the view, listening, the composer over the view, the two previews, the menu' : 'the composer, the view, the menu'})`)
+		if (gate && !gate.passes) {
+			violation(`${where}: (walk) S7 was not reached: the gate is closed on this page (${gate.why})`)
+			return
+		}
+		if ((await pocketState(page)).view === 'pocket') {
+			const back = await press(page, 'albumBack')
+			if (back.ok) await waitView(page, 'page', 'the album did not close').catch(() => {})
+		}
+		if (
+			!(await state(where, S7.composer, async () => {
+				await launcherAtTop(page)
+				await mustPress(page, 'launcher')
+				await waitComposer(page)
+				await take(page, ctx, S7.composer, { view: 'original', composer: true, pocket: true })
+			}))
+		)
+			return
+		if (
+			!(await state(where, S7.view, async () => {
+				await pressTemplate(page, S7_TEMPLATE)
+				await waitTemplate(page, S7_TEMPLATE)
+				await take(page, ctx, S7.view, { view: 'reimagined', composer: false, pocket: true })
+			}))
+		)
+			return
+		if (kind === 'full') {
+			const listened = await state(where, S7.listening, async () => {
+				await mustPress(page, 'mic')
+				await page.waitForFunction(() => {
+					const r = document.querySelector('vg-guide')!.shadowRoot!
+					return !r.querySelector('.vg-bar')!.classList.contains('hidden') && r.querySelector('.vg-kbd')!.classList.contains('show')
+				}, null, { timeout: 10_000 }).catch(async () => {
+					throw new StateFailed(`the transcript bar and the keyboard button did not show (${JSON.stringify(await guideParts(page))})`)
+				})
+				await frames(page, 700)
+				await take(page, ctx, S7.listening, { view: 'reimagined', composer: false, pocket: true, listening: true })
+				if ((await guideParts(page)).mic === 'listening') await mustPress(page, 'mic')
+				const vs = page.viewportSize() ?? ctx.vp
+				await page.mouse.move(vs.width / 2, vs.height / 2, { steps: 4 })
+				await page.waitForFunction(() => {
+					const r = document.querySelector('vg-guide')!.shadowRoot!
+					return r.querySelector('.vg-bar')!.classList.contains('hidden') && !r.querySelector('.vg-kbd')!.classList.contains('show')
+				}, null, { timeout: 10_000 }).catch(async () => {
+					throw new StateFailed(`the guide's bar did not go after the stop press (${JSON.stringify(await guideParts(page))})`)
+				})
+				await frames(page, 600)
+			})
+			if (!listened) return
+			const changed = await state(where, S7.change, async () => {
+				await mustPress(page, 'change')
+				await waitComposer(page)
+				await take(page, ctx, S7.change, { view: 'reimagined', composer: true, pocket: true })
+			})
+			if (!changed) return
+			const canvas = await state(where, S7.canvas, async () => {
+				await pressTemplate(page, 'canvas')
+				await waitTemplate(page, 'canvas')
+				await openPreview(page, 'canvas')
+				await take(page, ctx, S7.canvas, { view: 'reimagined', composer: false, pocket: true, preview: 'canvas' })
+				await closePreview(page, 'canvas')
+			})
+			if (!canvas) return
+			const streaming = await state(where, S7.streaming, async () => {
+				await mustPress(page, 'change')
+				await waitComposer(page)
+				await pressTemplate(page, 'streaming')
+				await waitTemplate(page, 'streaming')
+				await openPreview(page, 'streaming')
+				await take(page, ctx, S7.streaming, { view: 'reimagined', composer: false, pocket: true, preview: 'streaming' })
+				await closePreview(page, 'streaming')
+			})
+			if (!streaming) return
+		}
+		// Whether Vodafone's menu may still be open after its cell (then Original is not pressed: the next load gives the page back).
+		let menuLeft = false
+		await state(where, S7.menu, async () => {
+			const r = await openMenu(page)
+			if (!r.ok) {
+				// Touched but not read open: a hover is taken off again; after a press the menu may be open, unmarked.
+				if (r.how) menuLeft = !(await closeMenu(page, r.how, where))
+				throw new StateFailed(r.why)
+			}
+			menuLeft = true
+			await frames(page, 600)
+			// A stop (a bot check, a load this run did not start) or the banner ends the run here: nothing more is touched,
+			// the menu not closed. Only a cell that was taken, or a state that failed, goes on to close it.
+			let failed: StateFailed | null = null
+			try {
+				await take(page, ctx, S7.menu, { view: 'reimagined', composer: false, pocket: true, menu: true })
+			} catch (e) {
+				if (!(e instanceof StateFailed)) throw e
+				failed = e
+			}
+			menuLeft = !(await closeMenu(page, r.how, where))
+			if (failed) throw failed
+		})
+		if (menuLeft) {
+			note(`${where}: Original was not pressed with Vodafone's menu still open; the next page load gives the page back`)
+			return
+		}
+		// Original gives the page back (the next load would anyway).
+		const back = await press(page, 'original')
+		if (back.ok) await page.waitForFunction(() => (window as any).__aixc?.demos?.reimagine?.state?.view === 'original', null, { timeout: 10_000 }).catch(() => note(`${where}: Original did not give the page back`))
+		else note(`${where}: the view was left open (${back.why}); the next page load gives the page back`)
+	}
+
+	const walkMain = async (page: Page, vp: Viewport, target: { pathname: string; full: boolean; reimagine?: 'full' | 'short' }) => {
 		const ctx: PageCtx = { pathname: target.pathname, vp, where: `${target.pathname} ${vpName(vp)} banner absent`, off: null }
-		log(`${ctx.where}: ${target.full ? 'S1, S2, S5, S3, S4' : 'S1, S2'}`)
+		log(`${ctx.where}: ${target.full ? 'S1, S2, S5, S3, S4' : 'S1, S2'}${target.reimagine ? `, S7 (${target.reimagine})` : ''}`)
 		const only = await vodafoneOnly(page)
 		let ok = false
 		try {
@@ -1045,6 +1387,7 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 			)
 				return
 			if (await bannerShows(page)) throw new BannerShows()
+			const gate = await recordGate(page, ctx)
 			keysBefore = (await pocketState(page)).keys
 			if (keysBefore.length) note(`${ctx.where}: the Pocket held ${keysBefore.length} sticker(s) before this run (kept)`)
 			await page.waitForSelector('#pocket-output[data-pocket-actor-ready]', { state: 'attached', timeout: 10_000 }).catch(() => {})
@@ -1058,7 +1401,10 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 				const s2 = await take(page, ctx, 'S2 pocketed, peeking')
 				if (!s2.controls.pocket?.shown) throw new StateFailed('the Pocket button does not peek')
 			})
-			if (!target.full) return
+			if (!target.full) {
+				if (target.reimagine && pocketed) await walkS7(page, ctx, target.reimagine, gate)
+				return
+			}
 
 			await state(ctx.where, 'S5 the guide listening', async () => {
 				await mustPress(page, 'mic')
@@ -1151,6 +1497,7 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 				if (back.ok) await waitView(page, 'page', 'the album did not close').catch(() => note(`${ctx.where}: the album did not close`))
 				else note(`${ctx.where}: the album was left open (${back.why})`)
 			})
+			if (target.reimagine) await walkS7(page, ctx, target.reimagine, gate)
 		} finally {
 			await cleanPage(page, ctx.where, keysBefore, grantedHere)
 		}
@@ -1181,6 +1528,7 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 			}))
 		)
 			return
+		await recordGate(page, ctx)
 		if (!(await bannerShows(page))) violation(`${ctx.where}: the cookie banner did not show on a first visit (a throwaway profile): rules (c) and (e) with the banner are unchecked here`)
 		await page.waitForSelector('#pocket-output[data-pocket-actor-ready]', { state: 'attached', timeout: 10_000 }).catch(() => {})
 		await frames(page, 400)
@@ -1231,7 +1579,8 @@ export async function runFloatingMatrix(o: FloatingOptions): Promise<FloatingRep
 		for (const e of errors) violation(`the layer logged an error: ${e}`)
 		for (const e of report.layerPageErrors) violation(`a page error came from the layer: ${e}`)
 		report.outcome = report.violations.length ? 'violations' : 'passed'
-		log(`${report.outcome.toUpperCase()}: ${report.cells.length} cells, ${report.loads.length} page loads (${planned} planned, at most ${MAX_LOADS}), ${report.presses.length} presses (${report.presses.filter((p) => p.pass === 'banner').length} in the banner pass), ${report.violations.length} violation(s); ${jsonFile}`)
+		for (const g of report.gates) log(`the gate on ${g.pass} ${g.page} ${g.viewport}: coverage ${g.coverage ?? 'not read'}, sections ${JSON.stringify(g.sections)}, ${g.passes ? 'passes' : 'does not pass'}; the launcher ${g.allowed === null ? 'not started' : g.allowed ? 'open' : 'closed'}`)
+		log(`${report.outcome.toUpperCase()}: ${report.cells.length} cells, ${report.loads.length} page loads (${planned} planned, at most ${MAX_LOADS}), ${report.presses.length} presses (${report.presses.filter((p) => p.pass === 'banner').length} in the banner pass), Vodafone's menu touched ${report.vodafone.length} time(s) (${report.vodafone.map((x) => x.how).join(', ') || 'never'}), ${report.violations.length} violation(s); ${jsonFile}`)
 		return report
 	} catch (e) {
 		if (e instanceof FloatingStop) throw e

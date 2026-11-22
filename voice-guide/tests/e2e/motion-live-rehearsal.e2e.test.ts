@@ -31,6 +31,15 @@
  * and its screenshots come out at Playwright's ratio); Owl hiding a carousel it finds out of sight
  * (.owl-hidden: the stand-in has no Owl script, so cardsHiddenMs is about our layer only).
  *
+ * The reimagined round (phase 4c, REIMAGINED: the last of LIVE_COMBOS, which the live test runs) on the saved
+ * /en/services at 1366×900 on its own: every step passes (the gate read and passing, the corners read, the
+ * composer filmed opening clear of them, spotlight's view filmed coming in with the box at rest under the header and
+ * #main-content hidden, the zones on the box as the controls need, the box scrolled by the wheel with the window
+ * still and the bar at its top, Original filmed with the page back as served), one page load, three presses (all
+ * Reimagine's own), every number and screenshot on disk; and with the banner it stops before any press. Its
+ * screenshots stand in for headed Google Chrome's (WHEEL_IN_CAPTURE: a wheel that arrives during one goes to the
+ * window, as the live run of 2026-11-22 met), so the round passes only if no wheel is sent while one is taken.
+ *
  * The screenshots and motion-report.json go to a new folder in the system's temporary directory, removed
  * at the end; VG_MOTION_KEEP=1 keeps the four rounds' folder and prints where it is.
  */
@@ -43,7 +52,7 @@ import { gunzipSync } from 'node:zlib'
 
 import { chromium, type Page } from 'playwright'
 
-import { BANNER_MESSAGE, captureViewport, COMBOS, DESKTOP, LOADS_PER_COMBO, MAX_LOADS, MAX_PAGE_REQUESTS, type MotionHooks, MotionFailure, type MotionReport, MotionStop, requestsLine, runMotion } from '../live/motion.live.test.ts'
+import { BANNER_MESSAGE, captureViewport, COMBOS, DESKTOP, LIVE_COMBOS, LOADS_PER_COMBO, LOADS_PER_REIMAGINED, MAX_LOADS, MAX_PAGE_REQUESTS, type MotionHooks, MotionFailure, type MotionReport, MotionStop, REIMAGINED, requestsLine, runMotion } from '../live/motion.live.test.ts'
 import { ROOT } from '#shared/config.ts'
 
 import { type LayerGateway, launchLayer, REPLAY, startLayerGateway, V, watch } from './vodafone-layer.ts'
@@ -100,6 +109,42 @@ const serveDestination: MotionHooks['beforeDestination'] = async (page, url) => 
 
 const quickSettle: MotionHooks['settle'] = (page) => page.waitForTimeout(300)
 
+/**
+ * Headed Google Chrome's screenshot, stood in for: while Page.captureScreenshot is in flight there, a wheel goes to
+ * the window, not the box under the pointer (the live run of 2026-11-22, r4: the window moved 377 px and the view bar
+ * ended 278 px above the screen; the kit in headed Chrome did the same; headless Chromium never does). The page
+ * script turns a trusted wheel that arrives while the capture hook has flagged the page into the window's scroll, and
+ * counts it; the hook keeps the flag up for as long as a capture takes there (100 ms more than headless), so a wheel
+ * sent without waiting for the capture nearly always lands in one.
+ */
+const WHEEL_IN_CAPTURE = `(() => {
+	if (window.top !== window) return
+	// Listening only while flagged: a wheel listener that may cancel takes the page's scrolling off the compositor.
+	const divert = (e) => {
+		if (!e.isTrusted) return
+		e.preventDefault()
+		window.__vgCapture.diverted++
+		window.scrollBy({ top: e.deltaY, behavior: 'instant' })
+	}
+	window.__vgCapture = {
+		diverted: 0,
+		flag(on) {
+			if (on) window.addEventListener('wheel', divert, { capture: true, passive: false })
+			else window.removeEventListener('wheel', divert, { capture: true })
+		},
+	}
+})()`
+const flagCapture = (page: Page, on: boolean) => page.evaluate((on) => (window as any).__vgCapture?.flag(on), on)
+const headedCapture: MotionHooks['capture'] = async (page) => {
+	await flagCapture(page, true)
+	try {
+		await page.waitForTimeout(100)
+		return await captureViewport(page)
+	} finally {
+		await flagCapture(page, false).catch(() => {})
+	}
+}
+
 /** Moves the Owl stage in view by one slide (`dir` 1 on, -1 back) with a 0.6 s transition, as Owl's autoplay would; the stand-in has no motion of its own. */
 const moveStage = (page: Page, dir: 1 | -1) =>
 	page.evaluate((dir) => {
@@ -123,7 +168,7 @@ const carousels: MotionHooks['chipSample'] = async (page, i) => {
 	if (i === 10) await moveStage(page, -1)
 }
 
-const launch = (o: { banner?: boolean } = {}) => launchLayer(gw, { themeClear: true, owl: true, banner: o.banner, initScripts: [WIDGET_DEFINED, PRESSES] })
+const launch = (o: { banner?: boolean; headedCapture?: boolean } = {}) => launchLayer(gw, { themeClear: true, owl: true, banner: o.banner, initScripts: [WIDGET_DEFINED, PRESSES, ...(o.headedCapture ? [WHEEL_IN_CAPTURE] : [])] })
 
 const stickersLeft = (page: Page) =>
 	page.evaluate(() => {
@@ -535,6 +580,113 @@ test("a press is refused when the element at the press point is not the layer's 
 		)
 		assert.equal(await l.page.evaluate(() => (window as any).__presses), 0, 'the page saw no press')
 		assert.equal(await stickersLeft(l.page), 0, 'nothing pocketed')
+	} finally {
+		await l.close()
+		fs.rmSync(out, { recursive: true, force: true })
+	}
+})
+
+test("the reimagined round on the saved /en/services at 1366×900, with headed Chrome's screenshot stood in for: the gate and the corners, the composer, the view, the box scrolled (no wheel during a screenshot), Original; every step passes, one page load, three presses of our own, every number and screenshot on disk", { timeout: 240_000 }, async () => {
+	assert.deepEqual(LIVE_COMBOS, [...COMBOS, REIMAGINED], 'the live run is the four rounds, then the reimagined one')
+	assert.deepEqual(REIMAGINED, { path: '/en/services', viewport: DESKTOP, reimagine: 'spotlight' })
+	const l = await launch({ headedCapture: true })
+	const out = tmpOut('reimagined')
+	try {
+		const seen = watch(l.page)
+		const lines: string[] = []
+		let report: MotionReport
+		try {
+			report = await runMotion(l.page, { base: V, out, combos: [REIMAGINED], log: (x) => lines.push(x), hooks: { settle: quickSettle, capture: headedCapture } })
+		} finally {
+			console.log(`# ${lines.join('\n# ')}`)
+		}
+		const failed = report.checks.filter((c) => !c.ok)
+		assert.deepEqual(failed, [], `every check passes: ${JSON.stringify(failed)}`)
+		assert.equal(report.outcome, 'passed', report.message ?? '')
+		assert.equal(await l.page.evaluate(() => (window as any).__vgCapture.diverted), 0, 'no wheel arrived during a screenshot')
+		assert.deepEqual(
+			report.combos.map((c) => c.name),
+			['en-1366-reimagined'],
+		)
+		const c = report.combos[0]
+		assert.deepEqual(
+			c.steps.map((s) => `${s.id}${s.ok ? '' : ' failed'}`),
+			['a', 'b', 'r1', 'r2', 'r3', 'r4', 'r5', '6'],
+			'every step, in order, passed',
+		)
+		assert.deepEqual(
+			report.checks.map((x) => x.id),
+			['gate', 'composer', 'view', 'box-scroll', 'original', 'compare'],
+		)
+		// No Pocket step ran in it.
+		assert.deepEqual([c.chips, c.flight, c.album, c.close, c.portal, c.back, c.cost.baseline, c.cost.album], [null, null, null, null, null, null, null, null])
+		const x = c.reimagine!
+		assert.equal(x.template, 'spotlight')
+		// (r1) The gate on the saved page: read and passing; the corners on load.
+		assert.ok(x.gate && x.gate.passes && x.gate.allowed === true && x.gate.coverage! >= 0.9, `the gate read (${JSON.stringify(x.gate)})`)
+		assert.ok(x.corners?.right && x.corners.right.w > 0 && x.corners.right.h > 0 && x.corners.right.controls.includes('accessibility') && x.corners.right.controls.includes('mic'), `the bottom-right corner read with the accessibility button and the mic (${JSON.stringify(x.corners)})`)
+		// (r2) The composer filmed 100 ms apart for 1.2 s, open within it, clear of the corners.
+		assert.equal(x.composer!.frames.length, 13, 'the composer filmed in 13 frames')
+		assert.ok(x.composer!.openMs !== null && x.composer!.openMs < 1300 && x.composer!.box && x.composer!.clearOfCorners, `the composer open (${JSON.stringify({ openMs: x.composer!.openMs, box: x.composer!.box, placement: x.composer!.placement })})`)
+		// (r3) The view filmed 200 ms apart for 3 s: shown within it, the window's open scroll, the box at rest, the zones read.
+		assert.equal(x.open!.frames.length, 15, 'the view filmed in 15 frames')
+		assert.ok(x.open!.viewMs !== null && x.open!.mainHeight === 0, `the view shown, #main-content hidden (${JSON.stringify({ viewMs: x.open!.viewMs, mainHeight: x.open!.mainHeight })})`)
+		assert.ok(x.zones?.measured && x.zones.onBox, `the zones measured and on the box (${JSON.stringify(x.zones)})`)
+		// (r4) The box scrolled by the wheel: it moved, the window did not, the bar held at the box's top, the frames counted.
+		const sc = x.scroll!
+		assert.ok(sc.boxAfter! - sc.boxBefore! >= 200 && sc.windowMoved <= 1 && sc.barDrift >= 0 && sc.barDrift <= 1, `the box scrolled, the window still, the bar at the top (${JSON.stringify({ ...sc, frames: sc.frames.length })})`)
+		assert.deepEqual([sc.scrollYBefore, sc.scrollYAfter], [x.open!.scrollYAfter, x.open!.scrollYAfter], "the window's scroll before and after the wheel in the report, where the box rested")
+		assert.ok(sc.cost.frames > 30 && Number.isFinite(sc.cost.over33), `the frames over the scroll counted (${JSON.stringify(sc.cost)})`)
+		assert.equal(sc.frames.length, Math.ceil((sc.wheel.steps * sc.wheel.everyMs + 900) / 150), 'the scroll filmed 150 ms apart')
+		// (r5) Original: the page back within the film, #main-content as served, the window where it was, the launcher back.
+		const o = x.original!
+		assert.equal(o.frames.length, 12, 'Original filmed in 12 frames')
+		assert.ok(o.backMs !== null && o.boxHidden && o.launcherShown && o.main?.height! > 0, `the page back (${JSON.stringify({ ...o, frames: o.frames.length })})`)
+		assert.equal(o.barBackFrom, null, 'the view bar was on the screen: the window was not brought back for it')
+		assert.deepEqual([o.main!.style, o.main!.inert, o.main!.hidden], [x.served!.style, x.served!.inert, x.served!.hidden], '#main-content as served')
+		assert.ok(Math.abs(o.scrollYAfter - x.scrollYBefore!) <= 2, `the window back at ${x.scrollYBefore} (${o.scrollYAfter})`)
+		assert.ok(o.carousels.length > 0 && o.carousels.every((k) => !k.hidden && k.opacity === '1'), `Owl's carousels painted (${JSON.stringify(o.carousels)})`)
+		// One page load; three presses, all Reimagine's own (the launcher, the template, Original), and the page saw only those.
+		assert.deepEqual(
+			report.loads.map((l) => l.how),
+			LOADS_PER_REIMAGINED,
+		)
+		assert.ok(report.loads.length <= MAX_LOADS)
+		assert.equal(report.presses, 3)
+		assert.equal(await l.page.evaluate(() => (window as any).__presses), 3, 'the page saw three trusted presses')
+		assert.equal(await stickersLeft(l.page), 0, 'nothing pocketed')
+		// Every screenshot on disk, the whole viewport; the JSON written.
+		const missing = report.files.filter((f) => !fs.existsSync(path.join(out, f)))
+		assert.deepEqual(missing, [], 'every screenshot is on disk')
+		assert.ok(report.files.length >= 13 + 15 + sc.frames.length + 12, `screenshots (${report.files.length})`)
+		assertWholeViewport(report, out, await l.page.evaluate(() => devicePixelRatio))
+		const written = JSON.parse(fs.readFileSync(path.join(out, 'motion-report.json'), 'utf8')) as MotionReport
+		assert.equal(written.combos[0].reimagine!.scroll!.boxAfter, sc.boxAfter, 'the numbers are in the JSON')
+		assert.deepEqual(seen.pageErrors, [], 'no page errors')
+		assert.deepEqual(l.reached, [], 'nothing reached the internet')
+		// The stand-in holds: a wheel sent while a screenshot is flagged goes to the window (the page is the original again).
+		await flagCapture(l.page, true)
+		const y0 = await l.page.evaluate(() => scrollY)
+		await l.page.mouse.wheel(0, 120)
+		await l.page.waitForTimeout(200)
+		await flagCapture(l.page, false)
+		assert.deepEqual(await l.page.evaluate(() => [(window as any).__vgCapture.diverted, scrollY]), [1, y0 + 120], "a wheel during the stood-in screenshot scrolls the window, as in headed Chrome")
+	} finally {
+		await l.close()
+		if (!KEEP) fs.rmSync(out, { recursive: true, force: true })
+	}
+})
+
+test("the reimagined round with the cookie banner showing: 'skipped: banner' before any press", { timeout: 120_000 }, async () => {
+	const l = await launch({ banner: true })
+	const out = tmpOut('reimagined-banner')
+	try {
+		const report = await runMotion(l.page, { base: V, out, combos: [REIMAGINED], log: () => {}, hooks: { settle: quickSettle } })
+		assert.equal(report.outcome, 'skipped: banner')
+		assert.equal(report.presses, 0, 'the run pressed nothing')
+		assert.equal(await l.page.evaluate(() => (window as any).__presses), 0, 'the page saw no press at all')
+		assert.equal(report.loads.length, 1, 'one page load')
+		assert.equal(await l.page.evaluate(() => !!document.querySelector('.aixc-composer:not([hidden])')), false, 'the composer never opened')
 	} finally {
 		await l.close()
 		fs.rmSync(out, { recursive: true, force: true })

@@ -3,7 +3,7 @@ id: 01M731W7552PBJ9G1VADMJWAD5
 order: 3000
 status: current
 owner: bahaa.addin@hotmail.com
-summary: 'Running all five demos on Vodafone''s real pages: what the owner decided on 2026-11-10 and 2026-11-17, what is built, and what is still open.'
+summary: 'Running all five demos on Vodafone''s real pages: what the owner decided from 2026-11-10 to 2026-11-22, what is built, and what is still open.'
 tags:
   - way-2
   - live
@@ -138,6 +138,29 @@ What is built, by commit:
 
 Checks: experiences `npm test` 369/369; the watch's e2e ran three times each; the e2e request log shows at most 12 pages plus robots.txt per visit, at least 1,000 ms between request starts, no cookie sent, and nothing leaving the machine. Nothing has been run on the real site.
 
+## What landed for phase 4c on 2026-11-22
+
+[Merge phase 6, push the branch, then build phase 4c, one after the other.]{decided by="Bahaà Addin Balashoni" email=bahaa.addin@hotmail.com on=2026-11-22} The owner's words were "Do all three in sequence". Phase 6 (the page watch) was merged into `feature/live-way2` (`073c492`), the branch took two commits another session had pushed (`292ac0b`) and a fix for the offline kit (`00e9d7a`), and it was pushed. Then 4c was built. ADR-0076 is still Proposed, until the owner's look and the native review of the Arabic.
+
+- **The Arabic microcopy (O17).** It was already in the shared word list; O17 was out of date. Four Arabic hints used استخدم, which holds خدم, a word our layer may not say on pages not about services. They now say اتحرّك بالأسهم. The four go to the native review (O42).
+- **The colour audit.** 172 rows checked twice: 158 are the experiences' own colours under the owner's exception, 9 are on the clone only, 3 turned out to be Vodafone's own and 2 were fixed in 4c. They are listed in `voice-guide/docs/reference/colour-audit-2026-11-22.md` and summed up per file in ADR-0076 §9. Our own controls on live (the launcher, the view bar, the composer, the box) are now all on Vodafone's palette. The rest is the experiences' own art, which the owner's exception allows, and the canvas and streaming previews' dark overlays (a lead decision below).
+- **Checks with Reimagine, offline and on the real site.** The floating-controls check now covers the reimagined view: the composer, the view, the previews, the guide listening, the Pocket peeking and Vodafone's menu over the view. The motion check has one reimagined round. On the real site the gate passed on every page (`/en/services` and `/ar/services` 29 of 29 cards, `/en/home` 12 of 12).
+- **Fixes.** Canvas's preview close sat under the trail's "Your journey" pill, and on phones the Pocket's curl sat under the composer; both are fixed (bug log B-104, B-105). The live runs found two faults in the checks themselves, also fixed (B-107, B-108). The third live run, after all fixes: both passed (the floating walk: 52 cells, 20 page loads of at most 24, 70 presses, Vodafone's menu touched 4 times (hover, hover, press, press), 0 violations; the motion check: five rounds, 13 page loads of at most 16, 18 page requests of at most 20, the reimagined round's box scrolled 601 px by the wheel with the window still).
+- **Open** (O58 to O64): how Vodafone's menu locks the page's scroll is not confirmed live; small gaps in the kit and in the checks; the trail's pill sits over Vodafone's open phone menu; the clone's own stylesheet keeps nine colours outside the palette.
+
+## Phase 4c: the lead's decisions, for the owner to confirm
+
+The lead session took these while building 4c; ADR-0076 records each under "Lead's decisions in phase 4c".
+
+1. **The previews' dark overlays** (canvas's and streaming's) count as part of those experiences, under the owner's palette exception.
+2. **The view bar** is measured as the box of the buttons it shows, not its whole row.
+3. **On the real site** the reimagined checks run on the page loads the layer's check already makes: `/en/services` in full and `/en/home` short. `/ar/services` has none there; the offline check runs both languages.
+4. **Vodafone's menu:** on desktop the check only hovers it; on a phone it presses the menu button once and never again, leaves the menu open, and does not press Original then.
+5. **The offline kit** shows the saved pages as recorded, without filling in their lazy pictures, so their sizes match the real site.
+6. **The Pocket's curl** hides while the composer shows, as it does during a view; its button stays.
+7. **The previews keep clear of the trail's pill** where the pill reaches into the view.
+8. **One floating rule** allows for Vodafone's own scroll lock when its phone menu opens, only when every sign shows it is Vodafone's lock and only on that one side.
+
 ## Still open
 
-The handoff lists the rest (D2 to D4, D6, D7, D9) with the phase each blocks. D1 (the page watch) was confirmed by the owner on 2026-11-18 (see the phase 6 section above); O43 can close. The Arabic strings that wait for the native review are listed in O42, which phase 6 added to; who reviews them is still to be named. The owner's opt-in live run of the watch (O45) is not done: it is run once, never scheduled, and needs his go-ahead because it touches production. The guide's watch chip needs a card that has a chip (O46), and "Open the page" is a plain link, not routed through the portal (O47).
+The handoff lists the rest (D2 to D4, D6, D7, D9) with the phase each blocks. D1 (the page watch) was confirmed by the owner on 2026-11-18 (see the phase 6 section above); O43 can close. The Arabic strings that wait for the native review are listed in O42, which phase 6 added to; who reviews them is still to be named. The owner's opt-in live run of the watch (O45) is not done: it is run once, never scheduled, and needs the owner's go-ahead because it touches production. Phase 4c's eight lead decisions wait for the owner's confirmation, and 4c's live check counts as passed only after the native review of the Arabic in O42. The guide's watch chip needs a card that has a chip (O46), and "Open the page" is a plain link, not routed through the portal (O47).

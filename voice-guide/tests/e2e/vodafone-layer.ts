@@ -35,7 +35,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { Page } from 'playwright'
+import { chromium, type Page } from 'playwright'
 
 import type { Manifest } from '#kb'
 import { loadPlatformConfig, loadSiteConfig, ROOT, type SiteConfig } from '#shared/config.ts'
@@ -100,6 +100,11 @@ export interface LayerOptions {
 	/** Owl Carousel 2's AutoRefresh (needs `owl`): a carousel that is not visible fades out until a poll sees it again. Default false. */
 	owlAutoRefresh?: boolean
 	viewport?: { width: number; height: number }
+	/**
+	 * Classic scrollbars that take width, as the live walks' narrowed desktop Chrome has them (a 15 px scrollbar at
+	 * 375 px: the page 360 px wide). Default false: Playwright's headless Chromium hides them (--hide-scrollbars).
+	 */
+	scrollbars?: boolean
 	reducedMotion?: boolean
 	/** The experience layer; false keeps it off. Default: the site config (on). */
 	experiences?: boolean
@@ -126,6 +131,12 @@ export interface Layer {
 export async function launchLayer(gw: LayerGateway, o: LayerOptions = {}): Promise<Layer> {
 	const refused: { url: string; type: string }[] = []
 	const reached: string[] = []
+	// The kit's launch takes no option for the scrollbars: this one launch is made without --hide-scrollbars (as
+	// pocket-portal-live's classic-scrollbar case does).
+	const launch = chromium.launchPersistentContext
+	if (o.scrollbars)
+		chromium.launchPersistentContext = ((dir: string, options: Parameters<typeof launch>[1] = {}) =>
+			launch.call(chromium, dir, { ...options, ignoreDefaultArgs: [...(Array.isArray(options.ignoreDefaultArgs) ? options.ignoreDefaultArgs : []), '--hide-scrollbars'] })) as typeof launch
 	const b = await launchDemoBrowser({
 		site: o.demos ? { ...gw.site, experiences: { ...gw.site.experiences, demos: { ...gw.site.experiences.demos, ...o.demos } } } : gw.site,
 		gatewayUrl: gw.url,
@@ -142,6 +153,8 @@ export async function launchLayer(gw: LayerGateway, o: LayerOptions = {}): Promi
 		netLog: o.netLog,
 		viewport: o.viewport || DESKTOP,
 		initScripts: [SPEECH_STUB, ...(o.widget === false ? [] : [WIDGET_STAND_IN]), ...(o.banner ? [BANNER_STAND_IN] : []), ...(o.themeClear ? [THEME_CLEAR_STAND_IN] : []), ...(o.owl ? [OWL_STAND_IN] : []), ...(o.owlAutoRefresh ? [OWL_AUTO_REFRESH_STAND_IN] : []), ...(o.fixedHeader === 'scroll' ? [FIXED_HEADER_SCROLL_STAND_IN] : o.fixedHeader ? [FIXED_HEADER_STAND_IN] : []), ...(o.initScripts || [])],
+	}).finally(() => {
+		chromium.launchPersistentContext = launch
 	})
 	if (o.reducedMotion) await b.page.emulateMedia({ reducedMotion: 'reduce' })
 	// A response a route fulfilled has no server address; one from the network has. The gateway's own
@@ -382,6 +395,38 @@ export const FIXED_HEADER_SCROLL_STAND_IN = `(() => {
 		}
 		addEventListener('scroll', pin, { passive: true })
 		pin()
+	}
+	${WHEN_READY('start')}
+})()`
+
+/**
+ * Vodafone's phone menu as its own script opens it (the saved pages run no scripts; phase 4c, S7): a press on the
+ * burger (.js-burger-toggle) toggles `.nav-opened` on the navigation (.nav-header), as reimagine-live's menu cases
+ * set it. The wide screen's dropdowns need nothing: they open on hover by the theme's own CSS.
+ *
+ * While the phone menu is open the page does not scroll, as live: the walk of 2026-11-22 (live-verify floating2,
+ * S7's menu cell at 375×812 on /en/services and /en/home) saw the page's classic scrollbar go with the menu open (the
+ * layout viewport 360 -> 375 px, the open menu's list reaching 375), so Vodafone's fixed accessibility button
+ * (right: 20px) moved 285 -> 300. Vodafone's navToggling() is not saved; the stand-in locks the page with the
+ * theme's own utility, `.overflow-hidden{overflow:hidden!important}` (static-theme and maintheme styles.css), on
+ * html and body (html,body carry the theme's overflow-x: hidden, so html's overflow is the viewport's). The lock
+ * follows `.nav-opened` on the navigation, whoever sets or clears it.
+ */
+export const NAV_STAND_IN = `(() => {
+	${ONLY_CMS}
+	document.addEventListener('click', (event) => {
+		const burger = event.target instanceof Element ? event.target.closest('.js-burger-toggle') : null
+		if (!burger) return
+		const nav = burger.closest('.nav-header') || document.querySelector('.nav-header')
+		if (nav) nav.classList.toggle('nav-opened')
+	})
+	const start = () => {
+		const sync = () => {
+			const open = !!document.querySelector('.nav-header.nav-opened')
+			for (const n of [document.documentElement, document.body]) if (n && n.classList.contains('overflow-hidden') !== open) n.classList.toggle('overflow-hidden', open)
+		}
+		new MutationObserver(sync).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] })
+		sync()
 	}
 	${WHEN_READY('start')}
 })()`

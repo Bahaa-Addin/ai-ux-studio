@@ -727,9 +727,20 @@
   max-height: 100%;
 }
 
+/* Its close clear of the trail's pill where the pill reaches below the bar into the room (the box at the top of the
+   screen): in from the inline end by the bar's measure (box.js --aixc-sheet-pill-w, 0 elsewhere), still in the band
+   above the body's words. */
+.aixc-box .aixc-vx--canvas .cv-dialog__close {
+  inset-inline-end: max(20px, var(--aixc-sheet-pill-w, 0px));
+}
+
 @media (max-width: 719px) {
   .aixc-box .aixc-vx--canvas .cv-dialog__body {
     padding: 64px 16px 12px;
+  }
+
+  .aixc-box .aixc-vx--canvas .cv-dialog__close {
+    inset-inline-end: max(12px, var(--aixc-sheet-pill-w, 0px));
   }
 
   /* The keys' hint means nothing on a phone's touch screen, and between the corners' zones it wraps over the cards
@@ -761,7 +772,8 @@
 }
 
 /* A short room (a phone in landscape, a short window): no room above the corners, so the preview takes the column
-   between them, its close button at that column's top end (the right zone in English, the left in Arabic). */
+   between them, its close button at that column's top end (the right zone in English, the left in Arabic), under the
+   trail's pill where the pill reaches into the room (box.js --aixc-sheet-pill-h). */
 @container (max-height: 479px) {
   .aixc-box .aixc-vx--canvas .cv-dialog__body {
     inset: 0 calc(var(--aixc-safe-right-w, 0px) + 8px) 0 calc(var(--aixc-safe-left-w, 0px) + 8px);
@@ -783,7 +795,7 @@
   }
 
   .aixc-box .aixc-vx--canvas .cv-dialog__close {
-    top: 8px;
+    top: max(8px, var(--aixc-sheet-pill-h, 0px));
     right: calc(var(--aixc-safe-right-w, 0px) + 12px);
     left: auto;
   }

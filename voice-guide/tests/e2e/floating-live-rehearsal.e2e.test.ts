@@ -8,7 +8,10 @@
  *
  * - The whole plan, English and Arabic: the main pass (a profile without the banner) on /en/services and
  *   /ar/services in S1, S2, S5, S3, the trail's consent card and S4, and /en/home in S1 and S2, at 1366×900
- *   and 375×812; the banner pass (the kit's BANNER_STAND_IN: OneTrust's banner and its full-page filter) in
+ *   and 375×812, then S7 on /en/services (the composer, the view with the Pocket peeking, the guide listening,
+ *   the composer over the view, canvas's and streaming's previews, Vodafone's menu over the view) and on
+ *   /en/home (the composer, the view, the menu), the menu by a hover at 1366 and the kit's burger stand-in at
+ *   375; the gate read on every page with the layer and the corners' zones in every cell; the banner pass (the kit's BANNER_STAND_IN: OneTrust's banner and its full-page filter) in
  *   S1 at both sizes with no press. Every cell keeps the rules; 20 page loads at least 1.2 s apart; a
  *   screenshot of the viewport for every cell and baseline at the viewport's size; the JSON written; a
  *   stand-in of another of Vodafone's floaters listed and clear; the layer's own data cleaned up; nothing
@@ -24,6 +27,9 @@
  *   stops, nothing is pressed, nothing is retried, the banner pass never opens.
  * - OneTrust's banner as it may come live: without its full-page filter (then only our points inside the
  *   banner are held to it, and the cells pass), and under our z-index (then rule (c) names the banner's own).
+ * - Vodafone's phone menu at 375 with classic scrollbars, as the live walk of 2026-11-22 had it: its own scroll lock
+ *   (NAV_STAND_IN) widens the layout viewport 360 -> 375 and its button moves 285 -> 300; rule (d) follows the
+ *   viewport in those two cells only, every other cell keeps the scrollbar and the button as with ?aixc=off.
  * - The rules can fail: a hook that moves the accessibility button and puts a floater of Vodafone's over
  *   the Pocket button makes rules (d) and (floaters) report it; the clean-up still runs.
  * - A page load the run did not start (the page reloads itself) stops the run.
@@ -40,8 +46,8 @@ import type { Page } from 'playwright'
 import { ROOT } from '#shared/config.ts'
 
 import { ACTORS_TEST, BANNER_MESSAGE, DESKTOP, type FloatingOptions, FloatingStop, MAX_LOADS, MIC_STAND_IN, outsideRepo, PHONE, PLAN, type Plan, plannedLoads, runFloatingMatrix } from '../live/floating-walk.ts'
-import { type Box, cellViolations, type Control, type Measure, WIDGET_DEFINED } from './floating-controls.ts'
-import { type Layer, type LayerGateway, launchLayer, startLayerGateway, V } from './vodafone-layer.ts'
+import { type Box, cellViolations, type Control, type Measure, S7, WIDGET_DEFINED } from './floating-controls.ts'
+import { type Layer, type LayerGateway, launchLayer, NAV_STAND_IN, startLayerGateway, V } from './vodafone-layer.ts'
 
 const PORT = 4462
 let gw: LayerGateway
@@ -85,7 +91,8 @@ const OTHER_FLOATERS = `(() => {
 	else add()
 })()`
 
-const INIT = [WIDGET_DEFINED, MIC_STAND_IN, ACTORS_TEST, PRESSES, OTHER_FLOATERS]
+// NAV_STAND_IN: Vodafone's burger opens its phone menu as its script does (S7's menu cell at 375).
+const INIT = [WIDGET_DEFINED, MIC_STAND_IN, ACTORS_TEST, PRESSES, OTHER_FLOATERS, NAV_STAND_IN]
 
 /** What a page holds at the end, read just before its browser closes. */
 const endState = (page: Page) =>
@@ -107,11 +114,11 @@ const endState = (page: Page) =>
 type End = Awaited<ReturnType<typeof endState>>
 
 /** A browser of the kit for a pass, recording what it held at the end and what reached the internet. */
-function kit(o: { name: 'main' | 'banner'; banner: boolean; opened: string[]; ends: Record<string, End>; layers: Layer[]; extra?: string[] }) {
+function kit(o: { name: 'main' | 'banner'; banner: boolean; opened: string[]; ends: Record<string, End>; layers: Layer[]; extra?: string[]; init?: string[]; scrollbars?: boolean }) {
 	return async () => {
 		const name = o.name
 		o.opened.push(name)
-		const l = await launchLayer(gw, { banner: o.banner, themeClear: true, owl: true, initScripts: [...INIT, ...(o.extra ?? [])] })
+		const l = await launchLayer(gw, { banner: o.banner, themeClear: true, owl: true, scrollbars: o.scrollbars, initScripts: [...(o.init ?? INIT), ...(o.extra ?? [])] })
 		o.layers.push(l)
 		return {
 			page: l.page,
@@ -132,7 +139,7 @@ const pngSize = (file: string) => {
 	return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }
 }
 
-const run = ({ banner, extra, ...o }: Partial<FloatingOptions> & { banner?: boolean; extra?: string[] }, rec = { opened: [] as string[], ends: {} as Record<string, End>, layers: [] as Layer[], lines: [] as string[] }) => {
+const run = ({ banner, extra, init, scrollbars, ...o }: Partial<FloatingOptions> & { banner?: boolean; extra?: string[]; init?: string[]; scrollbars?: boolean }, rec = { opened: [] as string[], ends: {} as Record<string, End>, layers: [] as Layer[], lines: [] as string[] }) => {
 	const out = o.out ?? tmp('run')
 	return {
 		rec,
@@ -143,8 +150,8 @@ const run = ({ banner, extra, ...o }: Partial<FloatingOptions> & { banner?: bool
 				out,
 				settleMs: 800,
 				log: (x) => rec.lines.push(x),
-				openMain: kit({ name: 'main', banner: !!banner, opened: rec.opened, ends: rec.ends, layers: rec.layers, extra }),
-				openBanner: kit({ name: 'banner', banner: true, opened: rec.opened, ends: rec.ends, layers: rec.layers, extra }),
+				openMain: kit({ name: 'main', banner: !!banner, opened: rec.opened, ends: rec.ends, layers: rec.layers, extra, init, scrollbars }),
+				openBanner: kit({ name: 'banner', banner: true, opened: rec.opened, ends: rec.ends, layers: rec.layers, extra, init, scrollbars }),
 				...o,
 			}),
 	}
@@ -152,7 +159,7 @@ const run = ({ banner, extra, ...o }: Partial<FloatingOptions> & { banner?: bool
 
 const ONE: Plan = { main: { viewports: [DESKTOP], pages: [{ pathname: '/en/services', full: false }] }, banner: null }
 
-test('the whole live run on the saved pages: every cell keeps the rules, 20 page loads, a screenshot per cell, the JSON, the clean-up', { timeout: 600_000 }, async () => {
+test('the whole live run on the saved pages: every cell keeps the rules, 20 page loads, a screenshot per cell, the JSON, the clean-up', { timeout: 900_000 }, async () => {
 	const r = run({})
 	const t0 = Date.now()
 	try {
@@ -183,8 +190,10 @@ test('the whole live run on the saved pages: every cell keeps the rules, 20 page
 		// The cells: every state on every page and size; the trail's consent card measured where it showed.
 		const states = (pass: string, page: string, vp: string) => report.cells.filter((c) => c.pass === pass && c.page === page && c.viewport === vp).map((c) => c.state)
 		for (const vp of ['1366x900', '375x812']) {
-			for (const page of ['/en/services', '/ar/services']) assert.deepEqual(states('main', page, vp), ['S1 on load', 'S2 pocketed, peeking', 'S5 listening', 'S3 album, journey closed', "S4 the trail's consent card", 'S4 album, journey open'], `${page} ${vp}`)
-			assert.deepEqual(states('main', '/en/home', vp), ['S1 on load', 'S2 pocketed, peeking'])
+			// S7 (phase 4c) after the other states on /en/services (all of it) and /en/home (the composer, the view, the menu).
+			const s7: Record<string, string[]> = { '/en/services': [S7.composer, S7.view, S7.listening, S7.change, S7.canvas, S7.streaming, S7.menu], '/ar/services': [] }
+			for (const page of ['/en/services', '/ar/services']) assert.deepEqual(states('main', page, vp), ['S1 on load', 'S2 pocketed, peeking', 'S5 listening', 'S3 album, journey closed', "S4 the trail's consent card", 'S4 album, journey open', ...s7[page]], `${page} ${vp}`)
+			assert.deepEqual(states('main', '/en/home', vp), ['S1 on load', 'S2 pocketed, peeking', S7.composer, S7.view, S7.menu])
 			for (const page of ['/en/services', '/ar/services']) assert.deepEqual(states('banner', page, vp), ['S1 on load, banner present'])
 		}
 		for (const c of report.cells.filter((c) => c.pass === 'banner')) {
@@ -203,10 +212,39 @@ test('the whole live run on the saved pages: every cell keeps the rules, 20 page
 		assert.equal(report.presses.filter((p) => p.pass === 'banner').length, 0)
 		assert.ok(report.presses.length > 0)
 		assert.deepEqual({ presses: r.rec.ends.banner.presses, banner: r.rec.ends.banner.banner, filter: r.rec.ends.banner.filter, answered: r.rec.ends.banner.answered }, { presses: 0, banner: 'block', filter: 'block', answered: false })
+		// Our own controls only (S7 adds Reimagine's, each a button in no link) and, in S7 at 375, Vodafone's burger to open its menu (never to close it).
 		assert.ok(
-			report.presses.every((p) => /^(a "Pocket it" chip|the Pocket button|the guide's mic|the trail's pill|allow, in the trail's own consent card|allow, in the journey's consent|the journey's close|the album's Back)/.test(p.what)),
+			report.presses.every((p) => /^(a "Pocket it" chip|the Pocket button|the guide's mic|the trail's pill|allow, in the trail's own consent card|allow, in the journey's consent|the journey's close|the album's Back|Reimagine's launcher|a template in the composer|the view bar's "Change experience"|the view bar's "Original"|a canvas card \(its preview\)|the canvas preview's close|a streaming card's More info \(its preview\)|the streaming preview's close|Vodafone's phone menu \(its burger\), to open its menu$)/.test(p.what)),
 			report.presses.map((p) => p.what).join(' | '),
 		)
+		// Vodafone's menu: touched only in S7, by a hover at 1366 and its burger at 375, on the two pages S7 walks: the hover taken off, the phone menu left open (one press each).
+		assert.deepEqual(
+			report.vodafone.map((x) => `${x.how} ${x.what.startsWith("Vodafone's menu item") ? 'a menu item' : x.what}`),
+			['hover a menu item', 'hover a menu item', "press Vodafone's phone menu (its burger)", "press Vodafone's phone menu (its burger)"],
+			JSON.stringify(report.vodafone),
+		)
+		assert.equal(report.presses.filter((p) => /^Vodafone's/.test(p.what)).length, 2, 'the burger pressed only to open the menu, once on each of two pages at 375')
+		// After the phone menu's cell the walk touches nothing more on that page (Original left to the next load).
+		for (const p of ['/en/services', '/en/home']) assert.ok(report.notes.some((n) => n.startsWith(`${p} 375x812 banner absent: Original was not pressed with Vodafone's menu still open`)), `${p} 375: ${report.notes.join(' | ')}`)
+		// The gate on every page the layer was loaded on, read and passing on the saved pages; the corners in every cell.
+		assert.deepEqual(
+			report.gates.map((g) => `${g.pass} ${g.page} ${g.viewport} ${g.passes} ${g.allowed}`),
+			[...['1366x900', '375x812'].flatMap((vp) => ['/en/services', '/ar/services', '/en/home'].map((p) => `main ${p} ${vp} true true`)), ...['1366x900', '375x812'].flatMap((vp) => ['/en/services', '/ar/services'].map((p) => `banner ${p} ${vp} true true`))],
+		)
+		for (const g of report.gates) assert.ok(g.coverage! >= 0.9 && g.sections.filter((n) => n >= 3).length >= 2, `${g.pass} ${g.page} ${g.viewport}: the gate's numbers read (${g.coverage}, ${JSON.stringify(g.sections)})`)
+		for (const c of report.cells) assert.ok(c.view?.corners.right && c.view.corners.right.w > 0 && c.view.corners.right.h > 0, `${c.page} ${c.viewport} ${c.state}: the bottom-right corner's size read (${JSON.stringify(c.view?.corners)})`)
+		// The view bar measured in every view but while a preview is open: then it is inert by design (ADR-0076 §7, the
+		// owner's decision of 2026-11-21) and the preview's close is the control of ours in the view, hit-tested (rule c).
+		const inPreview = (state: string) => state === S7.canvas || state === S7.streaming
+		for (const c of report.cells.filter((c) => c.state.startsWith('S7') && c.state !== S7.composer && !inPreview(c.state))) assert.ok(c.view!.zones && c.view!.boxZones && c.measure.controls.viewbar?.shown, `${c.page} ${c.viewport} ${c.state}: the view bar measured and the box's zones read (${JSON.stringify(c.view?.boxZones)})`)
+		for (const c of report.cells.filter((c) => c.state === S7.composer || c.state === S7.change)) assert.ok(c.measure.controls.composer?.shown, `${c.page} ${c.viewport} ${c.state}: the composer measured`)
+		for (const c of report.cells.filter((c) => inPreview(c.state))) {
+			assert.ok(c.view!.zones && c.view!.boxZones, `${c.page} ${c.viewport} ${c.state}: the box's zones read (${JSON.stringify(c.view?.boxZones)})`)
+			assert.ok(c.view!.preview?.open && c.view!.preview.inBox && !c.view!.preview.modal && !c.view!.preview.anyModal, `${c.page} ${c.viewport} ${c.state}: the preview open in the box, not modal`)
+			assert.ok(c.measure.controls.viewbar?.inert && !c.measure.controls.viewbar.shown && c.view!.preview.barInert === true && c.view!.preview.usable.length === 0, `${c.page} ${c.viewport} ${c.state}: the rest of the view inert under the preview (${JSON.stringify({ viewbar: c.measure.controls.viewbar, usable: c.view!.preview.usable })})`)
+			assert.ok(c.measure.controls.preview?.shown && c.hits.preview?.length, `${c.page} ${c.viewport} ${c.state}: the preview's close measured and hit-tested (${JSON.stringify(c.measure.controls.preview)})`)
+		}
+		for (const c of report.cells.filter((c) => c.state === S7.menu)) assert.ok(c.view!.menu.open && c.view!.menu.boxes.length > 0 && c.menuHits && Object.keys(c.menuHits).length > 0, `${c.page} ${c.viewport} ${c.state}: Vodafone's menu open and its points hit-tested (${JSON.stringify(c.view!.menu)})`)
 
 		// Vodafone's other floaters: the stand-ins listed in every cell, the tab shown and clear, the closed chat not shown.
 		for (const c of [...report.cells, ...report.baselines]) {
@@ -216,7 +254,9 @@ test('the whole live run on the saved pages: every cell keeps the rules, 20 page
 			assert.ok(chat && !chat.shown, 'the closed chat is listed, not shown')
 			assert.ok(!c.floaters.some((f) => /onetrust|accessibility-widget|vodafone-aw-icon|vg-guide|pocket-|curl-/.test(f.what)), `nothing of ours, the banner's or the widget's is listed: ${c.floaters.map((f) => f.what).join(', ')}`)
 		}
-		for (const c of report.cells.filter((c) => c.pass === 'main')) assert.equal(c.floaters.find((f) => f.what === 'div#vf-feedback-stand-in')!.reaches, 'self', `${c.page} ${c.viewport} ${c.state}: a press at the feedback tab reaches it`)
+		// (In S7's menu cell Vodafone's own open menu may lie over its own tab: that cell is Vodafone's pair, not ours.)
+		for (const c of report.cells.filter((c) => c.pass === 'main' && c.state !== S7.menu)) assert.equal(c.floaters.find((f) => f.what === 'div#vf-feedback-stand-in')!.reaches, 'self', `${c.page} ${c.viewport} ${c.state}: a press at the feedback tab reaches it`)
+		for (const c of report.cells.filter((c) => c.state === S7.menu)) assert.ok(!c.floaters.find((f) => f.what === 'div#vf-feedback-stand-in')!.reaches?.startsWith('ours:'), `${c.page} ${c.viewport} ${c.state}: a press at the feedback tab never reaches ours`)
 
 		// The screenshots: one per cell and per baseline, the viewport's size (CSS pixels, scale 1).
 		assert.equal(report.baselines.length, 10, 'one ?aixc=off baseline per page, size and pass')
@@ -278,6 +318,58 @@ test('the whole live run on the saved pages: every cell keeps the rules, 20 page
 		console.log(`# violations by rule, page, size and state:\n#   ${grouped.join('\n#   ')}`)
 		assert.deepEqual(report.violations, [], 'every cell keeps the rules')
 		assert.equal(report.outcome, 'passed')
+		fs.rmSync(r.out, { recursive: true, force: true })
+	} catch (e) {
+		console.log(`# the screenshots and the JSON are kept in ${r.out}`)
+		throw e
+	}
+})
+
+/**
+ * The live walk of 2026-11-22 (live-verify floating2) at 375×812 was a narrowed desktop Chrome, its classic 15 px
+ * scrollbar taking width (the page 360 px wide). With Vodafone's phone menu open the page's scroll is locked by its
+ * own rule and the scrollbar goes: the layout viewport is 375 px, and Vodafone's fixed button (right: 20px) is at 300
+ * instead of 285. The kit as live here: classic scrollbars, NAV_STAND_IN's lock (the theme's .overflow-hidden), and no
+ * floater stand-in of ours (the live pages have none). Rule (d) follows the viewport in those two cells only, and only
+ * for Vodafone's own lock (./floating-controls.ts vodafoneScrollLock); every other cell has the scrollbar and the
+ * button exactly where ?aixc=off has it.
+ */
+test("Vodafone's phone menu at 375 with classic scrollbars, as live: its own scroll lock widens the layout viewport under its button, and rule (d) follows it there only", { timeout: 600_000 }, async () => {
+	const r = run({
+		scrollbars: true,
+		init: [WIDGET_DEFINED, MIC_STAND_IN, ACTORS_TEST, PRESSES, NAV_STAND_IN],
+		plan: { main: { viewports: [PHONE], pages: [{ pathname: '/en/services', full: false, reimagine: 'full' }, { pathname: '/en/home', full: false, reimagine: 'short' }] }, banner: null },
+	})
+	try {
+		const report = await r.go().catch((e) => {
+			console.log(`# ${r.rec.lines.join('\n# ')}`)
+			throw e
+		})
+		console.log(`# ${r.rec.lines.join('\n# ')}`)
+		assert.equal(report.main, 'done')
+		assert.deepEqual(report.violations, [], 'every cell keeps the rules')
+		assert.equal(report.outcome, 'passed')
+		const menu = report.cells.filter((c) => c.state === S7.menu)
+		assert.deepEqual(
+			menu.map((c) => c.page),
+			['/en/services', '/en/home'],
+			"Vodafone's menu over the view on both pages",
+		)
+		for (const c of menu) {
+			const l = c.measure.layout!
+			const where = `${c.page} ${c.viewport} ${c.state}`
+			assert.ok(c.view!.menu.open && l.menu.length > 0, `${where}: Vodafone's menu marked open (${JSON.stringify(l.menu)})`)
+			assert.deepEqual({ clientWidth: l.clientWidth, innerWidth: l.innerWidth, overflowY: l.overflowY, inline: l.inlineOverflow, oursUnread: l.oursUnread }, { clientWidth: 375, innerWidth: 375, overflowY: 'hidden', inline: null, oursUnread: [] }, `${where}: the scrollbar gone by the page's lock`)
+			assert.ok(l.rules.length > 0 && l.rules.every((x) => x.vodafone) && l.rules.some((x) => x.selector === '.overflow-hidden'), `${where}: the lock is the theme's own rule (${JSON.stringify(l.rules)})`)
+			const base = report.baselines.find((b) => b.pass === c.pass && b.page === c.page && b.viewport === c.viewport)!
+			assert.deepEqual({ box: base.button!.box, viewport: base.button!.viewport }, { box: [285, 737, 55, 55], viewport: { clientWidth: 360, innerWidth: 375, gutter: 'auto' } }, `${where}: the ?aixc=off baseline with the scrollbar`)
+			assert.deepEqual(c.measure.button!.box, [300, 737, 55, 55], `${where}: Vodafone's button moved with the viewport, as live`)
+		}
+		// Every other cell: the scrollbar there, the layout viewport 360 px, the button exactly as with ?aixc=off.
+		for (const c of report.cells.filter((c) => c.state !== S7.menu)) {
+			assert.equal(c.measure.layout?.clientWidth, 360, `${c.page} ${c.state}: the page's scrollbar takes its 15 px`)
+			assert.deepEqual(c.measure.button?.box, [285, 737, 55, 55], `${c.page} ${c.state}: the button as with ?aixc=off`)
+		}
 		fs.rmSync(r.out, { recursive: true, force: true })
 	} catch (e) {
 		console.log(`# the screenshots and the JSON are kept in ${r.out}`)
@@ -473,7 +565,7 @@ const measureOf = (over: Partial<Measure>): Measure => ({
 	at: 'by hand',
 	view: { width: 1366, height: 900, scrollY: 0, dir: 'ltr', lang: 'en' },
 	state: { pocketView: 'page', busy: false, journey: false, mic: 'idle', listening: false, consent: null, mascot: null, covered: false },
-	controls: { accessibility: control({ left: 1291, top: 825, right: 1346, bottom: 880 }, 'vodafone'), banner: null, mic: null, kbd: null, bar: null, pill: null, card: null, pocket: null, reimagine: null, tips: null, watch: null },
+	controls: { accessibility: control({ left: 1291, top: 825, right: 1346, bottom: 880 }, 'vodafone'), banner: null, mic: null, kbd: null, bar: null, pill: null, card: null, pocket: null, reimagine: null, tips: null, watch: null, viewbar: null, composer: null, preview: null },
 	filter: null,
 	curlLayers: [],
 	curl: [],

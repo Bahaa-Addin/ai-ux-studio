@@ -12,7 +12,10 @@
  *                       accessibility button and the guide's microphone (with its keyboard button and transcript bar
  *                       while they show); bottom-left, the Pocket's button while it shows. The same in both languages.
  * On the bar: --aixc-pill-room (the inline end kept free of the trail's pill: its width, its end gap and 16 px) and
- * --aixc-pill-drop (on phones the bar's buttons go on a row below the pill: the pill's height and 8 px).
+ * --aixc-pill-drop (on phones the bar's buttons go on a row below the pill: the pill's height and 8 px). On the box,
+ * where the pill reaches below the bar into the room (0 elsewhere): --aixc-sheet-pill-w the bar's measure (from the
+ * box's inline end) and --aixc-sheet-pill-h (from the room's top to the pill's bottom, and GAP), which a preview's
+ * controls keep clear of (canvas.css, streaming.css).
  * On the composer, where it goes (the lead's decision, 2026-11-17), its data-placement and the raw numbers for it; it
  * never covers its opener, the pill, the launcher, a corner's controls or Vodafone's header band (the shell's
  * headerBottom()):
@@ -205,6 +208,12 @@ export const createBox = ({ host, guard, box, bar, composer, anchor, opener, lau
         set(box, `--aixc-safe-${side}-h`, px(zones[side].h))
       }
       last.zones = zones
+      // The pill where it reaches below the bar into the box's room (the box at the top of the screen, Vodafone's header
+      // in the flow): a preview over the room (canvas's, streaming's) keeps its controls clear of it, at the inline end by
+      // the bar's measure or under it by its reach and GAP; 0 where it ends above the room. Tucked too, as the bar's.
+      const reach = pill ? pill.bottom - (area.top + barH) : 0
+      set(box, '--aixc-sheet-pill-w', px(reach > 0 ? (host.dir === 'rtl' ? pill.right - area.left : area.right - pill.left) + SAFE : 0))
+      set(box, '--aixc-sheet-pill-h', px(reach > 0 ? reach + GAP : 0))
       // The bar's inline end, kept free of the pill: its width, its gap to the screen's edge and 16 px; on phones the
       // bar's buttons go below it. Kept whenever the pill shows (tucked too: it comes back on the way up), so the bar
       // does not reflow while the page scrolls.

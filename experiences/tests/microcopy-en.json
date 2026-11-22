@@ -1,0 +1,268 @@
+{
+  "keys": {
+    "canvas.js": {
+      "t": [
+        "+Categories",
+        "+Controls",
+        "+On the canvas",
+        "Click or Enter to open",
+        "Close",
+        "Drag or arrow keys to pan",
+        "Drag to explore",
+        "Press {enter} to open, {esc} to close",
+        "{n} of {total}: {title}, {group}",
+        "{title}, {group}. Open details"
+      ],
+      "words": [
+        "Jump to a category",
+        "Services canvas. Use the arrow keys to pan, Tab to move between services.",
+        "Vodafone Egypt · Services",
+        "Vodafone services, infinite canvas"
+      ]
+    },
+    "coverflow.js": {
+      "t": [
+        "Scroll, drag or use the arrow keys",
+        "carousel",
+        "{n} of {total}: {title}, {group}",
+        "{title}, {n} of {total}"
+      ],
+      "words": [
+        "Next service",
+        "Previous service",
+        "Vodafone services, cover flow"
+      ]
+    },
+    "cube.js": {
+      "t": [
+        "Categories",
+        "Face {number}",
+        "Go to {label}",
+        "Overview",
+        "Turn the cube"
+      ]
+    },
+    "fan.js": {
+      "t": [
+        "Drag the cards, scroll, or use the arrow keys",
+        "Next card",
+        "Previous card",
+        "carousel",
+        "{n} of {total}: {title}, {group}",
+        "{title}, card {n} of {total}"
+      ],
+      "words": [
+        "Vodafone services, card fan"
+      ]
+    },
+    "flipbook.js": {
+      "t": [
+        "(opens in a new tab)",
+        "Contents",
+        "Next page",
+        "Page {page} of {total}",
+        "Pages {from}–{to} of {total}",
+        "Previous page",
+        "QR code to download the Ana Vodafone app",
+        "Turn back a page",
+        "Turn the page",
+        "book"
+      ],
+      "words": [
+        "Vodafone services flipbook"
+      ]
+    },
+    "gallery.js": {
+      "t": [
+        "Category",
+        "In this category",
+        "Link",
+        "Next piece",
+        "No. {n}",
+        "None on the source page",
+        "Previous piece",
+        "Scroll, or use the arrows, to walk along the wall.",
+        "{n} of {total}",
+        "{title}, piece {n} of {total}"
+      ],
+      "words": [
+        "Gallery of Vodafone services"
+      ]
+    },
+    "journey.js": {
+      "t": [
+        "Scroll to begin"
+      ]
+    },
+    "magazine.js": {
+      "t": [
+        "(opens in a new tab)",
+        "From {sources}",
+        "Inside",
+        "QR code to download the Ana Vodafone app",
+        "Scroll {label} back",
+        "Scroll {label} forward",
+        "Sections in this view",
+        "{label}, scrollable list"
+      ],
+      "words": [
+        "More services",
+        "Services"
+      ]
+    },
+    "ring.js": {
+      "t": [
+        "Scroll to turn the ring",
+        "carousel",
+        "{n} of {total}: {title}, {group}",
+        "{title}, {n} of {total}"
+      ],
+      "words": [
+        "Next service",
+        "Previous service",
+        "Vodafone services, ring"
+      ]
+    },
+    "shared.js": {
+      "t": [
+        "(opens in a new tab)",
+        "From {sources}",
+        "QR code to download the Ana Vodafone app"
+      ],
+      "words": [
+        "More services",
+        "View service"
+      ]
+    },
+    "shell.js": {
+      "say": [
+        "Continue to the page",
+        "Original page",
+        "The page changed after this view was made. Choose an experience again to see it."
+      ],
+      "t": [
+        "Change",
+        "Close composer",
+        "Original",
+        "Page reset to the original view.",
+        "Page view",
+        "Page view controls",
+        "Ready-made experiences",
+        "Reimagine this page",
+        "Reimagined",
+        "Reset",
+        "{name} ready."
+      ]
+    },
+    "split.js": {
+      "t": [
+        "Categories",
+        "Go to {title}",
+        "Scroll, drag or use the arrow keys",
+        "carousel",
+        "slide",
+        "{n} of {total}: {title}",
+        "{n} of {total}: {title}, {group}"
+      ],
+      "words": [
+        "Next service",
+        "Previous service",
+        "Vodafone services, split slideshow"
+      ]
+    },
+    "spotlight.js": {
+      "t": [
+        "Pause automatic rotation",
+        "Start automatic rotation",
+        "Up next",
+        "carousel",
+        "slide",
+        "{n} of {total}: {title}"
+      ],
+      "words": [
+        "Jump to a category",
+        "Next service",
+        "Previous service",
+        "Show {title}",
+        "Vodafone services spotlight"
+      ]
+    },
+    "streaming.js": {
+      "t": [
+        "(opens in a new tab)",
+        "Category",
+        "Close",
+        "Explore all",
+        "Home",
+        "Link",
+        "More in {category}",
+        "More info",
+        "More info: {title}",
+        "Next {title}",
+        "None on the source page",
+        "Previous {title}",
+        "QR code to download the Ana Vodafone app",
+        "Skip intro",
+        "Streaming showcase",
+        "View {title}",
+        "Vodafone, back to the top"
+      ],
+      "words": [
+        "View service"
+      ]
+    },
+    "tunnel.js": {
+      "t": [
+        "CAT: {n}/{total}",
+        "Depth",
+        "LINK: IN THE APP",
+        "LINK: {domain}",
+        "Scroll to fly through",
+        "Scroll velocity",
+        "Speed",
+        "{group}, category",
+        "{n} of {total}: {title}",
+        "{n} of {total}: {title}, {group}"
+      ],
+      "words": [
+        "Next service",
+        "Previous service",
+        "Vodafone services, hyper tunnel"
+      ]
+    }
+  },
+  "neutral": {
+    "Gallery of Vodafone services": "Gallery wall",
+    "Jump to a category": "Jump to a section",
+    "More services": "More on this page",
+    "Next service": "Next",
+    "Previous service": "Previous",
+    "Services": "Items",
+    "Services canvas. Use the arrow keys to pan, Tab to move between services.": "Canvas. Use the arrow keys to pan, Tab to move between items.",
+    "View service": "View details",
+    "Vodafone Egypt · Services": "Vodafone Egypt · {page}",
+    "Vodafone services flipbook": "Flipbook",
+    "Vodafone services spotlight": "Spotlight",
+    "Vodafone services, card fan": "Card fan",
+    "Vodafone services, cover flow": "Cover flow",
+    "Vodafone services, hyper tunnel": "Hyper tunnel",
+    "Vodafone services, infinite canvas": "Infinite canvas",
+    "Vodafone services, ring": "Ring",
+    "Vodafone services, split slideshow": "Split slideshow"
+  },
+  "cards": {
+    "streaming": "Streaming showcase",
+    "split": "Split slideshow",
+    "fan": "Card fan",
+    "ring": "Service ring",
+    "tunnel": "Hyper tunnel",
+    "canvas": "Infinite canvas",
+    "coverflow": "Cover flow",
+    "spotlight": "Spotlight cards",
+    "journey": "Scroll journey",
+    "gallery": "Gallery wall",
+    "flipbook": "Flipbook",
+    "cube": "Service cube",
+    "magazine": "Editorial magazine"
+  }
+}

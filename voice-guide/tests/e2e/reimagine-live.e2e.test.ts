@@ -30,6 +30,8 @@
  * - Spotlight in the box: the stage pinned at the bar with its bottom at the box's, prev and next, its controls and
  *   queue out of both corners' safe zones (the guide listening too), the row under the title on phones, card 5 back
  *   after Original; the words about services on Services only.
+ * - O17 (phase 4c): each of the thirteen on /ar/home, /ar/services and /en/home, every word of ours in the page's
+ *   language (no Latin letters on Arabic pages but the keys' names), and none says خدم or "service" off Services.
  * - The trail's cover is #main-content as it shows, kept by a journey that starts later; the icons a page lacks are
  *   ours and prefixed; forced failures and the guard's stop give the page back with nothing of ours listening.
  */
@@ -2778,6 +2780,118 @@ test('the composer\'s names say services on Services only: the templates, the ba
 				if (services) assert.equal(said.meta, names[template], `${where}, ${template}: the bar's name is the card's`)
 				else assert.deepEqual([said.meta, said.live].filter((text) => SERVICE_WORD[lang].test(text)), [], `${where}, ${template}: the bar and the announcement say no word about services`)
 			}
+		} finally {
+			await l.close()
+		}
+	}
+})
+
+/**
+ * Every word of ours a view shows or names in the box (O17, ADR-0076 §11): its text nodes and the names in its
+ * attributes, the view bar's and the end band's included, less Vodafone's content (the model's words, the page's title,
+ * web addresses) and the marks the design draws in Latin and hides from screen readers (the streaming wordmark, the
+ * canvas's X / Y readout and key caps, the tunnel's catalogue codes), as experiences/tests/microcopy-ar.test.mjs reads
+ * them offline. A text node is content when it is one of Vodafone's strings, or a piece of an element whose whole text
+ * is one (flipbook's lettered headings, the canvas's rising title words). Being a substring of one is not enough:
+ * Vodafone's Arabic keeps Latin names ("ليه Home Wireless؟"), and a left-over English t('Home') of ours is one of
+ * those substrings (the probe in the O17 test below checks it is still read).
+ */
+const oursInBox = (page: Page) =>
+	page.evaluate(() => {
+		const content: string[] = []
+		const walk = (o: unknown): void => {
+			if (Array.isArray(o)) o.forEach(walk)
+			else if (o && typeof o === 'object')
+				for (const [k, v] of Object.entries(o)) {
+					if (typeof v !== 'string') walk(v)
+					else if (['title', 'intro', 'description', 'label', 'lead', 'storesLabel', 'alt'].includes(k) && v.trim()) content.push(v.trim())
+				}
+		}
+		walk((window as any).__aixc.model)
+		const pageName = (document.title || '').split(/\s+[|–-]\s+/)[0].trim()
+		if (pageName) content.push(pageName)
+		content.sort((a, b) => b.length - a.length)
+		const box = document.querySelector('.aixc-box')!
+		const flat = (text: string) => text.replace(/\s+/g, ' ').trim()
+		const whole = new Set(content.map(flat))
+		const isContent = (n: Node) => {
+			if (whole.has(flat(n.textContent ?? ''))) return true
+			for (let el = n.parentElement; el && el !== box; el = el.parentElement) if (whole.has(flat(el.textContent ?? ''))) return true
+			return false
+		}
+		const strip = (text: string) => content.reduce((s, c) => s.split(c).join(' '), text).replace(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\b/gi, ' ')
+		const marks = 'style, script, .st-word, .cv-coords, .tn-card__id, .cv-key'
+		const out: { text: string; where: string; at: string }[] = []
+		const at = (el: Element) => `${el.localName}.${String(el.getAttribute('class') ?? '').split(' ')[0]}`
+		const walker = document.createTreeWalker(box, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
+		for (let n: Node | null = walker.currentNode; n; n = walker.nextNode()) {
+			if (n.nodeType === Node.TEXT_NODE) {
+				const el = n.parentElement
+				const text = (n.textContent ?? '').trim()
+				if (!el || !text || el.closest(marks) || isContent(n)) continue
+				out.push({ text: strip(text), where: 'text', at: at(el) })
+			} else {
+				const el = n as Element
+				for (const name of ['alt', 'title', 'placeholder', 'aria-label', 'aria-roledescription', 'aria-valuetext', 'aria-description']) {
+					const value = el.getAttribute(name)?.trim()
+					if (value && !content.includes(value)) out.push({ text: strip(value), where: name, at: at(el) })
+				}
+			}
+		}
+		return out
+	})
+
+test('O17: every word of ours in each of the thirteen is in the page\'s language: no Latin letters on Arabic pages, none says خدم or "service" off Services', { timeout: 1_200_000 }, async () => {
+	const KEY_NAMES = /\b(?:Tab|Enter|Esc|QR)\b/g
+	for (const p of ['/ar/home', '/ar/services', '/en/home']) {
+		const [ar, services] = [p.startsWith('/ar'), p.endsWith('/services')]
+		const l = await launchLayer(gw, { viewport: DESKTOP, reducedMotion: true, ...LIVE })
+		try {
+			await open(l.page, p, '?aixc-debug')
+			await ready(l.page)
+			const found: string[] = []
+			for (const [at, template] of templateOrder.entries()) {
+				if (at > 0) await l.page.locator('.aixc-viewbar .aixc-text-btn[aria-controls="aixc-composer"]').click()
+				await choose(l.page, template)
+				const words = await oursInBox(l.page)
+				assert.ok(words.length > 5, `${p} desktop, ${template}: ${words.length} words of ours read`)
+				if (at === 0) {
+					// The check can see: a word of ours that is also part of Vodafone's content (a Latin name inside its Arabic
+					// copy, as "Home" in "ليه Home Wireless؟"; on /en/home a word of an English title) is still read as ours,
+					// not skipped as content. The probe is a Latin word of the content that holds no content string itself.
+					const probe = await l.page.evaluate(() => {
+						const content: string[] = []
+						const walk = (o: unknown): void => {
+							if (Array.isArray(o)) o.forEach(walk)
+							else if (o && typeof o === 'object')
+								for (const [k, v] of Object.entries(o)) {
+									if (typeof v !== 'string') walk(v)
+									else if (['title', 'intro', 'description', 'label', 'lead', 'storesLabel', 'alt'].includes(k) && v.trim()) content.push(v.trim())
+								}
+						}
+						walk((window as any).__aixc.model)
+						const pageName = (document.title || '').split(/\s+[|–-]\s+/)[0].trim()
+						if (pageName) content.push(pageName)
+						const word = content.flatMap((s) => s.match(/[A-Za-z]{3,}/g) ?? []).find((w) => !content.some((c) => w.includes(c))) ?? 'Home'
+						const span = document.createElement('span')
+						span.className = 'o17-probe'
+						span.textContent = word
+						document.querySelector('.aixc-box')!.append(span)
+						return { word, inContent: content.some((s) => s.includes(word)) }
+					})
+					const seen = await oursInBox(l.page).finally(() => l.page.evaluate(() => document.querySelector('.aixc-box .o17-probe')?.remove()))
+					assert.ok(seen.some((w) => w.at === 'span.o17-probe' && w.text.trim() === probe.word), `${p} desktop, ${template}: the probe ${JSON.stringify(probe)} is read as ours`)
+					// English titles are Latin, so on /en/home the probe is surely a piece of Vodafone's content.
+					if (!ar) assert.ok(probe.inContent, `${p}: the probe ${probe.word} is a word of Vodafone's content`)
+				}
+				for (const { text, where, at: el } of words) {
+					const said = `${template} ${where} ${el}: ${text.trim()}`
+					if (ar && /[A-Za-z]/.test(text.replace(KEY_NAMES, ''))) found.push(`Latin: ${said}`)
+					if (ar && !services && /خدم/.test(text)) found.push(`خدم: ${said}`)
+					if (!ar && !services && /servic/i.test(text)) found.push(`service: ${said}`)
+				}
+			}
+			assert.deepEqual([...new Set(found)], [], `${p} desktop: words of ours`)
 		} finally {
 			await l.close()
 		}

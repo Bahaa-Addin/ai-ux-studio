@@ -783,3 +783,45 @@ Severity: **High** = breaks a demo moment or a safety rule; **Medium** = wrong o
   - F10: "Open the page" after a link change went to the old link.
   - F11: the checker kept going after the watch was dropped. Now it stops.
 - **Test:** one failing test per finding, each named after it: `experiences/tests/watch-check.test.mjs` cases 'F1: …' to 'F11: …' (F1, F2, F3, F4, F7, F8, F9, F11), `watch-store.test.mjs` 'F4: …' and 'F8: …', `watch-ui.test.mjs` 'F10: …', `voice-guide/tests/unit/watch-chunk.test.ts` 'no layer on a browser-mode site: false at once, no permission asked, nothing sent' and `tests/integration/watch-server.test.ts` 'the session answer carries the site's watch mode…' (F5), `tests/integration/watch-ui.test.ts` 'the guide's bridge: a card kept on this page in the other language is watched, not refused' (F6).
+
+## B-103 The live-page kit drew each lazy picture as a stretched blank square, so `pocket-details` F8b failed
+
+- **Found:** 2026-11-22, in the full suites at `292ac0b`, after the merge of `ea8b54d` (the replay gives lazy pictures their `src`): `pocket-details` F8b failed 3 times in 3. It had passed at `a7b551a`, `82b6d6a` and `073c492`.
+- **Cause:** offline, each lazy picture became a 1x1 blank stretched square. On `/en/home` the banner was 375x375 against about 227 px live, and the hero card was 140 px longer, so the saved page no longer had the live page's sizes.
+- **Fix:** (`00e9d7a`) the live-page kit serves the saved pages as recorded: `demo-browser` has a `lazyImages` option, and `launchLayer` passes `lazyImages: false`. Pushed on 2026-11-22.
+- **Test:** `pocket-details` 6/6 three times; every kit e2e file one at a time passes; `watch-demo` 4/4, `watch-ui` 5/5, `watch-floating` 8/8, `watch-live` 9/9, `reimagine-live` 34/34.
+
+## B-104 Canvas's preview close under the trail's "Your journey" pill
+
+- **Found:** 2026-11-22, by phase 4c's S7 cells, where the box starts at the top of the screen. At 1366 the close was at [1298,81,1346,129] and the pill at [1165,69,1350,113]; at 375 the close was at [315,131,363,179] and the pill at [297,127,359,171].
+- **Cause:** the pill reaches below the view bar into the box's room there, and the previews were placed from the bar's bottom only. Streaming's panel started in the same place.
+- **Fix:** `box.js` writes the bar's pill measure on the box: `--aixc-sheet-pill-w` (from the box's inline end) and `--aixc-sheet-pill-h` (from the room's top to the pill's bottom, and 8 px); 0 where the pill ends above the room or there is no pill; never `--vx-top` or `--vx-vh`. Canvas's close steps in from the inline end by it (under the pill in the short room); streaming's panel starts under it. Sizes after: shell 25,195 of 25,344 B, canvas 12,753 of 12,800, streaming 16,033 of 16,128; no budget raised.
+- **Test:** `experiences/tests/reimagine-box.test.mjs` (7 cases, all failed before; with B-105).
+
+## B-105 At 375 the Pocket's resting curl under the composer
+
+- **Found:** 2026-11-22, by phase 4c's S7 cells: at 375x812 the curl (`pocket-layer--plane`, [0,599,167,812]) lay under the composer ([16,170,359,641]).
+- **Cause:** the curl hid only while a view showed; on phones the composer reaches down past the curl's top.
+- **Fix:** `live.css` hides the curl while the composer shows too (`body:has(.aixc-composer:not([hidden]))`), the same seam as during a view (ADR-0076 §2). The button stays. No Pocket file is edited.
+- **Test:** `experiences/tests/reimagine-box.test.mjs` (with B-104); the S7 cells.
+
+## B-106 استخدم in the Arabic hints, on pages not about services
+
+- **Found:** 2026-11-22, in phase 4c's inventory of O17.
+- **Cause:** four Arabic hints said استخدم (use), which contains خدم, a word nothing of ours may say on pages not about services. The canvas line was changed in 4b; these four were not.
+- **Fix:** `i18n.js`: the four say اتحرّك بالأسهم (move with the arrows): split's and cover flow's shared key, fan's, canvas's foot and gallery's. English unchanged, no new keys, `NEUTRAL_WORDS` unchanged. The four are in O42 for the native review.
+- **Test:** `experiences/tests/microcopy-ar.test.mjs` (11 cases; 4 failed before); `reimagine-live.e2e`'s 'O17' case.
+
+## B-107 Motion r5: "Original (58,-278) would reach nothing", a wheel sent during a screenshot (test-side)
+
+- **Found:** 2026-11-22, in phase 4c's first live run (the motion check's reimagined round).
+- **Cause:** in headed Chrome a wheel sent while a DevTools screenshot is being taken scrolls the window, not the box. The window moved, the view bar went above the screen, and r5 aimed at Original off the screen. The product was right: the box's `overflow-y: auto` and `overscroll-behavior: contain` hold the wheel.
+- **Fix:** test-side only. One capture at a time (the lock, `apart`); r4 records the window's `scrollYBefore` and `scrollYAfter`; r5 brings the bar back by scroll only if r4 already failed. The product is unchanged.
+- **Test:** `motion-live-rehearsal.e2e` reproduces it with `WHEEL_IN_CAPTURE`.
+
+## B-108 Floating rule (d) and Vodafone's own scroll lock at 375 (test-side)
+
+- **Found:** 2026-11-22, in phase 4c's second live run: 4 violations, all rule (d), in the menu cell at 375.
+- **Cause:** Vodafone's phone menu removes the page's 15 px classic scrollbar (`overflow-hidden` on `html` and `body`), so its fixed button moved from 285 to 300 and rule (d) counted that as our shift.
+- **Fix:** test-side only. Rule (d) is corrected only when `vodafoneScrollLock` holds: the menu is marked open, `overflow` is hidden by Vodafone's own stylesheet rule only, the viewport grew by exactly the scrollbar's width, the window is the same and the gutter is `auto`; and only for the one inset side. The kit's `NAV_STAND_IN` now locks the scroll as live does; `launchLayer` has a `scrollbars` option. How live locks it is not confirmed (O58).
+- **Test:** `floating-live-rehearsal.e2e`'s 'as live' case reproduces the 4 violations before the fix.

@@ -156,7 +156,7 @@
   background: #e60000;
   color: #fff;
   font-family: var(--pocket-bold, vodafone-bold-en, sans-serif);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
 }
 
 .aixc-viewbar .aixc-seg:disabled,
@@ -226,7 +226,7 @@
   border-radius: 8px;
   background: #fff;
   color: #333;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 0 0 1px #ebebeb;
   font-family: var(--pocket-regular, vodafone-regular-en, sans-serif);
   font-size: 15px;
   line-height: 1.4;
@@ -445,8 +445,10 @@ body:has(#header :is([aria-expanded='true'], .show, .nav-opened, .nav-flag:check
 
 /* ------------------------------------------- the Pocket's curl over a view */
 
-/* While a view shows, the Pocket's resting curl is not drawn (phase 4 design §3.2: ADR-0044's tuck, without the lift);
-   its button stays, keeps its count and opens the album with the page turn, which draws again (data-pocket-view). */
-body[data-aixc-view='reimagined']:not([data-pocket-view]) :is(.pocket-layer--plane, .pocket-layer--lift) {
+/* While a view or the composer shows, the Pocket's resting curl is not drawn (phase 4 design §3.2: ADR-0044's tuck,
+   without the lift; the composer reaches down past the curl's top on phones); its button stays, keeps its count and
+   opens the album with the page turn, which draws again (data-pocket-view). */
+body[data-aixc-view='reimagined']:not([data-pocket-view]) :is(.pocket-layer--plane, .pocket-layer--lift),
+body:has(.aixc-composer:not([hidden])):not([data-pocket-view]) :is(.pocket-layer--plane, .pocket-layer--lift) {
   opacity: 0;
 }
