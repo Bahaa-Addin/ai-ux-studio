@@ -24,6 +24,13 @@
  * - Owl Carousel 2's AutoRefresh, on request (`owlAutoRefresh`, with `owl`): every 500 ms a carousel that is
  *   not visible by jQuery's rule gets `.owl-hidden` (opacity 0), which goes only on a poll that finds it
  *   visible again.
+ *
+ * The saved pages are served as recorded, their lazy pictures with `data-src` only (the demo browser's
+ * `lazyImages: false`). Offline such a picture could only be a 1x1 blank, and its frame would stretch it
+ * to a square: at 375 px the /en/home banner would be 375x375, where live it is about 227 px tall (live check of
+ * 2026-11-17, floating-after shot 33), and the hero card would end 110 px below the guide's microphone
+ * instead of just above it, as live. Recorded, the banner keeps to its alt text and the card ends at 630,
+ * live about 658 (2026-11-22).
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -128,6 +135,7 @@ export async function launchLayer(gw: LayerGateway, o: LayerOptions = {}): Promi
 		xray: 'off',
 		replayDir: REPLAY,
 		offline: true,
+		lazyImages: false,
 		onNetwork: (url, type) => void refused.push({ url, type }),
 		accessibilityStandIn: false,
 		experiences: o.experiences,

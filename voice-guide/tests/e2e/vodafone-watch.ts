@@ -1,6 +1,6 @@
 /**
  * Glue for the page watch's end-to-end test (watch-live.e2e.test.ts; ADR-0078; phase 6 design §5), on top of
- * the offline kit (./vodafone-layer.ts, used as it is, never edited):
+ * the offline kit (./vodafone-layer.ts, used as it is; phase 6 did not edit it):
  *
  * - `answerWatch(context)`: a route on the browser context that answers the layer's own fetches to Vodafone's
  *   origin (robots.txt and the CMS pages; never navigations or /__vg/) from the saved pages: those of

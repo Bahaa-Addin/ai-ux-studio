@@ -54,6 +54,14 @@ export interface DemoBrowserOptions {
 	/** Replay only: pages opened from the internet (not in the replay) are never saved by the trail. Default: recorded like the rest. */
 	liveUnsaved?: boolean
 	/**
+	 * Replay only: give the saved pages' lazy pictures their `src` (showLazyImages), so the demos show
+	 * Vodafone's pictures. Default true. False serves the pages as recorded (`data-src` only), for checks
+	 * that measure layout offline: there a lazy picture can only be a 1x1 blank, which its frame stretches
+	 * to a square (the /en/home banner 375x375 at 375 px, where live it is about 227 px tall), while recorded it
+	 * keeps to its alt text, a line or two (2026-11-22, pocket-details F8b).
+	 */
+	lazyImages?: boolean
+	/**
 	 * Replay only: nothing is fetched from the internet. Pictures the replay did not save are a blank,
 	 * fonts and styles it did not save are refused, and a page it does not have says so. Tests use it,
 	 * so a run never reaches Vodafone's site. `onNetwork` hears each request that would have gone out.
@@ -182,7 +190,7 @@ export async function launchDemoBrowser(o: DemoBrowserOptions): Promise<DemoBrow
 	for (const origin of origins) await context.grantPermissions(['microphone', 'notifications'], { origin })
 
 	// Routes are matched newest first: the replay catch-all goes in first, the gateway bridge last.
-	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone, o.liveUnsaved, o.offline ? { onNetwork: o.onNetwork || (() => {}) } : undefined)
+	if (o.replayDir) await installReplay(context, o.replayDir, origins, log, o.clone, o.liveUnsaved, o.offline ? { onNetwork: o.onNetwork || (() => {}) } : undefined, o.lazyImages !== false)
 
 	// Requests waiting on the gateway (the guide's 20 s long-poll among them). Closing ends each one
 	// first: Playwright leaves a route still pending at close to Chromium, which sends it on to the
@@ -261,7 +269,7 @@ export function showLazyImages(html: string): string {
 	})
 }
 
-async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string; pages?: Record<string, string> }, liveUnsaved = false, offline?: { onNetwork: (url: string, type: string) => void }): Promise<void> {
+async function installReplay(context: BrowserContext, dir: string, origins: string[], log: (m: string) => void, clone?: { path: string; dir: string; pages?: Record<string, string> }, liveUnsaved = false, offline?: { onNetwork: (url: string, type: string) => void }, lazyImages = true): Promise<void> {
 	const crawl = loadCrawl(dir)
 	const html = new Map<string, string>()
 	for (const p of crawl.pages) {
@@ -352,7 +360,8 @@ async function installReplay(context: BrowserContext, dir: string, origins: stri
 			const file = html.get(norm(url.toString()))
 			if (file) {
 				live.delete(bare(url.toString()))
-				return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: showLazyImages(read(file).toString('utf8')) })
+				const page = read(file).toString('utf8')
+				return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: lazyImages ? showLazyImages(page) : page })
 			}
 			return openLive(route, url)
 		}
